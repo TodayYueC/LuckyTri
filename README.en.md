@@ -79,9 +79,12 @@ The core pipeline lives in `server/core/` and is intentionally modular:
 
 ### Start the local studio
 
+For everyday use, download the [latest Release](https://github.com/TodayYueC/LuckyBot/releases/latest) (currently v0.5.0). The default `main` branch is the development trunk and may include changes that have not been tagged yet. To run this official version, check out `v0.5.0` after cloning. To follow latest development, skip that step.
+
 ```bash
 git clone https://github.com/TodayYueC/LuckyBot.git
 cd LuckyBot
+git checkout v0.5.0
 npm install
 npm start
 ```
