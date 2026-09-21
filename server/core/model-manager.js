@@ -14,6 +14,8 @@ export function defaultModel(s) {
     system: true,
     json: true,
     tools: false,
+    embedding: false,
+    embeddingModel: "",
     reasoningEffort: s.reasoningEffort || "none",
     temperature: s.temperature ?? 0.85,
     topP: s.topP ?? 1,
@@ -64,7 +66,9 @@ export function validateModel(m) {
     m.maxInputTokens + m.maxOutputTokens > m.contextWindow
   )
     throw Error("输入与输出预算之和不能超过上下文窗口");
-  for (const k of ["vision", "system", "json", "tools"])
+  m.embedding = !!m.embedding;
+  m.embeddingModel = String(m.embeddingModel || "");
+  for (const k of ["vision", "system", "json", "tools", "embedding"])
     if (typeof m[k] !== "boolean") throw Error(`${k} 必须是开关`);
   if (
     !Number.isFinite(m.temperature) ||
@@ -246,5 +250,34 @@ export class ModelManager {
     } finally {
       entry.elapsed = Date.now() - entry.started;
     }
+  }
+  async embed(profile, texts) {
+    const key = profile.apiKey || process.env.LLM_API_KEY;
+    if (!key) throw Error("模型尚未配置 API Key");
+    const model = profile.embeddingModel || profile.model;
+    const r = await this.fetcher(
+      profile.baseUrl.replace(/\/$/, "") + "/embeddings",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${key}`,
+        },
+        body: JSON.stringify({ model, input: texts }),
+        signal: AbortSignal.timeout(profile.timeoutMs || 90000),
+      },
+    );
+    if (!r.ok) throw Error(`向量接口失败 HTTP ${r.status}`);
+    const raw = await r.json();
+    const rows = Array.isArray(raw.data) ? raw.data : [];
+    if (rows.length !== texts.length)
+      throw Error("向量接口返回数量与输入不一致");
+    return rows
+      .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
+      .map((row) => {
+        if (!Array.isArray(row.embedding) || !row.embedding.length)
+          throw Error("向量接口未返回 embedding");
+        return row.embedding.map(Number);
+      });
   }
 }

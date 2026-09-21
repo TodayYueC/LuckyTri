@@ -1,9 +1,11 @@
+import { parseSessionKey } from "../channels/session-key.js";
 import { replyFocus } from "./conversation-cues.js";
 import { Repository } from "./repository.js";
 import { ModelManager } from "./model-manager.js";
 import { MemoryManager } from "./memory-manager.js";
+import { KnowledgeManager } from "../knowledge/manager.js";
 import { ConversationManager } from "./conversation-manager.js";
-import { persistIncoming } from "./message-manager.js";
+import { persistIncoming, messageEnvelope } from "./message-manager.js";
 import { persona, replyPrompt, prompts } from "./persona-manager.js";
 import { buildContext } from "./context-builder.js";
 import { visionInputs } from "./vision-manager.js";
@@ -11,12 +13,30 @@ import { decide } from "./speech-decision.js";
 import { generate } from "./response-generator.js";
 import { normalizeResponse, validateResponse } from "./response-validator.js";
 import { deliver } from "./message-scheduler.js";
-import { captureMemoryCandidate } from "../memory.js";
+import { captureMemoryCandidate } from "../knowledge/candidates.js";
 import { TopicTracker } from "./topic-tracker.js";
-import { messageEnvelope } from "./message-manager.js";
+
+function defaultLocalDemo() {
+  return {
+    speak: true,
+    reply: "嗯",
+    reason: "模拟模式本地样例",
+    emotion: "平静",
+  };
+}
 
 export class ChatSystem {
-  constructor(store, send, { models, random = Math.random } = {}) {
+  constructor(
+    store,
+    send,
+    {
+      models,
+      random = Math.random,
+      knowledge,
+      localDemo = defaultLocalDemo,
+      fetchQuoted,
+    } = {},
+  ) {
     this.store = store;
     this.repo = new Repository(store);
     this.repo.db
@@ -26,13 +46,32 @@ export class ChatSystem {
       .run();
     this.models = models || new ModelManager(this.repo);
     this.memory = new MemoryManager(this.repo, this.models);
+    this.knowledge = knowledge || new KnowledgeManager(this.repo, this.models);
     this.topics = new TopicTracker(this.repo);
     this.send = send;
     this.random = random;
+    this.localDemo = localDemo;
+    this.fetchQuoted = fetchQuoted;
     this.clearEpoch = new Map();
     this.queue = new ConversationManager((id, batch) =>
       this.process(id, batch),
     );
+  }
+  participation(session) {
+    const policy = this.policy(session);
+    const table = this.store.sessionSettings(session);
+    const rawProbability =
+      policy.probability !== undefined ? policy.probability : table.probability;
+    const rawCooldown =
+      policy.cooldown !== undefined ? policy.cooldown : table.cooldown;
+    const probability = Number(rawProbability);
+    const cooldown = Number(rawCooldown);
+    return {
+      probability: Number.isFinite(probability)
+        ? Math.max(0, Math.min(1, probability))
+        : 0,
+      cooldown: Number.isFinite(cooldown) ? cooldown : 0,
+    };
   }
   policy(session) {
     const { topicBoost: _deprecatedTopicBoost, ...saved } = this.repo.config(
@@ -57,26 +96,32 @@ export class ChatSystem {
         .prepare("INSERT INTO core_jobs VALUES (?,?,'pending',NULL,?)")
         .run(event.seq, event.sessionId, Date.now());
       if (
-        this.enabled(m.sessionId) &&
-        this.policy(m.sessionId).memory &&
+        !m.simulated &&
+        this.enabled(event.sessionId, { simulated: false }) &&
+        this.policy(event.sessionId).memory &&
         this.store.settings().memoryCandidates
       )
-        captureMemoryCandidate(this.store, m);
-      this.queue.enqueue(event, this.policy(m.sessionId));
+        captureMemoryCandidate(this.store, {
+          ...m,
+          sessionId: event.sessionId,
+        });
+      if (m.simulated)
+        return this.process(event.sessionId, [event], {
+          replay: false,
+          simulated: true,
+        });
+      this.queue.enqueue(event, this.policy(event.sessionId));
     }
     return { queued: !!event };
   }
-  enabled(session) {
-    return (
-      this.store.settings().enabled &&
-      !this.store.settings().demo &&
-      !!this.repo.db
-        .prepare("SELECT enabled,archived FROM sessions WHERE id=?")
-        .get(session)?.enabled &&
-      !this.repo.db
-        .prepare("SELECT archived FROM sessions WHERE id=?")
-        .get(session)?.archived
-    );
+  enabled(session, { simulated = false } = {}) {
+    const settings = this.store.settings();
+    const row = this.repo.db
+      .prepare("SELECT enabled,archived FROM sessions WHERE id=?")
+      .get(session);
+    if (!settings.enabled || !row?.enabled || row.archived) return false;
+    if (settings.demo) return !!simulated;
+    return !simulated;
   }
   cancelSession(session) {
     this.clearEpoch.set(session, (this.clearEpoch.get(session) || 0) + 1);
@@ -124,8 +169,15 @@ export class ChatSystem {
     this.store.revision++;
     return removed;
   }
-  async process(session, batch, { replay = false } = {}) {
-    const trace = this.repo.trace(session, replay ? "replay" : "live"),
+  async process(session, batch, { replay = false, simulated = false } = {}) {
+    // Give preview turns a separate trace mode as well as a separate event
+    // stream, so the studio never presents them as production decisions.
+    const simulatedTurn =
+        !replay && (simulated || batch.some((m) => m.simulated)),
+      trace = this.repo.trace(
+        session,
+        replay ? "replay" : simulatedTurn ? "demo" : "live",
+      ),
       policy = this.policy(session),
       revision = this.store.revision,
       watermark = batch.at(-1).seq,
@@ -137,6 +189,9 @@ export class ChatSystem {
             "UPDATE core_jobs SET status='running',trace_id=? WHERE seq=?",
           )
           .run(trace.id, m.seq);
+    // Replays always read the live stream.  A preview can be replayed from
+    // the UI as an explicit demo, but it must never silently switch the
+    // production context to the demo stream.
     const finish = (status, reason) => {
       trace.reason = reason;
       if (!replay)
@@ -154,14 +209,14 @@ export class ChatSystem {
           "语境决策",
           reason,
           trace.sent?.join("\n") || "",
-          0,
+          Number(!!simulatedTurn),
         );
       return trace;
     };
     try {
-      if (!replay && !this.enabled(session))
+      if (!replay && !this.enabled(session, { simulated: simulatedTurn }))
         return finish("silent", "会话已暂停或处于模拟模式");
-      if (!replay && this.resolveReference) {
+      if (!replay && this.fetchQuoted) {
         for (const message of batch.filter((m) => m.replyId)) {
           const found = this.repo.db
             .prepare(
@@ -170,32 +225,9 @@ export class ChatSystem {
             .get(session, message.replyId, message.accountId);
           if (found) continue;
           try {
-            const data = await this.resolveReference(message.replyId);
-            if (
-              data?.group_id &&
-              String(data.group_id) !== session.split(":")[1]
-            )
-              continue;
-            if (!Array.isArray(data?.message)) continue;
-            const sender = String(
-              data.sender?.user_id || data.user_id || "unknown",
-            );
-            const envelope = messageEnvelope({
-              sessionId: session,
-              kind: message.kind,
-              userId: sender === message.accountId ? "bot" : sender,
-              name: data.sender?.nickname || sender,
-              text: data.message
-                .filter((s) => s.type === "text")
-                .map((s) => s.data.text)
-                .join(""),
-              role: sender === message.accountId ? "assistant" : "user",
-              raw: {
-                ...data,
-                self_id: message.accountId,
-                message_id: message.replyId,
-              },
-            });
+            const quoted = await this.fetchQuoted(message);
+            if (!quoted) continue;
+            const envelope = messageEnvelope(quoted);
             this.repo.db
               .prepare(
                 "INSERT OR IGNORE INTO core_references(session_id,platform_id,account_id,payload) VALUES (?,?,?,?)",
@@ -220,6 +252,23 @@ export class ChatSystem {
         policy.memory && !replay
           ? this.memory.retrieve(session, batch, now)
           : [];
+      const knowledge = replay
+        ? this.knowledge.retrieve(session, batch, now)
+        : await this.knowledge.retrieveWithEmbed(session, batch, now);
+      const stages = policy.memory
+        ? this.repo.db
+            .prepare(
+              "SELECT first_seq,last_seq,data FROM core_stages WHERE session_id=? AND last_seq<=? ORDER BY last_seq DESC LIMIT 5",
+            )
+            .all(session, watermark)
+            .map((s) => ({
+              first_seq: s.first_seq,
+              last_seq: s.last_seq,
+              summary: JSON.parse(s.data).summary,
+              reliability:
+                "未核实的阶段线索，不是人物事实；冲突时以原文和已确认记忆为准",
+            }))
+        : [];
       const snapshot = buildContext(
         this.repo,
         session,
@@ -230,6 +279,7 @@ export class ChatSystem {
         memories,
         p,
         replay ? now : Date.now(),
+        { knowledge, stages, simulated: simulatedTurn },
       );
       const visionModel = policy.visionModelId
         ? this.models.profile(policy.visionModelId)
@@ -238,19 +288,6 @@ export class ChatSystem {
       const generationImages = model.vision ? media.images : [];
       if (!replay) snapshot.topics = this.topics.recent(session, watermark);
       snapshot.unavailableImages = media.unavailable;
-      if (!replay && policy.memory)
-        snapshot.stages = this.repo.db
-          .prepare(
-            "SELECT first_seq,last_seq,data FROM core_stages WHERE session_id=? AND last_seq<=? ORDER BY last_seq DESC LIMIT 5",
-          )
-          .all(session, watermark)
-          .map((s) => ({
-            first_seq: s.first_seq,
-            last_seq: s.last_seq,
-            summary: JSON.parse(s.data).summary,
-            reliability:
-              "未核实的阶段线索，不是人物事实；冲突时以原文和已确认记忆为准",
-          }));
       trace.snapshot = { ...snapshot, sourceRows: undefined, batch: undefined };
       trace.config = {
         persona: p,
@@ -258,6 +295,39 @@ export class ChatSystem {
         model: { ...model, apiKey: undefined },
         prompts: prompt,
       };
+      const hasKey = this.store.settings().apiKey || process.env.LLM_API_KEY;
+      if (simulatedTurn && this.store.settings().demo && !hasKey) {
+        const local = this.localDemo(
+          this.store.settings(),
+          {
+            message: batch.at(-1),
+            direct: true,
+            context: snapshot.messages,
+          },
+          this.random,
+        );
+        if (!local.speak) return finish("silent", local.reason);
+        const response = {
+          bubbles: [local.reply || "嗯"],
+          reason: local.reason,
+        };
+        trace.response = response;
+        const isCurrent = () =>
+          !this.queue.closed &&
+          this.enabled(session, { simulated: true }) &&
+          this.store.revision === revision;
+        if (!isCurrent())
+          return finish("stale", "生成期间语境已更新，旧稿未发送");
+        trace.sent = await deliver(
+          this.repo,
+          batch.at(-1),
+          response.bubbles,
+          trace,
+          this.send,
+          isCurrent,
+        );
+        return finish(trace.sent.length ? "sent" : "cancelled", local.reason);
+      }
       const direct = snapshot.batch.some((m) => m.relation === "direct");
       // The decision model sees native images too, so image-only questions aren't discarded.
       if (media.images.length && (!direct || !model.vision)) {
@@ -306,7 +376,13 @@ export class ChatSystem {
             "SELECT COUNT(DISTINCT trace_id) n FROM core_outbox WHERE session_id=? AND time>? AND status IN ('confirmed','uncertain','sending')",
           )
           .get(session, Date.now() - 60000).n;
-        const roundLimit = session.startsWith("private:")
+        const roundLimit = (() => {
+          try {
+            return parseSessionKey(session).kind === "private";
+          } catch {
+            return session.startsWith("private:");
+          }
+        })()
           ? 30
           : direct
             ? 20
@@ -316,12 +392,7 @@ export class ChatSystem {
       }
 
       if (decision.action === "SILENT" && !replay && !fast) {
-        const configuredProbability = Number(
-          this.store.sessionSettings(session).probability,
-        );
-        const probability = Number.isFinite(configuredProbability)
-          ? Math.max(0, Math.min(1, configuredProbability))
-          : 0;
+        const { probability, cooldown } = this.participation(session);
         const value = this.random();
         const topicText = snapshot.batch.map((m) => m.text || "").join(" ");
         const explicitSilence =
@@ -343,7 +414,6 @@ export class ChatSystem {
               "SELECT MAX(time) t FROM core_outbox WHERE session_id=? AND status IN ('confirmed','uncertain','sending')",
             )
             .get(session).t;
-          const cooldown = this.store.sessionSettings(session).cooldown;
           // 冷却只在本来就没有抽中的旁听批次上生效；值得回复或抽中插话
           // 的批次不再被冷却提前拦截，保证两阶段语义成立。
           if (last && cooldown > 0 && Date.now() - last < cooldown * 1000)
@@ -375,7 +445,7 @@ export class ChatSystem {
       } else if (!replay) {
         trace.sample = {
           skipped: fast ? "direct_target" : "semantic_reply",
-          probability: this.store.sessionSettings(session).probability,
+          probability: this.participation(session).probability,
           value: null,
         };
       }
@@ -507,24 +577,28 @@ export class ChatSystem {
       );
       const hasRelevantUpdate = () =>
         this.repo
-          .events(session)
+          .events(session, Number.MAX_SAFE_INTEGER, {
+            simulated: simulatedTurn,
+          })
           .some(
             (m) =>
               m.seq > watermark &&
               m.role === "user" &&
-              (session.startsWith("private:") ||
+              (parseSessionKey(session).kind === "private" ||
                 targetUsers.has(m.userId) ||
                 (m.replyId &&
                   snapshot.batch.some((b) => b.platformId === m.replyId))),
           );
       const isCurrent = () =>
         !this.queue.closed &&
-        this.enabled(session) &&
+        this.enabled(session, { simulated: simulatedTurn }) &&
         this.store.revision === revision &&
         !hasRelevantUpdate();
       if (!isCurrent()) {
         const latest = this.repo
-          .events(session)
+          .events(session, Number.MAX_SAFE_INTEGER, {
+            simulated: simulatedTurn,
+          })
           .filter((m) => m.seq > watermark && m.role === "user");
         if (latest.length) trace.steps.push("新消息已进入下一批，取消旧稿");
         if (
@@ -547,11 +621,16 @@ export class ChatSystem {
       trace.error = e.message;
       return finish("error", e.message);
     } finally {
+      // A preview is disposable by design.  It may exercise the full reply
+      // path, but it must never advance live memory cursors or create stages.
       const pendingMemory =
-        !replay && policy.memory && this.enabled(session)
+        !replay &&
+        !simulatedTurn &&
+        policy.memory &&
+        this.enabled(session, { simulated: false })
           ? this.repo.db
               .prepare(
-                "SELECT COUNT(*) n FROM core_events WHERE session_id=? AND role='user' AND seq>COALESCE((SELECT seq FROM core_cursors WHERE session_id=?),0)",
+                "SELECT COUNT(*) n FROM core_events WHERE session_id=? AND role='user' AND seq>COALESCE((SELECT seq FROM core_cursors WHERE session_id=?),0) AND COALESCE(json_extract(payload,'$.simulated'),0)=0",
               )
               .get(session, session).n
           : 0;
