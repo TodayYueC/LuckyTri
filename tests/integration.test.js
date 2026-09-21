@@ -256,6 +256,11 @@ test(
       0,
     );
     assert.equal(
+      coreState.sessions.find((s) => s.id === "group:54321").enabled,
+      1,
+      "恢复会话应保留归档前的参与开关",
+    );
+    assert.equal(
       (
         await request("/core/sessions", "POST", {
           id: "99999",

@@ -72,6 +72,7 @@ export function persistReply(repo, m, text, platformId) {
     time: Date.now(),
     mentions: [],
     attachments: [],
+    simulated: !!m.simulated,
   };
   repo.append(msg);
   repo.db

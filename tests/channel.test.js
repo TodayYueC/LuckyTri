@@ -86,6 +86,33 @@ test("已有两段会话时绑定到原 ID，新会话保留调用方形态", ()
   store.db.close();
 });
 
+test("同一群的第二个机器人账号不会复用旧账号的长期记忆范围", () => {
+  const store = createStore(":memory:");
+  const repo = new Repository(store);
+  store.db
+    .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
+    .run("group:12345", "测试群", "group");
+  persistIncoming(repo, {
+    eventId: "account-a",
+    sessionId: "onebot:88888:group:12345",
+    kind: "group",
+    accountId: "88888",
+    platformId: "1",
+    userId: "10001",
+    name: "甲",
+    text: "账号 A",
+  });
+  assert.equal(
+    bindSessionId(store.db, "onebot:88888:group:12345"),
+    "group:12345",
+  );
+  assert.equal(
+    bindSessionId(store.db, "onebot:99999:group:12345"),
+    "onebot:99999:group:12345",
+  );
+  store.db.close();
+});
+
 test("频道适配器把 get_msg 结果收成内部引用信封", () => {
   const quoted = onebot.quotedMessage(
     {

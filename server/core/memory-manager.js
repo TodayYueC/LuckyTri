@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { parseSessionKey, sessionAliases } from "../channels/session-key.js";
+import {
+  parseSessionKey,
+  scopedSessionAliases,
+} from "../channels/session-key.js";
 import { ftsMatchQuery, lexicalTerms } from "../knowledge/retrieval.js";
 import { indexMemory } from "../knowledge/schema.js";
 
@@ -13,7 +16,8 @@ export class MemoryManager {
   scopes(session) {
     const scopes = new Set([session, "__shared__"]);
     try {
-      for (const id of sessionAliases(session)) scopes.add(id);
+      for (const id of scopedSessionAliases(this.repo.db, session))
+        scopes.add(id);
       const parsed = parseSessionKey(session);
       if (parsed.kind === "private")
         scopes.add(`__private__:${parsed.nativeId}`);
@@ -117,7 +121,13 @@ export class MemoryManager {
     }
     this.repo.store.revision++;
   }
-  async consolidate(session, profile, prompt, trace, { force = false } = {}) {
+  async consolidate(
+    session,
+    profile,
+    prompt,
+    trace,
+    { force = false, simulated = false } = {},
+  ) {
     if (this.busy.has(session)) return;
     if (!force && Date.now() - (this.lastAttempt.get(session) || 0) < 60000)
       return;
@@ -129,7 +139,7 @@ export class MemoryManager {
             .prepare("SELECT seq FROM core_cursors WHERE session_id=?")
             .get(session)?.seq || 0;
       const rows = this.repo
-        .events(session)
+        .events(session, Number.MAX_SAFE_INTEGER, { simulated })
         .filter(
           (m) =>
             m.seq > cursor &&

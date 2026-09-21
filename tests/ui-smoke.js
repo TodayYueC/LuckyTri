@@ -6,7 +6,9 @@ import { join } from "node:path";
 import assert from "node:assert/strict";
 import { WebSocket } from "ws";
 
-const port = 3211;
+// Keep the default convenient for local runs, but allow CI/desktop sessions
+// with an already reserved port to choose an isolated listener.
+const port = Number(process.env.UI_TEST_PORT || 3211);
 const server = spawn(process.execPath, ["server/index.js"], {
   env: {
     ...process.env,

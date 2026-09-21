@@ -239,6 +239,106 @@ test("模拟路径由 ChatSystem 发言，无 Key 时走本地样例", async () 
   }
 });
 
+test("模拟消息与真实上下文、长期记忆严格隔离", async () => {
+  const store = createStore(":memory:");
+  store.save({ demo: true, enabled: true, apiKey: "", probability: 1 });
+  const session = "group:12345";
+  store.db
+    .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
+    .run(session, "测试", "group");
+  const calls = [];
+  let realSeq = 0;
+  const sent = [];
+  const system = new ChatSystem(
+    store,
+    async (_message, text) => {
+      sent.push(text);
+      return { message_id: String(sent.length) };
+    },
+    {
+      localDemo: () => ({ speak: true, reply: "模拟回复", reason: "预览" }),
+      models: {
+        profile: () => ({ ...defaultModel(store.settings()), embedding: false }),
+        call: async (_profile, stage, _prompt, data) => {
+          calls.push({ stage, data });
+          if (stage === "decision")
+            return {
+              action: "REPLY",
+              confidence: 1,
+              comfort: true,
+              reason: "真实消息值得回应",
+              targetMessageIds: [realSeq],
+              targetUserIds: ["10001"],
+              evidenceIds: [realSeq],
+            };
+          if (stage === "generation") return { bubbles: ["真实回复"] };
+          return { ok: true, issues: [] };
+        },
+      },
+    },
+  );
+  try {
+    const simulated = await system.receive({
+      eventId: "sim-only",
+      sessionId: session,
+      kind: "group",
+      userId: "10001",
+      name: "甲",
+      text: "SIMULATED_ONLY",
+      simulated: true,
+    });
+    assert.equal(simulated.status, "sent");
+    assert.equal(simulated.mode, "demo");
+    assert.ok(
+      system
+        .repo
+        .events(session, Number.MAX_SAFE_INTEGER, { simulated: true })
+        .some((m) => m.text === "SIMULATED_ONLY"),
+    );
+    assert.equal(
+      system
+        .repo
+        .events(session, Number.MAX_SAFE_INTEGER, { simulated: false })
+        .some((m) => m.text === "SIMULATED_ONLY"),
+      false,
+    );
+
+    store.save({ demo: false });
+    const real = {
+      eventId: "real-only",
+      sessionId: session,
+      kind: "group",
+      userId: "10001",
+      name: "甲",
+      text: "REAL_ONLY",
+      role: "user",
+      accountId: "bot",
+      mentioned: false,
+      mentions: [],
+      attachments: [],
+      time: Date.now(),
+    };
+    realSeq = system.repo.append(real);
+    const trace = await system.process(session, [{ ...real, seq: realSeq }]);
+    assert.equal(trace.status, "sent");
+    assert.equal(trace.mode, "live");
+    const decision = calls.find((call) => call.stage === "decision");
+    assert.ok(decision);
+    assert.equal(
+      JSON.stringify(decision.data).includes("SIMULATED_ONLY"),
+      false,
+    );
+    assert.match(JSON.stringify(decision.data), /REAL_ONLY/);
+    assert.equal(
+      system.repo.db.prepare("SELECT COUNT(*) n FROM core_stages").get().n,
+      0,
+    );
+  } finally {
+    system.close();
+    store.db.close();
+  }
+});
+
 test("向量打包后可参与余弦打分", async () => {
   const { store, repo } = setup();
   const vector = [1, 0, 0];

@@ -18,12 +18,19 @@ export function buildContext(
 ) {
   const knowledge = extras.knowledge || [];
   const stages = extras.stages || [];
+  // Demo and live turns have separate event streams.  Keep this filter at
+  // the context boundary instead of relying on every caller to pre-filter
+  // rows, which is where simulation leakage previously happened.
+  const eventMode = extras.simulated === undefined ? null : !!extras.simulated;
   const packedStages = stages.map((s) => ({
     ...s,
     whySelected: s.whySelected || "stage-summary",
   }));
   const resolved = resolveTargets(
-    [...repo.references(session), ...repo.events(session, watermark)],
+    [
+      ...repo.references(session, { simulated: eventMode }),
+      ...repo.events(session, watermark, { simulated: eventMode }),
+    ],
     persona.name,
     repo.store.settings().aliases || "",
   );

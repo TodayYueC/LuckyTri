@@ -55,6 +55,31 @@ export function sessionAliases(id) {
   ];
 }
 
+export function scopedSessionAliases(db, id) {
+  const aliases = sessionAliases(id);
+  try {
+    const parsed = parseSessionKey(id);
+    if (parsed.legacy || parsed.accountId === "_" || parsed.kind !== "group")
+      return aliases;
+    const legacy = `${parsed.kind}:${parsed.nativeId}`;
+    const accounts = db
+      .prepare(
+        "SELECT DISTINCT account_id FROM core_events WHERE session_id=? AND account_id IS NOT NULL AND account_id!=''",
+      )
+      .all(legacy)
+      .map((row) => String(row.account_id));
+    if (accounts.length && accounts.some((account) => account !== parsed.accountId))
+      return aliases.filter(
+        (alias) =>
+          alias !== legacy &&
+          alias !== formatSessionKey({ ...parsed, accountId: "_" }),
+      );
+  } catch {
+    /* Keep the broad legacy aliases for malformed or pre-core databases. */
+  }
+  return aliases;
+}
+
 export function isGroupSession(id) {
   try {
     return parseSessionKey(id).kind === "group";
@@ -67,22 +92,39 @@ export function bindSessionId(db, sessionId) {
   const parsed = parseSessionKey(sessionId);
   const aliases = sessionAliases(sessionId);
   const placeholders = aliases.map(() => "?").join(",");
+  const requested = parsed.accountId;
+  const keepAccountScope = (id) => {
+    // Legacy `group:<id>` rows predate account-qualified channels. Reuse one
+    // only for the account that already owns its events; a second bot account
+    // gets its own canonical session instead of silently sharing memory.
+    if (parsed.legacy || id !== `${parsed.kind}:${parsed.nativeId}`)
+      return id;
+    const accounts = db
+      .prepare(
+        "SELECT DISTINCT account_id FROM core_events WHERE session_id=? AND account_id IS NOT NULL AND account_id!=''",
+      )
+      .all(id)
+      .map((row) => String(row.account_id));
+    return accounts.length && !accounts.includes(requested)
+      ? formatSessionKey(parsed)
+      : id;
+  };
   const session = db
     .prepare(`SELECT id FROM sessions WHERE id IN (${placeholders}) LIMIT 1`)
     .get(...aliases);
-  if (session) return session.id;
+  if (session) return keepAccountScope(session.id);
   const event = db
     .prepare(
       `SELECT session_id AS id FROM core_events WHERE session_id IN (${placeholders}) LIMIT 1`,
     )
     .get(...aliases);
-  if (event) return event.id;
+  if (event) return keepAccountScope(event.id);
   const message = db
     .prepare(
       `SELECT session_id AS id FROM messages WHERE session_id IN (${placeholders}) LIMIT 1`,
     )
     .get(...aliases);
-  if (message) return message.id;
+  if (message) return keepAccountScope(message.id);
   return parsed.legacy ? parsed.id : formatSessionKey(parsed);
 }
 

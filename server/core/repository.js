@@ -118,12 +118,22 @@ export class Repository {
       .run(id, JSON.stringify(value));
     this.store.revision++;
   }
-  events(session, before = Number.MAX_SAFE_INTEGER) {
+  // `simulated` is deliberately explicit at context boundaries.  The
+  // default keeps the repository useful for admin views and migrations, while
+  // callers building a live or demo prompt must choose one side of the
+  // boundary so a preview can never leak into a real conversation.
+  events(session, before = Number.MAX_SAFE_INTEGER, { simulated = null } = {}) {
+    const filter = simulated === null
+      ? ""
+      : " AND COALESCE(json_extract(payload,'$.simulated'),0)=?";
+    const args = simulated === null
+      ? [session, before]
+      : [session, before, Number(!!simulated)];
     return this.db
       .prepare(
-        "SELECT * FROM core_events WHERE session_id=? AND seq<=? ORDER BY seq",
+        `SELECT * FROM core_events WHERE session_id=? AND seq<=?${filter} ORDER BY seq`,
       )
-      .all(session, before)
+      .all(...args)
       .map((r) => ({
         ...JSON.parse(r.payload),
         seq: r.seq,
@@ -139,10 +149,16 @@ export class Repository {
         .get(session).n || 0
     );
   }
-  references(session) {
+  references(session, { simulated = null } = {}) {
+    const filter = simulated === null
+      ? ""
+      : " AND COALESCE(json_extract(payload,'$.simulated'),0)=?";
+    const args = simulated === null
+      ? [session]
+      : [session, Number(!!simulated)];
     return this.db
-      .prepare("SELECT * FROM core_references WHERE session_id=?")
-      .all(session)
+      .prepare(`SELECT * FROM core_references WHERE session_id=?${filter}`)
+      .all(...args)
       .map((r) => ({
         ...JSON.parse(r.payload),
         seq: -r.id,
