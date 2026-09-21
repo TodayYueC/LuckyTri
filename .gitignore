@@ -13,3 +13,6 @@ npm-debug.log*
 *.sqlite3
 .DS_Store
 Thumbs.db
+
+# Local previews and isolated checkouts
+workspace/

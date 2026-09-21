@@ -65,8 +65,8 @@ async function openTrace(id: string) {
     </div>
     <button id="replay" @click="replay">隔离回放这批消息</button>
     <p class="small">
-      使用当前模型与 Prompt；不发送
-      QQ、不写生产记忆。回放不加载晚于水位的文档版本。
+      使用当前模型重新理解这段历史消息。结果仅供测试，不发送到
+      QQ，也不会修改真实记忆。
     </p>
     <div id="events" class="scroll">
       <table v-if="events.length">
