@@ -335,13 +335,12 @@ export function mountCore(app, system) {
     "/api/core/events",
     wrap((req, res) => {
       const before = Number(req.query.before) || Number.MAX_SAFE_INTEGER;
-      const simulated = Number(repo.store.settings().demo);
       res.json(
         repo.db
           .prepare(
-            "SELECT seq,session_id,time,role,payload FROM core_events WHERE session_id=? AND seq<? AND COALESCE(json_extract(payload,'$.simulated'),0)=? ORDER BY seq DESC LIMIT 100",
+            "SELECT seq,session_id,time,role,payload FROM core_events WHERE session_id=? AND seq<? ORDER BY seq DESC LIMIT 100",
           )
-          .all(String(req.query.session || ""), before, simulated)
+          .all(String(req.query.session || ""), before)
           .map((r) => ({ ...r, payload: JSON.parse(r.payload) })),
       );
     }),
