@@ -1,9 +1,14 @@
 # 版本记录
 
+## 0.5.1 — 2026-09-21
+
+- 项目品牌统一为 LuckyBot，GitHub 仓库、npm 包名、WebUI、教程和一键启动器同步更新。
+- 保留旧的 Lucky 启动器和服务标识兼容入口，已有本地配置可以继续使用。
+
 ## 0.5.0 — 2026-09-19
 
 - README 重做为中文默认、英文可切换的双语开源文档，补充架构图、快速开始、功能矩阵、安全边界和开发测试说明。
-- 项目品牌、默认人设、WebUI、启动器和 NapCat 窗口统一为 Lucky；旧数据库中的 Unlucky/UnLucky/「小满」设置会自动迁移。
+- 项目品牌、默认人设、WebUI、启动器和 NapCat 窗口完成统一（现为 LuckyBot）；旧数据库中的 Unlucky/UnLucky/「小满」设置会自动迁移。
 - 项目内置官方 NapCat Windows OneKey 包，接入助手优先离线安装，另有显式「检查更新」；安装包按发布页 SHA-256 校验。
 - 模型设置新增服务商预设、推理强度、Temperature、Top P 和最大输出 Token，推理模型自动避免发送 Temperature。
 - 上手指南新增 QQ 接入助手：从页面选择 NapCat 目录，自动写入本地 OneBot 令牌与反向 WebSocket 配置、备份旧配置并拉起 NapCat。

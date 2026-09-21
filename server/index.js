@@ -123,7 +123,7 @@ mountManagement(app, store);
 mountCore(app, chatSystem);
 mountEvents(app, chatSystem);
 app.get("/api/service/status", (req, res) =>
-  res.json({ app: "lucky", workspace: realpathSync(process.cwd()) }),
+  res.json({ app: "luckybot", workspace: realpathSync(process.cwd()) }),
 );
 app.post("/api/service/stop", (req, res) => {
   res.json({ ok: true });
@@ -474,7 +474,7 @@ if (
 )
   throw new Error("绑定外网地址前必须设置 ADMIN_TOKEN");
 const server = app.listen(Number(process.env.PORT || 3210), host, () =>
-  console.log(`Lucky 管理台 http://${host}:${process.env.PORT || 3210}`),
+  console.log(`LuckyBot 管理台 http://${host}:${process.env.PORT || 3210}`),
 );
 const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 });
 server.on("upgrade", (req, sock, head) => {

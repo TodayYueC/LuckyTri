@@ -212,7 +212,7 @@ try {
   await p
     .getByRole("heading", {
       level: 1,
-      name: "Lucky QQ AI 群友 · 从零上手教程",
+      name: "LuckyBot · 从零上手教程",
     })
     .waitFor();
   assert.equal(await p.locator("article h2").count(), 11);

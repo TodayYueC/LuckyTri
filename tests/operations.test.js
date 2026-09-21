@@ -26,7 +26,7 @@ test("生成两枚不同随机令牌且不覆盖已有配置", () => {
   );
 });
 test("在线数据库备份包含已提交数据且不覆盖已有备份", () => {
-  const dir = mkdtempSync(join(tmpdir(), "lucky-backup-")),
+  const dir = mkdtempSync(join(tmpdir(), "luckybot-backup-")),
     source = join(dir, "source.db");
   const store = createStore(source);
   store.save({ name: "备份测试" });

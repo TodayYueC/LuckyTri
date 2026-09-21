@@ -1,4 +1,4 @@
-# Lucky · QQ AI 群友
+# LuckyBot · AI 群友平台
 
 [![Node.js](https://img.shields.io/badge/Node.js-24%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-2563eb.svg)](LICENSE)
@@ -10,17 +10,17 @@
 > 让一个 AI 学会在群里理解人、记得事，也知道什么时候闭嘴。<br>
 > *A local-first AI companion that understands people, remembers what matters, and knows when to stay quiet.*
 
-Lucky 是一个本地优先的 QQ AI 群友。它通过 OneBot 11 兼容框架接收群聊和私聊消息，把“该不该说话”和“应该怎么说”拆成两个阶段，再结合上下文、回复链、长期记忆和人设生成回复。
+LuckyBot 是一个本地优先的 AI 群友平台。当前通过 OneBot 11 兼容框架接收 QQ 群聊和私聊消息，把“该不该说话”和“应该怎么说”拆成两个阶段，再结合上下文、回复链、长期记忆和人设生成回复。
 
-Lucky is a local-first AI companion for QQ groups and private chats. It separates **whether to speak** from **what to say**, then combines conversation context, reply targets, long-term memory, and persona controls to produce a natural response.
+LuckyBot is a local-first AI companion platform. Its current QQ connector receives group and private messages through a OneBot 11-compatible bridge, then separates **whether to speak** from **what to say**.
 
 它的目标不是让模型每句话都抢答，而是让它长期待在群里，理解谁在和谁说话，记住重要的小事，在合适的时候加入对话，在不该插话时保持安静。
 
-## 为什么做 Lucky
+## 为什么做 LuckyBot
 
-传统的“@机器人就回复”很容易把多人聊天误判成对 AI 的提问，也很难形成稳定的人格和长期关系。Lucky 将消息处理拆成可审计的模块：消息归属、话题、回复对象、发言决策、回复生成、人格检查、记忆写入和发送调度都可以在 WebUI 中查看。
+传统的“@机器人就回复”很容易把多人聊天误判成对 AI 的提问，也很难形成稳定的人格和长期关系。LuckyBot 将消息处理拆成可审计的模块：消息归属、话题、回复对象、发言决策、回复生成、人格检查、记忆写入和发送调度都可以在 WebUI 中查看。
 
-The project is designed around **conversation quality over raw response rate**. A group is not a sequence of isolated prompts: people interrupt, quote, tease, change topics, and leave messages unanswered. Lucky keeps those relationships and decisions explicit instead of hiding everything inside one giant prompt.
+The project is designed around **conversation quality over raw response rate**. A group is not a sequence of isolated prompts: people interrupt, quote, tease, change topics, and leave messages unanswered. LuckyBot keeps those relationships and decisions explicit instead of hiding everything inside one giant prompt.
 
 ## 主要能力
 
@@ -65,7 +65,7 @@ flowchart TD
 | `conversation-manager` | 会话水位线、短期上下文和聚合窗口 |
 | `context-builder` | 组合完整语境、人格和相关记忆 |
 | `topic-tracker` | 话题、阶段摘要和证据 |
-| `reply-target-resolver` | 判断消息是在对谁说、是否接 Lucky |
+| `reply-target-resolver` | 判断消息是在对谁说、是否接 LuckyBot |
 | `speech-decision` | 独立决定是否发言和回复类型 |
 | `persona-manager` | 人格、强度和 Prompt 编译 |
 | `memory-manager` | 候选、确认、合并、版本、范围和过期 |
@@ -88,16 +88,16 @@ flowchart TD
 ### 启动
 
 ```bash
-git clone https://github.com/TodayYueC/lucky-qq-ai-friend.git
-cd lucky-qq-ai-friend
+git clone https://github.com/TodayYueC/LuckyBot.git
+cd LuckyBot
 npm install
 npm start
 ```
 
 打开 <http://127.0.0.1:3210>。Windows 用户也可以双击：
 
-- `启动Lucky.cmd`：后台启动服务并打开管理台。
-- `停止Lucky.cmd`：停止当前项目的服务。
+- `启动LuckyBot.cmd`：后台启动服务并打开管理台。
+- `停止LuckyBot.cmd`：停止当前项目的服务。
 
 第一次建议保持模拟模式，在“会话空间”添加一个群号或 QQ 号，先验证发言决策、记忆和人设。模拟消息不会调用模型，也不会发送到 QQ。
 
@@ -118,7 +118,7 @@ LLM_API_KEY=
 ## 接入真实 QQ
 
 1. 安装并登录 [NapCatQQ](https://napneko.github.io/)，使用专用 QQ 小号。
-2. 在 Lucky 的“QQ 接入助手”选择 NapCat 目录，生成 OneBot 配置并启动 NapCat；也可以手动配置反向 WebSocket：
+2. 在 LuckyBot 的“QQ 接入助手”选择 NapCat 目录，生成 OneBot 配置并启动 NapCat；也可以手动配置反向 WebSocket：
 
    ```text
    ws://127.0.0.1:3210/onebot/v11/ws
@@ -127,9 +127,9 @@ LLM_API_KEY=
 3. 在“模型管理”填写 Provider、API 地址、模型 ID 和 API Key，先点击“测试模型连接”。
 4. 在“连接与设置”关闭模拟模式并保存。
 5. 到“会话空间”开启需要参与的群聊或私聊。
-6. 在 QQ 中 @小号或直接叫 `Lucky` 进行联调。
+6. 在 QQ 中 @小号或直接叫 `LuckyBot` 进行联调。
 
-QQ 密码、二维码、验证码和安全确认仍由 QQ/NapCat 窗口完成，Lucky 不保存 QQ 密码。NapCat 是独立的第三方组件，使用时请遵守其许可证和 QQ 平台规则。
+QQ 密码、二维码、验证码和安全确认仍由 QQ/NapCat 窗口完成，LuckyBot 不保存 QQ 密码。NapCat 是独立的第三方组件，使用时请遵守其许可证和 QQ 平台规则。
 
 项目内置经过 SHA-256 校验的 NapCat Windows 发布包，来源和校验值见 `vendor/napcat/manifest.json` 与 `vendor/napcat/shell-manifest.json`。
 
@@ -146,7 +146,7 @@ QQ 密码、二维码、验证码和安全确认仍由 QQ/NapCat 窗口完成，
 
 ## 数据与隐私
 
-Lucky 默认只监听 `127.0.0.1`，运行数据位于 `data/`：
+LuckyBot 默认只监听 `127.0.0.1`，运行数据位于 `data/`：
 
 ```text
 data/friend.db       SQLite 数据库，包含消息、记忆和本地配置
@@ -207,4 +207,4 @@ data/                   本地运行数据，不进入 Git
 
 本项目代码以 [MIT License](LICENSE) 发布。`vendor/napcat/` 中的 NapCatQQ 发布包及其依赖遵循各自的上游许可证。
 
-欢迎提交 Issue 和 Pull Request，一起把 Lucky 做成一个真正懂群聊分寸的 AI 群友。
+欢迎提交 Issue 和 Pull Request，一起把 LuckyBot 做成一个真正懂群聊分寸的 AI 群友平台。

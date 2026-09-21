@@ -1,4 +1,4 @@
-# Lucky · QQ AI Companion
+# LuckyBot · AI Companion Platform
 
 [![Node.js](https://img.shields.io/badge/Node.js-24%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-2563eb.svg)](LICENSE)
@@ -10,9 +10,9 @@
 > **中文简介：** 让一个 AI 学会在群里理解人、记得事，也知道什么时候闭嘴。<br>
 > **English:** *A local-first AI companion that understands people, remembers what matters, and knows when to stay quiet.*
 
-Lucky is a local-first AI companion for QQ groups and private chats. It receives messages through a OneBot 11-compatible bridge and separates **whether to speak** from **what to say**. Conversation context, reply targets, long-term memory, persona controls, and delivery pacing are explicit parts of the system.
+LuckyBot is a local-first AI companion platform. Its current QQ connector receives group and private messages through a OneBot 11-compatible bridge and separates **whether to speak** from **what to say**. Conversation context, reply targets, long-term memory, persona controls, and delivery pacing are explicit parts of the system.
 
-The goal is not to answer every message. Lucky should be able to live in a group for a long time: understand who is talking to whom, remember meaningful details, join at the right moment, and remain quiet when an exchange is clearly between other people.
+The goal is not to answer every message. LuckyBot should be able to live in a group for a long time: understand who is talking to whom, remember meaningful details, join at the right moment, and remain quiet when an exchange is clearly between other people.
 
 ## Highlights
 
@@ -57,7 +57,7 @@ The core pipeline lives in `server/core/` and is intentionally modular:
 | `conversation-manager` | Per-session watermarks, recent context, and aggregation windows |
 | `context-builder` | Assemble full context, persona, and relevant memories |
 | `topic-tracker` | Track topics, stage summaries, and evidence |
-| `reply-target-resolver` | Resolve who a message is addressed to and whether it follows Lucky |
+| `reply-target-resolver` | Resolve who a message is addressed to and whether it follows LuckyBot |
 | `speech-decision` | Decide whether to speak and which response path to use |
 | `persona-manager` | Compile persona controls and prompts |
 | `memory-manager` | Candidate extraction, review, merge, versioning, scope, and expiry |
@@ -80,16 +80,16 @@ The core pipeline lives in `server/core/` and is intentionally modular:
 ### Start the local studio
 
 ```bash
-git clone https://github.com/TodayYueC/lucky-qq-ai-friend.git
-cd lucky-qq-ai-friend
+git clone https://github.com/TodayYueC/LuckyBot.git
+cd LuckyBot
 npm install
 npm start
 ```
 
 Open <http://127.0.0.1:3210>. On Windows, you can also double-click:
 
-- `启动Lucky.cmd` to start the service and open the studio.
-- `停止Lucky.cmd` to stop the project service.
+- `启动LuckyBot.cmd` to start the service and open the studio.
+- `停止LuckyBot.cmd` to stop the project service.
 
 Start in simulation mode first. Add a group or QQ number in “Sessions” and verify decisions, memory, and persona behavior before connecting a real account. Simulation does not call a model or send QQ messages.
 
@@ -110,7 +110,7 @@ Model credentials can also be saved in the WebUI. **Never put real keys in the R
 ## Connect QQ
 
 1. Install and log in to [NapCatQQ](https://napneko.github.io/) with a dedicated QQ account.
-2. In Lucky’s “QQ Setup Assistant”, select the NapCat directory, generate the OneBot configuration, and launch NapCat. You can also configure the reverse WebSocket manually:
+2. In LuckyBot’s “QQ Setup Assistant”, select the NapCat directory, generate the OneBot configuration, and launch NapCat. You can also configure the reverse WebSocket manually:
 
    ```text
    ws://127.0.0.1:3210/onebot/v11/ws
@@ -119,9 +119,9 @@ Model credentials can also be saved in the WebUI. **Never put real keys in the R
 3. In “Model Management”, enter the provider, API URL, model ID, and API key, then run the connection test.
 4. Disable simulation mode in “Connection & Settings” and save.
 5. Enable the group or private session in “Sessions”.
-6. Mention the account or call it `Lucky` in QQ to test the connection.
+6. Mention the account or call it `LuckyBot` in QQ to test the connection.
 
-QQ passwords, QR codes, verification codes, and security confirmations remain inside QQ/NapCat. Lucky never stores a QQ password. NapCat is an independent third-party component; follow its license and QQ platform rules.
+QQ passwords, QR codes, verification codes, and security confirmations remain inside QQ/NapCat. LuckyBot never stores a QQ password. NapCat is an independent third-party component; follow its license and QQ platform rules.
 
 The repository includes verified NapCat Windows packages. Their sources and SHA-256 values are recorded in `vendor/napcat/manifest.json` and `vendor/napcat/shell-manifest.json`.
 
@@ -138,7 +138,7 @@ The repository includes verified NapCat Windows packages. Their sources and SHA-
 
 ## Privacy and security
 
-Lucky listens on `127.0.0.1` by default. Runtime data is stored locally under `data/`:
+LuckyBot listens on `127.0.0.1` by default. Runtime data is stored locally under `data/`:
 
 ```text
 data/friend.db       SQLite database with messages, memories, and local settings

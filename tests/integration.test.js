@@ -530,7 +530,7 @@ test(
       200,
     );
     assert.equal((await request("/state")).data.memories.length, 0);
-    assert.equal((await request("/service/status")).data.app, "lucky");
+    assert.equal((await request("/service/status")).data.app, "luckybot");
     const exited = new Promise((resolve) => child.once("exit", resolve));
     assert.equal((await request("/service/stop", "POST", {})).status, 200);
     assert.equal(await exited, 0);

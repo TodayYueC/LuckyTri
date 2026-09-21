@@ -48,7 +48,7 @@ test("NapCat assistant preserves configuration and writes a named reverse WS cli
   );
   assert.ok(
     result.backup.endsWith(
-      ".json.lucky-backup-" + result.backup.split("lucky-backup-")[1],
+      ".json.luckybot-backup-" + result.backup.split("luckybot-backup-")[1],
     ),
   );
   assert.equal(
@@ -72,7 +72,7 @@ test("NapCat batch launch opens a visible console with safe cmd arguments", () =
     "/d",
     "/c",
     "start",
-    "Lucky NapCat",
+    "LuckyBot NapCat",
   ]);
   assert.deepEqual(spec.args.slice(-4), [
     "/d",
