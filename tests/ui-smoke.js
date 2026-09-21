@@ -257,7 +257,7 @@ try {
     JSON.stringify({
       post_type: "message",
       message_type: "group",
-      self_id: 99999,
+      self_id: 88888,
       group_id: 12345,
       user_id: 10001,
       message_id: 987654,
@@ -280,7 +280,7 @@ try {
     JSON.stringify({
       post_type: "message",
       message_type: "group",
-      self_id: 99999,
+      self_id: 88888,
       group_id: 12345,
       user_id: 10001,
       message_id: 987655,
