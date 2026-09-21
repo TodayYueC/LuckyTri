@@ -327,6 +327,44 @@ test(
       (await request("/core/models/default", "DELETE", {})).status,
       400,
     );
+    const batchMemoryA = await request("/core/memories", "POST", {
+      session: "group:54321",
+      subject: "10002",
+      content: "批量删除测试一",
+    });
+    const batchMemoryB = await request("/core/memories", "POST", {
+      session: "group:54321",
+      subject: "10002",
+      content: "批量删除测试二",
+    });
+    assert.equal(batchMemoryA.status, 200);
+    assert.equal(batchMemoryB.status, 200);
+    const emptySummary = await request(
+      "/core/memory-summary?session=group%3A54321",
+    );
+    assert.equal(emptySummary.status, 200);
+    assert.equal(emptySummary.data.source, "empty");
+    assert.match(emptySummary.data.summary, /还没有阶段性记忆总结/);
+    const oneDeleted = await request("/core/memories/batch-delete", "POST", {
+      session: "group:54321",
+      ids: [batchMemoryA.data.id],
+    });
+    assert.equal(oneDeleted.status, 200);
+    assert.equal(oneDeleted.data.deleted, 1);
+    const allDeleted = await request("/core/memories/batch-delete", "POST", {
+      session: "group:54321",
+      all: true,
+    });
+    assert.equal(allDeleted.status, 200);
+    assert.equal(allDeleted.data.deleted, 1);
+    assert.equal(
+      (await request("/core/memories?session=group%3A54321")).data.some(
+        (memory) =>
+          memory.id === batchMemoryA.data.id ||
+          memory.id === batchMemoryB.data.id,
+      ),
+      false,
+    );
     const cleared = await request(
       "/core/sessions/" + encodeURIComponent("group:54321") + "/context",
       "DELETE",
