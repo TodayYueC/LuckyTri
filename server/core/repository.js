@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { parseSessionKey } from "../channels/session-key.js";
+import { indexMemory, migrateKnowledge } from "../knowledge/schema.js";
 
 export function migrateCore(store) {
   const db = store.db;
@@ -42,7 +44,15 @@ export function migrateCore(store) {
         .all()) {
         const m = {
           sessionId: r.session_id,
-          kind: r.session_id.split(":")[0],
+          kind: (() => {
+            try {
+              return parseSessionKey(r.session_id).kind;
+            } catch {
+              return String(r.session_id).startsWith("private")
+                ? "private"
+                : "group";
+            }
+          })(),
           userId: r.user_id,
           name: r.name,
           text: r.text,
@@ -85,6 +95,7 @@ export function migrateCore(store) {
   db.prepare(
     "UPDATE core_traces SET status='interrupted' WHERE status='running'",
   ).run();
+  migrateKnowledge(db);
 }
 
 export class Repository {

@@ -1,18 +1,8 @@
-// Only known public QQ media hosts; never fetch arbitrary URLs from group text.
-function usable(url) {
-  try {
-    const u = new URL(url);
-    return (
-      u.protocol === "https:" &&
-      !u.username &&
-      !u.password &&
-      /(^|\.)(qpic\.cn|gtimg\.cn|qq\.com)$/.test(u.hostname)
-    );
-  } catch {
-    return false;
-  }
-}
+import { adapterFor } from "../channels/index.js";
+
 export function visionInputs(snapshot, profile) {
+  const adapter = adapterFor(snapshot.sessionId || "onebot");
+  const usable = (url) => adapter.usableMediaUrl(url);
   const images = [],
     unavailable = [];
   const focus = snapshot.batchIds ? new Set(snapshot.batchIds) : null;

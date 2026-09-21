@@ -1,23 +1,8 @@
-import { callModel } from "./engine.js";
-import { generateReply, demoReply } from "./voice.js";
-import { recordModelCheck } from "./readiness.js";
-import { FEEDBACK_LABELS } from "./feedback.js";
-
-const scopeValid = (s) =>
-  typeof s === "string" &&
-  (["shared", "private"].includes(s) || /^(group|private):\d{4,20}$/.test(s));
-export function memoryValid(v) {
-  return (
-    typeof v.userId === "string" &&
-    /^\d{4,20}$/.test(v.userId) &&
-    typeof v.name === "string" &&
-    v.name.length <= 100 &&
-    typeof v.content === "string" &&
-    !!v.content.trim() &&
-    v.content.length <= 500 &&
-    scopeValid(v.scope)
-  );
-}
+import { callModel } from "../core/llm.js";
+import { generateReply, demoReply } from "../voice.js";
+import { recordModelCheck } from "../readiness.js";
+import { FEEDBACK_LABELS } from "../feedback.js";
+import { isGroupSession } from "../channels/session-key.js";
 
 export function mountManagement(app, store) {
   const db = store.db;
@@ -61,7 +46,7 @@ export function mountManagement(app, store) {
       (persona !== undefined &&
         (typeof persona !== "string" || persona.length > 4000)) ||
       typeof styleSession !== "string" ||
-      (styleSession !== "" && !/^group:\d{4,20}$/.test(styleSession)) ||
+      (styleSession !== "" && !isGroupSession(styleSession)) ||
       !Array.isArray(history) ||
       history.length > 12 ||
       history.some(
@@ -140,87 +125,6 @@ export function mountManagement(app, store) {
       previewing = false;
     }
   });
-  app.patch("/api/sessions/:id/policy", (req, res) => {
-    const { name, cooldown, probability } = req.body;
-    if (!db.prepare("SELECT id FROM sessions WHERE id=?").get(req.params.id))
-      return res.status(404).json({ error: "会话不存在" });
-    if (
-      typeof name !== "string" ||
-      !name.trim() ||
-      name.length > 100 ||
-      (cooldown !== null &&
-        (!Number.isInteger(cooldown) || cooldown < 0 || cooldown > 3600)) ||
-      (probability !== null &&
-        (!Number.isFinite(probability) || probability < 0 || probability > 1))
-    )
-      return res.status(400).json({ error: "会话节奏设置无效" });
-    db.prepare(
-      "UPDATE sessions SET name=?,cooldown=?,probability=? WHERE id=?",
-    ).run(name.trim(), cooldown, probability, req.params.id);
-    store.revision++;
-    res.json({ ok: true });
-  });
-
-  app.patch("/api/memories/:id", (req, res) => {
-    if (!memoryValid(req.body))
-      return res.status(400).json({ error: "记忆格式无效" });
-    const { userId, name, content, scope } = req.body;
-    const update = db
-      .prepare(
-        "UPDATE memories SET user_id=?,name=?,content=?,scope=?,time=? WHERE id=?",
-      )
-      .run(userId, name, content.trim(), scope, Date.now(), req.params.id);
-    if (!update.changes) return res.status(404).json({ error: "记忆不存在" });
-    store.revision++;
-    res.json({ ok: true });
-  });
-
-  app.post("/api/memory-candidates/:id/review", (req, res) => {
-    const { action, content, scope } = req.body;
-    const c = db
-      .prepare(
-        "SELECT * FROM memory_candidates WHERE id=? AND status='pending'",
-      )
-      .get(req.params.id);
-    if (!c) return res.status(404).json({ error: "候选已处理或不存在" });
-    if (!["accept", "reject"].includes(action))
-      return res.status(400).json({ error: "审核操作无效" });
-    if (
-      action === "accept" &&
-      !memoryValid({ userId: c.user_id, name: c.name, content, scope })
-    )
-      return res.status(400).json({ error: "记忆内容或范围无效" });
-    db.exec("BEGIN IMMEDIATE");
-    try {
-      if (action === "accept") {
-        const duplicate = db
-          .prepare(
-            "SELECT id FROM memories WHERE user_id=? AND content=? AND scope=?",
-          )
-          .get(c.user_id, content.trim(), scope);
-        if (!duplicate)
-          db.prepare(
-            "INSERT INTO memories(user_id,name,content,scope,source,time) VALUES (?,?,?,?,?,?)",
-          ).run(
-            c.user_id,
-            c.name,
-            content.trim(),
-            scope,
-            "聊天请求 · 管理员审核",
-            Date.now(),
-          );
-      }
-      // No hidden draft archive after review; the confirmed memory is the source of truth.
-      db.prepare("DELETE FROM memory_candidates WHERE id=?").run(c.id);
-      db.exec("COMMIT");
-      store.revision++;
-    } catch (error) {
-      db.exec("ROLLBACK");
-      throw error;
-    }
-    res.json({ ok: true });
-  });
-
   let testing = false;
   app.post("/api/model/test", async (req, res) => {
     if (testing) return res.status(429).json({ error: "连接测试正在进行" });

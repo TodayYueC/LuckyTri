@@ -1,0 +1,269 @@
+import { randomUUID } from "node:crypto";
+import { wrap } from "../http.js";
+import { prompts } from "../core/persona-manager.js";
+import { indexMemory } from "./schema.js";
+import {
+  deleteReviewedMemory,
+  insertReviewedMemory,
+  memoryValid,
+  reviewCandidate,
+  updateReviewedMemory,
+} from "./reviewed.js";
+
+export function mountKnowledge(app, system) {
+  const { repo } = system;
+  app.get("/api/core/memories", (req, res) => {
+    const session = String(req.query.session || "");
+    if (!session) {
+      return res.json(
+        repo.db
+          .prepare(
+            "SELECT * FROM core_memories ORDER BY updated DESC LIMIT 500",
+          )
+          .all(),
+      );
+    }
+    const scopes = system.memory.scopes(session);
+    const placeholders = scopes.map(() => "?").join(",");
+    res.json(
+      repo.db
+        .prepare(
+          `SELECT * FROM core_memories WHERE session_id IN (${placeholders}) ORDER BY updated DESC LIMIT 500`,
+        )
+        .all(...scopes),
+    );
+  });
+  app.post(
+    "/api/core/memories",
+    wrap((req, res) => {
+      const { session, subject, content } = req.body;
+      if (
+        typeof subject !== "string" ||
+        !/^\d+$/.test(subject) ||
+        typeof content !== "string" ||
+        !content.trim() ||
+        content.length > 4000 ||
+        !repo.db.prepare("SELECT id FROM sessions WHERE id=?").get(session)
+      )
+        throw Error("请选择会话、用户 QQ 并填写记忆");
+      const id = randomUUID(),
+        now = Date.now();
+      repo.db
+        .prepare(
+          "INSERT INTO core_memories(id,session_id,subject,content,type,confidence,importance,status,sources,created,updated) VALUES (?,?,?,?,'manual',1,1,'confirmed','[]',?,?)",
+        )
+        .run(id, session, subject, content, now, now);
+      indexMemory(repo.db, id, content);
+      repo.store.revision++;
+      res.json({ id });
+    }),
+  );
+  app.get("/api/core/stages", (req, res) =>
+    res.json(
+      repo.db
+        .prepare(
+          "SELECT * FROM core_stages WHERE session_id=? ORDER BY last_seq DESC LIMIT 100",
+        )
+        .all(String(req.query.session || ""))
+        .map((r) => ({ ...r, data: JSON.parse(r.data) })),
+    ),
+  );
+  app.get("/api/core/memories/:id/versions", (req, res) =>
+    res.json(
+      repo.db
+        .prepare(
+          "SELECT * FROM core_memory_versions WHERE memory_id=? ORDER BY id DESC",
+        )
+        .all(req.params.id),
+    ),
+  );
+  app.patch(
+    "/api/core/memories/:id",
+    wrap((req, res) => {
+      const allowed = {};
+      for (const k of [
+        "content",
+        "status",
+        "locked",
+        "confidence",
+        "importance",
+        "expires",
+      ])
+        if (k in req.body) allowed[k] = req.body[k];
+      if (
+        "content" in allowed &&
+        (typeof allowed.content !== "string" ||
+          !allowed.content.trim() ||
+          allowed.content.length > 4000)
+      )
+        throw Error("记忆内容无效");
+      if (
+        "status" in allowed &&
+        !["candidate", "confirmed", "disputed", "deleted", "expired"].includes(
+          allowed.status,
+        )
+      )
+        throw Error("记忆状态无效");
+      for (const k of ["confidence", "importance"])
+        if (
+          k in allowed &&
+          (!Number.isFinite(allowed[k]) || allowed[k] < 0 || allowed[k] > 1)
+        )
+          throw Error("置信度与重要性应在0–1");
+      if (
+        "expires" in allowed &&
+        allowed.expires !== null &&
+        (!Number.isSafeInteger(allowed.expires) || allowed.expires < 0)
+      )
+        throw Error("过期时间无效");
+      if ("locked" in allowed && typeof allowed.locked !== "boolean")
+        throw Error("锁定状态无效");
+      system.memory.update(req.params.id, allowed);
+      res.json({ ok: true });
+    }),
+  );
+  app.post(
+    "/api/core/memories/merge",
+    wrap((req, res) => {
+      const { ids, content } = req.body;
+      if (
+        !Array.isArray(ids) ||
+        ids.length !== 2 ||
+        ids[0] === ids[1] ||
+        typeof content !== "string" ||
+        !content.trim()
+      )
+        throw Error("选择两条记忆并输入合并内容");
+      const rows = ids.map((id) =>
+        repo.db.prepare("SELECT * FROM core_memories WHERE id=?").get(id),
+      );
+      if (
+        rows.some((r) => !r || r.locked) ||
+        rows[0].session_id !== rows[1].session_id ||
+        rows[0].subject !== rows[1].subject
+      )
+        throw Error("只能合并同范围同用户的未锁定记忆");
+      repo.db.exec("BEGIN IMMEDIATE");
+      try {
+        system.memory.update(ids[0], {
+          content,
+          sources: JSON.stringify(rows.flatMap((r) => JSON.parse(r.sources))),
+        });
+        system.memory.update(ids[1], { status: "deleted" });
+        repo.db.exec("COMMIT");
+      } catch (e) {
+        repo.db.exec("ROLLBACK");
+        throw e;
+      }
+      res.json({ ok: true });
+    }),
+  );
+  app.post(
+    "/api/core/memory/consolidate",
+    wrap(async (req, res) => {
+      const id = req.body.session;
+      const t = repo.trace(id, "memory");
+      try {
+        await system.memory.consolidate(
+          id,
+          system.models.profile(system.policy(id).modelId),
+          prompts(repo).memory,
+          t,
+          { force: true },
+        );
+        repo.finish(t, "complete");
+        res.json({ ok: true });
+      } catch (e) {
+        t.error = e.message;
+        repo.finish(t, "error");
+        throw e;
+      }
+    }),
+  );
+  app.get("/api/core/knowledge/collections", (req, res) =>
+    res.json(system.knowledge.collections(String(req.query.session || ""))),
+  );
+  app.post(
+    "/api/core/knowledge/collections",
+    wrap((req, res) => {
+      res.json(system.knowledge.createCollection(req.body || {}));
+    }),
+  );
+  app.get("/api/core/knowledge/documents", (req, res) =>
+    res.json(system.knowledge.documents(String(req.query.collection || ""))),
+  );
+  app.post(
+    "/api/core/knowledge/documents",
+    wrap(async (req, res) => {
+      const { collectionId, title, text, source, embed } = req.body || {};
+      res.json(
+        await system.knowledge.ingest({
+          collectionId,
+          title,
+          text,
+          source,
+          embed: embed !== false,
+        }),
+      );
+    }),
+  );
+  app.delete(
+    "/api/core/knowledge/documents/:id",
+    wrap((req, res) => {
+      system.knowledge.removeDocument(req.params.id);
+      res.json({ ok: true });
+    }),
+  );
+  app.post(
+    "/api/core/knowledge/search",
+    wrap(async (req, res) => {
+      const { session, text } = req.body || {};
+      if (typeof text !== "string" || !text.trim() || text.length > 4000)
+        throw Error("请输入 1–4000 字检索内容");
+      if (
+        session &&
+        !repo.db.prepare("SELECT id FROM sessions WHERE id=?").get(session)
+      )
+        throw Error("会话不存在");
+      res.json(
+        await system.knowledge.retrieveWithEmbed(session || "", [
+          { text: text.trim(), userId: "probe" },
+        ]),
+      );
+    }),
+  );
+  app.post("/api/memories", (req, res) => {
+    if (!memoryValid(req.body))
+      return res.status(400).json({ error: "记忆格式无效" });
+    insertReviewedMemory(repo.db, req.body);
+    repo.store.revision++;
+    res.json({ ok: true });
+  });
+  app.patch("/api/memories/:id", (req, res) => {
+    if (!memoryValid(req.body))
+      return res.status(400).json({ error: "记忆格式无效" });
+    try {
+      updateReviewedMemory(repo.db, req.params.id, req.body);
+    } catch (error) {
+      return res
+        .status(error.message === "记忆不存在" ? 404 : 400)
+        .json({ error: error.message });
+    }
+    repo.store.revision++;
+    res.json({ ok: true });
+  });
+  app.delete("/api/memories/:id", (req, res) => {
+    deleteReviewedMemory(repo.db, req.params.id);
+    repo.store.revision++;
+    res.json({ ok: true });
+  });
+  app.post("/api/memory-candidates/:id/review", (req, res) => {
+    try {
+      reviewCandidate(repo.db, req.params.id, req.body || {});
+    } catch (error) {
+      return res.status(error.status || 400).json({ error: error.message });
+    }
+    repo.store.revision++;
+    res.json({ ok: true });
+  });
+}

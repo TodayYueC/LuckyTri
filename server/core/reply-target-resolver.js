@@ -1,4 +1,4 @@
-import { isNameCall } from "../engine.js";
+import { isNameCall } from "./name-call.js";
 export function resolveTargets(rows, name, aliases = "") {
   const byPlatform = new Map(
     rows
