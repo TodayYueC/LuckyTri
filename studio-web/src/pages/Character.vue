@@ -21,6 +21,15 @@ const styleSession = ref("");
 const showPrompts = ref(false);
 const prompts = reactive({ ...studio.core.prompts });
 
+function jump(id: string) {
+  document
+    .getElementById(id)
+    ?.scrollIntoView({
+      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+}
 function markDirty() {
   studio.dirty = true;
 }
@@ -90,13 +99,23 @@ function clearVoice() {
 </script>
 
 <template>
+  <div class="section-nav" aria-label="人格页分区">
+    <a href="#persona" @click.prevent="jump('persona')">基础设定</a
+    ><a href="#voice-lab" @click.prevent="jump('voice-lab')">口吻试聊</a>
+  </div>
   <section class="panel" id="persona">
     <form id="personaForm" @submit="savePersona" @input="markDirty">
-      <p class="small">自然表达优先。程度 0–100；Prompt 放在下方高级折叠。</p>
+      <h2>基础设定</h2>
+      <p class="small">
+        先定义名字、情绪与表达习惯，再调整性格程度。数值越高，特征越明显。
+      </p>
       <div class="grid">
         <label>名字<input v-model="p.name" name="name" /></label>
         <label>说话长度<input v-model="p.length" name="length" /></label>
         <label>当前情绪<input v-model="p.mood" name="mood" /></label>
+      </div>
+      <h3 class="section-title">性格与聊天节奏</h3>
+      <div class="grid">
         <label
           >幽默程度 0–100<input
             name="humor"
@@ -151,14 +170,15 @@ function clearVoice() {
           />
         </label>
       </div>
+      <h3 class="section-title">人物背景与表达习惯</h3>
       <label
-        >基础人格 / 人设草稿<textarea
+        >口吻试聊使用的人设草稿<textarea
           name="persona"
           v-model="settings.persona"
         ></textarea>
       </label>
       <label
-        >核心人格正文<textarea
+        >聊天使用的核心人格<textarea
           name="base"
           v-model="p.base"
           class="editor"

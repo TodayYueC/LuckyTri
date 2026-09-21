@@ -19,6 +19,11 @@ import { fetchState } from "../plates/workspace";
 
 const sessionId = ref(sessionStorage.memorySession || "");
 const search = ref("");
+const section = ref("memories");
+const visibleCount = ref(20);
+watch([sessionId, search], () => {
+  visibleCount.value = 20;
+});
 const memories = ref<any[]>([]);
 const memorySummary = ref<any>({
   summary: "请选择会话以查看最近的记忆总结。",
@@ -243,7 +248,21 @@ const filtered = () =>
 </script>
 
 <template>
-  <section class="panel">
+  <div class="section-nav" aria-label="记忆页分区">
+    <button
+      @click="section = 'memories'"
+      :aria-pressed="section === 'memories'"
+    >
+      会话记忆
+    </button>
+    <button
+      @click="section = 'documents'"
+      :aria-pressed="section === 'documents'"
+    >
+      文档知识库
+    </button>
+  </div>
+  <section v-show="section === 'memories'" class="panel">
     <div class="row">
       <label
         >记忆所属会话
@@ -260,7 +279,7 @@ const filtered = () =>
       />
     </div>
     <p class="small">
-      记忆候选/事实与文档集合在同一空间。群聊默认不装入私聊集合。
+      先选择会话，再查看总结和管理记忆。共享记忆会单独标注，批量删除仅作用于当前会话。
     </p>
     <section id="memorySummary" class="memory-summary">
       <div class="row">
@@ -324,7 +343,11 @@ const filtered = () =>
       </button>
     </div>
     <div id="memoryList">
-      <details v-for="m in filtered()" :key="m.id" class="panel memory">
+      <details
+        v-for="m in filtered().slice(0, visibleCount)"
+        :key="m.id"
+        class="panel memory"
+      >
         <summary>
           <span>{{ m.content }} · {{ m.status }}</span>
           <span v-if="m.session_id !== sessionId" class="small">共享/继承</span>
@@ -352,11 +375,17 @@ const filtered = () =>
           <button @click="changeMemory(m, 'deleted')">删除</button>
         </div>
       </details>
+      <button
+        v-if="filtered().length > visibleCount"
+        @click="visibleCount += 20"
+      >
+        再显示 20 条（共 {{ filtered().length }} 条）
+      </button>
       <p v-if="!filtered().length" class="small">暂无匹配记忆。</p>
     </div>
   </section>
-  <section class="panel">
-    <h2>新增确认记忆</h2>
+  <section v-show="section === 'memories'" class="panel">
+    <h2>手动记住一件事</h2>
     <form id="addMemory" @submit="addConfirmed">
       <div class="grid">
         <label
@@ -373,13 +402,13 @@ const filtered = () =>
       <button class="primary">新增人工记忆</button>
     </form>
   </section>
-  <section class="panel">
-    <h2>待审核候选</h2>
+  <section v-show="section === 'memories'" class="panel">
+    <h2>需要你确认的记忆</h2>
     <article v-for="c in candidates()" :key="c.id" class="memory">
       <p>{{ c.content }}</p>
       <button data-review @click="openReview(c)">审核</button>
     </article>
-    <p v-if="!candidates().length" class="small">没有待审核候选。</p>
+    <p v-if="!candidates().length" class="small">没有需要你确认的记忆。</p>
     <dialog v-if="review" open>
       <form @submit.prevent="acceptReview">
         <h3>确认这条记忆</h3>
@@ -399,8 +428,12 @@ const filtered = () =>
       </form>
     </dialog>
   </section>
-  <section class="panel">
-    <h2>文档集合</h2>
+  <section v-show="section === 'documents'" class="panel">
+    <h2>文档知识库</h2>
+    <p class="small">
+      把希望 LuckyBot
+      参考的资料存放在这里，聊天时按需检索。与自动记录的会话记忆分开管理。
+    </p>
     <label
       >集合
       <select v-model="collectionId">
@@ -418,13 +451,13 @@ const filtered = () =>
           required
         ></textarea>
       </label>
-      <button class="primary">上传并切分</button>
+      <button class="primary">保存到知识库</button>
     </form>
     <p v-for="d in documents" :key="d.id" class="small">
       {{ d.title }} · {{ d.status }}
     </p>
     <form @submit="searchHits">
-      <label>命中测试<input v-model="probe" /></label>
+      <label>试着搜索文档<input v-model="probe" /></label>
       <button>检索</button>
     </form>
     <p v-for="h in hits" :key="h.id" class="small">

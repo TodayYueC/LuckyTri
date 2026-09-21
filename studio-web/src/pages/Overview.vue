@@ -20,10 +20,21 @@ async function saveRuntime(e: Event) {
 </script>
 
 <template>
-  <div class="notice">
-    消息归档 → 语境装配（批次与引用链优先）→ 发言决策 → 生成校验 →
-    气泡发送。知识检索只作为数据包进入装配，不会绕过该不该说话。
-  </div>
+  <section class="welcome-card">
+    <div class="welcome-copy">
+      <div class="eyebrow">A LITTLE LUCK, EVERY DAY</div>
+      <h2>让对话，自然发生<span>。</span></h2>
+      <p>留一点空间给陪伴，留一点记忆给日常。<br />今天的故事，从这里继续。</p>
+      <button class="primary" @click="go('live')">进入实时会话 ↗</button>
+    </div>
+    <div class="welcome-art" aria-hidden="true">
+      <div class="orbit orbit-one"></div>
+      <div class="orbit orbit-two"></div>
+      <div class="lucky-star">✦</div>
+      <span class="art-caption">STAY / CONNECTED</span
+      ><span class="art-index">01</span>
+    </div>
+  </section>
   <div class="grid">
     <section class="panel">
       <h2>QQ 连接</h2>
@@ -44,15 +55,15 @@ async function saveRuntime(e: Event) {
     <section class="panel">
       <h2>模型档案</h2>
       <div class="stat">{{ core().models.length }} 个</div>
-      <p class="small">输入、输出预算与 embedding 能力分开配置</p>
+      <p class="small">管理已连接的模型与思考设置</p>
     </section>
   </div>
   <section class="panel">
-    <h2>最近为何说 / 不说</h2>
+    <h2>最近互动</h2>
     <p
       v-for="d in health().decisions.slice(0, 8)"
       :key="d.id"
-      :class="{ danger: !d.reply }"
+      class="activity-item"
     >
       <span class="small"
         >{{ new Date(d.time).toLocaleTimeString() }} · {{ d.emotion }}</span
@@ -70,14 +81,14 @@ async function saveRuntime(e: Event) {
           name="enabled"
           type="checkbox"
           :checked="health().settings.enabled"
-        />全局启用</label
+        />允许 LuckyBot 参与聊天</label
       >
       <label class="check"
         ><input
           name="demo"
           type="checkbox"
           :checked="health().settings.demo"
-        />模拟模式（不发 QQ）</label
+        />仅模拟运行（消息不会发送到 QQ）</label
       >
       <button class="primary" type="submit">保存并应用</button>
       <span class="small">保存后下一轮生效</span>
