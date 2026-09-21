@@ -121,6 +121,62 @@ export class MemoryManager {
     }
     this.repo.store.revision++;
   }
+  deleteBatch(session, ids = [], { all = false } = {}) {
+    const db = this.repo.db;
+    if (
+      typeof session !== "string" ||
+      !session ||
+      !db.prepare("SELECT id FROM sessions WHERE id=?").get(session)
+    )
+      throw Error("会话不存在");
+    if (!all && !Array.isArray(ids)) throw Error("请选择要删除的记忆");
+    const uniqueIds = [...new Set((Array.isArray(ids) ? ids : []).map(String))];
+    if (!all && (!uniqueIds.length || uniqueIds.length > 500))
+      throw Error("请选择 1–500 条记忆");
+    if (all && uniqueIds.length) throw Error("全选删除不需要传入记忆 ID");
+
+    const rows = all
+      ? db
+          .prepare(
+            "SELECT id,session_id,locked FROM core_memories WHERE session_id=? AND status!='deleted'",
+          )
+          .all(session)
+      : uniqueIds.map((id) =>
+          db
+            .prepare(
+              "SELECT id,session_id,locked FROM core_memories WHERE id=?",
+            )
+            .get(id),
+        );
+    if (!all && (rows.some((row) => !row) || rows.length !== uniqueIds.length))
+      throw Error("只能删除当前会话中存在的记忆");
+    if (rows.some((row) => row.session_id !== session))
+      throw Error("只能删除当前会话的记忆，共享或继承记忆请单独管理");
+    if (rows.some((row) => row.locked))
+      throw Error("包含已锁定记忆，请先解锁后再删除");
+    if (!rows.length) return { deleted: 0 };
+
+    const placeholders = rows.map(() => "?").join(",");
+    const rowIds = rows.map((row) => row.id);
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare(
+        `DELETE FROM core_memory_versions WHERE memory_id IN (${placeholders})`,
+      ).run(...rowIds);
+      db.prepare(
+        `DELETE FROM core_memory_fts WHERE memory_id IN (${placeholders})`,
+      ).run(...rowIds);
+      db.prepare(`DELETE FROM core_memories WHERE id IN (${placeholders})`).run(
+        ...rowIds,
+      );
+      db.exec("COMMIT");
+    } catch (e) {
+      db.exec("ROLLBACK");
+      throw e;
+    }
+    this.repo.store.revision++;
+    return { deleted: rows.length };
+  }
   async consolidate(
     session,
     profile,
