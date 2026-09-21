@@ -115,7 +115,7 @@ test("提示要求学习整体节奏而非模仿个体", () => {
   const profile = summarizeGroupStyle(rows, now);
   const p = voicePrompt(
     {
-      name: "Unlucky",
+      name: "Lucky",
       voicePreset: "chill",
       slangLevel: 0,
       adaptGroupStyle: true,

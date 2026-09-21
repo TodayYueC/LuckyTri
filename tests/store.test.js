@@ -7,10 +7,7 @@ import { join } from "node:path";
 import { createStore } from "../server/store.js";
 import { boundedContext } from "../server/engine.js";
 test("v0.1 数据库升级保留记忆，迁移模拟上下文、去重与冷却；重复启动安全", () => {
-  const path = join(
-    mkdtempSync(join(tmpdir(), "xiaoman-migrate-")),
-    "legacy.db",
-  );
+  const path = join(mkdtempSync(join(tmpdir(), "lucky-migrate-")), "legacy.db");
   let db = new DatabaseSync(path);
   db.exec(`CREATE TABLE messages (id INTEGER PRIMARY KEY,event_id TEXT UNIQUE,session_id TEXT,user_id TEXT,name TEXT,text TEXT,time INTEGER,role TEXT);
  CREATE TABLE memories (id INTEGER PRIMARY KEY,user_id TEXT,name TEXT,content TEXT,scope TEXT,source TEXT,time INTEGER);`);
@@ -30,7 +27,7 @@ test("v0.1 数据库升级保留记忆，迁移模拟上下文、去重与冷却
     null,
     "group:12345",
     "bot",
-    "Unlucky",
+    "Lucky",
     "模拟回复",
     Date.now(),
     "assistant",
@@ -48,7 +45,7 @@ test("v0.1 数据库升级保留记忆，迁移模拟上下文、去重与冷却
     null,
     "group:12345",
     "bot",
-    "Unlucky",
+    "Lucky",
     "真实回复",
     Date.now(),
     "assistant",

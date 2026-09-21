@@ -19,7 +19,7 @@ try {
     throw new Error("无法验证服务身份，请检查端口与管理令牌；未停止任何进程");
   const info = await response.json();
   if (
-    info.app !== "xiaoman" ||
+    !["lucky", "xiaoman"].includes(info.app) ||
     typeof info.workspace !== "string" ||
     normalize(info.workspace) !== normalize(realpathSync(process.cwd()))
   )

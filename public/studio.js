@@ -43,7 +43,7 @@ async function reload() {
 function layout() {
   if (!pages[page]) page = "overview";
   $("#app").innerHTML =
-    `<div class="studio"><aside class="sidebar"><div class="brand">Unlucky<span style="color:#8caec4">.</span></div><div class="subtitle">群友工作室<br>CONVERSATION STUDIO</div><nav>${Object.entries(
+    `<div class="studio"><aside class="sidebar"><div class="brand">Lucky<span style="color:#8caec4">.</span></div><div class="subtitle">群友工作室<br>CONVERSATION STUDIO</div><nav>${Object.entries(
       pages,
     )
       .map(
@@ -247,7 +247,7 @@ function render() {
                 )
                 .join(
                   "",
-                )}</select></label>${field("aggregateMs", "聚合窗口 ms", s.policy.aggregateMs, "number")}${field("maxWaitMs", "最长等待 ms", s.policy.maxWaitMs, "number")}${field("contextMessages", "近期条数（0 = 使用模型预算）", s.policy.contextMessages, "number")}${field("maxReply", "一轮总字数", s.policy.maxReply, "number")}${field("probability", "旁听后的参与概率 0–1", s.probability ?? health.settings.probability, "number")}${field("cooldown", "冷却秒数", s.cooldown ?? health.settings.cooldown, "number")}</div><p class="small">每批消息先由语境模型判断是否值得插话；值得回复时直接回复，不经过概率。判断为旁听时才按这里的 0–1 概率抽样，抽中就生成回复。私聊、@ Unlucky、引用 Unlucky 直接回应。</p><div class="row">${check("memory", "长期记忆", s.policy.memory)}${check("comfortOnDistress", "明显低落时主动简短安慰", s.policy.comfortOnDistress)}${check("deepCheck", "复杂回复模型复审（短句通过本地检查即可）", s.policy.deepCheck)}</div>${edit("persona", "群人格覆盖（直接粘贴文字即可；也支持高级 JSON）", sessionPersonaText(s.policy.persona))}<p class="small">这里直接写人设正文即可，例如“你叫 Unlucky，说话自然、少用网络梗”。</p>${submit}</form>`,
+                )}</select></label>${field("aggregateMs", "聚合窗口 ms", s.policy.aggregateMs, "number")}${field("maxWaitMs", "最长等待 ms", s.policy.maxWaitMs, "number")}${field("contextMessages", "近期条数（0 = 使用模型预算）", s.policy.contextMessages, "number")}${field("maxReply", "一轮总字数", s.policy.maxReply, "number")}${field("probability", "旁听后的参与概率 0–1", s.probability ?? health.settings.probability, "number")}${field("cooldown", "冷却秒数", s.cooldown ?? health.settings.cooldown, "number")}</div><p class="small">每批消息先由语境模型判断是否值得插话；值得回复时直接回复，不经过概率。判断为旁听时才按这里的 0–1 概率抽样，抽中就生成回复。私聊、@ Lucky、引用 Lucky 直接回应。</p><div class="row">${check("memory", "长期记忆", s.policy.memory)}${check("comfortOnDistress", "明显低落时主动简短安慰", s.policy.comfortOnDistress)}${check("deepCheck", "复杂回复模型复审（短句通过本地检查即可）", s.policy.deepCheck)}</div>${edit("persona", "群人格覆盖（直接粘贴文字即可；也支持高级 JSON）", sessionPersonaText(s.policy.persona))}<p class="small">这里直接写人设正文即可，例如“你叫 Lucky，说话自然、少用网络梗”。</p>${submit}</form>`,
             ),
           )
           .join("") ||

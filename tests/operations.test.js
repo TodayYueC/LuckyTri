@@ -10,7 +10,7 @@ import { recordModelCheck, readiness } from "../server/readiness.js";
 import { inspectReply, voicePrompt } from "../server/voice.js";
 
 test("生成两枚不同随机令牌且不覆盖已有配置", () => {
-  const dir = mkdtempSync(join(tmpdir(), "xiaoman-setup-"));
+  const dir = mkdtempSync(join(tmpdir(), "lucky-setup-"));
   assert.equal(initializeEnvironment(dir), true);
   const env = readFileSync(join(dir, ".env"), "utf8");
   const tokens = [
@@ -26,7 +26,7 @@ test("生成两枚不同随机令牌且不覆盖已有配置", () => {
   );
 });
 test("在线数据库备份包含已提交数据且不覆盖已有备份", () => {
-  const dir = mkdtempSync(join(tmpdir(), "xiaoman-backup-")),
+  const dir = mkdtempSync(join(tmpdir(), "lucky-backup-")),
     source = join(dir, "source.db");
   const store = createStore(source);
   store.save({ name: "备份测试" });
@@ -69,7 +69,7 @@ test("反馈不跨会话或模式，影响短回复和网络词检查", () => {
   assert.deepEqual(store.feedback("private:10001", 0), []);
   const feedback = store.feedback("group:12345", 0),
     settings = {
-      name: "Unlucky",
+      name: "Lucky",
       persona: "随和",
       slangLevel: 2,
       maxReply: 100,

@@ -5,12 +5,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/TodayYueC/unlucky-qq-ai-friend.git"
+    "url": "https://github.com/TodayYueC/lucky-qq-ai-friend.git"
   },
   "bugs": {
-    "url": "https://github.com/TodayYueC/unlucky-qq-ai-friend/issues"
+    "url": "https://github.com/TodayYueC/lucky-qq-ai-friend/issues"
   },
-  "homepage": "https://github.com/TodayYueC/unlucky-qq-ai-friend",
+  "homepage": "https://github.com/TodayYueC/lucky-qq-ai-friend",
   "type": "module",
   "engines": {
     "node": ">=24"

@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 
 export function initializeEnvironment(directory = process.cwd()) {
   const file = resolve(directory, ".env");
-  const content = `# Unlucky 本机配置。修改后重启服务，不要公开此文件。\nHOST=127.0.0.1\nPORT=3210\nADMIN_TOKEN=${randomBytes(32).toString("hex")}\nONEBOT_TOKEN=${randomBytes(32).toString("hex")}\nLLM_API_KEY=\n`;
+  const content = `# Lucky 本机配置。修改后重启服务，不要公开此文件。\nHOST=127.0.0.1\nPORT=3210\nADMIN_TOKEN=${randomBytes(32).toString("hex")}\nONEBOT_TOKEN=${randomBytes(32).toString("hex")}\nLLM_API_KEY=\n`;
   try {
     writeFileSync(file, content, { flag: "wx", mode: 0o600 });
     return true;

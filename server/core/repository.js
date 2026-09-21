@@ -17,6 +17,21 @@ export function migrateCore(store) {
     CREATE TABLE IF NOT EXISTS core_jobs (seq INTEGER PRIMARY KEY, session_id TEXT, status TEXT, trace_id TEXT, time INTEGER);
     CREATE TABLE IF NOT EXISTS core_references (id INTEGER PRIMARY KEY, session_id TEXT, platform_id TEXT, account_id TEXT, payload TEXT, UNIQUE(session_id,platform_id,account_id));
   `);
+  // Keep existing workspaces on the new public name without touching chat
+  // history or model credentials. Custom persona and prompt text may contain
+  // the old name, so migrate only the fields that are presented to the model.
+  for (const row of db
+    .prepare(
+      "SELECT id,value FROM core_config WHERE id='persona' OR id='prompts' OR id LIKE 'session:%'",
+    )
+    .all()) {
+    const value = String(row.value || "");
+    const next = value.replace(/UnLucky|Unlucky/g, "Lucky");
+    if (next !== value)
+      db.prepare(
+        "UPDATE core_config SET value=?,version=version+1 WHERE id=?",
+      ).run(next, row.id);
+  }
   if (!db.prepare("SELECT id FROM core_config WHERE id='migration-v1'").get()) {
     db.exec("BEGIN IMMEDIATE");
     try {

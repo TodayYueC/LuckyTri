@@ -15,7 +15,7 @@ import {
 } from "../server/qq-setup.js";
 
 test("NapCat assistant preserves configuration and writes a named reverse WS client", async () => {
-  const root = join(mkdtempSync(join(tmpdir(), "xiaoman-napcat-")), "NapCat");
+  const root = join(mkdtempSync(join(tmpdir(), "lucky-napcat-")), "NapCat");
   const config = join(root, "config");
   mkdirSync(config, { recursive: true });
   const file = join(config, "onebot11_10001.json");
@@ -48,7 +48,7 @@ test("NapCat assistant preserves configuration and writes a named reverse WS cli
   );
   assert.ok(
     result.backup.endsWith(
-      ".json.unlucky-backup-" + result.backup.split("unlucky-backup-")[1],
+      ".json.lucky-backup-" + result.backup.split("lucky-backup-")[1],
     ),
   );
   assert.equal(
@@ -72,7 +72,7 @@ test("NapCat batch launch opens a visible console with safe cmd arguments", () =
     "/d",
     "/c",
     "start",
-    "Unlucky NapCat",
+    "Lucky NapCat",
   ]);
   assert.deepEqual(spec.args.slice(-4), [
     "/d",

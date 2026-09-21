@@ -10,7 +10,7 @@ import {
   VOICE_SCENARIOS,
 } from "../server/voice.js";
 const settings = {
-  name: "Unlucky",
+  name: "Lucky",
   persona: "乐观，稳定，偶尔吐槽",
   voicePreset: "chill",
   slangLevel: 1,

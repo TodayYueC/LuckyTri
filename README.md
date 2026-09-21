@@ -1,4 +1,4 @@
-# Unlucky · QQ AI 群友
+# Lucky · QQ AI 群友
 
 一个本地优先、可长期生活在 QQ 群里的 AI 群友项目。
 
@@ -9,7 +9,7 @@
 ## 特性
 
 - **群聊语境判断**：按消息 ID、发送者、时间、@目标、引用链、附件和当前话题保存事件，不把相邻消息简单拼成一段文字。
-- **独立发言决策**：先判断 `SILENT / REPLY / REACT / MULTI_MESSAGE`，明确 @、叫名字、私聊或接续 Unlucky 的话会提高优先级，普通旁听消息才走概率。
+- **独立发言决策**：先判断 `SILENT / REPLY / REACT / MULTI_MESSAGE`，明确 @、叫名字、私聊或接续 Lucky 的话会提高优先级，普通旁听消息才走概率。
 - **短时聚合**：连续消息在很短窗口内合并理解，减少 A 说一句、B 补一句而模型只看见第一句的问题。
 - **长期记忆**：短期上下文、阶段摘要、长期事实分层保存；记忆带来源、置信度、重要性、范围、版本和锁定状态，不会每次整理时覆盖旧事实。
 - **跨会话记忆边界**：同一 QQ 号的共享记忆可以跨群和私聊使用，仅私聊或指定会话的记忆不会泄露到其他场景。
@@ -33,8 +33,8 @@
 ### 安装和启动
 
 ```bash
-git clone https://github.com/TodayYueC/unlucky-qq-ai-friend.git
-cd unlucky-qq-ai-friend
+git clone https://github.com/TodayYueC/lucky-qq-ai-friend.git
+cd lucky-qq-ai-friend
 npm install
 npm start
 ```
@@ -43,8 +43,8 @@ npm start
 
 Windows 也可以双击：
 
-- `启动Unlucky.cmd`：后台启动并打开管理台；已经运行时只打开管理台。
-- `停止Unlucky.cmd`：停止当前项目启动的服务。
+- `启动Lucky.cmd`：后台启动并打开管理台；已经运行时只打开管理台。
+- `停止Lucky.cmd`：停止当前项目启动的服务。
 
 第一次使用建议先打开“上手指南”，在“会话空间”添加一个群号或 QQ 号，用模拟模式验证上下文、记忆和发言决策。模拟模式不会调用模型，也不会向 QQ 发送消息。
 
@@ -82,7 +82,7 @@ MiMo 使用 `max_completion_tokens` 和显式 `thinking` 参数；短聊天建�
 
 3. 在 WebUI 的“连接与设置”填写模型 API 地址、模型 ID 和 API Key，执行模型连接测试。
 4. 关闭模拟模式并保存，然后到“会话空间”开启需要参与的群聊或私聊。
-5. 发送 `Unlucky` 或 @小号进行联调。明确叫到时优先回应，普通旁听消息仍可能保持安静。
+5. 发送 `Lucky` 或 @小号进行联调。明确叫到时优先回应，普通旁听消息仍可能保持安静。
 
 项目包含经过 SHA-256 校验的 NapCat Windows 发布包，来源和校验值记录在 `vendor/napcat/manifest.json` 与 `vendor/napcat/shell-manifest.json`。NapCatQQ 是独立的第三方组件，使用时请遵守其许可证、QQ 平台规则和当地法律。
 
@@ -116,7 +116,7 @@ OneBot 消息
 | `conversation-manager` | 会话短期上下文、聚合窗口和水位线 |
 | `context-builder` | 组织完整语境、相关记忆和人设 |
 | `topic-tracker` | 当前话题、证据和阶段摘要 |
-| `reply-target-resolver` | 判断消息是在对谁说、是否接 Unlucky |
+| `reply-target-resolver` | 判断消息是在对谁说、是否接 Lucky |
 | `speech-decision` | 独立决定是否发言和回复类型 |
 | `persona-manager` | 人设、强度和 Prompt 管理 |
 | `memory-manager` | 候选、确认、合并、版本、范围和过期 |

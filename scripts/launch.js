@@ -36,10 +36,10 @@ async function running() {
   try {
     info = await response.json();
   } catch {
-    throw new Error("此端口运行的不是 Unlucky 工作室。");
+    throw new Error("此端口运行的不是 Lucky 工作室。");
   }
   if (
-    info.app !== "xiaoman" ||
+    !["lucky", "xiaoman"].includes(info.app) ||
     typeof info.workspace !== "string" ||
     normalize(info.workspace) !== normalize(realpathSync(process.cwd()))
   )
@@ -80,8 +80,8 @@ try {
       }
     }
     if (!ready) throw new Error("启动未完成，请查看 data/launcher.log。");
-    console.log("Unlucky 已在后台启动。");
-  } else console.log("Unlucky 已经运行，直接打开管理台。");
+    console.log("Lucky 已在后台启动。");
+  } else console.log("Lucky 已经运行，直接打开管理台。");
   console.log(base);
   if (!process.argv.includes("--no-browser")) {
     const browser = spawn(
@@ -90,12 +90,12 @@ try {
         "-NoProfile",
         "-NonInteractive",
         "-Command",
-        "Start-Process $env:XIAOMAN_LAUNCH_URL",
+        "Start-Process $env:LUCKY_LAUNCH_URL",
       ],
       {
         windowsHide: true,
         stdio: "ignore",
-        env: { ...process.env, XIAOMAN_LAUNCH_URL: base },
+        env: { ...process.env, LUCKY_LAUNCH_URL: base },
       },
     );
     await new Promise((resolve, reject) => {

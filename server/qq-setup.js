@@ -147,7 +147,7 @@ export async function inspectNapCat(root) {
 
 export function reverseWsConfig({ url, token }) {
   return {
-    name: "xiaoman-reverse-ws",
+    name: "lucky-reverse-ws",
     enable: true,
     url,
     messagePostFormat: "array",
@@ -166,7 +166,7 @@ export async function configureNapCat({ root, accountId = "", url, token }) {
       "没有找到 NapCat 的 config 目录。请先完成官方安装，再选择 NapCat 根目录。",
     );
   if (!/^wss?:\/\/[\w.:\-\[\]]+\/onebot\/v11\/ws$/.test(url))
-    throw Error("Unlucky 的 WebSocket 地址无效");
+    throw Error("Lucky 的 WebSocket 地址无效");
   if (!token) throw Error("请先生成 QQ 接入令牌");
   let target;
   if (accountId) {
@@ -182,7 +182,7 @@ export async function configureNapCat({ root, accountId = "", url, token }) {
     } catch {
       throw Error("现有 OneBot 配置不是有效 JSON，未改动任何文件");
     }
-    backup = `${target}.unlucky-backup-${Date.now()}`;
+    backup = `${target}.lucky-backup-${Date.now()}`;
     await fs.copyFile(target, backup);
   }
   const network =
@@ -193,7 +193,14 @@ export async function configureNapCat({ root, accountId = "", url, token }) {
   config.network = {
     ...network,
     websocketClients: [
-      ...clients.filter((client) => client?.name !== "xiaoman-reverse-ws"),
+      ...clients.filter(
+        (client) =>
+          ![
+            "xiaoman-reverse-ws",
+            "unlucky-reverse-ws",
+            "lucky-reverse-ws",
+          ].includes(client?.name),
+      ),
       reverseWsConfig({ url, token }),
     ],
   };
@@ -210,7 +217,7 @@ export function napCatLaunchSpec(launcher) {
         "/d",
         "/c",
         "start",
-        "Unlucky NapCat",
+        "Lucky NapCat",
         "/D",
         dirname(launcher),
         "cmd.exe",
@@ -359,7 +366,7 @@ async function prepareBundledShell(workspace, qqPath, shell) {
     .catch(() => null);
   if (!existing?.isFile())
     await runPowerShell(
-      "Expand-Archive -LiteralPath $env:XIAOMAN_ARCHIVE_PATH -DestinationPath $env:XIAOMAN_EXTRACT_PATH -Force",
+      "Expand-Archive -LiteralPath $env:LUCKY_ARCHIVE_PATH -DestinationPath $env:LUCKY_EXTRACT_PATH -Force",
       [shell.zip, root],
     );
   const info = await inspectNapCat(root);
@@ -385,7 +392,7 @@ export async function checkOneKeyUpdate(
     {
       headers: {
         Accept: "application/vnd.github+json",
-        "User-Agent": "Unlucky-QQ-Assistant",
+        "User-Agent": "Lucky-QQ-Assistant",
       },
       signal: AbortSignal.timeout(15000),
     },
@@ -411,8 +418,8 @@ async function runPowerShell(script, args) {
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...process.env,
-        XIAOMAN_ARCHIVE_PATH: args[0],
-        XIAOMAN_EXTRACT_PATH: args[1],
+        LUCKY_ARCHIVE_PATH: args[0],
+        LUCKY_EXTRACT_PATH: args[1],
       },
     },
   );
@@ -461,7 +468,7 @@ export async function downloadAndOpenOneKey(
       {
         headers: {
           Accept: "application/vnd.github+json",
-          "User-Agent": "Unlucky-QQ-Assistant",
+          "User-Agent": "Lucky-QQ-Assistant",
         },
         signal: AbortSignal.timeout(15000),
       },
@@ -505,7 +512,7 @@ export async function downloadAndOpenOneKey(
   const existing = await inspectNapCat(root);
   if (!existing.installers.length)
     await runPowerShell(
-      "Expand-Archive -LiteralPath $env:XIAOMAN_ARCHIVE_PATH -DestinationPath $env:XIAOMAN_EXTRACT_PATH -Force",
+      "Expand-Archive -LiteralPath $env:LUCKY_ARCHIVE_PATH -DestinationPath $env:LUCKY_EXTRACT_PATH -Force",
       [zip, root],
     );
   const installer = (await inspectNapCat(root)).installers[0];
