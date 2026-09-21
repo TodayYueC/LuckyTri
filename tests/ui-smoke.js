@@ -1,6 +1,6 @@
 import { chromium } from "@playwright/test";
 import { spawn } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -38,11 +38,48 @@ try {
   });
   const p = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [];
+  mkdirSync("workspace/ui-review", { recursive: true });
   p.on("pageerror", (e) => errors.push(e.message));
   p.on("dialog", (dialog) => dialog.accept());
   await p.addInitScript(() => (sessionStorage.token = "admin-test"));
   await p.goto(base + "/");
   await p.getByRole("heading", { name: "总览" }).waitFor();
+  for (const width of [1440, 390]) {
+    await p.setViewportSize({ width, height: 1000 });
+    for (const page of [
+      "overview",
+      "live",
+      "knowledge",
+      "character",
+      "spaces",
+      "models",
+      "connect",
+      "lab",
+    ]) {
+      await p.locator(`nav [data-page=${page}]`).click();
+      await p.locator(`.page-${page}`).waitFor();
+      await p.waitForTimeout(400);
+      assert(
+        await p.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth + 1,
+        ),
+        `horizontal overflow: ${page} at ${width}`,
+      );
+      await p.screenshot({
+        path: `workspace/ui-review/${page}-${width}.png`,
+        fullPage: true,
+      });
+    }
+  }
+  await p.setViewportSize({ width: 1440, height: 1000 });
+  await p.getByRole("button", { name: "减少动画", exact: true }).click();
+  assert.equal(
+    await p
+      .locator(".studio")
+      .evaluate((el) => el.classList.contains("quiet-motion")),
+    true,
+  );
+  await p.getByRole("button", { name: "开启灵动效果", exact: true }).click();
   await p.locator("nav [data-page=spaces]").click();
   await p.locator("#addSession [name=id]").fill("12345");
   await p.locator("#addSession [name=name]").fill("测试小分队");
@@ -72,6 +109,10 @@ try {
     "0",
   );
   await p.locator("nav [data-page=knowledge]").click();
+  await p.getByRole("button", { name: "文档知识库", exact: true }).click();
+  await p.getByRole("heading", { name: "文档知识库", exact: true }).waitFor();
+  assert.equal(await p.locator("#memoryList").isVisible(), false);
+  await p.getByRole("button", { name: "会话记忆", exact: true }).click();
   await p.locator("#addMemory [name=subject]").fill("10001");
   await p.locator("#addMemory [name=content]").fill("喜欢拿铁");
   await p.locator("#addMemory button").click();

@@ -16,7 +16,16 @@ const sessionId = ref(sessionStorage.activeSession || "");
 const events = ref<any[]>([]);
 const traces = ref<any[]>([]);
 const knowledge = ref<any[]>([]);
-const status = ref("正在加载消息");
+const status = ref("请选择会话");
+const statusNames: Record<string, string> = {
+  sent: "已回复",
+  silent: "在旁听",
+  running: "正在思考",
+  error: "处理失败",
+  cancelled: "已取消",
+  complete: "已完成",
+  interrupted: "已中断",
+};
 const busy = ref(false);
 const simulateText = ref("");
 const simulateUser = ref("10001");
@@ -124,7 +133,9 @@ function decisions() {
           清空当前上下文
         </button>
       </div>
-      <p class="small">主表面显示消息流。侧栏是本轮决策和引用的知识。</p>
+      <p class="small">
+        消息会自动更新；右侧可查看回复原因，也可以发送模拟消息测试。
+      </p>
       <div id="liveMessages" class="conversation-messages chat-messages">
         <article
           v-for="r in events"
@@ -157,7 +168,7 @@ function decisions() {
           >
             <span class="small"
               >{{ new Date(t.time).toLocaleTimeString() }} ·
-              {{ t.status }}</span
+              {{ statusNames[t.status] || t.status }}</span
             ><br />
             {{ t.reason || (t.status === "running" ? "正在处理" : "暂无说明") }}
           </p>
@@ -190,7 +201,7 @@ function decisions() {
         <p v-for="k in knowledge" :key="k.id" class="small">
           {{ k.title }} · {{ k.whySelected }}<br />{{ k.text }}
         </p>
-        <p v-if="!knowledge.length" class="small">本轮没有装入文档片段。</p>
+        <p v-if="!knowledge.length" class="small">这次回复没有引用知识文档。</p>
       </section>
       <section class="panel">
         <h2>试聊 / 模拟</h2>
