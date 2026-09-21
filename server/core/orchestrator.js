@@ -96,7 +96,8 @@ export class ChatSystem {
         .prepare("INSERT INTO core_jobs VALUES (?,?,'pending',NULL,?)")
         .run(event.seq, event.sessionId, Date.now());
       if (
-        this.enabled(event.sessionId, { simulated: !!m.simulated }) &&
+        !m.simulated &&
+        this.enabled(event.sessionId, { simulated: false }) &&
         this.policy(event.sessionId).memory &&
         this.store.settings().memoryCandidates
       )
@@ -169,7 +170,14 @@ export class ChatSystem {
     return removed;
   }
   async process(session, batch, { replay = false, simulated = false } = {}) {
-    const trace = this.repo.trace(session, replay ? "replay" : "live"),
+    // Give preview turns a separate trace mode as well as a separate event
+    // stream, so the studio never presents them as production decisions.
+    const simulatedTurn =
+        !replay && (simulated || batch.some((m) => m.simulated)),
+      trace = this.repo.trace(
+        session,
+        replay ? "replay" : simulatedTurn ? "demo" : "live",
+      ),
       policy = this.policy(session),
       revision = this.store.revision,
       watermark = batch.at(-1).seq,
@@ -181,7 +189,9 @@ export class ChatSystem {
             "UPDATE core_jobs SET status='running',trace_id=? WHERE seq=?",
           )
           .run(trace.id, m.seq);
-    const simulatedTurn = simulated || batch.some((m) => m.simulated);
+    // Replays always read the live stream.  A preview can be replayed from
+    // the UI as an explicit demo, but it must never silently switch the
+    // production context to the demo stream.
     const finish = (status, reason) => {
       trace.reason = reason;
       if (!replay)
@@ -269,7 +279,7 @@ export class ChatSystem {
         memories,
         p,
         replay ? now : Date.now(),
-        { knowledge, stages },
+        { knowledge, stages, simulated: simulatedTurn },
       );
       const visionModel = policy.visionModelId
         ? this.models.profile(policy.visionModelId)
@@ -404,11 +414,10 @@ export class ChatSystem {
               "SELECT MAX(time) t FROM core_outbox WHERE session_id=? AND status IN ('confirmed','uncertain','sending')",
             )
             .get(session).t;
+          // 冷却只在本来就没有抽中的旁听批次上生效；值得回复或抽中插话
+          // 的批次不再被冷却提前拦截，保证两阶段语义成立。
           if (last && cooldown > 0 && Date.now() - last < cooldown * 1000)
-            // 冷却只在本来就没有抽中的旁听批次上生效；值得回复或抽中插话
-            // 的批次不再被冷却提前拦截，保证两阶段语义成立。
-            if (last && cooldown > 0 && Date.now() - last < cooldown * 1000)
-              return finish("silent", "发言冷却中");
+            return finish("silent", "发言冷却中");
           return finish("silent", "语义判断不必插话，未通过参与抽样");
         }
 
@@ -568,7 +577,9 @@ export class ChatSystem {
       );
       const hasRelevantUpdate = () =>
         this.repo
-          .events(session)
+          .events(session, Number.MAX_SAFE_INTEGER, {
+            simulated: simulatedTurn,
+          })
           .some(
             (m) =>
               m.seq > watermark &&
@@ -585,7 +596,9 @@ export class ChatSystem {
         !hasRelevantUpdate();
       if (!isCurrent()) {
         const latest = this.repo
-          .events(session)
+          .events(session, Number.MAX_SAFE_INTEGER, {
+            simulated: simulatedTurn,
+          })
           .filter((m) => m.seq > watermark && m.role === "user");
         if (latest.length) trace.steps.push("新消息已进入下一批，取消旧稿");
         if (
@@ -608,13 +621,16 @@ export class ChatSystem {
       trace.error = e.message;
       return finish("error", e.message);
     } finally {
+      // A preview is disposable by design.  It may exercise the full reply
+      // path, but it must never advance live memory cursors or create stages.
       const pendingMemory =
         !replay &&
+        !simulatedTurn &&
         policy.memory &&
-        this.enabled(session, { simulated: simulatedTurn })
+        this.enabled(session, { simulated: false })
           ? this.repo.db
               .prepare(
-                "SELECT COUNT(*) n FROM core_events WHERE session_id=? AND role='user' AND seq>COALESCE((SELECT seq FROM core_cursors WHERE session_id=?),0)",
+                "SELECT COUNT(*) n FROM core_events WHERE session_id=? AND role='user' AND seq>COALESCE((SELECT seq FROM core_cursors WHERE session_id=?),0) AND COALESCE(json_extract(payload,'$.simulated'),0)=0",
               )
               .get(session, session).n
           : 0;

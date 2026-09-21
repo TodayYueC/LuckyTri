@@ -58,8 +58,11 @@ export function mountCore(app, system) {
       if (!row) throw Error("会话不存在");
       if (typeof req.body.archived !== "boolean") throw Error("归档开关无效");
       repo.db
-        .prepare("UPDATE sessions SET archived=?,enabled=? WHERE id=?")
-        .run(+req.body.archived, req.body.archived ? 0 : 0, req.params.id);
+        // `archived` already makes a session ineligible for processing. Keep
+        // its participation switch untouched so restoring it returns to the
+        // state the user configured before moving it out of the panel.
+        .prepare("UPDATE sessions SET archived=? WHERE id=?")
+        .run(+req.body.archived, req.params.id);
       repo.store.revision++;
       res.json({ ok: true });
     }),
@@ -332,25 +335,31 @@ export function mountCore(app, system) {
     "/api/core/events",
     wrap((req, res) => {
       const before = Number(req.query.before) || Number.MAX_SAFE_INTEGER;
+      const simulated = Number(repo.store.settings().demo);
       res.json(
         repo.db
           .prepare(
-            "SELECT seq,session_id,time,role,payload FROM core_events WHERE session_id=? AND seq<? ORDER BY seq DESC LIMIT 100",
+            "SELECT seq,session_id,time,role,payload FROM core_events WHERE session_id=? AND seq<? AND COALESCE(json_extract(payload,'$.simulated'),0)=? ORDER BY seq DESC LIMIT 100",
           )
-          .all(String(req.query.session || ""), before)
+          .all(String(req.query.session || ""), before, simulated)
           .map((r) => ({ ...r, payload: JSON.parse(r.payload) })),
       );
     }),
   );
-  app.get("/api/core/traces", (req, res) =>
+  app.get("/api/core/traces", (req, res) => {
+    const mode = repo.store.settings().demo ? "demo" : "live";
     res.json(
       repo.db
         .prepare(
-          "SELECT id,session_id,time,mode,status,json_extract(data,'$.reason') reason,json_extract(data,'$.error') error FROM core_traces WHERE (?='' OR session_id=?) ORDER BY time DESC LIMIT 100",
+          "SELECT id,session_id,time,mode,status,json_extract(data,'$.reason') reason,json_extract(data,'$.error') error FROM core_traces WHERE (?='' OR session_id=?) AND mode IN (?,'memory','replay') ORDER BY time DESC LIMIT 100",
         )
-        .all(String(req.query.session || ""), String(req.query.session || "")),
-    ),
-  );
+        .all(
+          String(req.query.session || ""),
+          String(req.query.session || ""),
+          mode,
+        ),
+    );
+  });
   app.get(
     "/api/core/traces/:id",
     wrap((req, res) => {
@@ -370,7 +379,7 @@ export function mountCore(app, system) {
       if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from > to)
         throw Error("回放消息序号范围无效");
       const rows = repo
-        .events(session, to)
+        .events(session, to, { simulated: false })
         .filter((m) => m.seq >= from && m.role === "user");
       if (!rows.length || rows.length > 100)
         throw Error("请选择 1–100 条人类消息");

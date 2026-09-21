@@ -12,12 +12,15 @@ import {
   unpackVector,
 } from "./retrieval.js";
 import { indexChunk } from "./schema.js";
-import { sessionAliases, parseSessionKey } from "../channels/session-key.js";
+import {
+  parseSessionKey,
+  scopedSessionAliases,
+} from "../channels/session-key.js";
 
-function scopesFor(session) {
+function scopesFor(db, session) {
   try {
     const parsed = parseSessionKey(session);
-    const aliases = sessionAliases(session);
+    const aliases = scopedSessionAliases(db, session);
     return {
       aliases,
       kind: parsed.kind,
@@ -30,7 +33,7 @@ function scopesFor(session) {
 
 function allowedCollection(db, collection, session) {
   if (!session) return true;
-  const { aliases, kind, privateKey } = scopesFor(session);
+  const { aliases, kind, privateKey } = scopesFor(db, session);
   if (collection.scope === "shared") return true;
   if (privateKey && collection.scope === privateKey) return true;
   if (aliases.includes(collection.scope)) return true;
