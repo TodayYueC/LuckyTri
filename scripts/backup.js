@@ -12,7 +12,7 @@ export function backupDatabase(
   const target = resolve(
     join(
       directory,
-      `lucky-${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}.db`,
+      `luckybot-${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}.db`,
     ),
   );
   const db = new DatabaseSync(source);

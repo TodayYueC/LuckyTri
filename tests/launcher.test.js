@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 test("Windows double-click launchers retain ASCII and CRLF for cmd.exe", () => {
-  for (const name of ["启动Lucky.cmd", "停止Lucky.cmd"]) {
+  for (const name of ["启动LuckyBot.cmd", "停止LuckyBot.cmd"]) {
     const bytes = readFileSync(new URL(`../${name}`, import.meta.url));
     assert.ok(
       bytes.every((byte) => byte < 128),

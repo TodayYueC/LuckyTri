@@ -26,7 +26,9 @@ export function migrateCore(store) {
     )
     .all()) {
     const value = String(row.value || "");
-    const next = value.replace(/UnLucky|Unlucky/g, "Lucky");
+    const next = value
+      .replace(/UnLucky|Unlucky/g, "LuckyBot")
+      .replace(/\bLucky\b/g, "LuckyBot");
     if (next !== value)
       db.prepare(
         "UPDATE core_config SET value=?,version=version+1 WHERE id=?",

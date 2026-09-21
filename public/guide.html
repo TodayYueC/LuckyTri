@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Lucky v0.5 · 使用教程</title>
+    <title>LuckyBot v0.5 · 使用教程</title>
     <style>
       * {
         box-sizing: border-box;
@@ -257,7 +257,7 @@
   <body>
     <header>
       <div>
-        <b>Lucky · 上手手册</b><small>YOUR CHAT COMPANION / v0.5</small>
+        <b>LuckyBot · 上手手册</b><small>YOUR CHAT COMPANION / v0.5</small>
       </div>
       <nav>
         <a href="/#setup">返回管理台</a
@@ -281,28 +281,31 @@
         ><a href="#step-11">11. 当前做到哪里</a>
       </nav>
       <article>
-        <h1>Lucky QQ AI 群友 · 从零上手教程</h1>
+        <h1>LuckyBot · 从零上手教程</h1>
         <p>适用版本：v0.5。主要按 Windows + PowerShell、本机运行讲解。</p>
         <p>
           你最终会运行两个本机程序：<strong
-            >QQClient 负责 QQ 登录与收发，Lucky 负责思考、记忆和管理界面</strong
-          >。大模型 API 是第三个外部服务。Lucky 的「上手指南 → QQ
+            >QQClient 负责 QQ 登录与收发，LuckyBot
+            负责思考、记忆和管理界面</strong
+          >。大模型 API 是第三个外部服务。LuckyBot 的「上手指南 → QQ
           接入助手」会替你写好两者之间的连接；QQ 扫码和安全确认仍由 QQ 完成。
         </p>
         <h2 id="step-1">1. 先体验，不急着连 QQ</h2>
         <p>
           本项目位于
           <code>D:\LuckyTri</code>。如果管理台已经能打开，直接进入
-          <a href="http://127.0.0.1:3210/#setup">Lucky 工作室</a
+          <a href="http://127.0.0.1:3210/#setup">LuckyBot 工作室</a
           >，不用重复启动。
         </p>
         <p>
           <strong
-            >日常一键启动：双击项目目录里的 <code>启动Lucky.cmd</code>。</strong
+            >日常一键启动：双击项目目录里的
+            <code>启动LuckyBot.cmd</code>。</strong
           >
-          它会在后台启动 Lucky
+          它会在后台启动 LuckyBot
           并打开浏览器；已经运行时直接打开管理台，不再启动第二份。可以右键此文件创建桌面快捷方式。关闭浏览器不会停止服务；需要停止时双击
-          <code>停止Lucky.cmd</code>。启动失败时窗口会保留错误提示，后台日志在
+          <code>停止LuckyBot.cmd</code
+          >。启动失败时窗口会保留错误提示，后台日志在
           <code>data/launcher.log</code>。QQClient 安装包已经内置，第一次在 WebUI
           点「使用内置安装器」即可；之后只需在 QQClient 窗口完成 QQ 登录。
         </p>
@@ -326,7 +329,7 @@ npm start
         <ol>
           <li>打开「会话空间」→「添加会话」。</li>
           <li>选择群聊，填一个测试群号（例如 <code>12345</code>）和名称。</li>
-          <li>输入「Lucky，下班前老板又来活了」，发送。</li>
+          <li>输入「LuckyBot，下班前老板又来活了」，发送。</li>
           <li>查看聊天和下方决策记录。</li>
         </ol>
         <p>
@@ -376,7 +379,7 @@ LLM_API_KEY=
           <tbody>
             <tr>
               <td>ADMIN_TOKEN</td>
-              <td>登录 Lucky 管理台；本项目停止命令也会使用</td>
+              <td>登录 LuckyBot 管理台；本项目停止命令也会使用</td>
               <td>和 QQ 连接令牌分开</td>
             </tr>
             <tr>
@@ -394,7 +397,7 @@ LLM_API_KEY=
             </tr>
             <tr>
               <td>HOST / PORT</td>
-              <td>Lucky 服务监听地址和端口</td>
+              <td>LuckyBot 服务监听地址和端口</td>
               <td>初次使用保持默认</td>
             </tr>
           </tbody>
@@ -404,7 +407,7 @@ LLM_API_KEY=
 </code></pre>
         <p>
           页面第一次请求数据会让你输入
-          <code>ADMIN_TOKEN</code>。之后也能点左下角「Lucky AI
+          <code>ADMIN_TOKEN</code>。之后也能点左下角「LuckyBot AI
           群友」重新输入。令牌只保存在当前标签页的会话存储中。
         </p>
         <p>
@@ -417,44 +420,44 @@ LLM_API_KEY=
         <h2 id="step-3">3. 登录 QQ 并连接 QQClient</h2>
         <h3>3.1 安装、配置与登录</h3>
         <p>
-          打开 Lucky 的「上手指南」，在 <strong>QQ 接入助手</strong> 中完成：
+          打开 LuckyBot 的「上手指南」，在 <strong>QQ 接入助手</strong> 中完成：
         </p>
         <ol>
           <li>
-            点击「使用内置安装器」。如果本机已经安装 QQ，Lucky
+            点击「使用内置安装器」。如果本机已经安装 QQ，LuckyBot
             会使用项目内置、已校验的 Shell 包直接准备
             QQClient，不会打开黑色安装控制台；没有检测到 QQ 时才回退到 Windows
             OneKey 包。需要新版本时点「检查更新」，再选择更新包。
           </li>
           <li>
-            回到 Lucky，点击「选择目录」，选中 QQClient 解压或安装后的根目录。
+            回到 LuckyBot，点击「选择目录」，选中 QQClient 解压或安装后的根目录。
           </li>
           <li>
-            点击「生成连接配置」。Lucky 会写入本地 OneBot 令牌与反向 WebSocket
-            配置；已有配置会在原目录留下备份。
+            点击「生成连接配置」。LuckyBot 会写入本地 OneBot 令牌与反向
+            WebSocket 配置；已有配置会在原目录留下备份。
           </li>
           <li>
-            点击「启动 QQClient 并登录 QQ」。Lucky 会打开一个独立的 QQClient
+            点击「启动 QQClient 并登录 QQ」。LuckyBot 会打开一个独立的 QQClient
             控制台窗口，按窗口里的提示扫码；如果窗口被其他程序盖住，可以从任务栏切回标题为
-            <strong>Lucky QQClient</strong> 的窗口。二维码同时会保存到 QQClient
+            <strong>LuckyBot QQClient</strong> 的窗口。二维码同时会保存到 QQClient
             目录的 <code>cache/qrcode.png</code>。
           </li>
         </ol>
         <p>
-          这样不需要手填 WebSocket 地址、Token 或消息格式。Lucky
+          这样不需要手填 WebSocket 地址、Token 或消息格式。LuckyBot
           在真正发出回复前会随机停顿约 1–4
           秒，避免模型一生成就秒回；冷却时间仍负责避免连续抢话。小号需要已经在目标群里；入群、扫码、验证码等由你在
           QQ / QQClient 完成。
         </p>
         <p>
-          Lucky 不保存 QQ 密码。建议先在成员知情的小测试群运行，确认大家接受 AI
-          群友参与。第三方 QQ 接入仍可能遇到客户端更新或帐号风控。
+          LuckyBot 不保存 QQ 密码。建议先在成员知情的小测试群运行，确认大家接受
+          AI 群友参与。第三方 QQ 接入仍可能遇到客户端更新或帐号风控。
         </p>
         <h3>3.2 手动兜底方式</h3>
         <p>
           只有在接入助手无法识别你的 QQClient 目录时，才需要进入 QQClient WebUI 的
           <strong>网络配置 → 新建 → WebSocket 客户端</strong>。这就是让 QQClient
-          主动连接 Lucky 的反向 WebSocket 方式；相关界面入口见
+          主动连接 LuckyBot 的反向 WebSocket 方式；相关界面入口见
           <a href="https://qqclient.github.io/use/integration"
             >QQClient 官方接入文档</a
           >。
@@ -494,21 +497,21 @@ LLM_API_KEY=
           </tbody>
         </table>
         <p>
-          这里的端口 <code>3210</code> 是<strong>Lucky 端口</strong
+          这里的端口 <code>3210</code> 是<strong>LuckyBot 端口</strong
           >。不要照抄其他框架教程中的 8080、6199 等端口。也不要把
           <code>ADMIN_TOKEN</code>、QQClient 自己的 WebUI 登录密码填到这里。
         </p>
         <p>
-          本教程假设 QQClient 和 Lucky 在同一台 Windows
+          本教程假设 QQClient 和 LuckyBot 在同一台 Windows
           机器上、都没有放进容器。若使用 Docker 或另一台电脑，<code
             >127.0.0.1</code
           >
           指向各自环境，不一定能找到
-          Lucky；此时需要单独调整网络地址、监听和访问保护。先用本机直连跑通最容易排查。
+          LuckyBot；此时需要单独调整网络地址、监听和访问保护。先用本机直连跑通最容易排查。
         </p>
         <h3>3.3 确认收到消息</h3>
         <p>
-          回到 Lucky，刷新页面。右上角应该显示「QQ 已连接」。去 QQ
+          回到 LuckyBot，刷新页面。右上角应该显示「QQ 已连接」。去 QQ
           测试群发一条消息，再刷新「会话空间」；自动发现的群会出现，但<strong>默认暂停参与</strong>。
         </p>
         <p>QQ 已连接只代表传输连接存在，不代表模型已经可用。继续下一步。</p>
@@ -544,7 +547,7 @@ LLM_API_KEY=
           </li>
           <li>
             <strong>Temperature / Top P</strong
-            >：控制输出随机性。推理强度不是“不指定”时，Lucky 会暂不发送
+            >：控制输出随机性。推理强度不是“不指定”时，LuckyBot 会暂不发送
             Temperature，避免部分推理模型报参数冲突。
           </li>
           <li>
@@ -574,10 +577,10 @@ LLM_API_KEY=
         </p>
         <h2 id="step-5">5. 让它开始参与一个群</h2>
         <ol>
-          <li>到「连接与设置」，确保「允许 Lucky 参与聊天」开启。</li>
+          <li>到「连接与设置」，确保「允许 LuckyBot 参与聊天」开启。</li>
           <li>关闭「模拟模式」，点击「保存连接设置」。</li>
           <li>到「会话空间」，选择目标群，点击「开启参与」。</li>
-          <li>去 QQ 群里 @ 小号或叫「Lucky」，发一句普通聊天。</li>
+          <li>去 QQ 群里 @ 小号或叫「LuckyBot」，发一句普通聊天。</li>
           <li>回到管理台查看回复和决策记录。</li>
         </ol>
         <p>
@@ -591,8 +594,8 @@ LLM_API_KEY=
           5–15%，想让它更常参与可以继续调高。每批消息都会先交给语境模型判断：值得插话时直接回复，只有判定为旁听时才使用这个概率，抽中就会开口。注意「会话节奏」里的值会覆盖全局值，留空才跟随全局；冷却和每分钟硬限速只负责防止短时间刷屏。
         </p>
         <p>
-          有人点回复 Lucky 发出的上一条消息时，会按直接找它处理；即使没有
-          @，如果上一条就是它发的、当前内容明显在接着回应，也会优先交给模型判断并接住这一轮，不再被普通概率拦掉。只是时间上挨着它、已经换了新话题，或明显在对其他群友说，仍按普通概率旁听。群里只是提到「Lucky」或在聊别人时，不会仅因为出现名字就抢话。会话空间打开后，聊天列表和“为什么开口，为什么安静”决策记录都会自动拉取最新内容，不需要手动刷新页面；正在填写的表单不会被重绘。单独的图片、表情包和媒体消息默认不插嘴，商城表情会按表情反应处理；当前未开启视觉理解时也不会在回复里说“我看不到图片”。
+          有人点回复 LuckyBot 发出的上一条消息时，会按直接找它处理；即使没有
+          @，如果上一条就是它发的、当前内容明显在接着回应，也会优先交给模型判断并接住这一轮，不再被普通概率拦掉。只是时间上挨着它、已经换了新话题，或明显在对其他群友说，仍按普通概率旁听。群里只是提到「LuckyBot」或在聊别人时，不会仅因为出现名字就抢话。会话空间打开后，聊天列表和“为什么开口，为什么安静”决策记录都会自动拉取最新内容，不需要手动刷新页面；正在填写的表单不会被重绘。单独的图片、表情包和媒体消息默认不插嘴，商城表情会按表情反应处理；当前未开启视觉理解时也不会在回复里说“我看不到图片”。
         </p>
         <h2 id="step-6">6. 调得自然，而不是满嘴网络词</h2>
         <p>进入「人设与节奏」。初次可用这组设置：</p>
@@ -841,7 +844,7 @@ npm start
       </article>
     </div>
     <footer>
-      Lucky · 从本机试聊，到慢慢熟悉一个群。教程与 v0.5 界面同步。
+      LuckyBot · 从本机试聊，到慢慢熟悉一个群。教程与 v0.5 界面同步。
     </footer>
   </body>
 </html>

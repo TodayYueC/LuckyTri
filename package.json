@@ -1,16 +1,16 @@
 {
-  "name": "qq-ai-friend",
+  "name": "luckybot",
   "version": "0.5.0",
-  "description": "本地优先、具备长期记忆和语境判断的 QQ AI 群友",
+  "description": "本地优先、具备长期记忆和语境判断的 AI 群友平台",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/TodayYueC/lucky-qq-ai-friend.git"
+    "url": "https://github.com/TodayYueC/LuckyBot.git"
   },
   "bugs": {
-    "url": "https://github.com/TodayYueC/lucky-qq-ai-friend/issues"
+    "url": "https://github.com/TodayYueC/LuckyBot/issues"
   },
-  "homepage": "https://github.com/TodayYueC/lucky-qq-ai-friend",
+  "homepage": "https://github.com/TodayYueC/LuckyBot",
   "type": "module",
   "engines": {
     "node": ">=24"

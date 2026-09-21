@@ -36,10 +36,10 @@ async function running() {
   try {
     info = await response.json();
   } catch {
-    throw new Error("此端口运行的不是 Lucky 工作室。");
+    throw new Error("此端口运行的不是 LuckyBot 工作室。");
   }
   if (
-    !["lucky", "xiaoman"].includes(info.app) ||
+    !["luckybot", "lucky", "xiaoman"].includes(info.app) ||
     typeof info.workspace !== "string" ||
     normalize(info.workspace) !== normalize(realpathSync(process.cwd()))
   )
@@ -80,8 +80,8 @@ try {
       }
     }
     if (!ready) throw new Error("启动未完成，请查看 data/launcher.log。");
-    console.log("Lucky 已在后台启动。");
-  } else console.log("Lucky 已经运行，直接打开管理台。");
+    console.log("LuckyBot 已在后台启动。");
+  } else console.log("LuckyBot 已经运行，直接打开管理台。");
   console.log(base);
   if (!process.argv.includes("--no-browser")) {
     const browser = spawn(
