@@ -1,0 +1,39 @@
+{
+  "name": "qq-ai-friend",
+  "version": "0.5.0",
+  "description": "本地优先、具备长期记忆和语境判断的 QQ AI 群友",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TodayYueC/unlucky-qq-ai-friend.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TodayYueC/unlucky-qq-ai-friend/issues"
+  },
+  "homepage": "https://github.com/TodayYueC/unlucky-qq-ai-friend",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "launch": "node scripts/launch.js",
+    "start": "node --env-file-if-exists=.env server/index.js",
+    "test": "node --test tests/*.test.js",
+    "test:ui": "node tests/ui-smoke.js",
+    "setup": "node scripts/setup.js",
+    "stop": "node --env-file-if-exists=.env scripts/stop.js",
+    "backup": "node --env-file-if-exists=.env scripts/backup.js",
+    "docs:build": "node scripts/build-guide.js",
+    "format": "prettier --write server public scripts tests package.json",
+    "format:check": "prettier --check server public scripts tests package.json"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "marked": "^18.0.13",
+    "prettier": "^3.9.8"
+  }
+}
