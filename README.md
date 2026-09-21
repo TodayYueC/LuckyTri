@@ -87,12 +87,12 @@ flowchart TD
 
 ### 启动
 
-日常使用请下载 [最新 Release](https://github.com/TodayYueC/LuckyBot/releases/latest)（当前为 v0.5.0）。仓库默认的 `main` 是开发主干，可能包含尚未打成正式版的改动。若要用这一正式版，clone 后执行 `git checkout v0.5.0`；若要跟随最新开发，省略该步骤即可。
+日常使用请下载 [最新 Release](https://github.com/TodayYueC/LuckyBot/releases/latest)（当前为 v0.5.1）。仓库默认的 `main` 是开发主干，可能包含尚未打成正式版的改动。若要用这一正式版，clone 后执行 `git checkout v0.5.1`；若要跟随最新开发，省略该步骤即可。
 
 ```bash
 git clone https://github.com/TodayYueC/LuckyBot.git
 cd LuckyBot
-git checkout v0.5.0
+git checkout v0.5.1
 npm install
 npm start
 ```
