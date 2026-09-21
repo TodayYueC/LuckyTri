@@ -12,6 +12,22 @@ export async function patchMemory(id: string, body: unknown) {
   return api("/core/memories/" + id, "PATCH", body);
 }
 
+export async function deleteMemories(body: {
+  session: string;
+  ids?: string[];
+  all?: boolean;
+}) {
+  return api("/core/memories/batch-delete", "POST", body);
+}
+
+export async function listMemorySummary(session: string) {
+  return api("/core/memory-summary?session=" + encodeURIComponent(session));
+}
+
+export async function consolidateMemory(session: string) {
+  return api("/core/memory/consolidate", "POST", { session });
+}
+
 export async function listCollections(session: string) {
   return api(
     "/core/knowledge/collections?session=" + encodeURIComponent(session),

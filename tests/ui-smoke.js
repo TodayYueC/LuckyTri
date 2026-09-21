@@ -89,6 +89,19 @@ try {
   assert.equal(await p.locator(".memory:visible").count(), 0);
   await p.locator("#memorySearch").fill("10001");
   assert.ok((await p.locator(".memory:visible").count()) >= 1);
+  await p.locator("#memorySearch").fill("");
+  await p.locator("#memorySummary").waitFor();
+  assert.match(
+    await p.locator("[data-memory-summary]").textContent(),
+    /记忆总结|还没有阶段性记忆总结/,
+  );
+  await p.locator("#selectAllMemories").click();
+  assert.equal(await p.locator("#deleteSelectedMemories").isEnabled(), true);
+  await p.locator("#deleteSelectedMemories").click();
+  await p
+    .locator("#memoryList summary")
+    .filter({ hasText: "喜欢温拿铁" })
+    .waitFor({ state: "detached" });
   await p.locator("nav [data-page=character]").click();
   assert.equal(await p.locator("[name=slangLevel]").inputValue(), "0");
   assert.equal(await p.locator("[name=adaptGroupStyle]").isChecked(), true);
