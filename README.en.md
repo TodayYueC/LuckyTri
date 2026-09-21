@@ -33,7 +33,7 @@ The goal is not to answer every message. Lucky should be able to live in a group
 ## Architecture
 
 ```mermaid
-flowchart LR
+flowchart TD
   A[QQ / NapCat] --> B[OneBot 11 WebSocket]
   B --> C[Normalize and deduplicate]
   C --> D[Aggregate and cache per session]
@@ -128,7 +128,7 @@ The repository includes verified NapCat Windows packages. Their sources and SHA-
 ## WebUI areas
 
 - **Overview**: connection status, mode, active sessions, model profiles, and recent decisions.
-- **Sessions**: add/archive sessions, enable or pause participation, set probability, cooldown, aggregation, context length, and per-group persona overrides.
+- **Sessions**: add/archive sessions, enable or pause participation, set probability, cooldown, aggregation, context length, and per-group persona overrides; archived auto-discovered sessions can be permanently deleted.
 - **Model Management**: multiple providers, context/input/output budgets, vision, reasoning effort, connection tests, and profile deletion.
 - **Persona & Rhythm**: identity, interests, forbidden expressions, reply length, warmth, humor, activity, initiative, sarcasm, and isolated chat previews.
 - **Memory Garden**: search, edit, lock, delete, review candidates, change scope, confidence, and importance.
