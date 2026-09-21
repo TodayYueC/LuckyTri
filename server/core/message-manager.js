@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { bindSessionId, sessionNativeId } from "../channels/session-key.js";
 export function messageEnvelope(m) {
   const raw = m.raw || {},
     segments = m.segments || (Array.isArray(raw.message) ? raw.message : []);
@@ -23,22 +24,39 @@ export function messageEnvelope(m) {
   };
 }
 export function persistIncoming(repo, m) {
-  const env = messageEnvelope(m);
+  let sessionId = m.sessionId;
+  try {
+    sessionId = bindSessionId(repo.db, m.sessionId);
+  } catch {
+    sessionId = m.sessionId;
+  }
+  const env = messageEnvelope({ ...m, sessionId });
   const seq = repo.append(env);
   if (!seq) return null;
   repo.db
     .prepare("INSERT OR IGNORE INTO sessions(id,name,kind) VALUES (?,?,?)")
     .run(
-      m.sessionId,
-      m.kind === "group" ? `群聊 ${m.sessionId.split(":")[1]}` : m.name,
+      sessionId,
+      m.kind === "group"
+        ? `群聊 ${m.nativeId || sessionNativeId(sessionId)}`
+        : m.name,
       m.kind,
     );
   repo.db
     .prepare(
-      "INSERT OR IGNORE INTO messages(event_id,session_id,user_id,name,text,time,role,is_demo) VALUES (?,?,?,?,?,?,?,0)",
+      "INSERT OR IGNORE INTO messages(event_id,session_id,user_id,name,text,time,role,is_demo) VALUES (?,?,?,?,?,?,?,?)",
     )
-    .run(m.eventId, m.sessionId, m.userId, m.name, m.text, env.time, "user");
-  return { ...env, seq };
+    .run(
+      m.eventId,
+      sessionId,
+      m.userId,
+      m.name,
+      m.text,
+      env.time,
+      "user",
+      Number(!!m.simulated),
+    );
+  return { ...env, seq, sessionId };
 }
 export function persistReply(repo, m, text, platformId) {
   const msg = {
@@ -54,11 +72,12 @@ export function persistReply(repo, m, text, platformId) {
     time: Date.now(),
     mentions: [],
     attachments: [],
+    simulated: !!m.simulated,
   };
   repo.append(msg);
   repo.db
     .prepare(
-      "INSERT INTO messages(event_id,session_id,user_id,name,text,time,role,is_demo) VALUES (?,?,?,?,?,?,?,0)",
+      "INSERT INTO messages(event_id,session_id,user_id,name,text,time,role,is_demo) VALUES (?,?,?,?,?,?,?,?)",
     )
     .run(
       msg.eventId,
@@ -68,5 +87,6 @@ export function persistReply(repo, m, text, platformId) {
       text,
       msg.time,
       "assistant",
+      Number(!!m.simulated),
     );
 }

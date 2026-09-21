@@ -1,14 +1,14 @@
-// Fetch-based SSE keeps the admin credential out of the URL. A reconnect gets
-// current cursors; consumers resync their bounded views instead of losing events.
-export async function subscribe(onChange) {
+export async function subscribe(
+  onChange: (value: unknown) => Promise<void> | void,
+) {
   while (true) {
     try {
       const r = await fetch("/api/core/stream", {
         headers: { Authorization: "Bearer " + (sessionStorage.token || "") },
       });
       if (!r.ok) throw Error("stream unavailable");
-      const reader = r.body.getReader(),
-        decoder = new TextDecoder();
+      const reader = r.body!.getReader();
+      const decoder = new TextDecoder();
       let buffer = "";
       while (true) {
         const { value, done } = await reader.read();
@@ -22,7 +22,9 @@ export async function subscribe(onChange) {
             await onChange(JSON.parse(frame.slice(6)));
         }
       }
-    } catch {}
+    } catch {
+      /* reconnect */
+    }
     await new Promise((r) => setTimeout(r, 3000));
   }
 }

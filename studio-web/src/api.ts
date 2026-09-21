@@ -1,4 +1,4 @@
-export async function api(path, method = "GET", body) {
+export async function api(path: string, method = "GET", body?: unknown) {
   const r = await fetch("/api" + path, {
     method,
     headers: {
@@ -14,21 +14,15 @@ export async function api(path, method = "GET", body) {
       return api(path, method, body);
     }
   }
-  const data = await r.json();
+  const data = await r.json().catch(() => ({}));
   if (!r.ok) throw Error(data.error || "请求失败");
   return data;
 }
-export const esc = (v) =>
-  String(v ?? "").replace(
-    /[&<>"']/g,
-    (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        c
-      ],
-  );
-export function toast(text) {
-  const e = document.querySelector("#toast");
-  e.textContent = text;
-  e.className = "show";
-  setTimeout(() => (e.className = ""), 4500);
+
+export function toast(text: string) {
+  const el = document.querySelector("#toast");
+  if (!el) return;
+  el.textContent = text;
+  el.className = "show";
+  setTimeout(() => (el.className = ""), 4500);
 }

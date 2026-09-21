@@ -10,7 +10,7 @@ import { MemoryManager } from "../server/core/memory-manager.js";
 import { deliver } from "../server/core/message-scheduler.js";
 import { ChatSystem } from "../server/core/orchestrator.js";
 import { visionInputs } from "../server/core/vision-manager.js";
-import { normalize } from "../server/engine.js";
+import { normalize } from "../server/channels/onebot.js";
 import { persistIncoming } from "../server/core/message-manager.js";
 import { fitInput } from "../server/core/input-budget.js";
 const setup = () => {
@@ -512,7 +512,7 @@ test("完整保留 @ 目标、引用和图片，引用其他成员不认领", ()
     ],
   });
   persistIncoming(repo, m);
-  const rows = resolveTargets(repo.events(m.sessionId), "Lucky");
+  const rows = resolveTargets(repo.events("group:12345"), "Lucky");
   assert.equal(rows[1].relation, "other");
   assert.equal(rows[1].replyTo.userId, "10001");
   assert.deepEqual(rows[1].mentions, ["10001"]);
