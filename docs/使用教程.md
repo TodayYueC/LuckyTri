@@ -1,6 +1,6 @@
 # LuckyBot · 从零上手教程
 
-适用版本：v0.5。主要按 Windows + PowerShell、本机运行讲解。
+适用版本：v0.5.1。主要按 Windows + PowerShell、本机运行讲解。
 
 你最终会运行两个本机程序：**NapCat 负责 QQ 登录与收发，LuckyBot 负责思考、记忆和管理界面**。大模型 API 是第三个外部服务。LuckyBot 的「上手指南 → QQ 接入助手」会替你写好两者之间的连接；QQ 扫码和安全确认仍由 QQ 完成。
 
