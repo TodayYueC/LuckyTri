@@ -255,6 +255,33 @@ test(
       coreState.sessions.find((s) => s.id === "group:54321").archived,
       0,
     );
+    assert.equal(
+      (
+        await request("/core/sessions", "POST", {
+          id: "99999",
+          kind: "group",
+          name: "待删除自动发现群",
+        })
+      ).status,
+      200,
+    );
+    await request(
+      "/core/sessions/" + encodeURIComponent("group:99999") + "/archive",
+      "PATCH",
+      { archived: true },
+    );
+    const deletedSession = await request(
+      "/core/sessions/" + encodeURIComponent("group:99999"),
+      "DELETE",
+      {},
+    );
+    assert.equal(deletedSession.status, 200);
+    assert.equal(
+      (await request("/core/state")).data.sessions.some(
+        (s) => s.id === "group:99999",
+      ),
+      false,
+    );
     const defaultProfile = coreState.models.find((m) => m.id === "default");
     const removableProfile = {
       ...defaultProfile,

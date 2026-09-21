@@ -263,7 +263,7 @@ function render() {
           archivedSessions
             .map(
               (s) =>
-                `<div class="row archived-session"><span>${esc(s.name)}</span><code>${esc(s.id)}</code><button data-restore-session="${esc(s.id)}">恢复显示</button></div>`,
+                `<div class="row archived-session"><span>${esc(s.name)}</span><code>${esc(s.id)}</code><button data-restore-session="${esc(s.id)}">恢复显示</button><button data-delete-session="${esc(s.id)}">永久删除</button></div>`,
             )
             .join(""),
         ),
@@ -290,10 +290,29 @@ function render() {
         }),
     );
     document
-      .querySelectorAll("[data-archive], [data-restore-session]")
+      .querySelectorAll(
+        "[data-archive], [data-restore-session], [data-delete-session]",
+      )
       .forEach((b) => {
         b.onclick = async () => {
           const id = b.dataset.archive || b.dataset.restoreSession;
+          if (b.dataset.deleteSession) {
+            if (
+              !confirm(
+                "永久删除后会移除这个会话的消息、阶段记录、记忆和调试日志，无法恢复。确定删除吗？",
+              )
+            )
+              return;
+            await api(
+              "/core/sessions/" + encodeURIComponent(b.dataset.deleteSession),
+              "DELETE",
+              {},
+            );
+            await reload();
+            render();
+            toast("会话已永久删除");
+            return;
+          }
           if (
             b.dataset.archive &&
             !confirm("移出面板后会停止参与，但消息和记忆会保留。确定继续？")

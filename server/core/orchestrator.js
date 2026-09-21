@@ -78,13 +78,16 @@ export class ChatSystem {
         .get(session)?.archived
     );
   }
+  cancelSession(session) {
+    this.clearEpoch.set(session, (this.clearEpoch.get(session) || 0) + 1);
+    this.queue.clear(session);
+  }
   clearContext(session) {
     if (
       !this.repo.db.prepare("SELECT id FROM sessions WHERE id=?").get(session)
     )
       throw Error("会话不存在");
-    this.clearEpoch.set(session, (this.clearEpoch.get(session) || 0) + 1);
-    this.queue.clear(session);
+    this.cancelSession(session);
     const count = (table) =>
       this.repo.db
         .prepare(`SELECT COUNT(*) n FROM ${table} WHERE session_id=?`)
@@ -142,7 +145,10 @@ export class ChatSystem {
             .prepare("UPDATE core_jobs SET status=? WHERE seq=?")
             .run(status, m.seq);
       this.repo.finish(trace, status);
-      if (!replay)
+      if (
+        !replay &&
+        this.repo.db.prepare("SELECT id FROM sessions WHERE id=?").get(session)
+      )
         this.store.log(
           session,
           "语境决策",

@@ -74,6 +74,67 @@ export function mountCore(app, system) {
     }),
   );
   app.delete(
+    "/api/core/sessions/:id",
+    wrap((req, res) => {
+      const id = String(req.params.id || ""),
+        row = repo.db
+          .prepare("SELECT id,archived FROM sessions WHERE id=?")
+          .get(id);
+      if (!row) throw Error("会话不存在");
+      if (!row.archived) throw Error("请先移出面板，再永久删除会话");
+
+      // A session can still have a queued generation when it is removed. The
+      // clear epoch makes that generation stale before the durable rows go
+      // away, so it cannot be delivered after the delete request.
+      system.cancelSession(id);
+      repo.db.exec("BEGIN IMMEDIATE");
+      try {
+        const memoryIds = repo.db
+          .prepare("SELECT id FROM core_memories WHERE session_id=?")
+          .all(id)
+          .map((r) => r.id);
+        if (memoryIds.length) {
+          const placeholders = memoryIds.map(() => "?").join(",");
+          repo.db
+            .prepare(
+              `DELETE FROM core_memory_versions WHERE memory_id IN (${placeholders})`,
+            )
+            .run(...memoryIds);
+        }
+        repo.db
+          .prepare(
+            "DELETE FROM reply_feedback WHERE decision_id IN (SELECT id FROM decisions WHERE session_id=?)",
+          )
+          .run(id);
+        for (const table of [
+          "core_memories",
+          "core_stages",
+          "core_cursors",
+          "core_jobs",
+          "core_outbox",
+          "core_references",
+          "core_traces",
+          "core_events",
+          "decisions",
+          "send_attempts",
+          "messages",
+        ])
+          repo.db.prepare(`DELETE FROM ${table} WHERE session_id=?`).run(id);
+        repo.db.prepare("DELETE FROM memory_candidates WHERE scope=?").run(id);
+        repo.db
+          .prepare("DELETE FROM core_config WHERE id=?")
+          .run("session:" + id);
+        repo.db.prepare("DELETE FROM sessions WHERE id=?").run(id);
+        repo.db.exec("COMMIT");
+      } catch (error) {
+        repo.db.exec("ROLLBACK");
+        throw error;
+      }
+      repo.store.revision++;
+      res.json({ ok: true, deleted: id });
+    }),
+  );
+  app.delete(
     "/api/core/sessions/:id/context",
     wrap((req, res) => {
       const removed = system.clearContext(req.params.id);
