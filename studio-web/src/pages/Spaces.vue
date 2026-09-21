@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from "vue";
 import { studio, reload } from "../store";
 import { toast } from "../api";
 import {
@@ -9,8 +10,13 @@ import {
   setSessionEnabled,
 } from "../plates/sessions";
 
+const query = ref("");
 function active() {
-  return (studio.core.sessions || []).filter((s: any) => !s.archived);
+  return (studio.core.sessions || []).filter(
+    (s: any) =>
+      !s.archived &&
+      `${s.name} ${s.id}`.toLowerCase().includes(query.value.toLowerCase()),
+  );
 }
 function archived() {
   return (studio.core.sessions || []).filter((s: any) => s.archived);
@@ -90,7 +96,7 @@ async function saveSession(e: Event, s: any) {
         <label
           >类型
           <select name="kind">
-            <option value="group">频道群聊</option>
+            <option value="group">群聊</option>
             <option value="private">私聊</option>
           </select>
         </label>
@@ -102,6 +108,16 @@ async function saveSession(e: Event, s: any) {
       <button class="primary">添加并显示</button>
     </form>
   </section>
+  <div class="session-filter">
+    <label
+      >查找会话<input
+        v-model="query"
+        placeholder="输入群名、群号或用户名" /></label
+    ><span class="small">{{ active().length }} 个会话</span>
+  </div>
+  <p v-if="!active().length" class="notice">
+    暂无匹配会话。你可以在上方添加，或换一个关键词。
+  </p>
   <section v-for="s in active()" :key="s.id" class="panel">
     <h2>{{ s.name }}</h2>
     <div class="row">
@@ -209,7 +225,7 @@ async function saveSession(e: Event, s: any) {
           />复杂回复模型复审</label
         >
         <label
-          >群人格覆盖<textarea name="persona">{{
+          >仅在此会话使用的人设（留空沿用全局）<textarea name="persona">{{
             personaText(s.policy.persona)
           }}</textarea>
         </label>
