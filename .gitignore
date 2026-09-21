@@ -1,4 +1,5 @@
 node_modules/
+workspace/
 data/
 .env
 .env.*
