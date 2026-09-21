@@ -58,6 +58,58 @@ export function mountKnowledge(app, system) {
       res.json({ id });
     }),
   );
+  app.post(
+    "/api/core/memories/batch-delete",
+    wrap((req, res) => {
+      const { session, ids, all } = req.body || {};
+      const result = system.memory.deleteBatch(session, ids, {
+        all: all === true,
+      });
+      res.json({ ok: true, ...result });
+    }),
+  );
+  app.get(
+    "/api/core/memory-summary",
+    wrap((req, res) => {
+      const session = String(req.query.session || "");
+      if (!session) throw Error("请选择会话");
+      const rows = repo.db
+        .prepare(
+          "SELECT id,first_seq,last_seq,time,data FROM core_stages WHERE session_id=? ORDER BY last_seq DESC LIMIT 3",
+        )
+        .all(session);
+      const stages = rows
+        .map((row) => {
+          try {
+            const data = JSON.parse(row.data);
+            return {
+              id: row.id,
+              firstSeq: row.first_seq,
+              lastSeq: row.last_seq,
+              time: row.time,
+              summary:
+                typeof data.summary === "string" ? data.summary.trim() : "",
+            };
+          } catch {
+            return null;
+          }
+        })
+        .filter((row) => row && row.summary);
+      const summary = stages.length
+        ? stages
+            .map((stage) => stage.summary)
+            .join(" ")
+            .slice(0, 5000)
+        : "这个会话还没有阶段性记忆总结。消息积累后会自动整理，也可以点击“立即整理”。";
+      res.json({
+        session,
+        summary,
+        updated: stages[0]?.time || null,
+        source: stages.length ? "stage" : "empty",
+        stages,
+      });
+    }),
+  );
   app.get("/api/core/stages", (req, res) =>
     res.json(
       repo.db
