@@ -1,10 +1,8 @@
 import { randomUUID } from "node:crypto";
-const terms = (s) =>
-  new Set(
-    String(s)
-      .toLowerCase()
-      .match(/[a-z0-9]+|[\u4e00-\u9fff]{1,2}/g) || [],
-  );
+import { parseSessionKey, sessionAliases } from "../channels/session-key.js";
+import { ftsMatchQuery, lexicalTerms } from "../knowledge/retrieval.js";
+import { indexMemory } from "../knowledge/schema.js";
+
 export class MemoryManager {
   constructor(repo, models) {
     this.repo = repo;
@@ -12,47 +10,69 @@ export class MemoryManager {
     this.busy = new Set();
     this.lastAttempt = new Map();
   }
+  scopes(session) {
+    const scopes = new Set([session, "__shared__"]);
+    try {
+      for (const id of sessionAliases(session)) scopes.add(id);
+      const parsed = parseSessionKey(session);
+      if (parsed.kind === "private")
+        scopes.add(`__private__:${parsed.nativeId}`);
+    } catch {
+      /* keep session + shared */
+    }
+    return [...scopes];
+  }
   retrieve(session, rows, cutoff = Date.now()) {
     const ids = new Set(rows.map((r) => r.userId)),
-      query = terms(rows.map((r) => r.text).join(" "));
+      query = lexicalTerms(rows.map((r) => r.text).join(" "));
+    const scopes = this.scopes(session);
+    const match = ftsMatchQuery(rows.map((r) => r.text || "").join(" "));
+    const ftsBoost = new Set();
+    if (match) {
+      try {
+        for (const hit of this.repo.db
+          .prepare(
+            "SELECT memory_id FROM core_memory_fts WHERE tokens MATCH ? LIMIT 80",
+          )
+          .all(match))
+          ftsBoost.add(hit.memory_id);
+      } catch {
+        /* MATCH syntax */
+      }
+    }
     const candidates = this.repo.db
       .prepare(
-        "SELECT * FROM core_memories WHERE session_id=? AND status='confirmed' AND created<=? AND (expires IS NULL OR expires>?)",
+        `SELECT * FROM core_memories WHERE status='confirmed' AND created<=? AND (expires IS NULL OR expires>?) AND session_id IN (${scopes.map(() => "?").join(",")})`,
       )
-      .all(session, cutoff, cutoff);
-    // Legacy reviewed memories keep their explicit scopes; private never enters a group.
-    for (const uid of ids)
-      for (const m of this.repo.db
-        .prepare(
-          "SELECT * FROM memories WHERE user_id=? AND (scope=? OR scope='shared' OR (scope='private' AND ?='private')) AND (time IS NULL OR time<=?)",
-        )
-        .all(uid, session, session.split(":")[0], cutoff))
-        candidates.push({
-          id: "legacy:" + m.id,
-          subject: uid,
-          content: m.content,
-          importance: 1,
-          confidence: 1,
-          locked: true,
-          sources: [],
-          type: "reviewed",
-        });
+      .all(cutoff, cutoff, ...scopes);
     const scored = candidates
-      .map((m) => ({
-        ...m,
-        score:
-          [...terms(m.content)].filter((t) => query.has(t)).length +
+      .map((m) => {
+        const lexical = [...lexicalTerms(m.content)].filter((t) =>
+          query.has(t),
+        ).length;
+        const score =
+          lexical +
           (ids.has(m.subject) ? 3 : 0) +
           (m.locked ? 4 : 0) +
-          m.importance,
-      }))
+          (ftsBoost.has(m.id) ? 2 : 0) +
+          Number(m.importance || 0);
+        return {
+          ...m,
+          score,
+          whySelected: ftsBoost.has(m.id)
+            ? "fts+scope"
+            : ids.has(m.subject)
+              ? "subject+scope"
+              : "scope",
+        };
+      })
+      .filter((m) => m.score > 0)
       .sort((a, b) => b.score - a.score);
-    const selected = scored.slice(0, 60);
+    const selected = scored.slice(0, 24);
     const access = this.repo.db.prepare(
       "UPDATE core_memories SET last_access=? WHERE id=?",
     );
-    for (const m of selected)
-      if (!String(m.id).startsWith("legacy:")) access.run(Date.now(), m.id);
+    for (const m of selected) access.run(Date.now(), m.id);
     return selected.map((m) => ({
       id: m.id,
       subject: m.subject,
@@ -60,6 +80,7 @@ export class MemoryManager {
       type: m.type,
       confidence: m.confidence,
       importance: m.importance,
+      whySelected: m.whySelected,
       sources:
         typeof m.sources === "string" ? JSON.parse(m.sources) : m.sources,
     }));
@@ -87,6 +108,7 @@ export class MemoryManager {
         Date.now(),
         id,
       );
+      indexMemory(db, id, m.content);
       db.exec("RELEASE memory_update");
     } catch (e) {
       db.exec("ROLLBACK TO memory_update");
@@ -172,11 +194,11 @@ export class MemoryManager {
               .get(session, f.subject, f.content)
           )
             continue;
-          // Automatic extraction remains a candidate until reviewed: model confidence is not truth.
+          const id = randomUUID();
           db.prepare(
             "INSERT INTO core_memories(id,session_id,subject,content,type,confidence,importance,status,sources,created,updated) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
           ).run(
-            randomUUID(),
+            id,
             session,
             f.subject,
             f.content,
@@ -196,6 +218,7 @@ export class MemoryManager {
             Date.now(),
             Date.now(),
           );
+          indexMemory(db, id, f.content);
         }
         db.prepare(
           "INSERT INTO core_cursors VALUES (?,?) ON CONFLICT(session_id) DO UPDATE SET seq=excluded.seq",

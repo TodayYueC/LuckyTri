@@ -1,6 +1,10 @@
 import { captureMemoryCandidate } from "./memory.js";
 import { generateReply, demoReply } from "./voice.js";
+import { isNameCall } from "./core/name-call.js";
+import { callModel } from "./core/llm.js";
 export { emotionOf } from "./voice.js";
+export { normalize } from "./channels/onebot.js";
+export { isNameCall, callModel };
 export const extensions = {
   beforeDecision: [],
   afterReply: [],
@@ -8,212 +12,6 @@ export const extensions = {
   stickerProvider: null,
   proactiveScheduler: null,
 };
-
-const CQ_ESCAPES = {
-  "&#44;": ",",
-  "&#91;": "[",
-  "&#93;": "]",
-  "&amp;": "&",
-};
-const decodeCq = (value) =>
-  String(value).replace(
-    /&#44;|&#91;|&#93;|&amp;/g,
-    (token) => CQ_ESCAPES[token],
-  );
-
-function parseCqMessage(raw) {
-  const source = String(raw || ""),
-    segments = [],
-    pattern = /\[CQ:([^,\]]+)((?:,[^\]]*)?)\]/g;
-  let cursor = 0,
-    match;
-  while ((match = pattern.exec(source))) {
-    if (match.index > cursor)
-      segments.push({
-        type: "text",
-        data: { text: source.slice(cursor, match.index) },
-      });
-    const data = {};
-    for (const item of match[2].replace(/^,/, "").split(",")) {
-      if (!item) continue;
-      const [key, ...parts] = item.split("=");
-      if (key) data[key] = decodeCq(parts.join("="));
-    }
-    segments.push({ type: match[1], data });
-    cursor = pattern.lastIndex;
-  }
-  if (cursor < source.length)
-    segments.push({ type: "text", data: { text: source.slice(cursor) } });
-  return segments.length
-    ? segments
-    : [{ type: "text", data: { text: source } }];
-}
-
-const stickerTypes = new Set([
-  "face",
-  "mface",
-  "market_face",
-  "bface",
-  "sface",
-  "sticker",
-  "dice",
-  "rps",
-  "poke",
-]);
-const isSticker = (segment) =>
-  stickerTypes.has(String(segment?.type || "").toLowerCase()) ||
-  [segment?.data?.sub_type, segment?.data?.type]
-    .map((value) => String(value || "").toLowerCase())
-    .includes("sticker") ||
-  (String(segment?.type || "").toLowerCase() === "image" &&
-    Boolean(
-      segment?.data?.emoji_id ||
-      segment?.data?.emoji_package_id ||
-      (segment?.data?.summary && segment?.data?.key),
-    ));
-
-function replyTarget(event, safeSegments, botMessageIds) {
-  const replies = safeSegments.filter((segment) => segment.type === "reply"),
-    ids = replies
-      .map((segment) => segment.data.id)
-      .filter((id) => id != null)
-      .map(String),
-    senderIds = [
-      event.reply?.user_id,
-      event.reply?.sender?.user_id,
-      event.reply?.sender?.id,
-      ...replies.map((segment) => segment.data.qq),
-      ...replies.map((segment) => segment.data.user_id),
-      ...replies.map((segment) => segment.data.sender?.user_id),
-      ...replies.map((segment) => segment.data.sender?.id),
-    ]
-      .filter((id) => id != null)
-      .map(String),
-    known =
-      typeof botMessageIds?.has === "function" &&
-      ids.some((id) => botMessageIds.has(id));
-  return known || senderIds.includes(String(event.self_id));
-}
-
-export function normalize(event, { botMessageIds } = {}) {
-  if (
-    !event ||
-    typeof event !== "object" ||
-    event.post_type !== "message" ||
-    !["group", "private"].includes(event.message_type) ||
-    String(event.user_id) === String(event.self_id)
-  )
-    return null;
-  if (
-    !/^\d+$/.test(String(event.user_id)) ||
-    !/^\d+$/.test(String(event.self_id)) ||
-    event.message_id == null ||
-    (event.message_type === "group" && !/^\d+$/.test(String(event.group_id)))
-  )
-    return null;
-  const segments = Array.isArray(event.message)
-    ? event.message
-    : parseCqMessage(event.raw_message || event.message || "");
-  const safeSegments = segments.filter(
-    (s) => s && typeof s === "object" && s.data && typeof s.data === "object",
-  );
-  const atSelf = safeSegments.some(
-      (s) => s.type === "at" && String(s.data.qq) === String(event.self_id),
-    ),
-    replyToBot = replyTarget(event, safeSegments, botMessageIds),
-    media = {
-      images: safeSegments.filter(
-        (s) => String(s.type).toLowerCase() === "image" && !isSticker(s),
-      ).length,
-      stickers: safeSegments.filter(isSticker).length,
-      other: safeSegments.filter((s) =>
-        ["record", "video", "file", "json", "xml"].includes(
-          String(s.type).toLowerCase(),
-        ),
-      ).length,
-    },
-    textParts = safeSegments.map((s) => {
-      const type = String(s.type || "").toLowerCase();
-      if (type === "text" && typeof s.data.text === "string")
-        return s.data.text;
-      if (type === "at")
-        return String(s.data.qq) === String(event.self_id) ? "" : "[提及成员]";
-      if (type === "image" && !isSticker(s)) return "[图片]";
-      if (isSticker(s)) return "[表情]";
-      if (["record", "video", "file", "json", "xml"].includes(type))
-        return "[媒体]";
-      return "";
-    }),
-    plainText = safeSegments
-      .filter((s) => s.type === "text" && typeof s.data.text === "string")
-      .map((s) => s.data.text)
-      .join("")
-      .trim(),
-    visibleText = textParts.join("").trim(),
-    text =
-      visibleText ||
-      (atSelf || replyToBot ? (replyToBot ? "[回复你]" : "[叫了你一声]") : "");
-  if (!text) return null;
-  const mediaCount = media.images + media.stickers + media.other;
-  return {
-    sessionId: `${event.message_type}:${event.group_id || event.user_id}`,
-    segments: safeSegments,
-    kind: event.message_type,
-    userId: String(event.user_id),
-    name: String(
-      event.sender?.card || event.sender?.nickname || event.user_id,
-    ).slice(0, 100),
-    text: text.slice(0, 4000),
-    mentioned: atSelf || replyToBot,
-    replyToBot,
-    media: {
-      ...media,
-      count: mediaCount,
-      only: mediaCount > 0 && !plainText && !atSelf && !replyToBot,
-      imageOnly:
-        media.images > 0 &&
-        mediaCount === media.images &&
-        !plainText &&
-        !atSelf &&
-        !replyToBot,
-      stickerOnly:
-        media.stickers > 0 &&
-        mediaCount === media.stickers &&
-        !plainText &&
-        !atSelf &&
-        !replyToBot,
-    },
-    eventId: `${event.self_id}:${event.message_type}:${event.group_id || event.user_id}:${event.message_id}`,
-    raw: event,
-  };
-}
-
-const nameCallBoundary = "\\s,，、。！？!?：:；;（）()\\[\\]";
-const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-export function isNameCall(text, names = []) {
-  const value = String(text || "").trim();
-  if (!value) return false;
-  return names.some((raw) => {
-    const name = String(raw || "").trim();
-    if (!name) return false;
-    const escaped = escapeRegExp(name),
-      start = new RegExp(
-        `^@?${escaped}(?=$|[${nameCallBoundary}]|(?:你|我|今天|现在|怎么|能|可以|帮|回|看|咋|在|有没有|好累|辛苦|救))`,
-        "i",
-      ),
-      thirdPerson = new RegExp(
-        `^@?${escaped}(?:是个|是一个|的名字|这个名字|这人|那个人|头像|在群里|说的是)`,
-        "i",
-      ),
-      vocative = new RegExp(
-        `(?:^|[${nameCallBoundary}])@?${escaped}(?=$|[${nameCallBoundary}]|(?:你|我|今天|现在|怎么|能|可以|帮|回|看|咋|在|有没有))`,
-        "i",
-      );
-    return (
-      (start.test(value) && !thirdPerson.test(value)) || vocative.test(value)
-    );
-  });
-}
 
 const contextReplyOpeners =
   /^(?:嗯+|哦+|噢+|啊+|唉+|诶+|欸+|对(?:的|啊|吧)?|就是(?:啊|了)?|是的?|不是(?:吧|啊|的)?|确实|还真|没办法|可不|可不是|有道理|行(?:啊|吧|呀)?|好(?:的|吧|呀)?|谢谢|多谢|哈哈+|笑死|草|[？?]+|那(?:就|我|你|是|也)|所以|然后|但是|不过|可是|为啥|为什么|咋办|怎么会|你说(?:得|的)(?:对)?|你刚才|刚刚你|我也|我倒是|原来|懂了|明白了|收到|不至于|没错)(?=$|[\s，。！？!?：:、])/i;
@@ -390,73 +188,6 @@ export function naturalReplyDelayMs(message, reply, random = Math.random) {
   return Math.min(4200, base + typing + jitter);
 }
 
-export async function callModel(settings, messages) {
-  const key = process.env.LLM_API_KEY || settings.apiKey;
-  if (!key) throw new Error("请先配置模型 API Key");
-  const mimo =
-    String(settings.providerPreset || "").toLowerCase() === "mimo" ||
-    /(?:^|\.)xiaomimimo\.com$/i.test(
-      (() => {
-        try {
-          return new URL(settings.baseUrl || "").hostname;
-        } catch {
-          return "";
-        }
-      })(),
-    ) ||
-    /^mimo(?:-|$)/i.test(String(settings.model || ""));
-  const body = {
-    model: settings.model,
-    messages,
-    response_format: { type: "json_object" },
-    ...(mimo
-      ? { max_completion_tokens: settings.maxTokens || 400 }
-      : { max_tokens: settings.maxTokens || 400 }),
-  };
-  if (mimo)
-    body.thinking = {
-      type:
-        !settings.reasoningEffort || settings.reasoningEffort === "none"
-          ? "disabled"
-          : "enabled",
-    };
-  else if (settings.reasoningEffort && settings.reasoningEffort !== "none")
-    body.reasoning_effort = settings.reasoningEffort;
-  else body.temperature = settings.temperature ?? 0.85;
-  if (
-    mimo &&
-    (!settings.reasoningEffort || settings.reasoningEffort === "none")
-  )
-    body.temperature = settings.temperature ?? 0.85;
-  if (settings.topP !== undefined && settings.topP !== 1)
-    body.top_p = settings.topP;
-  const response = await fetch(
-    settings.baseUrl.replace(/\/$/, "") + "/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(25000),
-    },
-  );
-  if (!response.ok) throw new Error(`模型请求失败（HTTP ${response.status}）`);
-  try {
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    const parsed = JSON.parse(
-      String(content).replace(/^```(?:json)?\s*|\s*```$/g, ""),
-    );
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
-      throw new Error();
-    return parsed;
-  } catch {
-    // Never include model output in an exception: it can contain private context.
-    throw new Error("模型未返回有效 JSON 对象，请检查模型的 JSON 输出能力");
-  }
-}
 export function boundedContext(rows, budget = 16000) {
   const kept = [];
   for (const row of [...rows].reverse()) {
@@ -472,6 +203,7 @@ export function boundedContext(rows, budget = 16000) {
   }
   return kept;
 }
+/** @deprecated 发言路径已并入 ChatSystem；本类不再用于生产发送。 */
 export class Engine {
   constructor(
     store,
@@ -497,7 +229,7 @@ export class Engine {
       "INSERT OR IGNORE INTO sessions(id,name,kind) VALUES (?,?,?)",
     ).run(
       m.sessionId,
-      m.kind === "group" ? `群聊 ${m.sessionId.split(":")[1]}` : m.name,
+      m.kind === "group" ? `群聊 ${m.nativeId || m.sessionId}` : m.name,
       m.kind,
     );
     const seen = db

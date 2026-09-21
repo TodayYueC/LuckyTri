@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { summarizeGroupStyle } from "./group-style.js";
+import { isGroupSession } from "./channels/session-key.js";
 export function createStore(path = process.env.DB_PATH || "data/friend.db") {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
@@ -180,7 +181,7 @@ export function createStore(path = process.env.DB_PATH || "data/friend.db") {
         .all(id, demo, demo, limit);
     },
     groupStyle(id, demo = 0) {
-      if (!id.startsWith("group:")) return null;
+      if (!isGroupSession(id)) return null;
       return summarizeGroupStyle(this.context(id, 200, demo));
     },
     feedback(id, demo = 0) {

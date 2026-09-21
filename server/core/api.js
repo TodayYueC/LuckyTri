@@ -1,13 +1,15 @@
-import { defaultModel, publicModel, validateModel } from "./model-manager.js";
 import { randomUUID } from "node:crypto";
+import { defaultModel, publicModel, validateModel } from "./model-manager.js";
 import { persona, prompts, PROMPTS } from "./persona-manager.js";
-const wrap = (fn) => async (req, res) => {
-  try {
-    await fn(req, res);
-  } catch (e) {
-    res.status(400).json({ error: e.message });
-  }
-};
+import { publicSession, parseSessionKey } from "../channels/session-key.js";
+import { wrap } from "../http.js";
+import {
+  applySessionRhythm,
+  parseNewSession,
+  setSessionEnabled,
+  upsertSession,
+} from "./sessions.js";
+
 export function mountCore(app, system) {
   const { repo } = system;
   app.get("/api/core/health", (req, res) => {
@@ -31,31 +33,20 @@ export function mountCore(app, system) {
       sessions: repo.db
         .prepare("SELECT * FROM sessions")
         .all()
-        .map((s) => ({ ...s, policy: system.policy(s.id) })),
+        .map((s) => ({
+          ...publicSession(s),
+          policy: system.policy(s.id),
+        })),
       revision: repo.store.revision,
     }),
   );
   app.post(
     "/api/core/sessions",
     wrap((req, res) => {
-      const { id, kind, name } = req.body || {};
-      if (
-        !["group", "private"].includes(kind) ||
-        typeof id !== "string" ||
-        !/^\d{4,20}$/.test(id) ||
-        typeof name !== "string" ||
-        !name.trim() ||
-        name.length > 100
-      )
-        throw Error("请填写有效的群号/QQ号和名称");
-      const sessionId = `${kind}:${id}`;
-      repo.db
-        .prepare(
-          "INSERT INTO sessions(id,name,kind,enabled,archived) VALUES (?,?,?,1,0) ON CONFLICT(id) DO UPDATE SET name=excluded.name,kind=excluded.kind,archived=0",
-        )
-        .run(sessionId, name.trim(), kind);
+      const parsed = parseNewSession(req.body || {});
+      upsertSession(repo.db, parsed);
       repo.store.revision++;
-      res.json({ ok: true, sessionId });
+      res.json({ ok: true, sessionId: parsed.sessionId });
     }),
   );
   app.patch(
@@ -73,6 +64,14 @@ export function mountCore(app, system) {
       res.json({ ok: true });
     }),
   );
+  app.patch(
+    "/api/core/sessions/:id",
+    wrap((req, res) => {
+      setSessionEnabled(repo.db, req.params.id, req.body.enabled);
+      repo.store.revision++;
+      res.json({ ok: true });
+    }),
+  );
   app.delete(
     "/api/core/sessions/:id",
     wrap((req, res) => {
@@ -82,10 +81,6 @@ export function mountCore(app, system) {
           .get(id);
       if (!row) throw Error("会话不存在");
       if (!row.archived) throw Error("请先移出面板，再永久删除会话");
-
-      // A session can still have a queued generation when it is removed. The
-      // clear epoch makes that generation stale before the durable rows go
-      // away, so it cannot be delivered after the delete request.
       system.cancelSession(id);
       repo.db.exec("BEGIN IMMEDIATE");
       try {
@@ -175,9 +170,6 @@ export function mountCore(app, system) {
       const profiles = old.filter((m) => m.id !== id);
       if (!profiles.length || !profiles.some((m) => m.id === "default"))
         throw Error("必须保留 default 模型");
-
-      // A deleted profile may still be selected by a session. Fall back to
-      // default for the main model and let vision follow the main model again.
       const sessionConfigs = repo.db
         .prepare("SELECT id,value FROM core_config WHERE id LIKE 'session:%'")
         .all()
@@ -319,7 +311,19 @@ export function mountCore(app, system) {
           p.persona.forbidden.some((x) => typeof x !== "string"))
       )
         throw Error("禁用表达应为文本列表");
-      const { topicBoost: _deprecatedTopicBoost, ...clean } = p;
+      if (
+        p.name !== undefined ||
+        p.cooldown !== undefined ||
+        p.probability !== undefined
+      )
+        applySessionRhythm(repo.db, req.params.id, p);
+      const {
+        topicBoost: _deprecatedTopicBoost,
+        name: _name,
+        enabled: _enabled,
+        archived: _archived,
+        ...clean
+      } = p;
       repo.saveConfig("session:" + req.params.id, clean);
       res.json({ ok: true });
     }),
@@ -357,161 +361,6 @@ export function mountCore(app, system) {
       res.json({ ...t, data: JSON.parse(t.data) });
     }),
   );
-  app.get("/api/core/memories", (req, res) =>
-    res.json(
-      repo.db
-        .prepare(
-          "SELECT * FROM core_memories WHERE (?='' OR session_id=?) ORDER BY updated DESC LIMIT 500",
-        )
-        .all(String(req.query.session || ""), String(req.query.session || "")),
-    ),
-  );
-  app.post(
-    "/api/core/memories",
-    wrap((req, res) => {
-      const { session, subject, content } = req.body;
-      if (
-        typeof subject !== "string" ||
-        !/^\d+$/.test(subject) ||
-        typeof content !== "string" ||
-        !content.trim() ||
-        content.length > 4000 ||
-        !repo.db.prepare("SELECT id FROM sessions WHERE id=?").get(session)
-      )
-        throw Error("请选择会话、用户 QQ 并填写记忆");
-      const id = randomUUID(),
-        now = Date.now();
-      repo.db
-        .prepare(
-          "INSERT INTO core_memories(id,session_id,subject,content,type,confidence,importance,status,sources,created,updated) VALUES (?,?,?,?,'manual',1,1,'confirmed','[]',?,?)",
-        )
-        .run(id, session, subject, content, now, now);
-      repo.store.revision++;
-      res.json({ id });
-    }),
-  );
-  app.get("/api/core/stages", (req, res) =>
-    res.json(
-      repo.db
-        .prepare(
-          "SELECT * FROM core_stages WHERE session_id=? ORDER BY last_seq DESC LIMIT 100",
-        )
-        .all(String(req.query.session || ""))
-        .map((r) => ({ ...r, data: JSON.parse(r.data) })),
-    ),
-  );
-  app.get("/api/core/memories/:id/versions", (req, res) =>
-    res.json(
-      repo.db
-        .prepare(
-          "SELECT * FROM core_memory_versions WHERE memory_id=? ORDER BY id DESC",
-        )
-        .all(req.params.id),
-    ),
-  );
-  app.patch(
-    "/api/core/memories/:id",
-    wrap((req, res) => {
-      const allowed = {};
-      for (const k of [
-        "content",
-        "status",
-        "locked",
-        "confidence",
-        "importance",
-        "expires",
-      ])
-        if (k in req.body) allowed[k] = req.body[k];
-      if (
-        "content" in allowed &&
-        (typeof allowed.content !== "string" ||
-          !allowed.content.trim() ||
-          allowed.content.length > 4000)
-      )
-        throw Error("记忆内容无效");
-      if (
-        "status" in allowed &&
-        !["candidate", "confirmed", "disputed", "deleted", "expired"].includes(
-          allowed.status,
-        )
-      )
-        throw Error("记忆状态无效");
-      for (const k of ["confidence", "importance"])
-        if (
-          k in allowed &&
-          (!Number.isFinite(allowed[k]) || allowed[k] < 0 || allowed[k] > 1)
-        )
-          throw Error("置信度与重要性应在0–1");
-      if (
-        "expires" in allowed &&
-        allowed.expires !== null &&
-        (!Number.isSafeInteger(allowed.expires) || allowed.expires < 0)
-      )
-        throw Error("过期时间无效");
-      if ("locked" in allowed && typeof allowed.locked !== "boolean")
-        throw Error("锁定状态无效");
-      system.memory.update(req.params.id, allowed);
-      res.json({ ok: true });
-    }),
-  );
-  app.post(
-    "/api/core/memories/merge",
-    wrap((req, res) => {
-      const { ids, content } = req.body;
-      if (
-        !Array.isArray(ids) ||
-        ids.length !== 2 ||
-        ids[0] === ids[1] ||
-        typeof content !== "string" ||
-        !content.trim()
-      )
-        throw Error("选择两条记忆并输入合并内容");
-      const rows = ids.map((id) =>
-        repo.db.prepare("SELECT * FROM core_memories WHERE id=?").get(id),
-      );
-      if (
-        rows.some((r) => !r || r.locked) ||
-        rows[0].session_id !== rows[1].session_id ||
-        rows[0].subject !== rows[1].subject
-      )
-        throw Error("只能合并同范围同用户的未锁定记忆");
-      repo.db.exec("BEGIN IMMEDIATE");
-      try {
-        system.memory.update(ids[0], {
-          content,
-          sources: JSON.stringify(rows.flatMap((r) => JSON.parse(r.sources))),
-        });
-        system.memory.update(ids[1], { status: "deleted" });
-        repo.db.exec("COMMIT");
-      } catch (e) {
-        repo.db.exec("ROLLBACK");
-        throw e;
-      }
-      res.json({ ok: true });
-    }),
-  );
-  app.post(
-    "/api/core/memory/consolidate",
-    wrap(async (req, res) => {
-      const id = req.body.session;
-      const t = repo.trace(id, "memory");
-      try {
-        await system.memory.consolidate(
-          id,
-          system.models.profile(system.policy(id).modelId),
-          prompts(repo).memory,
-          t,
-          { force: true },
-        );
-        repo.finish(t, "complete");
-        res.json({ ok: true });
-      } catch (e) {
-        t.error = e.message;
-        repo.finish(t, "error");
-        throw e;
-      }
-    }),
-  );
   let replaying = false;
   app.post(
     "/api/core/replay",
@@ -533,4 +382,96 @@ export function mountCore(app, system) {
       }
     }),
   );
+  app.post("/api/simulate", async (req, res) => {
+    if (!storeDemo(system))
+      return res.status(400).json({ error: "请先开启模拟模式" });
+    const { sessionId, userId, text, mentioned } = req.body;
+    if (
+      typeof text !== "string" ||
+      !text.trim() ||
+      text.length > 4000 ||
+      typeof userId !== "string" ||
+      !/^\d{4,20}$/.test(userId) ||
+      typeof sessionId !== "string" ||
+      !repo.db.prepare("SELECT id FROM sessions WHERE id=?").get(sessionId)
+    )
+      return res
+        .status(400)
+        .json({ error: "请选择会话并输入消息和有效 QQ 号" });
+    const trace = await system.receive({
+      sessionId,
+      kind: (() => {
+        try {
+          return parseSessionKey(sessionId).kind;
+        } catch {
+          return sessionId.split(":")[0];
+        }
+      })(),
+      userId,
+      name: "体验用户",
+      text,
+      mentioned: !!mentioned,
+      eventId: randomUUID(),
+      simulated: true,
+    });
+    res.json({
+      speak: Array.isArray(trace.sent) && trace.sent.length > 0,
+      reply: Array.isArray(trace.sent) ? trace.sent.join("\n") : "",
+      reason: trace.reason || "",
+      emotion: trace.decision?.topic || "模拟",
+      status: trace.status,
+    });
+  });
+  app.post("/api/sessions", (req, res) => {
+    try {
+      const parsed = parseNewSession(req.body || {});
+      upsertSession(repo.db, parsed);
+      repo.store.revision++;
+      res.json({ ok: true, sessionId: parsed.sessionId });
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+  app.patch("/api/sessions/:id", (req, res) => {
+    try {
+      setSessionEnabled(repo.db, req.params.id, req.body.enabled);
+      repo.store.revision++;
+      res.json({ ok: true });
+    } catch (error) {
+      res
+        .status(error.message === "会话不存在" ? 404 : 400)
+        .json({ error: error.message });
+    }
+  });
+  app.patch("/api/sessions/:id/policy", (req, res) => {
+    try {
+      applySessionRhythm(repo.db, req.params.id, req.body || {});
+      repo.store.revision++;
+      res.json({ ok: true });
+    } catch (error) {
+      res
+        .status(error.message === "会话不存在" ? 404 : 400)
+        .json({ error: error.message });
+    }
+  });
+  app.get("/api/sessions/:id/messages", (req, res) =>
+    res.json(
+      repo.store.context(
+        req.params.id,
+        100,
+        Number(repo.store.settings().demo),
+      ),
+    ),
+  );
+  app.delete("/api/sessions/:id/messages", (req, res) => {
+    repo.db
+      .prepare("DELETE FROM messages WHERE session_id=?")
+      .run(req.params.id);
+    repo.store.revision++;
+    res.json({ ok: true });
+  });
+}
+
+function storeDemo(system) {
+  return system.store.settings().demo;
 }
