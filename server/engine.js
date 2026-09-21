@@ -267,7 +267,7 @@ function sharesContextTerms(a, b) {
 
 // A short continuation can still belong to the conversation between two other
 // members. Keep that target explicit so the model does not mistake every
-// sentence after an Unlucky reply for a reply to Unlucky.
+// sentence after an Lucky reply for a reply to Lucky.
 export function conversationTargetHint(message, rows = []) {
   if (!message || message.kind !== "group") return null;
   const text = String(message.text || "").trim();
@@ -275,7 +275,7 @@ export function conversationTargetHint(message, rows = []) {
     return {
       hardStop: true,
       reason: "这条 @ 的是其他群友，先不自我代入",
-      hint: "本条的 @ 指向其他群友，不是 Unlucky。",
+      hint: "本条的 @ 指向其他群友，不是 Lucky。",
     };
   const previous = Array.isArray(rows)
     ? rows
@@ -298,7 +298,7 @@ export function conversationTargetHint(message, rows = []) {
     return {
       hardStop: false,
       reason: "沿着群友之间的话题，先不自我代入",
-      hint: "当前发言者前面在讨论其他成员；本条像是在继续那条对话，不要把省略主语自动理解成在对 Unlucky 说。",
+      hint: "当前发言者前面在讨论其他成员；本条像是在继续那条对话，不要把省略主语自动理解成在对 Lucky 说。",
     };
   return null;
 }

@@ -32,7 +32,7 @@ const msg = (eventId = "1") => ({
   kind: "group",
   userId: "10001",
   name: "甲",
-  text: "Unlucky今天好累",
+  text: "Lucky今天好累",
   mentioned: true,
   eventId,
 });
@@ -171,10 +171,10 @@ test("QQ 回复机器人消息也算直接叫到它", () => {
 });
 
 test("识别直接叫名字，避免把第三人称提到名字当成叫它", () => {
-  assert.equal(isNameCall("Unlucky今天好累", ["Unlucky"]), true);
-  assert.equal(isNameCall("大家说Unlucky这个名字挺怪", ["Unlucky"]), false);
-  assert.equal(isNameCall("Unlucky是个群友", ["Unlucky"]), false);
-  assert.equal(isNameCall("Unlucky，你在吗", ["Unlucky"]), true);
+  assert.equal(isNameCall("Lucky今天好累", ["Lucky"]), true);
+  assert.equal(isNameCall("大家说Lucky这个名字挺怪", ["Lucky"]), false);
+  assert.equal(isNameCall("Lucky是个群友", ["Lucky"]), false);
+  assert.equal(isNameCall("Lucky，你在吗", ["Lucky"]), true);
 });
 
 test("OneBot 表情包和图片分开标记", () => {
@@ -356,7 +356,7 @@ test("延续讨论其他成员的上下文时保持旁听", async () => {
     .run(
       "group:12345",
       "bot",
-      "Unlucky",
+      "Lucky",
       "你觉得这逻辑有问题吗？",
       Date.now() - 500,
       "assistant",
@@ -464,7 +464,7 @@ test("会话独立概率 0 覆盖全局设置，昵称仍然优先", async () =>
       .reason,
     "这句话先听着",
   );
-  await engine.receive({ ...msg("2"), text: "Unlucky你好", mentioned: false });
+  await engine.receive({ ...msg("2"), text: "Lucky你好", mentioned: false });
   assert.equal(sent.length, 1);
   assert.equal(store.sessionSettings("group:12345").cooldown, 120);
 });
@@ -487,12 +487,12 @@ test("明确记忆请求生成候选，未审核不会进入模型记忆", async
       return { speak: false, reason: "听着", emotion: "分享" };
     },
   });
-  await engine.receive({ ...msg(), text: "Unlucky，记住，我喜欢冰拿铁" });
+  await engine.receive({ ...msg(), text: "Lucky，记住，我喜欢冰拿铁" });
   const draft = store.db.prepare("SELECT * FROM memory_candidates").get();
   assert.equal(draft.content, "我喜欢冰拿铁");
   assert.equal(draft.scope, "group:12345");
   assert.deepEqual(prompt.memories, []);
-  await engine.receive({ ...msg("2"), text: "Unlucky，记住，我喜欢冰拿铁" });
+  await engine.receive({ ...msg("2"), text: "Lucky，记住，我喜欢冰拿铁" });
   assert.equal(
     store.db.prepare("SELECT COUNT(*) n FROM memory_candidates").get().n,
     1,

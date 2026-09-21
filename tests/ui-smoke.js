@@ -10,7 +10,7 @@ const server = spawn(process.execPath, ["server/index.js"], {
   env: {
     ...process.env,
     PORT: String(port),
-    DB_PATH: join(mkdtempSync(join(tmpdir(), "xiaoman-test-")), "test.db"),
+    DB_PATH: join(mkdtempSync(join(tmpdir(), "lucky-test-")), "test.db"),
     ADMIN_TOKEN: "admin-test",
     ONEBOT_TOKEN: "qq-test",
     LLM_API_KEY: "",
@@ -45,7 +45,7 @@ try {
   await p.locator("dialog [name=name]").fill("测试小分队");
   await p.locator("dialog .primary").click();
   await p.locator("#simulate").waitFor();
-  await p.locator("[name=text]").fill("Unlucky，今天真的好难过");
+  await p.locator("[name=text]").fill("Lucky，今天真的好难过");
   await p.locator("#simulate button").click();
   await p.locator(".chat-messages .message.bot p").waitFor();
   await p.locator("[data-feedback]").first().selectOption("too_formal");
@@ -212,7 +212,7 @@ try {
   await p
     .getByRole("heading", {
       level: 1,
-      name: "Unlucky QQ AI 群友 · 从零上手教程",
+      name: "Lucky QQ AI 群友 · 从零上手教程",
     })
     .waitFor();
   assert.equal(await p.locator("article h2").count(), 11);
@@ -368,7 +368,7 @@ try {
   );
   await p
     .locator("[data-session='group:65432'] [name=persona]")
-    .fill("你叫 Unlucky，说话自然一点，少用网络梗。");
+    .fill("你叫 Lucky，说话自然一点，少用网络梗。");
   await p.locator("[data-session='group:65432']").evaluate(async (form) => {
     const event = new Event("submit", { bubbles: true, cancelable: true });
     const result = form.onsubmit(event);
@@ -383,7 +383,7 @@ try {
   assert.equal(
     personaSessionState.sessions.find((s) => s.id === "group:65432").policy
       .persona.base,
-    "你叫 Unlucky，说话自然一点，少用网络梗。",
+    "你叫 Lucky，说话自然一点，少用网络梗。",
   );
   p.once("dialog", (dialog) => dialog.accept());
   await p.locator("[data-archive='group:65432']").click();

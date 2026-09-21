@@ -88,7 +88,7 @@ test("repair and acknowledgement end without a fabricated second bubble", () => 
 });
 test("persona examples do not leak into effective context while identity and interests survive", () => {
   const p = {
-    base: "【核心人格】Unlucky，温柔，喜欢“星之梦”。【说话方式】短句，可以：“今天这么累啊……”。【兴趣】喜欢音乐。",
+    base: "【核心人格】Lucky，温柔，喜欢“星之梦”。【说话方式】短句，可以：“今天这么累啊……”。【兴趣】喜欢音乐。",
     warmth: 80,
   };
   const effective = effectivePersona(p);

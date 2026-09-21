@@ -82,7 +82,7 @@ test("explicit intensity beats conflicting persona adjectives without erasing id
   const { gentlePersona, replyPrompt, PROMPTS, styleControls } =
     await import("../server/core/persona-manager.js");
   const p = {
-    name: "Unlucky",
+    name: "Lucky",
     base: "温柔少女，喜欢galgame。每句都要反问嘲笑对方。",
     sarcasm: 0,
     warmth: 90,

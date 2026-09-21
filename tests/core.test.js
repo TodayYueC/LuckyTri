@@ -512,7 +512,7 @@ test("完整保留 @ 目标、引用和图片，引用其他成员不认领", ()
     ],
   });
   persistIncoming(repo, m);
-  const rows = resolveTargets(repo.events(m.sessionId), "Unlucky");
+  const rows = resolveTargets(repo.events(m.sessionId), "Lucky");
   assert.equal(rows[1].relation, "other");
   assert.equal(rows[1].replyTo.userId, "10001");
   assert.deepEqual(rows[1].mentions, ["10001"]);
@@ -524,7 +524,7 @@ test("持久化机器人消息 ID 在 Repository 重建后仍恢复引用链", (
   repo.append(msg(1, { role: "assistant", userId: "bot" }));
   repo.append(msg(2, { replyId: "1" }));
   const fresh = new Repository(store);
-  const rows = resolveTargets(fresh.events("group:12345"), "Unlucky");
+  const rows = resolveTargets(fresh.events("group:12345"), "Lucky");
   assert.equal(rows[1].relation, "direct");
   assert.deepEqual(rows[1].replyChain, [1]);
   store.db.close();
@@ -550,7 +550,7 @@ test("长上下文配置超过16K字符，保护当前批次和引用", () => {
   const { repo, store } = setup();
   for (let n = 1; n <= 250; n++)
     repo.append(msg(n, { text: "甲".repeat(100) }));
-  const p = { name: "Unlucky" },
+  const p = { name: "Lucky" },
     m = {
       ...defaultModel(store.settings()),
       contextWindow: 200000,

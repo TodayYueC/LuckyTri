@@ -59,8 +59,8 @@ export function createStore(path = process.env.DB_PATH || "data/friend.db") {
       COMMIT;`);
   }
   const defaults = {
-    name: "Unlucky",
-    aliases: "Unlucky",
+    name: "Lucky",
+    aliases: "Lucky",
     persona:
       "可爱、乐观、情绪稳定，偶尔对事情轻轻吐槽，不挖苦群友。像熟悉的群友一样说话，先接住情绪，不急着给建议。",
     enabled: true,
@@ -96,8 +96,12 @@ export function createStore(path = process.env.DB_PATH || "data/friend.db") {
       db.prepare("SELECT value FROM settings WHERE id=1").get().value,
     );
     let migrated = { ...existing };
-    if (existing.name === "小满" && existing.aliases === "小满,满满")
-      migrated = { ...migrated, name: "Unlucky", aliases: "Unlucky" };
+    if (
+      (existing.name === "小满" && existing.aliases === "小满,满满") ||
+      existing.name === "Unlucky" ||
+      existing.name === "UnLucky"
+    )
+      migrated = { ...migrated, name: "Lucky", aliases: "Lucky" };
     if (
       existing.persona ===
       "可爱、乐观、情绪稳定，有一点吐槽欲。像熟悉的群友一样说话，先接住情绪，不急着给建议。"

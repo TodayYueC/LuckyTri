@@ -98,7 +98,7 @@ test(
         ...process.env,
         HOST: "127.0.0.1",
         PORT: String(port),
-        DB_PATH: join(mkdtempSync(join(tmpdir(), "xiaoman-api-")), "test.db"),
+        DB_PATH: join(mkdtempSync(join(tmpdir(), "lucky-api-")), "test.db"),
         ADMIN_TOKEN: "admin-test",
         ONEBOT_TOKEN: "qq-test",
         LLM_API_KEY: "",
@@ -503,7 +503,7 @@ test(
       200,
     );
     assert.equal((await request("/state")).data.memories.length, 0);
-    assert.equal((await request("/service/status")).data.app, "xiaoman");
+    assert.equal((await request("/service/status")).data.app, "lucky");
     const exited = new Promise((resolve) => child.once("exit", resolve));
     assert.equal((await request("/service/stop", "POST", {})).status, 200);
     assert.equal(await exited, 0);
