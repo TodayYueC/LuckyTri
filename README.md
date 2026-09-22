@@ -12,7 +12,7 @@
 - 短时间内的连续消息会合成一批再处理，避免只看见第一句。
 - 长期记忆按会话、私聊和共享范围隔离。明确的「记住……」会先成为候选，审核后才进入回复。
 - 文档可以放进知识库，检索结果只作为数据包进入语境，不会绕过发言决策。
-- 工作室用于查看现场、调整会话、人格、模型和 QQ 连接，并回放历史消息。回放不发 QQ、不写生产记忆。
+- LuckyBot 用来查看现场、调整会话、人格、模型和 QQ 连接，并回放历史消息。回放不发 QQ、不写生产记忆。
 
 ## 环境
 
@@ -32,7 +32,7 @@ npm run setup
 npm start
 ```
 
-打开 <http://127.0.0.1:3210>。Windows 也可以双击 `启动LuckyBot.cmd` 启动并打开工作室，双击 `停止LuckyBot.cmd` 停止本项目服务。
+打开 <http://127.0.0.1:3210>。Windows 也可以双击 `启动LuckyBot.cmd` 启动并打开 LuckyBot，双击 `停止LuckyBot.cmd` 停止本项目服务。
 
 `npm run setup` 会在没有 `.env` 时生成管理令牌和 OneBot 令牌。文件已存在时不会覆盖。
 
@@ -44,7 +44,7 @@ ONEBOT_TOKEN=
 LLM_API_KEY=
 ```
 
-`ADMIN_TOKEN` 保护工作室和 HTTP API。`ONEBOT_TOKEN` 保护 `/onebot/v11/ws`。`LLM_API_KEY` 可选，非空时优先于工作室里保存的密钥。修改 `.env` 后需要重启。不要把真实密钥写入仓库、Issue 或截图。
+`ADMIN_TOKEN` 保护 LuckyBot 和 HTTP API。`ONEBOT_TOKEN` 保护 `/onebot/v11/ws`。`LLM_API_KEY` 可选，非空时优先于 LuckyBot 里保存的密钥。修改 `.env` 后需要重启。不要把真实密钥写入仓库、Issue 或截图。
 
 默认是模拟模式。先在「对话 → 会话设置」添加群号或 QQ 号，再到「现场」发送模拟消息。模拟消息不发到 QQ；没有 API Key 时使用本地样例，不调用模型。
 
@@ -64,7 +64,7 @@ ws://127.0.0.1:3210/onebot/v11/ws
 
 协议为 OneBot 11，消息格式为数组，Token 使用 `ONEBOT_TOKEN`。端口以 `.env` 中的 `PORT` 为准。
 
-## 工作室
+## 界面
 
 | 入口 | 页面 | 用途 |
 | --- | --- | --- |
@@ -96,10 +96,10 @@ data/*.log        启动和服务日志
 ## 开发
 
 ```bash
-npm run dev:ui       # 工作室热更新，API 代理到 3210
+npm run dev:ui       # 界面热更新，API 代理到 3210
 npm run build:ui     # 构建到 public/app，npm start 直接托管
 npm test             # 服务端测试
-npm run test:ui      # 工作室冒烟测试
+npm run test:ui      # 界面冒烟测试
 npm run format:check
 npm run docs:build   # 由 docs/使用教程.md 生成网页教程
 ```
@@ -112,8 +112,8 @@ server/channels/     会话身份、OneBot 适配和 WebSocket
 server/core/         语境装配、发言决策、生成和发送
 server/knowledge/    记忆、文档和检索
 server/studio/       设置、NapCat 和模型探测的 HTTP 接口
-studio-web/          Vue 3 工作室源码
-public/app/          构建后的工作室
+studio-web/          Vue 3 界面源码
+public/app/          构建后的界面
 scripts/             启动、停止、备份和教程生成
 tests/               服务端和界面测试
 vendor/napcat/       经过校验的 NapCat Windows 包

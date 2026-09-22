@@ -12,7 +12,7 @@ The current connector is OneBot 11. QQ login and delivery are handled by [NapCat
 - Messages that arrive close together are handled as one batch.
 - Long-term memories stay scoped to a session, a private chat, or a shared pool. An explicit “remember …” request becomes a candidate and is used only after review.
 - Documents can be stored in a knowledge collection. Retrieved passages enter the context as data and do not skip the speech decision.
-- The studio shows the live conversation and edits sessions, persona, models, and the QQ connection. Historical replay does not send QQ messages or write production memory.
+- LuckyBot shows the live conversation and edits sessions, persona, models, and the QQ connection. Historical replay does not send QQ messages or write production memory.
 
 ## Requirements
 
@@ -32,7 +32,7 @@ npm run setup
 npm start
 ```
 
-Open <http://127.0.0.1:3210>. On Windows, `启动LuckyBot.cmd` starts the service and opens the studio. `停止LuckyBot.cmd` stops this project's service.
+Open <http://127.0.0.1:3210>. On Windows, `启动LuckyBot.cmd` starts the service and opens LuckyBot. `停止LuckyBot.cmd` stops this project's service.
 
 `npm run setup` creates `.env` with an admin token and an OneBot token when the file is missing. An existing file is left unchanged.
 
@@ -44,7 +44,7 @@ ONEBOT_TOKEN=
 LLM_API_KEY=
 ```
 
-`ADMIN_TOKEN` protects the studio and HTTP API. `ONEBOT_TOKEN` protects `/onebot/v11/ws`. `LLM_API_KEY` is optional and, when set, overrides the key saved in the studio. Restart after changing `.env`. Do not commit real secrets.
+`ADMIN_TOKEN` protects LuckyBot and the HTTP API. `ONEBOT_TOKEN` protects `/onebot/v11/ws`. `LLM_API_KEY` is optional and, when set, overrides the key saved in LuckyBot. Restart after changing `.env`. Do not commit real secrets.
 
 Simulation mode is the default. Add a group or QQ number under Conversation → Session settings, then send a simulated message from the live page. Simulation does not send to QQ. Without an API key it uses a local sample and does not call a model.
 
@@ -64,7 +64,7 @@ ws://127.0.0.1:3210/onebot/v11/ws
 
 Use OneBot 11, array message format, and `ONEBOT_TOKEN`. The port is `PORT` from `.env`.
 
-## Studio
+## Interface
 
 | Section | Page | Use |
 | --- | --- | --- |
@@ -77,7 +77,7 @@ Use OneBot 11, array message format, and `ONEBOT_TOKEN`. The port is `PORT` from
 | System | `#models` | Model profiles, budgets, vision, embeddings, connection test |
 | System | `#connect` | NapCat install, configuration, launch, and readiness |
 
-Saved studio settings apply on the next turn. Closing the browser does not stop the service.
+Saved settings apply on the next turn. Closing the browser does not stop the service.
 
 ## Data
 
@@ -96,7 +96,7 @@ Binding a non-local address requires `ADMIN_TOKEN`. See [SECURITY.md](SECURITY.m
 ## Development
 
 ```bash
-npm run dev:ui       # Studio dev server; API proxied to port 3210
+npm run dev:ui       # UI dev server; API proxied to port 3210
 npm run build:ui     # Build into public/app for npm start
 npm test
 npm run test:ui
@@ -112,8 +112,8 @@ server/channels/     Session identity, OneBot adapter, WebSocket
 server/core/         Context, speech decision, generation, delivery
 server/knowledge/    Memories, documents, retrieval
 server/studio/       HTTP for settings, NapCat, and model checks
-studio-web/          Vue 3 studio
-public/app/          Built studio
+studio-web/          Vue 3 UI
+public/app/          Built UI
 scripts/             Launch, stop, backup, guide build
 tests/               Server and UI tests
 vendor/napcat/       Verified NapCat Windows packages

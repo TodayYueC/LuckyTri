@@ -3,8 +3,14 @@ import { publicSession } from "../channels/session-key.js";
 import { VOICE_PRESETS, VOICE_SCENARIOS } from "../voice.js";
 import { readiness } from "../readiness.js";
 import { FEEDBACK_LABELS } from "../feedback.js";
-import { MODEL_PRESETS, REASONING_EFFORTS } from "../model-presets.js";
+import {
+  EFFORT_LABELS,
+  MODEL_CATALOG,
+  MODEL_PRESETS,
+  REASONING_EFFORTS,
+} from "../model-presets.js";
 import { effectiveOneBotToken } from "../qq-setup.js";
+import { applySpeakerNames, speakerNames } from "../core/speaker-names.js";
 
 export function mountStudio(app, store, runtime) {
   app.get("/api/service/status", (req, res) =>
@@ -33,7 +39,9 @@ export function mountStudio(app, store, runtime) {
       }),
       feedbackLabels: FEEDBACK_LABELS,
       modelPresets: MODEL_PRESETS,
+      modelCatalog: MODEL_CATALOG,
       reasoningEfforts: REASONING_EFFORTS,
+      effortLabels: EFFORT_LABELS,
       connection,
       sessions: store.db
         .prepare(
@@ -52,11 +60,21 @@ export function mountStudio(app, store, runtime) {
           "SELECT * FROM memory_candidates WHERE status='pending' ORDER BY id DESC LIMIT 200",
         )
         .all(),
-      decisions: store.db
-        .prepare(
-          "SELECT d.*,f.tag AS feedback FROM decisions d LEFT JOIN reply_feedback f ON f.decision_id=d.id WHERE d.is_demo=? ORDER BY d.id DESC LIMIT 80",
-        )
-        .all(demo),
+      decisions: (() => {
+        const rows = store.db
+          .prepare(
+            "SELECT d.*,f.tag AS feedback FROM decisions d LEFT JOIN reply_feedback f ON f.decision_id=d.id WHERE d.is_demo=? ORDER BY d.id DESC LIMIT 80",
+          )
+          .all(demo);
+        const names = speakerNames(
+          store.db,
+          rows.map((row) => row.session_id),
+        );
+        return rows.map((row) => ({
+          ...row,
+          reason: applySpeakerNames(row.reason, names),
+        }));
+      })(),
       stats: {
         messages: store.db
           .prepare("SELECT COUNT(*) n FROM messages WHERE is_demo=?")

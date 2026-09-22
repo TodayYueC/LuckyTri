@@ -309,10 +309,10 @@ function decisions() {
         class="inspector-content scroll-pane"
       >
         <h3>试着说一句</h3>
-        <p class="small">只在工作室模拟，不会向 QQ 发送。</p>
+        <p class="small">只在 LuckyBot 里模拟，不会向 QQ 发送。</p>
         <form id="simulate" @submit="simulate">
           <label
-            >体验用户 QQ<input
+            >体验用户 ID<input
               name="userId"
               v-model="simulateUser"
               pattern="\d{4,20}"

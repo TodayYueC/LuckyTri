@@ -278,7 +278,7 @@
       <article>
         <h1>LuckyBot · 从零上手教程</h1>
         <p>
-          LuckyBot 在本机思考和提供工作室。NapCat 负责 QQ 登录与收发。模型 API
+          LuckyBot 在本机思考和回复。NapCat 负责 QQ 登录与收发。模型 API
           是单独的外部服务。QQ 扫码和安全确认在 QQ 或 NapCat 窗口完成。
         </p>
         <h2 id="step-1">1. 启动</h2>
@@ -290,17 +290,17 @@ npm start
         <p>
           打开
           <a href="http://127.0.0.1:3210">http://127.0.0.1:3210</a>。终端里的
-          SQLite 实验性提示不表示启动失败，以能否打开工作室为准。
+          SQLite 实验性提示不表示启动失败，以能否打开 LuckyBot 为准。
         </p>
         <p>
           Windows 日常使用可以双击
-          <code>启动LuckyBot.cmd</code
-          >。服务已在运行时，它只打开工作室。关闭浏览器不会停止服务；停止时双击
+          <code>启动LuckyBot.cmd</code>。服务已在运行时，它只打开
+          LuckyBot。关闭浏览器不会停止服务；停止时双击
           <code>停止LuckyBot.cmd</code>，或在项目目录执行
           <code>npm run stop</code>。这条命令只停止当前项目，不会结束其他 Node
           进程。前台运行时也可以在该终端按 <code>Ctrl+C</code>。
         </p>
-        <p>工作室有五个入口：</p>
+        <p>LuckyBot 有五个入口：</p>
         <table>
           <thead>
             <tr>
@@ -356,7 +356,7 @@ LLM_API_KEY=
           <tbody>
             <tr>
               <td>ADMIN_TOKEN</td>
-              <td>打开工作室和调用 HTTP API；停止命令也会使用</td>
+              <td>打开 LuckyBot 和调用 HTTP API；停止命令也会使用</td>
             </tr>
             <tr>
               <td>ONEBOT_TOKEN</td>
@@ -364,7 +364,7 @@ LLM_API_KEY=
             </tr>
             <tr>
               <td>LLM_API_KEY</td>
-              <td>可选；非空时优先于工作室里保存的模型密钥</td>
+              <td>可选；非空时优先于 LuckyBot 里保存的模型密钥</td>
             </tr>
             <tr>
               <td>HOST / PORT</td>
@@ -567,7 +567,7 @@ npm start
             </tr>
             <tr>
               <td>模型 401 / 403</td>
-              <td>密钥和权限；环境变量密钥可能覆盖工作室里的密钥</td>
+              <td>密钥和权限；环境变量密钥可能覆盖 LuckyBot 里保存的密钥</td>
             </tr>
             <tr>
               <td>模型 404</td>

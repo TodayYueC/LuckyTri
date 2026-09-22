@@ -46,6 +46,21 @@ test("OneBot 规范化产出账号限定会话键", () => {
   assert.equal(m.nativeId, "12345");
 });
 
+test("群名片是 QQ 号时使用昵称", () => {
+  const m = normalize({
+    post_type: "message",
+    message_type: "group",
+    user_id: 10001,
+    self_id: 20002,
+    group_id: 12345,
+    message_id: 9,
+    sender: { card: "10001", nickname: "甲" },
+    message: [{ type: "text", data: { text: "在吗" } }],
+  });
+  assert.equal(m.userId, "10001");
+  assert.equal(m.name, "甲");
+});
+
 test("已有两段会话时绑定到原 ID，新会话保留调用方形态", () => {
   const store = createStore(":memory:");
   const repo = new Repository(store);
