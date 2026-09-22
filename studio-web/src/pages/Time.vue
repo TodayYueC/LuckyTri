@@ -67,6 +67,7 @@ function changed() {
 }
 function switchView(next: typeof view.value) {
   view.value = next;
+  window.scrollTo({ top: 0, behavior: "smooth" });
   document
     .querySelector(".page-time")
     ?.scrollTo({ top: 0, behavior: "smooth" });
@@ -203,7 +204,13 @@ onUnmounted(() => clearInterval(timer));
           @click="toggleEnabled"
         >
           <span><i></i></span>
-          <b>{{ draft.enabled ? "独处正在发生" : "独处尚未开启" }}</b>
+          <b>{{
+            data.busy
+              ? "正在独处"
+              : draft.enabled
+                ? "独处已开启"
+                : "独处尚未开启"
+          }}</b>
           <small>{{ dirty ? "保存后生效" : data.reason || "状态正常" }}</small>
         </button>
       </div>
@@ -379,6 +386,20 @@ onUnmounted(() => clearInterval(timer));
     </template>
 
     <section v-else-if="view === 'journal'" class="journal-page surface">
+      <details v-if="data.states.length" class="state-history">
+        <summary>自己的变化 · 最近 {{ data.states.length }} 次</summary>
+        <div class="state-list">
+          <article v-for="state in data.states" :key="state.id">
+            <time>{{ date(state.created) }}</time>
+            <h4>
+              {{ state.mood }} ·
+              {{ socialPull[state.social_pull] || "安静待着" }}
+            </h4>
+            <p>{{ state.narrative }}</p>
+            <small>当时关注：{{ state.attention }}</small>
+          </article>
+        </div>
+      </details>
       <div class="journal-heading">
         <div>
           <span class="eyebrow">PRIVATE JOURNAL</span>
@@ -551,6 +572,23 @@ onUnmounted(() => clearInterval(timer));
                 >从余韵、安静、偶尔想起到久别，在阶段变化时重读过去。</small
               ></span
             >
+          </label>
+          <label
+            >无人说话时，多久重新看看旧想法（小时）
+            <input type="number" min="0" v-model.number="draft.revisitHours" />
+            <small
+              >需要开启时间变化。0
+              关闭周期回看；可以不写手记，也可以转向共同兴趣。</small
+            >
+          </label>
+          <label
+            >两次主动联系至少相隔（小时）
+            <input
+              type="number"
+              min="0"
+              v-model.number="draft.proactiveIntervalHours"
+            />
+            <small>0 不额外限时。上一条主动消息未获回应时仍不追发。</small>
           </label>
           <label class="setting-toggle">
             <input type="checkbox" v-model="draft.proactive" />
@@ -795,6 +833,72 @@ onUnmounted(() => clearInterval(timer));
 </template>
 
 <style scoped>
+:global(.studio.time-document) {
+  height: auto;
+  min-height: 100dvh;
+  overflow: visible;
+  align-items: start;
+}
+:global(.time-document .sidebar) {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+}
+:global(.studio.time-document main) {
+  overflow: visible;
+}
+:global(.time-document .page-time) {
+  flex: none;
+  overflow: visible;
+  height: auto;
+  max-height: none;
+}
+.time-studio .time-masthead {
+  min-height: 150px;
+  grid-template-columns: 90px minmax(0, 1fr) minmax(240px, 300px);
+  gap: 22px;
+}
+.time-studio .time-art {
+  width: 76px;
+  height: 76px;
+}
+.time-studio .time-art span {
+  font-size: 30px;
+}
+.time-studio .time-intro h2 {
+  font-size: clamp(24px, 2.5vw, 36px);
+}
+.time-studio .state-list > div {
+  grid-template-columns: 1fr;
+  gap: 6px;
+}
+.time-studio .session-picks {
+  max-height: none;
+  overflow: visible;
+}
+.time-studio .setting-card {
+  overflow: visible;
+}
+.time-studio .time-savebar {
+  position: static;
+}
+.time-studio .inner-card {
+  min-height: 280px;
+}
+@media (max-width: 900px) {
+  .time-studio .time-masthead {
+    grid-template-columns: 76px 1fr;
+  }
+  .time-studio .time-control {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 650px) {
+  :global(.time-document .sidebar) {
+    position: relative;
+    height: auto;
+  }
+}
 :global(.page-time) {
   overflow: auto;
   overscroll-behavior: contain;
