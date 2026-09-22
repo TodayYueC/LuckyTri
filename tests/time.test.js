@@ -8,6 +8,8 @@ import {
   temporalContext,
   elapsedLabel,
   topicWeight,
+  timePhase,
+  innerLife,
 } from "../server/time/context.js";
 
 function setup(t) {
@@ -104,6 +106,7 @@ test("时间尺度遵守本地跨日，话题随时间衰减，未完成事项�
     topicWeight(now - 86400000, now, { open: true }) >
       topicWeight(now - 86400000, now),
   );
+  assert.equal(timePhase(now - 3 * 86400000, now).key, "remembering");
 });
 test("独处生成有来源的手记，默认不发送、不写人物事实；重复回想受冷却限制", async (t) => {
   const f = setup(t);
@@ -114,10 +117,30 @@ test("独处生成有来源的手记，默认不发送、不写人物事实；�
   assert.equal(f.sent.length, 0);
   assert.equal(f.time.notes(f.session).length, 1);
   assert.equal(
+    f.store.db.prepare("SELECT COUNT(*) n FROM time_states").get().n,
+    1,
+  );
+  assert.match(innerLife(f.system.repo, f.session, f.now()).narrative, /面试/);
+  assert.equal(
     f.store.db.prepare("SELECT COUNT(*) n FROM core_memories").get().n,
     before,
   );
   assert.match((await f.time.tick(f.session)).reason, /太近/);
+});
+test("时间容量可以设为不限，输入输出为零时跟随模型能力", (t) => {
+  const f = setup(t);
+  const value = f.time.save({
+    intervalMinutes: 0,
+    minMessages: 0,
+    dailyCalls: 0,
+    dailyTokens: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+  });
+  assert.equal(value.dailyCalls, 0);
+  assert.equal(value.dailyTokens, 0);
+  assert.equal(value.inputTokens, 0);
+  assert.equal(value.outputTokens, 0);
 });
 test("旧手记修正追加保存，跨会话、未来和模拟语境不读取手记", async (t) => {
   const f = setup(t);

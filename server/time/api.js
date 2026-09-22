@@ -1,5 +1,6 @@
 import { wrap } from "../http.js";
 import { localClock } from "../core/conversation-cues.js";
+import { innerLife } from "./context.js";
 
 export function mountTime(app, time) {
   app.get(
@@ -16,26 +17,44 @@ export function mountTime(app, time) {
         Number.MAX_SAFE_INTEGER,
         now,
       );
+      const runs = time.db
+        .prepare(
+          "SELECT * FROM time_runs WHERE session_id=? ORDER BY started DESC LIMIT 100",
+        )
+        .all(session);
       res.json({
         settings,
         clock: localClock(now, settings.timeZone),
         usage: time.usage(),
         busy: time.busy,
         reason: session ? time.eligible(session) : "选择一个会话查看时间轨迹",
+        inner: innerLife(time.repo, session, now, settings.timeZone),
         topics,
         notes: notes
           .filter((n) => n.created < before && (!q || n.content.includes(q)))
           .slice(0, 30),
-        runs: time.db
+        states: time.db
           .prepare(
-            "SELECT * FROM time_runs WHERE session_id=? ORDER BY started DESC LIMIT 30",
+            "SELECT * FROM time_states WHERE session_id=? ORDER BY created DESC LIMIT 24",
           )
-          .all(session),
+          .all(session)
+          .map((row) => ({
+            ...row,
+            factors: (() => {
+              try {
+                return JSON.parse(row.factors || "{}");
+              } catch {
+                return {};
+              }
+            })(),
+          })),
+        runs,
         count: notes.length,
         open: notes.filter(
           (n) => n.status === "open" && !n.hidden && n.revisit_at,
         ).length,
         lastInteraction: time.recent(session).at(-1)?.time || null,
+        lastReflection: runs[0]?.started || null,
       });
     }),
   );
