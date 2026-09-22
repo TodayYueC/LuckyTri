@@ -268,206 +268,175 @@
     <div class="layout">
       <nav class="toc" aria-label="教程目录">
         <p>CONTENTS</p>
-        <a href="#step-1">1. 先体验，不急着连 QQ</a
-        ><a href="#step-2">2. 创建本机配置与管理令牌</a
-        ><a href="#step-3">3. 登录 QQ 并连接 QQClient</a
-        ><a href="#step-4">4. 连接大模型 API</a
-        ><a href="#step-5">5. 让它开始参与一个群</a
-        ><a href="#step-6">6. 调得自然，而不是满嘴网络词</a
-        ><a href="#step-7">7. 对实际回复给反馈</a
-        ><a href="#step-8">8. 记忆怎么用，哪些会跨群</a
-        ><a href="#step-9">9. 日常启停、备份和升级</a
-        ><a href="#step-10">10. 常见问题</a
-        ><a href="#step-11">11. 当前做到哪里</a>
+        <a href="#step-1">1. 启动</a><a href="#step-2">2. 本机令牌</a
+        ><a href="#step-3">3. 先在模拟模式试聊</a
+        ><a href="#step-4">4. 连接模型</a><a href="#step-5">5. 接入 QQ</a
+        ><a href="#step-6">6. 让它参与会话</a
+        ><a href="#step-7">7. 人格、记忆和知识</a
+        ><a href="#step-8">8. 备份与停止</a><a href="#step-9">9. 常见问题</a>
       </nav>
       <article>
         <h1>LuckyBot · 从零上手教程</h1>
-        <p>适用版本：v0.5.1。主要按 Windows + PowerShell、本机运行讲解。</p>
         <p>
-          你最终会运行两个本机程序：<strong
-            >QQClient 负责 QQ 登录与收发，LuckyBot
-            负责思考、记忆和管理界面</strong
-          >。大模型 API 是第三个外部服务。LuckyBot 的「上手指南 → QQ
-          接入助手」会替你写好两者之间的连接；QQ 扫码和安全确认仍由 QQ 完成。
+          LuckyBot 在本机思考和提供工作室。QQClient 负责 QQ 登录与收发。模型 API
+          是单独的外部服务。QQ 扫码和安全确认在 QQ 或 QQClient 窗口完成。
         </p>
-        <h2 id="step-1">1. 先体验，不急着连 QQ</h2>
-        <p>
-          本项目位于
-          <code>D:\LuckyTri</code>。如果管理台已经能打开，直接进入
-          <a href="http://127.0.0.1:3210/#setup">LuckyBot 工作室</a
-          >，不用重复启动。
-        </p>
-        <p>
-          <strong
-            >日常一键启动：双击项目目录里的
-            <code>启动LuckyBot.cmd</code>。</strong
-          >
-          它会在后台启动 LuckyBot
-          并打开浏览器；已经运行时直接打开管理台，不再启动第二份。可以右键此文件创建桌面快捷方式。关闭浏览器不会停止服务；需要停止时双击
-          <code>停止LuckyBot.cmd</code
-          >。启动失败时窗口会保留错误提示，后台日志在
-          <code>data/launcher.log</code>。QQClient 安装包已经内置，第一次在 WebUI
-          点「使用内置安装器」即可；之后只需在 QQClient 窗口完成 QQ 登录。
-        </p>
-        <p>
-          首次使用仍需安装 Node.js 24 或以上版本，并执行一次
-          <code>npm install</code> 安装依赖；之后即可双击启动。命令行也可执行
-          <code>npm run launch</code>。
-        </p>
-        <p>第一次从源码运行，在 PowerShell 执行：</p>
-        <pre><code class="language-powershell">Set-Location &#39;D:\LuckyTri&#39;
-node --version
+        <h2 id="step-1">1. 启动</h2>
+        <p>需要 Node.js 24 或更高版本。在项目目录执行：</p>
+        <pre><code class="language-powershell">node --version
 npm install
 npm start
 </code></pre>
         <p>
-          Node.js 需要 24 或以上版本。启动后打开
-          <code>http://127.0.0.1:3210</code>，终端保持运行。终端显示 SQLite
-          实验性提示不代表启动失败；以是否出现管理台地址、页面能否打开为准。
-        </p>
-        <p>默认是<strong>模拟模式</strong>：</p>
-        <ol>
-          <li>打开「会话空间」→「添加会话」。</li>
-          <li>选择群聊，填一个测试群号（例如 <code>12345</code>）和名称。</li>
-          <li>输入「LuckyBot，下班前老板又来活了」，发送。</li>
-          <li>查看聊天和下方决策记录。</li>
-        </ol>
-        <p>
-          模拟模式使用规则样例，不需要 API，不向 QQ
-          发消息。连续发送但没回复时，先看是否处于默认 45 秒冷却。模拟对话和真实
-          QQ 对话分别保存。
+          打开
+          <a href="http://127.0.0.1:3210">http://127.0.0.1:3210</a>。终端里的
+          SQLite 实验性提示不表示启动失败，以能否打开工作室为准。
         </p>
         <p>
-          另一个体验入口是「人设与节奏」底部的<strong>试试这张嘴</strong>。这里不受群聊冷却影响，默认也是规则样例；勾选「使用已配置模型」才会调用真正的大模型。
+          Windows 日常使用可以双击
+          <code>启动LuckyBot.cmd</code
+          >。服务已在运行时，它只打开工作室。关闭浏览器不会停止服务；停止时双击
+          <code>停止LuckyBot.cmd</code>，或在项目目录执行
+          <code>npm run stop</code>。这条命令只停止当前项目，不会结束其他 Node
+          进程。前台运行时也可以在该终端按 <code>Ctrl+C</code>。
         </p>
-        <h2 id="step-2">2. 创建本机配置与管理令牌</h2>
-        <p>连接 QQ 之前，先停止本项目服务：</p>
+        <p>工作室有五个入口：</p>
+        <table>
+          <thead>
+            <tr>
+              <th>入口</th>
+              <th>里面有什么</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>今日</td>
+              <td>运行状态、最近决策、全局参与和模拟模式</td>
+            </tr>
+            <tr>
+              <td>对话</td>
+              <td>现场、会话设置、历史回放</td>
+            </tr>
+            <tr>
+              <td>记忆</td>
+              <td>会话记忆、待审核候选、文档知识库</td>
+            </tr>
+            <tr>
+              <td>人格</td>
+              <td>人格、口吻、Prompt 和试聊</td>
+            </tr>
+            <tr>
+              <td>系统</td>
+              <td>模型配置、QQ 连接</td>
+            </tr>
+          </tbody>
+        </table>
+        <h2 id="step-2">2. 本机令牌</h2>
+        <p>连接 QQ 之前先停止服务，再生成配置：</p>
         <pre><code class="language-powershell">npm run stop
+npm run setup
 </code></pre>
         <p>
-          这条命令会核对端口上的服务是否属于当前项目，再请求退出；不会遍历或杀死其他
-          Node.js 程序。若你在另一个前台终端运行，也可以回到那个终端按
-          <code>Ctrl+C</code>。
-        </p>
-        <p>生成配置：</p>
-        <pre><code class="language-powershell">npm run setup
-notepad .env
-</code></pre>
-        <p>
-          首次运行 setup 会创建 <code>.env</code>，生成管理令牌和 QQ
-          连接令牌。若 <code>.env</code> 已存在，setup
-          会原样保留，不覆盖任何内容；此时检查以下字段是否填写：
+          没有 <code>.env</code> 时，setup 会写入管理令牌和 QQ 连接令牌。已有
+          <code>.env</code> 会原样保留。
         </p>
         <pre><code class="language-dotenv">HOST=127.0.0.1
 PORT=3210
-ADMIN_TOKEN=管理台令牌
-ONEBOT_TOKEN=QQ连接令牌
+ADMIN_TOKEN=
+ONEBOT_TOKEN=
 LLM_API_KEY=
 </code></pre>
-        <p>
-          上面的中文只是说明，不要拿它当真实令牌。已有文件应使用自己的长随机令牌；不要公开
-          <code>.env</code>。
-        </p>
         <table>
           <thead>
             <tr>
               <th>字段</th>
-              <th>用在哪</th>
-              <th>注意</th>
+              <th>用途</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td>ADMIN_TOKEN</td>
-              <td>登录 LuckyBot 管理台；本项目停止命令也会使用</td>
-              <td>和 QQ 连接令牌分开</td>
+              <td>打开工作室和调用 HTTP API；停止命令也会使用</td>
             </tr>
             <tr>
               <td>ONEBOT_TOKEN</td>
-              <td>QQ 连接令牌</td>
-              <td>
-                接入助手自动写入 QQClient
-                配置；若留空，接入助手会生成本地令牌，无需重启
-              </td>
+              <td>QQClient 连接 <code>/onebot/v11/ws</code></td>
             </tr>
             <tr>
               <td>LLM_API_KEY</td>
-              <td>可选的模型密钥环境变量</td>
-              <td>非空时优先于管理台保存的密钥</td>
+              <td>可选；非空时优先于工作室里保存的模型密钥</td>
             </tr>
             <tr>
               <td>HOST / PORT</td>
-              <td>LuckyBot 服务监听地址和端口</td>
-              <td>初次使用保持默认</td>
+              <td>监听地址和端口；本机使用保持默认</td>
             </tr>
           </tbody>
         </table>
-        <p>保存 <code>.env</code> 后重新运行：</p>
-        <pre><code class="language-powershell">npm start
-</code></pre>
         <p>
-          页面第一次请求数据会让你输入
-          <code>ADMIN_TOKEN</code>。之后也能点左下角「LuckyBot AI
-          群友」重新输入。令牌只保存在当前标签页的会话存储中。
+          页面第一次取数据时输入
+          <code>ADMIN_TOKEN</code>。令牌只留在当前标签页。修改
+          <code>.env</code> 后必须重启。不要把 <code>ADMIN_TOKEN</code> 填进
+          QQClient，也不要把 <code>ONEBOT_TOKEN</code> 当成管理台密码。
+        </p>
+        <h2 id="step-3">3. 先在模拟模式试聊</h2>
+        <p>默认开启模拟模式，消息不会发到 QQ。</p>
+        <ol>
+          <li>打开「对话 → 会话设置」，添加一个群聊，填写测试群号和名称。</li>
+          <li>打开「对话 → 现场」，选择这个会话。</li>
+          <li>在试聊里输入一句普通消息并发送。</li>
+          <li>查看消息和「为什么回复 / 为什么安静」。</li>
+        </ol>
+        <p>
+          没有模型密钥时，模拟回复使用本地样例，不调用模型。有密钥后，同一条路径会走真实发言流程，但仍然不发
+          QQ。
+        </p>
+        <p>「人格」页的试聊是另一条隔离入口，用来看口吻，不进入 QQ 会话。</p>
+        <h2 id="step-4">4. 连接模型</h2>
+        <p>打开「系统 → 模型」。</p>
+        <ul>
+          <li>
+            API 地址填写服务商的兼容接口根路径。程序会自己拼接
+            <code>/chat/completions</code>，不要把完整路径再写一遍。
+          </li>
+          <li>模型名称填写服务商接受的模型 ID。</li>
+          <li>API Key 留空表示保留已保存的密钥。</li>
+        </ul>
+        <p>
+          预设只填入常见地址和模型名，以服务商控制台里的实际模型为准。发言决策和回复生成需要模型返回
+          JSON 对象。
         </p>
         <p>
-          <strong>修改 <code>.env</code> 必须重启服务。</strong> 建议先
-          <code>npm run stop</code>，再修改，最后
-          <code>npm start</code
-          >。如果你先改了管理令牌，旧服务仍认旧令牌，停止命令可能无法认证；回到原终端
-          <code>Ctrl+C</code>，或使用旧令牌连接旧服务。
+          保存后点「测试模型连接」。测试不携带群聊原文。更换地址、模型或密钥后需要重新测试。
         </p>
-        <h2 id="step-3">3. 登录 QQ 并连接 QQClient</h2>
-        <h3>3.1 安装、配置与登录</h3>
         <p>
-          打开 LuckyBot 的「上手指南」，在 <strong>QQ 接入助手</strong> 中完成：
+          也可以先保持模拟模式，在「人格」里勾选使用已配置模型，确认口吻后再让它参加真实
+          QQ。
         </p>
+        <h2 id="step-5">5. 接入 QQ</h2>
+        <p>打开「系统 → QQ 连接」。</p>
         <ol>
           <li>
-            点击「使用内置安装器」。如果本机已经安装 QQ，LuckyBot
-            会使用项目内置、已校验的 Shell 包直接准备
-            QQClient，不会打开黑色安装控制台；没有检测到 QQ 时才回退到 Windows
-            OneKey 包。需要新版本时点「检查更新」，再选择更新包。
+            点「使用内置安装器」。本机已有 QQ 时使用内置 Shell 包准备
+            QQClient；没有检测到 QQ 时使用 Windows OneKey
+            包。需要新版本时再检查更新。
           </li>
+          <li>选择 QQClient 根目录。</li>
+          <li>点「生成连接配置」。已有配置会在原目录留下备份。</li>
           <li>
-            回到 LuckyBot，点击「选择目录」，选中 QQClient 解压或安装后的根目录。
-          </li>
-          <li>
-            点击「生成连接配置」。LuckyBot 会写入本地 OneBot 令牌与反向
-            WebSocket 配置；已有配置会在原目录留下备份。
-          </li>
-          <li>
-            点击「启动 QQClient 并登录 QQ」。LuckyBot 会打开一个独立的 QQClient
-            控制台窗口，按窗口里的提示扫码；如果窗口被其他程序盖住，可以从任务栏切回标题为
-            <strong>LuckyBot QQClient</strong> 的窗口。二维码同时会保存到 QQClient
+            点「启动 QQClient 并登录 QQ」，按窗口提示扫码。二维码也会写到 QQClient
             目录的 <code>cache/qrcode.png</code>。
           </li>
         </ol>
+        <p>小号需要已经在目标群里。LuckyBot 不保存 QQ 密码。</p>
         <p>
-          这样不需要手填 WebSocket 地址、Token 或消息格式。LuckyBot
-          在真正发出回复前会随机停顿约 1–4
-          秒，避免模型一生成就秒回；冷却时间仍负责避免连续抢话。小号需要已经在目标群里；入群、扫码、验证码等由你在
-          QQ / QQClient 完成。
+          只有接入助手无法识别目录时，才到 QQClient 的网络配置里新建 WebSocket
+          客户端：
         </p>
-        <p>
-          LuckyBot 不保存 QQ 密码。建议先在成员知情的小测试群运行，确认大家接受
-          AI 群友参与。第三方 QQ 接入仍可能遇到客户端更新或帐号风控。
-        </p>
-        <h3>3.2 手动兜底方式</h3>
-        <p>
-          只有在接入助手无法识别你的 QQClient 目录时，才需要进入 QQClient WebUI 的
-          <strong>网络配置 → 新建 → WebSocket 客户端</strong>。这就是让 QQClient
-          主动连接 LuckyBot 的反向 WebSocket 方式；相关界面入口见
-          <a href="https://qqclient.github.io/use/integration"
-            >QQClient 官方接入文档</a
-          >。
-        </p>
-        <p>填写本项目的参数：</p>
         <table>
           <thead>
             <tr>
               <th>项目</th>
-              <th>本机运行时填写</th>
+              <th>本机填写</th>
             </tr>
           </thead>
           <tbody>
@@ -481,14 +450,11 @@ LLM_API_KEY=
             </tr>
             <tr>
               <td>Token</td>
-              <td>
-                <code>.env</code> 中
-                <code>ONEBOT_TOKEN</code> 的值；若留空，用接入助手重新生成配置
-              </td>
+              <td><code>.env</code> 里的 <code>ONEBOT_TOKEN</code></td>
             </tr>
             <tr>
               <td>消息格式</td>
-              <td>数组 / Array</td>
+              <td>数组</td>
             </tr>
             <tr>
               <td>启用</td>
@@ -497,350 +463,131 @@ LLM_API_KEY=
           </tbody>
         </table>
         <p>
-          这里的端口 <code>3210</code> 是<strong>LuckyBot 端口</strong
-          >。不要照抄其他框架教程中的 8080、6199 等端口。也不要把
-          <code>ADMIN_TOKEN</code>、QQClient 自己的 WebUI 登录密码填到这里。
+          这里的 <code>3210</code> 是 LuckyBot 的端口。QQClient 和 LuckyBot
+          不在同一台机器或放在容器里时，<code>127.0.0.1</code>
+          指向各自环境，需要另行改地址，并先配置 <code>ADMIN_TOKEN</code>。
         </p>
         <p>
-          本教程假设 QQClient 和 LuckyBot 在同一台 Windows
-          机器上、都没有放进容器。若使用 Docker 或另一台电脑，<code
-            >127.0.0.1</code
-          >
-          指向各自环境，不一定能找到
-          LuckyBot；此时需要单独调整网络地址、监听和访问保护。先用本机直连跑通最容易排查。
+          QQ
+          已连接只表示传输通了。到目标群发一条消息后，会话会出现在「会话设置」，新发现的会话默认暂停参与。
         </p>
-        <h3>3.3 确认收到消息</h3>
-        <p>
-          回到 LuckyBot，刷新页面。右上角应该显示「QQ 已连接」。去 QQ
-          测试群发一条消息，再刷新「会话空间」；自动发现的群会出现，但<strong>默认暂停参与</strong>。
-        </p>
-        <p>QQ 已连接只代表传输连接存在，不代表模型已经可用。继续下一步。</p>
-        <h2 id="step-4">4. 连接大模型 API</h2>
-        <p>进入「连接与设置」，填写：</p>
-        <ul>
-          <li>
-            <strong>API Base URL</strong>：服务商给出的兼容 Chat Completions
-            的基础地址。程序会自动在末尾拼上
-            <code>/chat/completions</code>，因此不要再次填完整接口路径。
-          </li>
-          <li>
-            <strong>模型名称</strong>：填 API 接受的模型
-            ID，不是你给模型起的昵称。
-          </li>
-          <li>
-            <strong>API Key</strong
-            >：填服务商密钥，点击保存。已有密钥时，留空会保留原值。
-          </li>
-        </ul>
-        <p>
-          「服务商预设」可以直接选择
-          DeepSeek、OpenAI、Qwen、Kimi、智谱、SiliconFlow、OpenRouter
-          或自定义兼容接口。预设只填常见 Base URL
-          和模型名，最终以服务商控制台实际提供的模型为准。
-        </p>
-        <p>「模型输出与思考」可以设置：</p>
-        <ul>
-          <li>
-            <strong>思考强度</strong
-            >：不指定、低、中、高。指定后会发送兼容接口常见的
-            <code>reasoning_effort</code> 参数。
-          </li>
-          <li>
-            <strong>Temperature / Top P</strong
-            >：控制输出随机性。推理强度不是“不指定”时，LuckyBot 会暂不发送
-            Temperature，避免部分推理模型报参数冲突。
-          </li>
-          <li>
-            <strong>最大输出 Token</strong
-            >：模型调用预算；聊天最终回复仍会受到人设里的最大字数限制。
-          </li>
-        </ul>
-        <p>
-          本项目要求模型支持 JSON 对象输出，即
-          <code
-            >response_format: {&quot;type&quot;:&quot;json_object&quot;}</code
-          >。是否支持、具体地址和模型
-          ID，请按所用服务商文档确认；不要只因为“兼容接口”就假定所有模型能力相同。
-        </p>
-        <p>
-          保存后点
-          <strong>测试模型连接</strong
-          >。测试只发一条小请求，不携带群聊原文。成功后显示模型和耗时；「上手指南」会记住测试结果。
-        </p>
-        <p>
-          如果更换了地址、模型或有效密钥，原来的成功结果会失效，需要重新测试。测试通过表示当时接口可用，不保证后续每次请求都成功。
-        </p>
-        <p>
-          <strong>配置密钥与运行模式是两件事。</strong>
-          可以先保持模拟模式，到「人设与节奏」勾选「使用已配置模型」试聊，确认输出风格之后，再开启真实
-          QQ 发言。
-        </p>
-        <h2 id="step-5">5. 让它开始参与一个群</h2>
+        <h2 id="step-6">6. 让它参与会话</h2>
         <ol>
-          <li>到「连接与设置」，确保「允许 LuckyBot 参与聊天」开启。</li>
-          <li>关闭「模拟模式」，点击「保存连接设置」。</li>
-          <li>到「会话空间」，选择目标群，点击「开启参与」。</li>
-          <li>去 QQ 群里 @ 小号或叫「LuckyBot」，发一句普通聊天。</li>
-          <li>回到管理台查看回复和决策记录。</li>
+          <li>在「今日」确认全局参与开启，关闭模拟模式并保存。</li>
+          <li>在「会话设置」对目标群点「开启参与」。</li>
+          <li>在 QQ 里 @ 小号，或直接叫它的名字。</li>
+          <li>回到「现场」查看消息和决策。</li>
         </ol>
         <p>
-          「上手指南」会检查令牌、QQ
-          连接、当前模型测试、真实模式和会话开关。全部完成后仍需用真实 QQ
-          消息验证一次收发。
+          被点名、私聊或引用自己的消息会直接进入回复，不走参与概率。普通群消息先判断是否值得插话，只有判定为旁听时才使用该会话的参与概率。概率和冷却留在会话上的值会覆盖全局值。
         </p>
         <p>
-          首次可把该群的<strong>旁听后参与概率设为 0%</strong>，先验证被 @
-          时的表现；再慢慢增加到
-          5–15%，想让它更常参与可以继续调高。每批消息都会先交给语境模型判断：值得插话时直接回复，只有判定为旁听时才使用这个概率，抽中就会开口。注意「会话节奏」里的值会覆盖全局值，留空才跟随全局；冷却和每分钟硬限速只负责防止短时间刷屏。
+          可以先把旁听概率设为 0，确认被 @ 时的表现，再调到
+          0.05–0.15。冷却和每分钟轮数限制用来避免短时间连续发言。单独的图片、表情和媒体默认不插话。
         </p>
+        <h2 id="step-7">7. 人格、记忆和知识</h2>
         <p>
-          有人点回复 LuckyBot 发出的上一条消息时，会按直接找它处理；即使没有
-          @，如果上一条就是它发的、当前内容明显在接着回应，也会优先交给模型判断并接住这一轮，不再被普通概率拦掉。只是时间上挨着它、已经换了新话题，或明显在对其他群友说，仍按普通概率旁听。群里只是提到「LuckyBot」或在聊别人时，不会仅因为出现名字就抢话。会话空间打开后，聊天列表和“为什么开口，为什么安静”决策记录都会自动拉取最新内容，不需要手动刷新页面；正在填写的表单不会被重绘。单独的图片、表情包和媒体消息默认不插嘴，商城表情会按表情反应处理；当前未开启视觉理解时也不会在回复里说“我看不到图片”。
+          「人格」保存身份、兴趣、禁用表达和口吻。Prompt
+          分系统、决策、生成、记忆、视觉和校验。保存后从下一轮开始生效。
         </p>
-        <h2 id="step-6">6. 调得自然，而不是满嘴网络词</h2>
-        <p>进入「人设与节奏」。初次可用这组设置：</p>
-        <table>
-          <thead>
-            <tr>
-              <th>设置</th>
-              <th>起步值</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>口吻</td>
-              <td>松弛同龄人</td>
-            </tr>
-            <tr>
-              <td>网感浓度</td>
-              <td>普通口语</td>
-            </tr>
-            <tr>
-              <td>参考这个群的沟通习惯</td>
-              <td>开启</td>
-            </tr>
-            <tr>
-              <td>轻口头语</td>
-              <td>关闭</td>
-            </tr>
-            <tr>
-              <td>发出前再顺一遍</td>
-              <td>开启</td>
-            </tr>
-            <tr>
-              <td>发言冷却</td>
-              <td>45–90 秒</td>
-            </tr>
-            <tr>
-              <td>普通消息参与概率</td>
-              <td>5–15%</td>
-            </tr>
-            <tr>
-              <td>回复最多字数</td>
-              <td>60–100 字</td>
-            </tr>
-          </tbody>
-        </table>
-        <p>
-          这些是项目内的起步参数，不是模型效果保证。口吻应跟群里的人合拍，没必要刻意堆“懂的都懂”“家人们”“绷不住”。
-        </p>
-        <p>
-          群体习惯至少积累 3 位成员、12
-          条有效消息后生效，参考句长、标点、表情和短回复比例。单个人刷屏、重复、机器人回复和明显攻击性文本不会拿来代表全群。群体习惯是统计适配，不是训练模型，也不照抄某个人的口癖。
-        </p>
-        <p>
-          在「试试这张嘴」连续聊几轮：吐槽一次、分享好消息一次、明确说一次“别给建议”、再结束话题。观察它是否每次都问问题、是否反复用同一句话、是否把所有场景都聊成安慰。
-        </p>
-        <p>
-          真实模式中每轮最多调用模型两次：第一次生成，发现明显套话、复读、堆梗等问题时重写一次。仍不合格会沉默；因此质量检查可能增加延迟和费用。可以关闭额外重写，但基本检查仍会执行。
-        </p>
-        <h2 id="step-7">7. 对实际回复给反馈</h2>
-        <p>
-          到「会话空间」下方的决策记录，现在可以看到<strong>实际发出的回复</strong>。旁边的「这句怎么样」可以选择：
-        </p>
+        <p>「记忆」里先选择会话。</p>
         <ul>
-          <li><strong>挺自然</strong>：记录正面评价。</li>
           <li>
-            <strong>太长了</strong
-            >：后续日常回复优先更短；必要的建议和安全信息仍保留。
+            确认记忆只在所属范围里被检索：当前会话、该用户的私聊范围，或共享范围。
           </li>
           <li>
-            <strong>太端着</strong>：提醒模型使用普通聊天语气，少分析、少总结。
+            群友在真实会话里说「记住，我……」会生成待审核候选。审核通过后才用于回复。
           </li>
-          <li><strong>梗太多</strong>：后续优先不用显著网络词。</li>
+          <li>
+            文档放入集合后按当前会话的可见范围检索。群聊不会装入其他私聊集合。
+          </li>
+          <li>清空「现场」里的上下文不会删除长期记忆。</li>
         </ul>
-        <p>
-          反馈只影响<strong>同一会话、同一模式</strong>。系统参考最近 20
-          条有反馈的回复，不会拿私聊评价去修改另一个群的风格。对同一句重新选择会替换原评价，选「未评价
-          / 撤销」可删除该条评价。
-        </p>
-        <p>
-          反馈会影响之后生成的内容，不会修改已经发到 QQ
-          的消息，也不是自动微调模型。规则样例只能体现部分反馈；语言自然度主要到真实模型试聊里验证。
-        </p>
-        <h2 id="step-8">8. 记忆怎么用，哪些会跨群</h2>
-        <p>
-          到「记忆花园」手动添加记忆，或让真实会话中的群友说“记住，我喜欢冰拿铁”。明确请求会生成候选，管理员审核后才会用于回复。普通聊天不会被自动当成长期事实。
-        </p>
-        <table>
-          <thead>
-            <tr>
-              <th>范围</th>
-              <th>用途</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>仅私聊</td>
-              <td>同一 QQ 号的私聊可以使用，群里不会检索</td>
-            </tr>
-            <tr>
-              <td>仅某个群 / 会话</td>
-              <td>只在指定会话使用</td>
-            </tr>
-            <tr>
-              <td>跨会话共享</td>
-              <td>同一 QQ 号在其他群或私聊也能使用</td>
-            </tr>
-          </tbody>
-        </table>
-        <p>
-          私聊候选默认仅私聊，群聊候选默认仅来源群。跨群共享需要你在审核或编辑时选择。记忆按
-          QQ 号关联，不按昵称关联。
-        </p>
-        <p>
-          你可以搜索、编辑、改范围或删除记忆。清空聊天上下文不等于删除长期记忆；需要分别处理。
-        </p>
-        <h2 id="step-9">9. 日常启停、备份和升级</h2>
-        <p>在项目目录执行：</p>
-        <pre><code class="language-powershell">npm run stop
+        <h2 id="step-8">8. 备份与停止</h2>
+        <pre><code class="language-powershell">npm run backup
+npm run stop
 npm start
 </code></pre>
         <p>
-          修改页面里的配置通常即时生效；修改
-          <code>.env</code> 需要重启。关闭浏览器页面不会停止服务。
-        </p>
-        <p>创建一致的 SQLite 备份：</p>
-        <pre><code class="language-powershell">npm run backup
-</code></pre>
-        <p>
-          备份输出到
+          备份写到
           <code>data/backups/</code
-          >，文件名不重复。可以在服务运行时创建备份；备份包含聊天、记忆和数据库中保存的密钥，请按私密文件保存。<code
+          >。数据库里有聊天、记忆和保存在库中的密钥，按私密文件保管。<code
             >.env</code
           >
-          不包含在数据库备份中，应另行保管。
+          不在这份备份里。
         </p>
         <p>
-          升级代码前先备份。更新后
-          <code>npm install</code>，再启动；程序会兼容迁移现有数据库。
+          恢复时先停止服务，把当前 <code>data/friend.db</code> 及同名
+          <code>-wal</code>、<code>-shm</code> 移开，再把选中的备份复制为
+          <code>data/friend.db</code>。设置了
+          <code>DB_PATH</code> 时操作该路径。不要把旧的 WAL
+          文件和恢复后的数据库放在一起。
         </p>
-        <p>
-          恢复时：先停止服务，把当前 <code>data/friend.db</code> 及同名
-          <code>-wal</code>、<code>-shm</code>
-          文件移到一个单独保留目录，再把选中的备份复制成
-          <code>data/friend.db</code>，最后启动。不要将旧 WAL
-          文件与恢复后的数据库混用。如果配置了
-          <code>DB_PATH</code>，应操作该路径而不是默认路径。
-        </p>
-        <h2 id="step-10">10. 常见问题</h2>
+        <h2 id="step-9">9. 常见问题</h2>
         <table>
           <thead>
             <tr>
               <th>现象</th>
-              <th>优先检查</th>
+              <th>先检查</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td>页面打不开</td>
-              <td>Node 是否运行；地址是否为 3210；终端是否报错</td>
+              <td>Node 是否在运行，地址是否为 <code>127.0.0.1:3210</code></td>
             </tr>
             <tr>
-              <td>提示 EADDRINUSE</td>
+              <td>端口已被占用</td>
+              <td>先 <code>npm run stop</code>，不要结束所有 node 进程</td>
+            </tr>
+            <tr>
+              <td>令牌错误</td>
               <td>
-                已有程序占用端口；先用
-                <code>npm run stop</code> 停止本项目，不要直接杀掉所有 node.exe
+                使用 <code>ADMIN_TOKEN</code>；改 <code>.env</code> 后重启
               </td>
             </tr>
             <tr>
-              <td>管理台提示令牌错误</td>
+              <td>QQ 未连接</td>
               <td>
-                用 ADMIN_TOKEN；改 <code>.env</code> 后重启；不要误填
-                ONEBOT_TOKEN
+                QQClient 是否登录，URL、端口、路径和
+                <code>ONEBOT_TOKEN</code> 是否一致
               </td>
             </tr>
             <tr>
-              <td>QQ 一直未连接</td>
+              <td>连接成功但没有会话</td>
+              <td>在 QQ 再发一条新消息，消息格式是否为数组</td>
+            </tr>
+            <tr>
+              <td>群里不回复</td>
+              <td>全局开关、会话开关、模拟模式、密钥、冷却和现场决策</td>
+            </tr>
+            <tr>
+              <td>@ 了也不回</td>
+              <td>冷却、每分钟限速、模型错误或校验未通过</td>
+            </tr>
+            <tr>
+              <td>模型 401 / 403</td>
+              <td>密钥和权限；环境变量密钥可能覆盖工作室里的密钥</td>
+            </tr>
+            <tr>
+              <td>模型 404</td>
               <td>
-                QQClient 是否登录；客户端连接是否启用；URL、端口、路径、Token
-                是否一致
-              </td>
-            </tr>
-            <tr>
-              <td>QQ 连接成功但没有会话</td>
-              <td>在 QQ 发一条新消息，再刷新；消息格式选择数组</td>
-            </tr>
-            <tr>
-              <td>群里完全不回复</td>
-              <td>总开关、会话开关、模拟模式、模型密钥、冷却和决策日志</td>
-            </tr>
-            <tr>
-              <td>@ 也没有回应</td>
-              <td>@ 仍受冷却与限流；检查是否忙碌、模型失败或口吻检查未通过</td>
-            </tr>
-            <tr>
-              <td>模型 HTTP 401 / 403</td>
-              <td>
-                密钥、权限、服务商地址；检查环境变量密钥是否覆盖了 UI 密钥
-              </td>
-            </tr>
-            <tr>
-              <td>模型 HTTP 404</td>
-              <td>
-                Base URL 不应重复拼 <code>/chat/completions</code>；模型 ID
-                是否正确
+                API 地址不要重复拼接 <code>/chat/completions</code>，核对模型 ID
               </td>
             </tr>
             <tr>
               <td>模型不返回 JSON</td>
-              <td>选择支持 JSON 对象输出的模型；测试连接后再试聊</td>
+              <td>换支持 JSON 对象输出的模型，先做连接测试</td>
             </tr>
             <tr>
-              <td>群语气一直学习中</td>
-              <td>需要 3 人、12 条有效消息；一人刷屏和复读不计足样本</td>
-            </tr>
-            <tr>
-              <td>记忆没有自动出现</td>
+              <td>记忆没有出现</td>
               <td>
-                候选仅处理真实已开启会话的明确“记住，我…”请求；检查记忆总开关
-              </td>
-            </tr>
-            <tr>
-              <td>反馈后仍不自然</td>
-              <td>
-                反馈是提示约束；检查实际模型、当前会话和模式，再调整人设或模型
+                是否是明确的「记住，我……」，候选是否已审核，范围是否属于当前会话
               </td>
             </tr>
           </tbody>
         </table>
-        <p>
-          遇到问题时，优先看「上手指南」和「会话空间」决策原因。不要把 API
-          密钥、完整 <code>.env</code> 或私聊原文贴进公开截图。
-        </p>
-        <h2 id="step-11">11. 当前做到哪里</h2>
-        <p>
-          已实现：QQ
-          协议收发、模型调用、会话独立启停、短回复与质量检查、群体语气统计、回复反馈、人工确认记忆、中文管理台、备份命令和接入引导。
-        </p>
-        <p>
-          尚未实现：图片真正理解、表情包发送、关系图管理、自由聊天的自动语义记忆提取、主动发起话题、后台自动升级。当前会识别普通图片、QQ
-          表情和商城表情，并对单独媒体保持安静；这些不是接入失败，而是还没有视觉理解或发送表情的对应功能。
-        </p>
-        <p>
-          仓库测试使用本地假模型和 OneBot 协议模拟验证工程流程；真实 QQ
-          帐号、真实模型的响应质量仍需用你自己的配置验证。
-        </p>
+        <p>不要把 API 密钥、<code>.env</code> 或私聊原文发到公开位置。</p>
       </article>
     </div>
     <footer>
