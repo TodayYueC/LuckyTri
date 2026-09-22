@@ -13,6 +13,10 @@ import {
 } from "../server/knowledge/retrieval.js";
 import { upsertLegacyMemory } from "../server/knowledge/schema.js";
 import { ChatSystem } from "../server/core/orchestrator.js";
+import {
+  applySpeakerNames,
+  presentMemory,
+} from "../server/core/speaker-names.js";
 
 const setup = () => {
   const store = createStore(":memory:");
@@ -258,7 +262,10 @@ test("模拟消息与真实上下文、长期记忆严格隔离", async () => {
     {
       localDemo: () => ({ speak: true, reply: "模拟回复", reason: "预览" }),
       models: {
-        profile: () => ({ ...defaultModel(store.settings()), embedding: false }),
+        profile: () => ({
+          ...defaultModel(store.settings()),
+          embedding: false,
+        }),
         call: async (_profile, stage, _prompt, data) => {
           calls.push({ stage, data });
           if (stage === "decision")
@@ -290,14 +297,12 @@ test("模拟消息与真实上下文、长期记忆严格隔离", async () => {
     assert.equal(simulated.status, "sent");
     assert.equal(simulated.mode, "demo");
     assert.ok(
-      system
-        .repo
+      system.repo
         .events(session, Number.MAX_SAFE_INTEGER, { simulated: true })
         .some((m) => m.text === "SIMULATED_ONLY"),
     );
     assert.equal(
-      system
-        .repo
+      system.repo
         .events(session, Number.MAX_SAFE_INTEGER, { simulated: false })
         .some((m) => m.text === "SIMULATED_ONLY"),
       false,
@@ -362,5 +367,62 @@ test("向量打包后可参与余弦打分", async () => {
     .get().embedding;
   assert.ok(blob);
   assert.deepEqual(unpackVector(blob).slice(0, 3), vector);
+  store.db.close();
+});
+
+test("记忆总结按昵称书写，事实仍归属用户 ID", async () => {
+  const names = new Map([["10001", "甲"]]);
+  assert.equal(applySpeakerNames("10001 和 100011", names), "甲 和 100011");
+  const shown = presentMemory(
+    { subject: "10001", content: "10001 喜欢茶", session_id: "group:1" },
+    names,
+  );
+  assert.equal(shown.subject, "10001");
+  assert.equal(shown.subjectName, "甲");
+  assert.equal(shown.content, "甲 喜欢茶");
+
+  const { store, repo } = setup();
+  repo.db
+    .prepare("INSERT INTO sessions(id,name,kind) VALUES (?,?,?)")
+    .run("group:12345", "测试", "group");
+  repo.append({
+    eventId: "e1",
+    sessionId: "group:12345",
+    userId: "10001",
+    name: "甲",
+    text: "我喜欢茶",
+    role: "user",
+    time: Date.now(),
+  });
+  const mm = new MemoryManager(repo, {
+    call: async (_profile, _stage, _prompt, data) => {
+      assert.equal(data.messages[0].userId, "10001");
+      assert.equal(data.messages[0].name, "甲");
+      return {
+        summary: "10001 提到喜欢茶",
+        facts: [
+          {
+            subject: "10001",
+            content: "10001 喜欢茶",
+            type: "preference",
+            confidence: 0.9,
+            importance: 0.5,
+            sources: [data.messages[0].id],
+            certainty: "self_report",
+          },
+        ],
+      };
+    },
+  });
+  await mm.consolidate("group:12345", {}, "", {}, { force: true });
+  const stage = JSON.parse(
+    repo.db.prepare("SELECT data FROM core_stages").get().data,
+  );
+  assert.equal(stage.summary, "甲 提到喜欢茶");
+  const fact = repo.db
+    .prepare("SELECT subject, content FROM core_memories")
+    .get();
+  assert.equal(fact.subject, "10001");
+  assert.equal(fact.content, "甲 喜欢茶");
   store.db.close();
 });

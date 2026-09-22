@@ -9,6 +9,7 @@ const gateway = createOneBotGateway(store);
 const chatSystem = new ChatSystem(store, gateway.send, {
   localDemo: demoReply,
   fetchQuoted: (message) => gateway.fetchQuoted(message),
+  fetchImage: (file) => gateway.fetchImage(file),
 });
 const host = process.env.HOST || "127.0.0.1";
 if (

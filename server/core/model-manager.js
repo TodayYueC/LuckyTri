@@ -26,6 +26,35 @@ export function publicModel(m) {
   const { apiKey, ...safe } = m;
   return { ...safe, hasApiKey: !!apiKey };
 }
+export function storedModels(repo) {
+  const saved = repo.config("models", null);
+  return Array.isArray(saved) ? saved : [];
+}
+export function normalizeModels(models) {
+  const list = (Array.isArray(models) ? models : []).map((m) => ({
+    ...m,
+    isDefault: !!m.isDefault,
+  }));
+  if (!list.length) return [];
+  const marked = list.filter((m) => m.isDefault);
+  if (!marked.length) {
+    const chosen = list.find((m) => m.id === "default") || list[0];
+    chosen.isDefault = true;
+  } else if (marked.length > 1) {
+    let kept = false;
+    for (const model of list) {
+      if (model.isDefault && !kept) kept = true;
+      else model.isDefault = false;
+    }
+  }
+  return list;
+}
+export function pickModel(models, id) {
+  const list = normalizeModels(models);
+  if (!list.length) return null;
+  if (id && id !== "default") return list.find((m) => m.id === id) || null;
+  return list.find((m) => m.isDefault) || list[0];
+}
 export function isMimoProfile(profile) {
   return (
     String(profile?.provider || "").toLowerCase() === "mimo" ||
@@ -40,6 +69,55 @@ export function isMimoProfile(profile) {
     ) ||
     /^mimo(?:-|$)/i.test(String(profile?.model || ""))
   );
+}
+function thinkingOff(profile) {
+  return !profile.reasoningEffort || profile.reasoningEffort === "none";
+}
+function hostname(profile) {
+  try {
+    return new URL(profile?.baseUrl || "").hostname;
+  } catch {
+    return "";
+  }
+}
+function applyGenerationControls(body, profile, stage) {
+  const style = profile.thinkingStyle || "";
+  const mimo = style === "mimo" || (!style && isMimoProfile(profile));
+  const off = thinkingOff(profile);
+  const completion =
+    profile.tokenField === "max_completion_tokens" ||
+    (mimo && profile.tokenField !== "max_tokens");
+  body[completion ? "max_completion_tokens" : "max_tokens"] =
+    profile.maxOutputTokens;
+  // MiMo defaults to thinking. Short decision turns must turn it off, or a
+  // chat reply spends tens of seconds in hidden reasoning.
+  if (mimo) {
+    const disabled = off || ["decision", "validation"].includes(stage);
+    body.thinking = { type: disabled ? "disabled" : "enabled" };
+    body.temperature = profile.temperature;
+  } else if (
+    style === "deepseek" ||
+    (!style &&
+      (profile.provider === "deepseek" ||
+        hostname(profile) === "api.deepseek.com"))
+  ) {
+    body.thinking = { type: off ? "disabled" : "enabled" };
+    if (!off) body.reasoning_effort = profile.reasoningEffort;
+    else body.temperature = profile.temperature;
+  } else if (style === "glm") {
+    body.thinking = { type: "enabled" };
+    body.reasoning_effort = off ? "low" : profile.reasoningEffort;
+    body.temperature = profile.temperature;
+  } else if (style === "kimi-toggle") {
+    body.thinking = { type: off ? "disabled" : "enabled" };
+  } else if (style === "kimi-effort") {
+    if (!off) body.reasoning_effort = profile.reasoningEffort;
+  } else if (style === "qwen") {
+    body.enable_thinking = !off;
+    body.temperature = profile.temperature;
+  } else if (!off) body.reasoning_effort = profile.reasoningEffort;
+  else body.temperature = profile.temperature;
+  if (!profile.omitSampling && profile.topP !== 1) body.top_p = profile.topP;
 }
 export function validateModel(m) {
   const u = new URL(m.baseUrl);
@@ -81,6 +159,18 @@ export function validateModel(m) {
     throw Error("采样参数无效");
   return m;
 }
+function withoutImageBytes(messages) {
+  return messages.map((message) => ({
+    ...message,
+    content: Array.isArray(message.content)
+      ? message.content.map((part) =>
+          part?.type === "image_url"
+            ? { type: "image_url", image_url: { url: "" } }
+            : part,
+        )
+      : message.content,
+  }));
+}
 export function estimateTokens(value) {
   return Math.ceil(
     Buffer.byteLength(
@@ -89,15 +179,64 @@ export function estimateTokens(value) {
     ) / 2,
   );
 }
+const STABLE_KEYS = [
+  "context",
+  "persona",
+  "sessionId",
+  "messages",
+  "knowledgeInstruction",
+];
+const REUSABLE_KEYS = ["memories", "knowledge", "stages"];
+const VOLATILE_KEYS = [
+  "recalled",
+  "speakers",
+  "watermark",
+  "batchIds",
+  "budget",
+  "conversation",
+  "topics",
+  "vision",
+  "unavailableImages",
+  "decision",
+  "issues",
+  "imageGuide",
+  "replyFocus",
+  "comfort",
+  "maxBubbles",
+  "imageEvidence",
+  "response",
+];
+const PROMPT_NOISE = new Set([
+  "whySelected",
+  "platformId",
+  "sourceRows",
+  "batch",
+  "score",
+]);
+function dropPromptNoise(value) {
+  if (Array.isArray(value)) return value.map(dropPromptNoise);
+  if (!value || typeof value !== "object") return value;
+  const out = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (PROMPT_NOISE.has(key)) continue;
+    out[key] = dropPromptNoise(item);
+  }
+  return out;
+}
 export function cacheOrdered(value) {
   if (Array.isArray(value)) return value.map(cacheOrdered);
   if (!value || typeof value !== "object") return value;
-  const priority = ["context", "persona", "sessionId", "messages"];
+  const skip = new Set([...STABLE_KEYS, ...REUSABLE_KEYS, ...VOLATILE_KEYS]);
   const keys = [
-    ...priority.filter((k) => k in value),
-    ...Object.keys(value).filter((k) => !priority.includes(k)),
+    ...STABLE_KEYS.filter((k) => k in value),
+    ...REUSABLE_KEYS.filter((k) => k in value),
+    ...Object.keys(value).filter((k) => !skip.has(k)),
+    ...VOLATILE_KEYS.filter((k) => k in value),
   ];
   return Object.fromEntries(keys.map((k) => [k, cacheOrdered(value[k])]));
+}
+export function promptPayload(value) {
+  return cacheOrdered(dropPromptNoise(value));
 }
 export class ModelManager {
   constructor(repo, { fetcher = fetch } = {}) {
@@ -105,25 +244,29 @@ export class ModelManager {
     this.fetcher = fetcher;
   }
   profile(id) {
-    const profiles = this.repo.config("models", [
-      defaultModel(this.repo.store.settings()),
-    ]);
-    const m = profiles.find((x) => x.id === (id || "default"));
-    if (!m) throw Error("所选模型档案不存在");
+    const wanted = id || "default";
+    const m = pickModel(storedModels(this.repo), wanted);
+    if (!m)
+      throw Error(
+        wanted === "default"
+          ? "尚未配置模型，请先在模型库中添加"
+          : "所选模型档案不存在",
+      );
     return m;
   }
   async call(profile, stage, system, data, trace, images = [], attempt = 0) {
     if (profile.json && !/json/i.test(system))
       system += "\nReturn a JSON object.";
     const build = (payload) => {
-      const text = JSON.stringify(cacheOrdered(payload));
+      const text = JSON.stringify(promptPayload(payload));
+      // Text stays in front of image bytes so a stable transcript can still hit the provider prefix cache.
       const content = images.length
         ? [
             { type: "text", text },
             ...images.flatMap((x) => [
               {
                 type: "text",
-                text: `图片对应消息 ${x.messageId}，发送人 ${x.speaker}`,
+                text: `下面这张图属于消息 ${x.messageId}，发送人 ${x.speaker}。请看画面本身，不要只根据“[图片]”占位符回答。`,
               },
               { type: "image_url", image_url: { url: x.url } },
             ]),
@@ -147,7 +290,8 @@ export class ModelManager {
     const { messages, inputEstimate, removed } = fitInput(
       data,
       build,
-      (messages) => estimateTokens(messages) + images.length * 2048,
+      (messages) =>
+        estimateTokens(withoutImageBytes(messages)) + images.length * 2048,
       Math.min(
         profile.maxInputTokens,
         profile.contextWindow - profile.maxOutputTokens,
@@ -155,41 +299,12 @@ export class ModelManager {
     );
     const key = profile.apiKey || process.env.LLM_API_KEY;
     if (!key) throw Error("模型尚未配置 API Key");
-    const mimo = isMimoProfile(profile);
     const body = {
       model: profile.model,
       messages,
-      ...(mimo
-        ? { max_completion_tokens: profile.maxOutputTokens }
-        : { max_tokens: profile.maxOutputTokens }),
     };
+    applyGenerationControls(body, profile, stage);
     if (profile.json) body.response_format = { type: "json_object" };
-    // MiMo's OpenAI-compatible API uses thinking.enabled/disabled. It defaults
-    // to enabled, so merely omitting reasoning_effort makes short chat replies
-    // spend tens of seconds in hidden reasoning.
-    if (mimo)
-      body.thinking = {
-        type:
-          !profile.reasoningEffort ||
-          profile.reasoningEffort === "none" ||
-          ["decision", "validation"].includes(stage)
-            ? "disabled"
-            : "enabled",
-      };
-    else if (
-      profile.provider === "deepseek" ||
-      new URL(profile.baseUrl).hostname === "api.deepseek.com"
-    )
-      body.thinking = {
-        type:
-          !profile.reasoningEffort || profile.reasoningEffort === "none"
-            ? "disabled"
-            : "enabled",
-      };
-    if (!mimo && profile.reasoningEffort && profile.reasoningEffort !== "none")
-      body.reasoning_effort = profile.reasoningEffort;
-    else body.temperature = profile.temperature;
-    if (profile.topP !== 1) body.top_p = profile.topP;
     const entry = {
       stage,
       model: publicModel(profile),

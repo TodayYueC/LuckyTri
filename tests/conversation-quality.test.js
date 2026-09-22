@@ -22,6 +22,14 @@ test("history remains a common prefix despite new batch IDs and retrieval", () =
     b = JSON.stringify(cacheOrdered(next));
   assert(b.startsWith(a.slice(0, a.indexOf("],"))));
   assert(a.indexOf("messages") < a.indexOf("watermark"));
+  const clocked = JSON.stringify(
+    cacheOrdered({ ...old, conversation: { clock: "10:00" } }),
+  );
+  const later = JSON.stringify(
+    cacheOrdered({ ...old, watermark: 9, conversation: { clock: "10:01" } }),
+  );
+  assert(clocked.indexOf("memories") < clocked.indexOf("watermark"));
+  assert(later.startsWith(clocked.slice(0, clocked.indexOf('"watermark"'))));
 });
 test("allow natural short reactions but reject repeated hh decoration and low-sarcasm attacks", () => {
   const snapshot = {

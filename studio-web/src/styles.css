@@ -1747,6 +1747,39 @@ tr:hover td {
   margin-top: 16px;
   width: 100%;
 }
+.model-picker {
+  width: min(760px, 100%);
+}
+.model-picker .vendor-block h3 {
+  margin: 16px 0 8px;
+}
+.preset-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  background: #f2f6ed;
+  border: 1px solid var(--line);
+  padding: 12px 10px;
+  font-weight: 500;
+}
+.preset-card b {
+  font-size: 12px;
+}
+.preset-card small {
+  font-size: 10px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.preset-card:hover:not(:disabled) {
+  background: #ddefcd;
+  border-color: #a7c58d;
+}
+.custom-preset {
+  margin-top: 8px;
+}
 .modal-backdrop .section-heading button {
   font-size: 20px;
   background: transparent;

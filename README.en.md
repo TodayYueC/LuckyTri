@@ -1,197 +1,129 @@
-# LuckyBot · AI Companion Platform
+# LuckyBot
 
-[![Node.js](https://img.shields.io/badge/Node.js-24%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![License](https://img.shields.io/badge/license-MIT-2563eb.svg)](LICENSE)
-[![QQ / OneBot](https://img.shields.io/badge/QQ-OneBot%2011-5865F2)](https://onebot.adapters.nonebot.dev/)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-64748b)](#installation)
+LuckyBot is a local-first QQ companion. It receives group and private messages on your machine, decides whether to speak, then writes a reply from the current batch, quote chain, persona, memories, and knowledge base.
 
-**Language / 语言:** [English (current)](README.en.md) · [简体中文](README.md)
+The current connector is OneBot 11. QQ login and delivery are handled by [NapCat](https://napneko.github.io/). LuckyBot does not store a QQ password. Models use a Chat Completions-compatible API.
 
-> **中文简介：** 让一个 AI 学会在群里理解人、记得事，也知道什么时候闭嘴。<br>
-> **English:** *A local-first AI companion that understands people, remembers what matters, and knows when to stay quiet.*
+**Language:** [English](README.en.md) · [简体中文](README.md)
 
-LuckyBot is a local-first AI companion platform. Its current QQ connector receives group and private messages through a OneBot 11-compatible bridge and separates **whether to speak** from **what to say**. Conversation context, reply targets, long-term memory, persona controls, and delivery pacing are explicit parts of the system.
+## What it does
 
-The goal is not to answer every message. LuckyBot should be able to live in a group for a long time: understand who is talking to whom, remember meaningful details, join at the right moment, and remain quiet when an exchange is clearly between other people.
+- Private chats, mentions, name calls, and quotes of its own messages are answered directly. Ordinary group messages are judged in context, then sampled with a participation probability.
+- Messages that arrive close together are handled as one batch.
+- Long-term memories stay scoped to a session, a private chat, or a shared pool. An explicit “remember …” request becomes a candidate and is used only after review.
+- Documents can be stored in a knowledge collection. Retrieved passages enter the context as data and do not skip the speech decision.
+- LuckyBot shows the live conversation and edits sessions, persona, models, and the QQ connection. Historical replay does not send QQ messages or write production memory.
 
-## Highlights
-
-| Capability | What it does |
-| --- | --- |
-| Multi-person context | Stores message IDs, speakers, timestamps, mentions, quotes, attachments, and topics instead of flattening a group into one prompt. |
-| Independent speech decision | Uses `SILENT`, `REPLY`, `REACT`, and `MULTI_MESSAGE` paths. Direct mentions, name calls, private chats, and natural continuations receive priority. |
-| Short aggregation window | Groups a burst of messages before reasoning so a follow-up from another member is not missed. |
-| Three-layer memory | Keeps recent raw context, stage summaries, and durable facts with source, scope, confidence, importance, version, and lock state. |
-| Memory boundaries | Shared memories can follow a QQ user across sessions; private-only and session-only memories stay isolated. |
-| Stable persona | Separates identity, interests, forbidden expressions, warmth, humor, activity, initiative, and sarcasm controls. Natural conversation has priority over persona performance. |
-| Human-like pacing | Adds delivery delay, cooldown, and global rate limits. Multiple message bubbles are supported when they are natural, without mechanically splitting every sentence. |
-| Images and stickers | Keeps an image with its surrounding text and distinguishes ordinary images, QQ stickers, and marketplace stickers. |
-| Model profiles | Supports DeepSeek, MiMo, OpenAI-compatible APIs, Qwen, Kimi, Zhipu, SiliconFlow, OpenRouter, and custom providers. |
-| Debugging and replay | Shows final context, retrieved memories, decision reasons, usage, raw model output, timing, and bubble splitting; historical messages can be replayed in isolation. |
-| Local WebUI | Manage models, sessions, persona, prompts, memories, QQ setup, diagnostics, and replay from one interface. |
-
-## Architecture
-
-```mermaid
-flowchart TD
-  A[QQ / NapCat] --> B[OneBot 11 WebSocket]
-  B --> C[Normalize and deduplicate]
-  C --> D[Aggregate and cache per session]
-  D --> E[Speaker / target / topic analysis]
-  E --> F[Recent context + summaries + long-term memory]
-  F --> G{Speech decision}
-  G -->|SILENT| H[Write trace]
-  G -->|REPLY / REACT| I[Generate response]
-  G -->|MULTI_MESSAGE| I
-  I --> J[Persona and context validation]
-  J --> K[Delay, cooldown, bubble scheduler]
-  K --> L[QQ send confirmation]
-  L --> M[Events, memories, and traces]
-```
-
-The core pipeline lives in `server/core/` and is intentionally modular:
-
-| Module | Responsibility |
-| --- | --- |
-| `message-manager` | Normalize QQ messages, deduplicate events, and preserve attachments and quotes |
-| `conversation-manager` | Per-session watermarks, recent context, and aggregation windows |
-| `context-builder` | Assemble full context, persona, and relevant memories |
-| `topic-tracker` | Track topics, stage summaries, and evidence |
-| `reply-target-resolver` | Resolve who a message is addressed to and whether it follows LuckyBot |
-| `speech-decision` | Decide whether to speak and which response path to use |
-| `persona-manager` | Compile persona controls and prompts |
-| `memory-manager` | Candidate extraction, review, merge, versioning, scope, and expiry |
-| `vision-manager` | Send images together with their owning messages |
-| `response-generator` | Generate one or more natural message bubbles |
-| `response-validator` | Catch wrong targets, repetition, lectures, hostility, and AI-like templates |
-| `message-scheduler` | Delivery delay, cooldown, global rate limits, and send confirmation |
-| `model-manager` | Provider-specific parameters, budgets, reasoning modes, and usage records |
-
-## Installation
-
-### Requirements
+## Requirements
 
 - Windows, macOS, or Linux
 - Node.js 24 or newer
-- `npm`
-- A Chat Completions-compatible model API for real replies
-- [NapCatQQ](https://napneko.github.io/) for a real QQ connection; a dedicated QQ account is recommended
+- npm
+- A model API key for real replies
+- NapCat for a real QQ account; a dedicated account is recommended
 
-### Start the local studio
-
-For everyday use, download the [latest Release](https://github.com/TodayYueC/LuckyBot/releases/latest) (currently v0.5.1). The default `main` branch is the development trunk and may include changes that have not been tagged yet. To run this official version, check out `v0.5.1` after cloning. To follow latest development, skip that step.
+## Start
 
 ```bash
 git clone https://github.com/TodayYueC/LuckyBot.git
 cd LuckyBot
-git checkout v0.5.1
 npm install
+npm run setup
 npm start
 ```
 
-Open <http://127.0.0.1:3210>. On Windows, you can also double-click:
+Open <http://127.0.0.1:3210>. On Windows, `启动LuckyBot.cmd` starts the service and opens LuckyBot. `停止LuckyBot.cmd` stops this project's service.
 
-- `启动LuckyBot.cmd` to start the service and open the studio.
-- `停止LuckyBot.cmd` to stop the project service.
-
-Start in simulation mode first. Add a group or QQ number in “Sessions” and verify decisions, memory, and persona behavior before connecting a real account. Simulation does not call a model or send QQ messages.
-
-### Local credentials
-
-Copy `.env.example` to `.env` and use separate, random, long tokens for the management UI and OneBot bridge:
+`npm run setup` creates `.env` with an admin token and an OneBot token when the file is missing. An existing file is left unchanged.
 
 ```dotenv
 HOST=127.0.0.1
 PORT=3210
-ADMIN_TOKEN=replace-with-a-long-random-token
-ONEBOT_TOKEN=replace-with-a-different-long-random-token
+ADMIN_TOKEN=
+ONEBOT_TOKEN=
 LLM_API_KEY=
 ```
 
-Model credentials can also be saved in the WebUI. **Never put real keys in the README, issues, screenshots, fixtures, or Git history.** `.env`, `data/`, SQLite databases, and logs are ignored by Git.
+`ADMIN_TOKEN` protects LuckyBot and the HTTP API. `ONEBOT_TOKEN` protects `/onebot/v11/ws`. `LLM_API_KEY` is optional and, when set, overrides the key saved in LuckyBot. Restart after changing `.env`. Do not commit real secrets.
+
+Simulation mode is the default. Add a group or QQ number under Conversation → Session settings, then send a simulated message from the live page. Simulation does not send to QQ. Without an API key it uses a local sample and does not call a model.
 
 ## Connect QQ
 
-1. Install and log in to [NapCatQQ](https://napneko.github.io/) with a dedicated QQ account.
-2. In LuckyBot’s “QQ Setup Assistant”, select the NapCat directory, generate the OneBot configuration, and launch NapCat. You can also configure the reverse WebSocket manually:
+1. Under System → QQ connection, use the bundled installer or choose an existing NapCat directory.
+2. Write the connection config, launch NapCat, and finish QQ login in the NapCat window.
+3. Under System → Models, set the API URL, model name, and key, then run the connection test.
+4. On Today, turn simulation off and keep global participation enabled.
+5. Enable the target group or private chat in Session settings.
 
-   ```text
-   ws://127.0.0.1:3210/onebot/v11/ws
-   ```
-
-3. In “Model Management”, enter the provider, API URL, model ID, and API key, then run the connection test.
-4. Disable simulation mode in “Connection & Settings” and save.
-5. Enable the group or private session in “Sessions”.
-6. Mention the account or call it `LuckyBot` in QQ to test the connection.
-
-QQ passwords, QR codes, verification codes, and security confirmations remain inside QQ/NapCat. LuckyBot never stores a QQ password. NapCat is an independent third-party component; follow its license and QQ platform rules.
-
-The repository includes verified NapCat Windows packages. Their sources and SHA-256 values are recorded in `vendor/napcat/manifest.json` and `vendor/napcat/shell-manifest.json`.
-
-## WebUI areas
-
-- **Overview**: connection status, mode, active sessions, model profiles, and recent decisions.
-- **Sessions**: add/archive sessions, enable or pause participation, set probability, cooldown, aggregation, context length, and per-group persona overrides; archived auto-discovered sessions can be permanently deleted.
-- **Model Management**: multiple providers, context/input/output budgets, vision, reasoning effort, connection tests, and profile deletion.
-- **Persona & Rhythm**: identity, interests, forbidden expressions, reply length, warmth, humor, activity, initiative, sarcasm, and isolated chat previews.
-- **Memory Garden**: search, edit, lock, delete, review candidates, change scope, confidence, and importance.
-- **Prompt Management**: separate System, Decision, Generation, Memory, Vision, and Validation prompts.
-- **Debugging**: received messages, resolved targets, full context, retrieved memories, decision reasons, usage, raw output, and timings.
-- **Replay**: replay a historical range with the current configuration in isolation; it does not send QQ or write production memory.
-
-## Privacy and security
-
-LuckyBot listens on `127.0.0.1` by default. Runtime data is stored locally under `data/`:
+For a manual NapCat reverse WebSocket client:
 
 ```text
-data/friend.db       SQLite database with messages, memories, and local settings
-data/backups/        Consistent database backups
-data/*.log           Launcher, service, and error logs
+ws://127.0.0.1:3210/onebot/v11/ws
 ```
 
-These files are not part of the repository. The database may contain chat history, long-term memories, and model credentials, so protect local file access. Before exposing the studio to another machine, set a strong `ADMIN_TOKEN` and use a trusted HTTPS/WSS reverse proxy.
+Use OneBot 11, array message format, and `ONEBOT_TOKEN`. The port is `PORT` from `.env`.
 
-If a key ever reaches Git history, revoke it with the provider first and then rewrite the history. Deleting the current file alone is not enough. See [SECURITY.md](SECURITY.md).
+## Interface
 
-## Development and tests
+| Section | Page | Use |
+| --- | --- | --- |
+| Today | `#overview` | Connection, active sessions, recent decisions, global switch, simulation |
+| Conversation | `#live` | Live messages, decisions, cited knowledge, simulated chat |
+| Conversation | `#spaces` | Add, pause, archive, and delete sessions; model, probability, cooldown, aggregation |
+| Conversation | `#lab` | Isolated replay by message sequence |
+| Memory | `#knowledge` | Session memories, review candidates, documents, retrieval test |
+| Persona | `#character` | Persona, voice, prompts, and isolated preview |
+| System | `#models` | Model profiles, budgets, vision, embeddings, connection test |
+| System | `#connect` | NapCat install, configuration, launch, and readiness |
+
+Saved settings apply on the next turn. Closing the browser does not stop the service.
+
+## Data
+
+The server listens on `127.0.0.1` by default. Runtime files under `data/` are not committed:
+
+```text
+data/friend.db    Messages, memories, knowledge, and local settings
+data/backups/     Database backups from npm run backup
+data/*.log        Launcher and service logs
+```
+
+The database can contain chat text and model keys. Backups are private, and `.env` is not inside them. To restore, stop the service, move the current `friend.db` plus its `-wal` and `-shm` files aside, then copy the backup to `data/friend.db`. If `DB_PATH` is set, use that path.
+
+Binding a non-local address requires `ADMIN_TOKEN`. See [SECURITY.md](SECURITY.md).
+
+## Development
 
 ```bash
-npm test                 # Unit, HTTP, and OneBot integration tests
-npm run test:ui          # Playwright browser smoke tests
-npm run format:check     # Prettier check
-npm run docs:build       # Rebuild the web tutorial
+npm run dev:ui       # UI dev server; API proxied to port 3210
+npm run build:ui     # Build into public/app for npm start
+npm test
+npm run test:ui
+npm run format:check
+npm run docs:build   # Rebuild the web guide from docs/使用教程.md
 ```
 
-Tests use temporary databases and simulated models. They do not need a real API key and do not send QQ messages. The current suite contains 110 tests covering message ownership, reply chains, memory isolation, probability and cooldown, images/stickers, malformed model output, NapCat setup, model parameters, and UI flows.
-
-## Repository layout
+Tests use temporary databases. They do not need a real key and do not send QQ messages.
 
 ```text
-server/                 Server, OneBot bridge, SQLite, and orchestration
-server/core/            Message, context, memory, decision, and model modules
-public/                 Vanilla JavaScript/CSS WebUI
-scripts/                Launch, stop, backup, docs, and evaluation scripts
-tests/                  Unit, integration, OneBot, and UI tests
-docs/                   Tutorials, design notes, style, and performance notes
-vendor/napcat/          Verified NapCat Windows packages
-data/                   Local runtime data; never committed
+server/index.js      Process startup, auth, and wiring
+server/channels/     Session identity, OneBot adapter, WebSocket
+server/core/         Context, speech decision, generation, delivery
+server/knowledge/    Memories, documents, retrieval
+server/studio/       HTTP for settings, NapCat, and model checks
+studio-web/          Vue 3 UI
+public/app/          Built UI
+scripts/             Launch, stop, backup, guide build
+tests/               Server and UI tests
+vendor/napcat/       Verified NapCat Windows packages
 ```
 
 ## Documentation
 
-- [Chinese setup guide](docs/使用教程.md)
-- [System redesign](docs/系统重构设计-v1.md)
-- [Acceptance checklist](docs/重构版使用与验收.md)
-- [Conversation style](docs/chat-style.md)
-- [MiMo performance notes](docs/MiMo性能排查.md)
-- [Security policy](SECURITY.md)
-
-## Scope and roadmap
-
-The current release targets one process and one QQ account. Relationship inference, automatic promotion of durable facts, proactive topics, sticker selection, and additional vision tools have extension points but are not enabled by default. Availability of QQ, NapCat, and model providers remains subject to their own policies and account-safety controls.
+- [Chinese guide](docs/使用教程.md)
+- [Security](SECURITY.md)
 
 ## License
 
-The project code is released under the [MIT License](LICENSE). The NapCatQQ packages under `vendor/napcat/` and their dependencies remain subject to their respective upstream licenses.
-
-Issues and pull requests are welcome.
+Project code is released under the [MIT License](LICENSE). NapCat packages in `vendor/napcat/` keep their upstream licenses.

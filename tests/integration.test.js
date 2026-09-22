@@ -287,7 +287,30 @@ test(
       ),
       false,
     );
-    const defaultProfile = coreState.models.find((m) => m.id === "default");
+    assert.equal(coreState.models.length, 0);
+    const settingsNow = (await request("/state")).data.settings;
+    const defaultProfile = {
+      id: "default",
+      isDefault: true,
+      label: settingsNow.model,
+      provider: "custom",
+      baseUrl: settingsNow.baseUrl,
+      model: settingsNow.model,
+      apiKey: "test-only-key",
+      contextWindow: 128000,
+      maxInputTokens: 100000,
+      maxOutputTokens: 8192,
+      vision: false,
+      system: true,
+      json: true,
+      tools: false,
+      embedding: false,
+      embeddingModel: "",
+      reasoningEffort: "none",
+      temperature: 0.85,
+      topP: 1,
+      timeoutMs: 90000,
+    };
     const removableProfile = {
       ...defaultProfile,
       id: "remove-me",
@@ -325,7 +348,13 @@ test(
     );
     assert.equal(
       (await request("/core/models/default", "DELETE", {})).status,
-      400,
+      200,
+    );
+    assert.equal((await request("/core/state")).data.models.length, 0);
+    assert.equal(
+      (await request("/core/models", "PUT", { models: [defaultProfile] }))
+        .status,
+      200,
     );
     const batchMemoryA = await request("/core/memories", "POST", {
       session: "group:54321",

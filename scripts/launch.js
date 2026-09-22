@@ -36,7 +36,7 @@ async function running() {
   try {
     info = await response.json();
   } catch {
-    throw new Error("此端口运行的不是 LuckyBot 工作室。");
+    throw new Error("此端口运行的不是 LuckyBot。");
   }
   if (
     !["luckybot", "lucky", "xiaoman"].includes(info.app) ||

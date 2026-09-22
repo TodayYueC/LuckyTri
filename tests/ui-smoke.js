@@ -195,6 +195,8 @@ try {
     .getByText("请先配置模型 API Key", { exact: true })
     .waitFor();
   await navigate("models");
+  await p.locator("#addModel").click();
+  await p.locator("[data-preset=deepseek-flash]").click();
   await p.locator("#modelForm [name=model]").fill("test-model");
   await p.locator("#modelForm .primary").click();
   await p.waitForTimeout(300);
@@ -205,10 +207,12 @@ try {
   // One model editor owns connection and capacity; unsaved new models are discarded.
   assert.equal(await p.locator("#settings").count(), 0);
   await p.locator("#addModel").click();
+  await p.locator("[data-preset=deepseek-flash]").click();
   await p.locator("[name=label]").fill("未保存模型");
   await p.locator(".entity-row").first().click();
   assert.equal(await p.locator(".entity-row").count(), 1);
   await p.locator("#addModel").click();
+  await p.locator("[data-preset=kimi-k2.6]").click();
   await p.locator("[name=label]").fill("界面测试模型");
   await p.locator("#modelForm .primary").click();
   await p.waitForTimeout(300);
@@ -310,7 +314,7 @@ try {
       name: "LuckyBot · 从零上手教程",
     })
     .waitFor();
-  assert.equal(await p.locator("article h2").count(), 11);
+  assert.equal(await p.locator("article h2").count(), 9);
   await p.setViewportSize({ width: 390, height: 844 });
   assert.equal(
     await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
@@ -516,12 +520,10 @@ try {
     await p.waitForTimeout(400);
     assert.equal(await p.locator(".feedback-item").count(), 6);
     assert.match(await p.locator(".pagination").textContent(), /1 \/ 23/);
-    const size = await p
-      .locator("#feedbackList")
-      .evaluate((el) => ({
-        scroll: el.scrollHeight,
-        visible: el.clientHeight,
-      }));
+    const size = await p.locator("#feedbackList").evaluate((el) => ({
+      scroll: el.scrollHeight,
+      visible: el.clientHeight,
+    }));
     assert(
       size.scroll > size.visible && size.visible > 100,
       "feedback has bounded internal scrolling",
