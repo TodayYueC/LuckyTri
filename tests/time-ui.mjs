@@ -46,6 +46,7 @@ const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 try {
   await page.goto(`http://127.0.0.1:${server.address().port}/app/#time`);
+  await page.getByRole("button", { name: "JOURNAL 时间手记 ↗" }).click();
   await page.locator(".time-note").first().waitFor();
   assert.equal(await page.locator(".time-note").count(), 30);
   await page.getByRole("button", { name: "更早的自己 ↗" }).click();
@@ -66,28 +67,41 @@ try {
     .first()
     .getByRole("button", { name: "重新关注" })
     .waitFor();
-  await page.getByLabel("允许低频后台回想").check();
-  await page.getByRole("button", { name: "保存时间设置 ↗" }).click();
+  await page.getByRole("button", { name: "RHYTHM 独处方式 ↗" }).click();
+  await page.getByLabel(/允许后台独处/).check();
+  await page.getByLabel(/24 小时调用次数/).fill("0");
+  await page.getByLabel(/24 小时 Token/).fill("0");
+  await page.getByRole("button", { name: /保存并应用时间设置/ }).click();
   await page.waitForFunction(
     () => document.querySelector("#toast")?.textContent === "时间设置已保存",
   );
   assert.equal(system.repo.config("time").enabled, true);
+  assert.equal(system.repo.config("time").dailyCalls, 0);
+  assert.equal(system.repo.config("time").dailyTokens, 0);
   await mkdir("workspace", { recursive: true });
   for (const width of [1440, 820, 390]) {
     await page.setViewportSize({ width, height: 1000 });
-    await page.evaluate(() => {
-      document.querySelector("main")?.scrollTo(0, 0);
-      document.querySelector(".page-time")?.scrollTo(0, 0);
-      window.scrollTo(0, 0);
-    });
-    await page.screenshot({
-      path: `workspace/time-${width}.png`,
-      fullPage: true,
-    });
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth > window.innerWidth,
-    );
-    assert.equal(overflow, false, `overflow at ${width}`);
+    for (const target of [
+      [0, "now"],
+      [1, "journal"],
+      [2, "settings"],
+      [3, "activity"],
+    ]) {
+      await page.locator(".time-local-nav button").nth(target[0]).click();
+      await page.evaluate(() => {
+        document.querySelector("main")?.scrollTo(0, 0);
+        document.querySelector(".page-time")?.scrollTo(0, 0);
+        window.scrollTo(0, 0);
+      });
+      await page.screenshot({
+        path: `workspace/time-${target[1]}-${width}.png`,
+        fullPage: true,
+      });
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth > window.innerWidth,
+      );
+      assert.equal(overflow, false, `${target[1]} overflow at ${width}`);
+    }
   }
   assert.deepEqual(errors, []);
   console.log(

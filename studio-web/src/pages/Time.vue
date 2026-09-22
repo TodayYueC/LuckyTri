@@ -1,21 +1,49 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { api, toast } from "../api";
 import { studio } from "../store";
-const session = ref(""),
-  data = ref<any>(null),
-  draft = ref<any>(null),
-  busy = ref(false),
-  dirty = ref(false),
-  query = ref(""),
-  before = ref<number | null>(null);
+
+const session = ref("");
+const data = ref<any>(null);
+const draft = ref<any>(null);
+const busy = ref(false);
+const dirty = ref(false);
+const query = ref("");
+const before = ref<number | null>(null);
+const view = ref<"now" | "journal" | "settings" | "activity">("now");
 let timer: ReturnType<typeof setInterval>;
+
+const views = [
+  { id: "now", label: "此刻", en: "NOW" },
+  { id: "journal", label: "时间手记", en: "JOURNAL" },
+  { id: "settings", label: "独处方式", en: "RHYTHM" },
+  { id: "activity", label: "运行记录", en: "ACTIVITY" },
+] as const;
 const kind: Record<string, string> = {
   reflection: "后来想到",
   revision: "重新理解",
-  unfinished: "留待以后",
+  unfinished: "仍放在心上",
   reconnection: "久别想起",
 };
+const energy: Record<string, string> = {
+  low: "慢一点",
+  steady: "平稳",
+  bright: "有精神",
+};
+const socialPull: Record<string, string> = {
+  settled: "安静待着",
+  open: "愿意聊聊",
+  reconnect: "想起了对方",
+};
+const selectedSession = computed(() =>
+  studio.core.sessions.find((item: any) => item.id === session.value),
+);
+const allSelected = computed(
+  () =>
+    !!draft.value?.sessions?.length &&
+    draft.value.sessions.length === studio.core.sessions.length,
+);
+
 async function load() {
   try {
     const selected = session.value;
@@ -29,13 +57,40 @@ async function load() {
     if (selected !== session.value) return;
     data.value = result;
     if (!dirty.value) draft.value = structuredClone(result.settings);
-  } catch (e) {
-    toast((e as Error).message, true);
+  } catch (error) {
+    toast((error as Error).message, true);
   }
 }
 function changed() {
   dirty.value = true;
   studio.dirty = true;
+}
+function switchView(next: typeof view.value) {
+  view.value = next;
+  document
+    .querySelector(".page-time")
+    ?.scrollTo({ top: 0, behavior: "smooth" });
+}
+function toggleEnabled() {
+  draft.value.enabled = !draft.value.enabled;
+  changed();
+}
+function toggleAllSessions() {
+  draft.value.sessions = allSelected.value
+    ? []
+    : studio.core.sessions.map((item: any) => item.id);
+  changed();
+}
+function preset(name: "natural" | "active" | "quiet") {
+  Object.assign(
+    draft.value,
+    {
+      natural: { idleMinutes: 20, intervalMinutes: 60, minMessages: 4 },
+      active: { idleMinutes: 8, intervalMinutes: 20, minMessages: 2 },
+      quiet: { idleMinutes: 60, intervalMinutes: 360, minMessages: 12 },
+    }[name],
+  );
+  changed();
 }
 async function save() {
   busy.value = true;
@@ -45,8 +100,8 @@ async function save() {
     studio.dirty = false;
     await load();
     toast("时间设置已保存");
-  } catch (e) {
-    toast((e as Error).message, true);
+  } catch (error) {
+    toast((error as Error).message, true);
   } finally {
     busy.value = false;
   }
@@ -54,39 +109,53 @@ async function save() {
 async function reflect() {
   busy.value = true;
   try {
-    const r = await api("/time/reflect", "POST", { session: session.value });
-    toast(r.reason, r.status === "error");
+    const result = await api("/time/reflect", "POST", {
+      session: session.value,
+    });
+    toast(result.reason, result.status === "error");
     await load();
-  } catch (e) {
-    toast((e as Error).message, true);
+  } catch (error) {
+    toast((error as Error).message, true);
   } finally {
     busy.value = false;
   }
 }
-async function update(n: any, values: any) {
+async function update(note: any, values: any) {
   try {
-    await api("/time/notes/" + encodeURIComponent(n.id), "PATCH", values);
+    await api("/time/notes/" + encodeURIComponent(note.id), "PATCH", values);
     await load();
-  } catch (e) {
-    toast((e as Error).message, true);
+  } catch (error) {
+    toast((error as Error).message, true);
   }
 }
-async function remove(n: any) {
+async function remove(note: any) {
   if (!confirm("删除这条内部记录？有后续修正的记录只能隐藏。")) return;
   try {
-    await api("/time/notes/" + encodeURIComponent(n.id), "DELETE", {});
+    await api("/time/notes/" + encodeURIComponent(note.id), "DELETE", {});
     await load();
-  } catch (e) {
-    toast((e as Error).message, true);
+  } catch (error) {
+    toast((error as Error).message, true);
   }
 }
-function date(t: number) {
+function date(value: number | null) {
+  if (!value) return "还没有";
   return new Intl.DateTimeFormat("zh-CN", {
     timeZone: data.value?.settings.timeZone || "Asia/Shanghai",
     dateStyle: "medium",
     timeStyle: "short",
-  }).format(t);
+  }).format(value);
 }
+function compact(value: number) {
+  return new Intl.NumberFormat("zh-CN", { notation: "compact" }).format(
+    Number(value || 0),
+  );
+}
+function allowance(value: number, suffix = "") {
+  return Number(value) === 0
+    ? "不限"
+    : `${Number(value).toLocaleString()}${suffix}`;
+}
+
 onMounted(() => {
   session.value = studio.core.sessions[0]?.id || "";
   load();
@@ -96,338 +165,633 @@ onUnmounted(() => clearInterval(timer));
 </script>
 
 <template>
-  <div class="time-workbench" v-if="data && draft">
-    <section class="time-hero surface">
-      <div class="time-orbit" aria-hidden="true"><i></i><span>◷</span></div>
-      <div>
-        <span class="eyebrow">TIME / BETWEEN CONVERSATIONS</span>
-        <h2>让时间留下痕迹。</h2>
-        <p>刚才的对话，后来想到的事，与重新相遇。</p>
-        <time>{{ data.clock.local }} · {{ data.clock.period }}</time>
+  <div v-if="data && draft" class="time-studio">
+    <header class="time-masthead surface">
+      <div class="time-art" aria-hidden="true">
+        <i></i><i></i><span>{{ data.clock.hour }}</span
+        ><small>时</small>
       </div>
-      <span class="status-tag">{{
-        data.busy
-          ? "正在独处"
-          : data.settings.enabled
-            ? "独处已开启"
-            : "按需开启独处"
-      }}</span>
-    </section>
-    <div class="time-metrics">
-      <article class="surface">
-        <small>24 小时调用</small
-        ><b>{{ data.usage.calls }} / {{ data.settings.dailyCalls }}</b>
-      </article>
-      <article class="surface">
-        <small>Token 预算占用（含预留）</small
-        ><b
-          >{{ data.usage.tokens.toLocaleString() }} /
-          {{ data.settings.dailyTokens.toLocaleString() }}</b
-        >
-      </article>
-      <article class="surface">
-        <small>这段关系的手记</small
-        ><b
-          >{{ data.count }} <small>条 · {{ data.open }} 个待续</small></b
-        >
-      </article>
-    </div>
-    <div class="time-columns">
-      <section class="surface time-journal">
-        <div class="section-heading">
-          <h2>时间手记</h2>
-          <span class="eyebrow">AFTERTHOUGHTS</span>
-        </div>
-        <label
-          >当前会话<select
+      <div class="time-intro">
+        <span class="eyebrow">A LIFE BETWEEN CONVERSATIONS</span>
+        <h2>时间不是等待，<br /><em>是留下来的自己。</em></h2>
+        <p>{{ data.clock.local }} · {{ data.clock.period }}</p>
+      </div>
+      <div class="time-control">
+        <label>
+          正在查看
+          <select
             v-model="session"
             @change="
               before = null;
               load();
             "
           >
-            <option v-for="s in studio.core.sessions" :key="s.id" :value="s.id">
-              {{ s.name }}
+            <option
+              v-for="item in studio.core.sessions"
+              :key="item.id"
+              :value="item.id"
+            >
+              {{ item.name }}
             </option>
-          </select></label
+          </select>
+        </label>
+        <button
+          type="button"
+          class="life-switch"
+          :class="{ on: draft.enabled }"
+          :aria-pressed="draft.enabled"
+          @click="toggleEnabled"
         >
-        <p class="notice" role="status">
-          {{ data.reason || "已进入独处窗口，可以留下新的理解"
-          }}<br v-if="data.lastInteraction" /><small v-if="data.lastInteraction"
-            >上次交流：{{ date(data.lastInteraction) }}</small
+          <span><i></i></span>
+          <b>{{ draft.enabled ? "独处正在发生" : "独处尚未开启" }}</b>
+          <small>{{ dirty ? "保存后生效" : data.reason || "状态正常" }}</small>
+        </button>
+      </div>
+    </header>
+
+    <nav class="time-local-nav surface" aria-label="时间页面分区">
+      <button
+        v-for="item in views"
+        :key="item.id"
+        type="button"
+        :class="{ active: view === item.id }"
+        @click="switchView(item.id)"
+      >
+        <small>{{ item.en }}</small
+        ><b>{{ item.label }}</b
+        ><span>↗</span>
+      </button>
+    </nav>
+
+    <div v-if="dirty" class="time-savebar" role="status">
+      <span>时间设置有修改，保存后才会开始按新节奏生活。</span>
+      <button type="button" @click="save" :disabled="busy">
+        {{ busy ? "保存中…" : "保存设置" }}
+      </button>
+    </div>
+
+    <template v-if="view === 'now'">
+      <section class="inner-layout">
+        <article class="inner-card surface">
+          <div class="inner-sky" aria-hidden="true">
+            <span></span><i></i><i></i><b>◌</b>
+          </div>
+          <div class="inner-copy">
+            <span class="eyebrow">INNER WEATHER / 此刻的内在天气</span>
+            <h3>{{ data.inner.label }}</h3>
+            <p class="inner-narrative">{{ data.inner.narrative }}</p>
+            <div class="state-chips">
+              <span>情绪色彩 · {{ data.inner.mood }}</span>
+              <span
+                >能量 ·
+                {{ energy[data.inner.energy] || data.inner.energy }}</span
+              >
+              <span
+                >靠近倾向 ·
+                {{
+                  socialPull[data.inner.socialPull] || data.inner.socialPull
+                }}</span
+              >
+            </div>
+          </div>
+        </article>
+
+        <aside class="attention-card surface">
+          <span class="eyebrow">ATTENTION</span>
+          <h3>现在放在心上的事</h3>
+          <p>{{ data.inner.attention }}</p>
+          <dl>
+            <div>
+              <dt>上次交流</dt>
+              <dd>{{ date(data.inner.lastInteraction) }}</dd>
+            </div>
+            <div>
+              <dt>状态更新</dt>
+              <dd>{{ date(data.inner.updated) }}</dd>
+            </div>
+            <div>
+              <dt>待续想法</dt>
+              <dd>{{ data.inner.openThoughts }} 件</dd>
+            </div>
+            <div>
+              <dt>近七天消息</dt>
+              <dd>{{ data.inner.recentMessages }} 条</dd>
+            </div>
+          </dl>
+          <button
+            type="button"
+            class="primary reflect-now"
+            :disabled="busy || dirty || data.busy || !session"
+            @click="reflect"
           >
-        </p>
-        <div class="row">
+            {{ busy || data.busy ? "正在想…" : "现在独处一会儿" }}
+          </button>
+          <small>{{ data.reason || "现在适合重新看看最近发生的事" }}</small>
+        </aside>
+      </section>
+
+      <section class="now-grid">
+        <article class="surface topic-room">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">FADING TOPICS</span>
+              <h3>话题正在怎样降温</h3>
+            </div>
+            <span>{{ data.topics.length }} 条</span>
+          </div>
+          <div v-if="data.topics.length" class="topic-list">
+            <div
+              v-for="topic in data.topics"
+              :key="topic.topic"
+              class="topic-row"
+            >
+              <div>
+                <b>{{ topic.topic }}</b
+                ><small>{{ topic.distance }}</small>
+              </div>
+              <div class="topic-meter">
+                <i :style="{ width: `${Math.round(topic.weight * 100)}%` }"></i>
+              </div>
+              <em>{{ Math.round(topic.weight * 100) }}%</em>
+            </div>
+          </div>
+          <div v-else class="gentle-empty">
+            <b>暂时没有需要抓住的话题</b>
+            <p>
+              普通闲聊会自然淡下去；重要、反复出现或仍未结束的事会留得更久。
+            </p>
+          </div>
+        </article>
+
+        <article class="surface state-trail">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">CHANGING SELF</span>
+              <h3>过去的自己怎么看</h3>
+            </div>
+            <button
+              type="button"
+              class="text-button"
+              @click="switchView('journal')"
+            >
+              看全部 ↗
+            </button>
+          </div>
+          <div v-if="data.states.length" class="state-list">
+            <div v-for="state in data.states.slice(0, 4)" :key="state.id">
+              <time>{{ date(state.created) }}</time>
+              <b
+                >{{ state.mood }} ·
+                {{ energy[state.energy] || state.energy }}</b
+              >
+              <p>{{ state.narrative }}</p>
+            </div>
+          </div>
+          <div v-else class="gentle-empty">
+            <b>还没有形成状态轨迹</b>
+            <p>第一次有意义的独处之后，这里会开始保留“那时的自己”。</p>
+          </div>
+        </article>
+      </section>
+
+      <section class="surface recent-thoughts">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">RECENT THOUGHTS</span>
+            <h3>最近留下的内心记录</h3>
+          </div>
+          <button type="button" @click="switchView('journal')">
+            进入时间手记 ↗
+          </button>
+        </div>
+        <div v-if="data.notes.length" class="thought-preview">
+          <article v-for="note in data.notes.slice(0, 3)" :key="note.id">
+            <span>{{ kind[note.kind] || note.kind }}</span>
+            <p>{{ note.content }}</p>
+            <time>{{ date(note.created) }}</time>
+          </article>
+        </div>
+        <div v-else class="gentle-empty">
+          <b>还没有写下什么</b>
+          <p>开启独处并选择会话后，它会在聊天安静下来时重新理解发生过的事。</p>
+        </div>
+      </section>
+    </template>
+
+    <section v-else-if="view === 'journal'" class="journal-page surface">
+      <div class="journal-heading">
+        <div>
+          <span class="eyebrow">PRIVATE JOURNAL</span>
+          <h3>{{ selectedSession?.name || "这段关系" }}的时间手记</h3>
+          <p>
+            记录“后来是怎么想的”。旧想法不会被覆盖，新的理解会沿着它继续生长。
+          </p>
+        </div>
+        <div class="journal-tools">
           <input
             v-model="query"
-            placeholder="搜索自己的旧想法"
-            aria-label="搜索手记"
+            aria-label="搜索时间手记"
+            placeholder="搜索某件事、某个人或一种感受"
             @change="
               before = null;
               load();
             "
-          /><button
+          />
+          <button
+            type="button"
             @click="reflect"
             :disabled="busy || dirty || data.busy || !session"
           >
-            {{ busy ? "处理中…" : "现在回想一次" }}
+            {{ busy ? "正在想…" : "现在回想一次" }}
           </button>
         </div>
-        <p class="small">
-          内部记录是带有不确定性的观察，不是用户事实。默认不发送，也不会自动写入人物记忆。手动回想同样遵守节奏和预算。
-        </p>
-        <div class="time-scroll">
-          <article
-            v-for="n in data.notes"
-            :key="n.id"
-            class="time-note"
-            :class="{ muted: n.hidden }"
-          >
+      </div>
+
+      <div v-if="data.notes.length" class="journal-list">
+        <article
+          v-for="(note, index) in data.notes"
+          :key="note.id"
+          class="time-note"
+          :class="{ muted: note.hidden }"
+        >
+          <div class="note-index">{{ String(index + 1).padStart(2, "0") }}</div>
+          <div class="note-body">
             <header>
-              <span class="pill">{{ kind[n.kind] || n.kind }}</span
-              ><time>{{ date(n.created) }}</time>
+              <span class="note-kind">{{ kind[note.kind] || note.kind }}</span>
+              <time>{{ date(note.created) }}</time>
             </header>
-            <p>{{ n.content }}</p>
-            <details v-if="n.parent_id">
-              <summary>这次重新看待了过去的自己</summary>
+            <p>{{ note.content }}</p>
+            <div class="note-meta">
+              <span>置信度 {{ Math.round(note.confidence * 100) }}%</span>
+              <span>{{
+                note.status === "resolved" ? "已经放下" : "仍在关注"
+              }}</span>
+              <span v-if="note.revisit_at"
+                >以后再看 · {{ date(note.revisit_at) }}</span
+              >
+            </div>
+            <div v-if="note.parent_id" class="revision-link">
+              <b>↳ 这是对过去想法的修正</b>
               <p>
                 {{
-                  data.notes.find((old: any) => old.id === n.parent_id)
-                    ?.content || "旧记录位于更早的时间线"
+                  data.notes.find((old: any) => old.id === note.parent_id)
+                    ?.content || "旧记录在更早的时间线里"
                 }}
               </p>
-              <code>{{ n.parent_id }}</code>
-            </details>
-            <small
-              >来源消息 {{ n.sources.join("、") }} · 置信度
-              {{ Math.round(n.confidence * 100) }}% ·
-              {{ n.status === "resolved" ? "已放下" : "仍在关注" }}</small
-            >
-            <p v-if="n.revisit_at" class="small">
-              以后再想：{{ date(n.revisit_at) }}
-            </p>
-            <details v-if="n.outreach">
-              <summary>
-                可能的问候 ·
-                {{
-                  n.outreach_status === "sent"
-                    ? "已发送"
-                    : n.outreach_status === "uncertain"
-                      ? "投递未确认，不重发"
-                      : "仅草稿"
-                }}
-              </summary>
-              <p>{{ n.outreach }}</p>
-            </details>
-            <div class="row">
+            </div>
+            <div v-if="note.outreach" class="outreach-draft">
+              <small>曾经想说</small>
+              <p>{{ note.outreach }}</p>
+              <span>{{
+                note.outreach_status === "sent"
+                  ? "已发出"
+                  : note.outreach_status === "uncertain"
+                    ? "投递未确认"
+                    : "留在草稿里"
+              }}</span>
+            </div>
+            <footer>
               <button
+                type="button"
                 @click="
-                  update(n, {
-                    status: n.status === 'open' ? 'resolved' : 'open',
+                  update(note, {
+                    status: note.status === 'open' ? 'resolved' : 'open',
                   })
                 "
               >
-                {{ n.status === "open" ? "放下这件事" : "重新关注" }}</button
-              ><button @click="update(n, { hidden: !n.hidden })">
-                {{ n.hidden ? "恢复参与语境" : "隐藏此记录" }}</button
-              ><button class="text-button" @click="remove(n)">删除</button>
-            </div>
-          </article>
-          <div v-if="!data.notes.length" class="empty-state">
-            <span>◌</span>
-            <h3>还没有留下手记</h3>
-            <p>选择允许独处的会话。重要聊天结束后，新的理解才值得被写下来。</p>
+                {{ note.status === "open" ? "放下这件事" : "重新关注" }}
+              </button>
+              <button
+                type="button"
+                @click="update(note, { hidden: !note.hidden })"
+              >
+                {{ note.hidden ? "恢复参与语境" : "不再参与语境" }}
+              </button>
+              <button type="button" class="text-button" @click="remove(note)">
+                删除
+              </button>
+            </footer>
           </div>
-        </div>
-        <div class="row">
-          <button
-            :disabled="!before"
-            @click="
-              before = null;
-              load();
-            "
-          >
-            回到最近</button
-          ><button
-            :disabled="data.notes.length < 30"
-            @click="
-              before = data.notes.at(-1).created;
-              load();
-            "
-          >
-            更早的自己 ↗
-          </button>
-        </div>
-      </section>
-      <aside class="time-side">
-        <section class="surface time-topics">
-          <div class="section-heading">
-            <h2>慢慢降温的话题</h2>
-            <span>◌</span>
-          </div>
-          <div class="time-scroll small-scroll">
-            <article v-for="t in data.topics" :key="t.topic" class="time-topic">
-              <b>{{ t.topic }}</b
-              ><small>{{ t.distance }}</small
-              ><meter :value="t.weight" min="0" max="1">{{ t.weight }}</meter>
-            </article>
-            <p class="small" v-if="!data.topics.length">
-              聊过的话题会出现在这里。时间越久，延续它的必要性越低。
-            </p>
-          </div>
-        </section>
-        <form
-          class="surface"
-          @submit.prevent="save"
-          @input="changed"
-          @change="changed"
-        >
-          <div class="section-heading">
-            <h2>独处的节奏</h2>
-            <span class="eyebrow">RHYTHM</span>
-          </div>
-          <label class="check"
-            ><input
-              type="checkbox"
-              v-model="draft.enabled"
-            />允许低频后台回想</label
-          >
-          <label
-            >时区<input v-model="draft.timeZone" placeholder="Asia/Shanghai"
-          /></label>
-          <label
-            >独处模型<select v-model="draft.modelId">
-              <option value="">跟随每个会话</option>
-              <option v-for="m in studio.core.models" :key="m.id" :value="m.id">
-                {{ m.label }}
-              </option>
-            </select></label
-          >
-          <fieldset>
-            <legend>允许记录的会话</legend>
-            <label class="check" v-for="s in studio.core.sessions" :key="s.id"
-              ><input
-                type="checkbox"
-                :value="s.id"
-                v-model="draft.sessions"
-              />{{ s.name }}</label
-            >
-          </fieldset>
-          <div class="grid">
-            <label
-              >安静多久再想（分钟）<input
-                type="number"
-                min="5"
-                max="1440"
-                v-model.number="draft.idleMinutes" /></label
-            ><label
-              >两次独处间隔（分钟）<input
-                type="number"
-                min="30"
-                max="10080"
-                v-model.number="draft.intervalMinutes" /></label
-            ><label
-              >普通聊天积累条数<input
-                type="number"
-                min="3"
-                max="100"
-                v-model.number="draft.minMessages" /></label
-            ><label
-              >每天最多调用<input
-                type="number"
-                min="1"
-                max="24"
-                v-model.number="draft.dailyCalls"
-            /></label>
-          </div>
-          <details>
-            <summary>预算与休息时段</summary>
-            <div class="grid">
-              <label
-                >24小时 Token 上限<input
-                  type="number"
-                  v-model.number="draft.dailyTokens" /></label
-              ><label
-                >单次输入预算<input
-                  type="number"
-                  v-model.number="draft.inputTokens" /></label
-              ><label
-                >单次输出预算<input
-                  type="number"
-                  v-model.number="draft.outputTokens" /></label
-              ><label
-                >休息开始（小时）<input
-                  type="number"
-                  min="0"
-                  max="23"
-                  v-model.number="draft.quietStart" /></label
-              ><label
-                >休息结束（小时）<input
-                  type="number"
-                  min="0"
-                  max="23"
-                  v-model.number="draft.quietEnd"
-              /></label>
-            </div>
-            <p class="small">
-              开始和结束相同表示不设休息时段。预算保守预留，模型失败也占用次数，避免自动重试消耗。
-            </p>
-          </details>
-          <details>
-            <summary>克制的主动交流</summary>
-            <label class="check"
-              ><input
-                type="checkbox"
-                v-model="draft.proactive"
-              />允许向所选会话发送主动问候</label
-            ><label
-              >至少多久没交流（小时）<input
-                type="number"
-                min="6"
-                max="720"
-                v-model.number="draft.proactiveHours"
-            /></label>
-            <p class="small">
-              每个会话每天至多一次；休息、暂停、模拟、离线时不发送。上次消息无人回应时不会追发。只发送通过人格与重复检查的短句。
-            </p>
-          </details>
-          <button class="primary" :disabled="busy">
-            {{ busy ? "保存中…" : "保存时间设置 ↗" }}
-          </button>
-        </form>
-      </aside>
-    </div>
-    <section class="surface">
-      <div class="section-heading">
-        <h2>时间经过的记录</h2>
-        <span class="eyebrow">ACTIVITY</span>
-      </div>
-      <div class="time-scroll small-scroll">
-        <article class="time-run" v-for="r in data.runs" :key="r.id">
-          <time>{{ date(r.started) }}</time
-          ><b>{{
-            (
-              {
-                written: "已留手记",
-                empty: "没有新理解",
-                error: "未完成",
-                cancelled: "已取消",
-                interrupted: "重启中断",
-                running: "回想中",
-              } as any
-            )[r.status] || r.status
-          }}</b
-          ><span>{{ r.reason }}</span
-          ><small>{{ r.model || "模型处理中" }} · {{ r.tokens }} tokens</small>
         </article>
-        <p class="small" v-if="!data.runs.length">
-          这里会说明何时回想、是否留下内容、用了多少
-          Token。安静本身无需写一条日志。
-        </p>
+      </div>
+      <div v-else class="journal-empty">
+        <span>◌</span>
+        <h3>这页还没有字</h3>
+        <p>内部记录只在有新的理解时出现，不会为了显得忙碌而写流水账。</p>
+      </div>
+      <div class="journal-pagination">
+        <button
+          type="button"
+          :disabled="!before"
+          @click="
+            before = null;
+            load();
+          "
+        >
+          回到最近
+        </button>
+        <span>本页 {{ data.notes.length }} 条 · 共 {{ data.count }} 条</span>
+        <button
+          type="button"
+          :disabled="data.notes.length < 30"
+          @click="
+            before = data.notes.at(-1).created;
+            load();
+          "
+        >
+          更早的自己 ↗
+        </button>
       </div>
     </section>
+
+    <form
+      v-else-if="view === 'settings'"
+      class="settings-page"
+      @submit.prevent="save"
+      @input="changed"
+      @change="changed"
+    >
+      <section class="settings-lead surface">
+        <div>
+          <span class="eyebrow">HOW TIME FLOWS</span>
+          <h3>决定她怎样度过没人说话的时间</h3>
+          <p>
+            默认采用自然节奏。所有数量限制都可以自由填写；调用次数、Token
+            和模型输入输出填 0 代表不限或直接跟随模型。
+          </p>
+        </div>
+        <div class="preset-row">
+          <button type="button" @click="preset('natural')">自然</button>
+          <button type="button" @click="preset('active')">更爱琢磨</button>
+          <button type="button" @click="preset('quiet')">更安静</button>
+        </div>
+      </section>
+
+      <div class="settings-grid">
+        <section class="surface setting-card behavior-card">
+          <span class="setting-number">01</span>
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">BEHAVIOR</span>
+              <h3>独处与主动性</h3>
+            </div>
+          </div>
+          <label class="setting-toggle">
+            <input type="checkbox" v-model="draft.enabled" />
+            <span
+              ><b>允许后台独处</b
+              ><small>聊天安静下来后，偶尔重新理解近期经历。</small></span
+            >
+          </label>
+          <label class="setting-toggle">
+            <input type="checkbox" v-model="draft.phaseReflections" />
+            <span
+              ><b>让长时间安静产生变化</b
+              ><small
+                >从余韵、安静、偶尔想起到久别，在阶段变化时重读过去。</small
+              ></span
+            >
+          </label>
+          <label class="setting-toggle">
+            <input type="checkbox" v-model="draft.proactive" />
+            <span
+              ><b>允许克制地主动联系</b
+              ><small
+                >只在有具体上下文时开口，不发送机械问候，也不追问未回复的消息。</small
+              ></span
+            >
+          </label>
+          <label
+            >最少多久没交流才可能主动（小时）<input
+              type="number"
+              min="0"
+              v-model.number="draft.proactiveHours"
+            /><small>0 表示不额外等待，但仍需产生合适的主动内容。</small></label
+          >
+        </section>
+
+        <section class="surface setting-card scope-card">
+          <span class="setting-number">02</span>
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">RELATIONSHIPS</span>
+              <h3>在哪些关系里拥有时间</h3>
+            </div>
+            <button
+              type="button"
+              class="text-button"
+              @click="toggleAllSessions"
+            >
+              {{ allSelected ? "全部取消" : "全部选择" }}
+            </button>
+          </div>
+          <div class="session-picks">
+            <label
+              v-for="item in studio.core.sessions"
+              :key="item.id"
+              :class="{ selected: draft.sessions.includes(item.id) }"
+            >
+              <input
+                type="checkbox"
+                :value="item.id"
+                v-model="draft.sessions"
+              />
+              <span
+                ><b>{{ item.name }}</b
+                ><small>{{
+                  item.kind === "private" ? "私聊" : "群聊"
+                }}</small></span
+              >
+              <i>{{ draft.sessions.includes(item.id) ? "✓" : "+" }}</i>
+            </label>
+          </div>
+        </section>
+
+        <section class="surface setting-card rhythm-card">
+          <span class="setting-number">03</span>
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">RHYTHM</span>
+              <h3>思考的节奏</h3>
+            </div>
+          </div>
+          <div class="field-grid">
+            <label
+              >聊天安静多久再想（分钟）<input
+                type="number"
+                min="0"
+                v-model.number="draft.idleMinutes"
+              /><small>从最后一条消息开始计算。</small></label
+            >
+            <label
+              >两次独处至少间隔（分钟）<input
+                type="number"
+                min="0"
+                v-model.number="draft.intervalMinutes"
+              /><small>填 0 不设置冷却。</small></label
+            >
+            <label
+              >普通聊天积累多少条<input
+                type="number"
+                min="0"
+                v-model.number="draft.minMessages"
+              /><small>填 0 表示有新消息即可判断。</small></label
+            >
+            <label
+              >时区<input
+                v-model="draft.timeZone"
+                placeholder="Asia/Shanghai"
+              /><small>决定早晚、跨日和休息时段。</small></label
+            >
+          </div>
+          <div class="field-grid">
+            <label
+              >休息开始（0–23 时）<input
+                type="number"
+                min="0"
+                max="23"
+                v-model.number="draft.quietStart"
+            /></label>
+            <label
+              >休息结束（0–23 时）<input
+                type="number"
+                min="0"
+                max="23"
+                v-model.number="draft.quietEnd"
+            /></label>
+          </div>
+          <p class="setting-note">
+            开始和结束相同表示不设置休息时段。休息只暂停后台思考，不影响正常聊天。
+          </p>
+        </section>
+
+        <section class="surface setting-card resource-card">
+          <span class="setting-number">04</span>
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">MODEL & CAPACITY</span>
+              <h3>模型与容量</h3>
+            </div>
+          </div>
+          <label
+            >独处使用的模型
+            <select v-model="draft.modelId">
+              <option value="">跟随每个会话</option>
+              <option
+                v-for="model in studio.core.models"
+                :key="model.id"
+                :value="model.id"
+              >
+                {{ model.label }}
+              </option>
+            </select>
+            <small>跟随会话时，会沿用该会话正在使用的模型能力。</small>
+          </label>
+          <div class="field-grid capacity-fields">
+            <label
+              >24 小时调用次数<input
+                type="number"
+                min="0"
+                v-model.number="draft.dailyCalls"
+              /><small>0 = 不限</small></label
+            >
+            <label
+              >24 小时 Token<input
+                type="number"
+                min="0"
+                v-model.number="draft.dailyTokens"
+              /><small>0 = 不限</small></label
+            >
+            <label
+              >单次最大输入<input
+                type="number"
+                min="0"
+                v-model.number="draft.inputTokens"
+              /><small>0 = 跟随模型</small></label
+            >
+            <label
+              >单次最大输出<input
+                type="number"
+                min="0"
+                v-model.number="draft.outputTokens"
+              /><small>0 = 跟随模型</small></label
+            >
+          </div>
+          <p class="setting-note">
+            这些是你主动设置的护栏，不再使用旧版本的固定上限。即使不限，系统仍会跳过重复内容和没有新理解的反思。
+          </p>
+        </section>
+      </div>
+      <div class="settings-submit surface">
+        <div>
+          <b>当前：{{ draft.enabled ? "允许独处" : "未开启独处" }}</b
+          ><small
+            >已选择 {{ draft.sessions.length }} 个会话 · 24 小时调用
+            {{ data.usage.calls }} 次 /
+            {{ compact(data.usage.tokens) }} Token</small
+          >
+        </div>
+        <button class="primary" :disabled="busy">
+          {{ busy ? "保存中…" : "保存并应用时间设置 ↗" }}
+        </button>
+      </div>
+    </form>
+
+    <section v-else class="activity-page">
+      <div class="activity-metrics">
+        <article class="surface">
+          <small>24 小时调用</small><b>{{ data.usage.calls }}</b
+          ><span>{{ allowance(data.settings.dailyCalls, " 次上限") }}</span>
+        </article>
+        <article class="surface">
+          <small>实际 Token</small><b>{{ compact(data.usage.tokens) }}</b
+          ><span>{{ allowance(data.settings.dailyTokens, " 上限") }}</span>
+        </article>
+        <article class="surface">
+          <small>内部手记</small><b>{{ data.count }}</b
+          ><span>{{ data.open }} 件仍待续</span>
+        </article>
+      </div>
+      <section class="surface run-ledger">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">TIME LOG</span>
+            <h3>时间经过时，系统做了什么</h3>
+          </div>
+        </div>
+        <div v-if="data.runs.length" class="run-list">
+          <article v-for="run in data.runs" :key="run.id">
+            <time>{{ date(run.started) }}</time>
+            <span class="run-status" :data-status="run.status">{{
+              (
+                {
+                  written: "留下手记",
+                  state: "状态变化",
+                  empty: "没有新想法",
+                  error: "未完成",
+                  cancelled: "已取消",
+                  interrupted: "重启中断",
+                  running: "正在独处",
+                } as any
+              )[run.status] || run.status
+            }}</span>
+            <div>
+              <b>{{ run.reason }}</b
+              ><small
+                >{{ run.model || "未调用模型" }} ·
+                {{ Number(run.tokens || 0).toLocaleString() }} Token</small
+              >
+            </div>
+          </article>
+        </div>
+        <div v-else class="gentle-empty">
+          <b>时间还没有留下运行记录</b>
+          <p>安静本身不会生成日志；只有真正尝试回想时才会记录。</p>
+        </div>
+      </section>
+    </section>
   </div>
-  <div v-else class="empty-state" role="status">正在打开时间手记…</div>
+  <div v-else class="empty-state" role="status">正在打开时间空间…</div>
 </template>
 
 <style scoped>
@@ -435,219 +799,937 @@ onUnmounted(() => clearInterval(timer));
   overflow: auto;
   overscroll-behavior: contain;
 }
-.time-workbench .surface {
+.time-studio {
+  --time-ink: #103d32;
+  --time-deep: #0b4a39;
+  --time-green: #4d9f72;
+  --time-lime: #b9ec80;
+  display: grid;
+  gap: 20px;
+  padding-bottom: 20px;
+  color: var(--time-ink);
+}
+.time-studio .surface {
   padding: 24px;
 }
-.time-workbench {
+.time-masthead {
+  min-height: 246px;
   display: grid;
-  gap: 24px;
-}
-.time-hero {
-  display: flex;
+  grid-template-columns: 170px minmax(0, 1fr) minmax(260px, 340px);
   align-items: center;
-  gap: 28px;
+  gap: 34px;
   position: relative;
   overflow: hidden;
-  background: linear-gradient(115deg, #dff8e9, #f5fcf8 65%);
-  min-height: 200px;
+  background:
+    radial-gradient(circle at 72% 14%, #b9ec8066 0 3px, transparent 4px),
+    linear-gradient(118deg, #dcf6e5, #f8fcf7 66%, #eff8dc);
 }
-.time-hero h2 {
-  font-size: clamp(26px, 3vw, 44px);
-  margin: 10px 0;
-}
-.time-hero p {
-  color: #527465;
-}
-.time-hero > .status-tag {
-  margin-left: auto;
-}
-.time-orbit {
-  width: 110px;
-  height: 110px;
-  flex: none;
-  border: 1px solid #86bba2;
+.time-masthead::after {
+  content: "";
+  position: absolute;
+  right: -90px;
+  top: -160px;
+  width: 380px;
+  height: 380px;
+  border: 1px solid #73ad8a66;
   border-radius: 50%;
+  box-shadow:
+    0 0 0 40px #b9ec8017,
+    0 0 0 82px #75b99112;
+  pointer-events: none;
+}
+.time-art {
+  width: 138px;
+  height: 138px;
+  border-radius: 50%;
+  border: 1px solid #6aab84;
+  display: grid;
+  place-content: center;
+  position: relative;
+  z-index: 1;
+  background: #f9fff8aa;
+}
+.time-art::before,
+.time-art::after,
+.time-art > i {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  border: 1px dashed #75a98a88;
+}
+.time-art::before {
+  inset: -12px;
+  animation: time-spin 36s linear infinite;
+}
+.time-art::after {
+  inset: 15px;
+  border-style: solid;
+}
+.time-art > i:first-child {
+  width: 10px;
+  height: 10px;
+  background: var(--time-lime);
+  top: -5px;
+  left: 62px;
+}
+.time-art > i:nth-child(2) {
+  inset: -25px;
+  border-style: solid;
+  border-color: #91c9a244 transparent transparent;
+}
+.time-art span {
+  font:
+    700 46px/1 Georgia,
+    serif;
+  position: relative;
+  z-index: 1;
+}
+.time-art small {
+  text-align: center;
+  letter-spacing: 5px;
+  color: #59816b;
+}
+.time-intro {
+  position: relative;
+  z-index: 1;
+}
+.time-intro h2 {
+  margin: 12px 0 16px;
+  font-size: clamp(30px, 4vw, 54px);
+  line-height: 1.08;
+  letter-spacing: -2px;
+}
+.time-intro h2 em {
+  color: #3c8b63;
+  font-style: normal;
+}
+.time-intro p {
+  color: #547666;
+}
+.time-control {
+  display: grid;
+  gap: 14px;
+  position: relative;
+  z-index: 2;
+}
+.time-control label {
+  font-size: 12px;
+  color: #5c7568;
+}
+.time-control select {
+  margin-top: 7px;
+}
+.life-switch {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  text-align: left;
+  align-items: center;
+  gap: 2px 13px;
+  padding: 15px;
+  background: #fffdf5cc;
+  border-color: #bdcdbb;
+}
+.life-switch > span {
+  grid-row: 1/3;
+  width: 48px;
+  height: 27px;
+  border-radius: 99px;
+  padding: 3px;
+  background: #b8c6bc;
+  transition: 0.25s ease;
+}
+.life-switch > span i {
+  display: block;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  background: white;
+  transition: 0.25s ease;
+  box-shadow: 0 2px 8px #1a3c2c33;
+}
+.life-switch.on > span {
+  background: var(--time-green);
+}
+.life-switch.on > span i {
+  transform: translateX(21px);
+}
+.life-switch b {
+  font-size: 14px;
+}
+.life-switch small {
+  color: #647a6f;
+  white-space: normal;
+}
+.time-local-nav {
+  padding: 0 !important;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  box-shadow: 0 8px 24px #16402c0c;
+}
+.time-local-nav button {
+  min-height: 70px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-content: center;
+  gap: 2px 8px;
+  border: 0;
+  border-right: 1px solid #d6e5d9;
+  border-radius: 0;
+  background: #ffffffed;
+  text-align: left;
+  padding: 13px 20px;
+}
+.time-local-nav button:last-child {
+  border-right: 0;
+}
+.time-local-nav button small {
+  grid-column: 1;
+  font-size: 8px;
+  letter-spacing: 1.5px;
+  color: #789083;
+}
+.time-local-nav button b {
+  grid-column: 1;
+}
+.time-local-nav button span {
+  grid-column: 2;
+  grid-row: 1/3;
+  align-self: center;
+}
+.time-local-nav button.active {
+  color: #103e31;
+  background: var(--time-lime);
+  box-shadow: inset 0 -3px var(--time-deep);
+}
+.time-savebar {
+  position: sticky;
+  top: 76px;
+  z-index: 7;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 18px;
+  color: #f5fff7;
+  background: #103f33ef;
+  box-shadow: 0 10px 30px #08291d33;
+}
+.time-savebar button {
+  background: var(--time-lime);
+  color: #0c3d2f;
+}
+.inner-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.75fr);
+  gap: 20px;
+}
+.inner-card {
+  min-height: 360px;
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.25fr);
+  align-items: center;
+  gap: 30px;
+  overflow: hidden;
+  background: linear-gradient(130deg, #0d4c3c, #17634a);
+  color: #f4fff7;
+}
+.inner-sky {
+  height: 260px;
+  position: relative;
   display: grid;
   place-items: center;
-  position: relative;
 }
-.time-orbit span {
-  font-size: 58px;
-  color: #36775a;
-}
-.time-orbit i {
+.inner-sky::before,
+.inner-sky::after {
+  content: "";
   position: absolute;
-  inset: -10px;
-  border: 1px dashed #86bba2;
   border-radius: 50%;
-  animation: time-orbit 40s linear infinite;
 }
-.time-metrics {
+.inner-sky::before {
+  width: 210px;
+  height: 210px;
+  border: 1px solid #b9ec8080;
+  box-shadow:
+    0 0 0 28px #b9ec800c,
+    0 0 0 58px #b9ec8008;
+}
+.inner-sky::after {
+  width: 102px;
+  height: 102px;
+  background: radial-gradient(circle at 35% 30%, #efffd4, #9edb79);
+  box-shadow: 0 0 45px #c6f38c55;
+}
+.inner-sky > span {
+  position: absolute;
+  width: 224px;
+  height: 224px;
+  border: 1px dashed #c3f09377;
+  border-radius: 50%;
+  animation: time-spin 44s linear infinite;
+}
+.inner-sky > i {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #f6ffd0;
+}
+.inner-sky > i:nth-of-type(1) {
+  top: 48px;
+  left: 38px;
+}
+.inner-sky > i:nth-of-type(2) {
+  bottom: 56px;
+  right: 30px;
+  width: 5px;
+  height: 5px;
+}
+.inner-sky b {
+  position: relative;
+  z-index: 1;
+  color: #1c684c;
+  font-size: 54px;
+  font-weight: 400;
+}
+.inner-copy {
+  position: relative;
+  z-index: 1;
+}
+.inner-copy .eyebrow {
+  color: #bde9ca;
+}
+.inner-copy h3 {
+  margin: 14px 0;
+  font-size: clamp(30px, 4vw, 52px);
+}
+.inner-narrative {
+  max-width: 650px;
+  font-size: 16px;
+  line-height: 1.9;
+  color: #e4f6e9;
+  white-space: pre-wrap;
+}
+.state-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 25px;
+}
+.state-chips span {
+  border: 1px solid #a8dfb955;
+  padding: 7px 10px;
+  background: #ffffff0c;
+  font-size: 11px;
+}
+.attention-card {
+  display: flex;
+  flex-direction: column;
+}
+.attention-card h3 {
+  margin: 10px 0;
+  font-size: 23px;
+}
+.attention-card > p {
+  min-height: 58px;
+  line-height: 1.7;
+}
+.attention-card dl {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: #d8e7dc;
+  margin: 18px 0;
 }
-.time-metrics article {
+.attention-card dl div {
+  padding: 12px;
+  background: #fbfdf9;
+}
+.attention-card dt {
+  color: #6a7f72;
+  font-size: 10px;
+}
+.attention-card dd {
+  margin: 5px 0 0;
+  font-size: 12px;
+}
+.reflect-now {
+  margin-top: auto;
+  width: 100%;
+}
+.attention-card > small {
+  display: block;
+  margin-top: 10px;
+  line-height: 1.5;
+  color: #708277;
+}
+.now-grid {
   display: grid;
-  gap: 12px;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
 }
-.time-metrics b {
-  font-size: 24px;
+.section-heading h3 {
+  margin: 4px 0 0;
+  font-size: 21px;
 }
-.time-metrics small {
-  font-size: 13px;
-  color: #547263;
-}
-.time-columns {
+.topic-list {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 1fr);
-  gap: 24px;
-  align-items: start;
+  gap: 6px;
+  margin-top: 18px;
 }
-.time-side {
+.topic-row {
   display: grid;
-  gap: 24px;
-  min-width: 0;
-  min-height: 0;
-  align-content: start;
+  grid-template-columns: minmax(130px, 1fr) minmax(90px, 0.8fr) 42px;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid #dbe8dd;
 }
-.time-side form {
-  display: grid;
-  gap: 18px;
-  min-width: 0;
-  min-height: 0;
-}
-.time-scroll {
-  max-height: 720px;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding-right: 8px;
-}
-.small-scroll {
-  max-height: 240px;
-}
-.time-topics {
-  min-height: 0;
-  overflow: hidden;
-}
-.time-topics .small-scroll {
-  height: 220px;
-  max-height: 220px;
-  min-height: 0;
-  overflow-y: auto;
-}
-.time-journal {
-  min-width: 0;
-}
-.time-note {
-  padding: 24px 0;
-  border-bottom: 1px solid #d6e7de;
-  overflow-wrap: anywhere;
-}
-.time-note header {
+.topic-row > div:first-child {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap;
 }
-.time-note p {
-  line-height: 1.85;
-  white-space: pre-wrap;
+.topic-row small {
+  color: #718379;
 }
-.time-note time,
-.time-note small {
-  font-size: 12px;
-  color: #60786b;
+.topic-meter {
+  height: 7px;
+  background: #e4eee6;
+  overflow: hidden;
+  transform: skewX(-18deg);
 }
-.time-note .row {
-  margin-top: 15px;
+.topic-meter i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #8fcf70, #3c8f68);
 }
-.time-note.muted {
-  opacity: 0.55;
+.topic-row em {
+  font:
+    700 11px/1 Arial,
+    sans-serif;
+  color: #4f7964;
 }
-.time-topic {
+.state-list {
   display: grid;
-  gap: 7px;
-  padding: 12px 0;
-}
-.time-topic meter {
-  width: 100%;
-  accent-color: #5ca681;
-}
-.time-topic small {
-  color: #637b6c;
-}
-.time-run {
-  display: grid;
-  grid-template-columns: 160px 90px 1fr;
-  gap: 12px;
-  padding: 15px 0;
-  border-bottom: 1px solid #d6e7de;
-}
-.time-run small {
-  grid-column: 3;
-}
-.time-journal > .row {
-  margin: 16px 0;
-}
-.time-journal > .row input {
-  min-width: 0;
-  flex: 1;
-}
-.time-side fieldset {
-  max-height: 180px;
-  overflow: auto;
-  border: 1px solid #d6e7de;
-}
-.time-side details .grid {
   margin-top: 16px;
 }
-.time-note code {
-  overflow-wrap: anywhere;
+.state-list > div {
+  display: grid;
+  grid-template-columns: 125px 145px 1fr;
+  gap: 13px;
+  padding: 13px 0;
+  border-bottom: 1px solid #dbe8dd;
+  align-items: start;
 }
-@keyframes time-orbit {
+.state-list time {
+  font-size: 10px;
+  color: #718379;
+}
+.state-list b {
+  font-size: 12px;
+}
+.state-list p {
+  margin: 0;
+  line-height: 1.6;
+}
+.gentle-empty {
+  padding: 30px 0 12px;
+  color: #5f786b;
+}
+.gentle-empty b {
+  color: var(--time-ink);
+}
+.gentle-empty p {
+  line-height: 1.7;
+}
+.thought-preview {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-top: 20px;
+}
+.thought-preview article {
+  min-height: 155px;
+  padding: 18px;
+  background: #f4f9f1;
+  border-left: 3px solid #80bd78;
+  display: flex;
+  flex-direction: column;
+}
+.thought-preview span {
+  font-size: 10px;
+  color: #4f7c63;
+}
+.thought-preview p {
+  line-height: 1.7;
+}
+.thought-preview time {
+  margin-top: auto;
+  color: #7b8b82;
+  font-size: 10px;
+}
+.journal-page {
+  min-width: 0;
+}
+.journal-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 30px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #d4e4d8;
+}
+.journal-heading h3 {
+  font-size: 28px;
+  margin: 8px 0;
+}
+.journal-heading p {
+  color: #65796e;
+}
+.journal-tools {
+  width: min(430px, 42%);
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.journal-list {
+  max-width: 1040px;
+  margin: 0 auto;
+}
+.time-note {
+  display: grid;
+  grid-template-columns: 74px 1fr;
+  gap: 18px;
+  padding: 28px 0;
+  border-bottom: 1px solid #d4e4d8;
+}
+.time-note.muted {
+  opacity: 0.5;
+}
+.note-index {
+  font:
+    italic 700 36px/1 Georgia,
+    serif;
+  color: #bbd4c2;
+}
+.note-body header {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+}
+.note-kind {
+  color: #3b7e5b;
+  font-size: 11px;
+  letter-spacing: 1px;
+}
+.note-body header time {
+  color: #718379;
+  font-size: 11px;
+}
+.note-body > p {
+  font-size: 15px;
+  line-height: 1.9;
+  white-space: pre-wrap;
+}
+.note-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.note-meta span {
+  padding: 5px 8px;
+  background: #edf5e9;
+  color: #567161;
+  font-size: 10px;
+}
+.revision-link,
+.outreach-draft {
+  margin-top: 16px;
+  padding: 14px;
+  background: #f6f8ef;
+  border-left: 2px solid #a5c97d;
+}
+.revision-link p,
+.outreach-draft p {
+  margin: 7px 0;
+  line-height: 1.7;
+}
+.outreach-draft span,
+.outreach-draft small {
+  font-size: 10px;
+  color: #6c7f73;
+}
+.note-body footer {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+.journal-empty {
+  text-align: center;
+  padding: 90px 20px;
+}
+.journal-empty span {
+  font-size: 60px;
+  color: #7cb28b;
+}
+.journal-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  padding-top: 22px;
+}
+.journal-pagination span {
+  color: #718379;
+  font-size: 11px;
+}
+.settings-page {
+  display: grid;
+  gap: 20px;
+}
+.settings-lead {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: end;
+  background: linear-gradient(120deg, #e4f6e8, #fff);
+}
+.settings-lead h3 {
+  font-size: 28px;
+  margin: 8px 0;
+}
+.settings-lead p {
+  max-width: 760px;
+  line-height: 1.7;
+}
+.preset-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+.setting-card {
+  display: grid;
+  gap: 17px;
+  position: relative;
+  overflow: hidden;
+}
+.setting-number {
+  position: absolute;
+  right: 15px;
+  top: 8px;
+  font:
+    italic 700 58px/1 Georgia,
+    serif;
+  color: #dcebdc;
+  pointer-events: none;
+}
+.setting-card .section-heading {
+  position: relative;
+  z-index: 1;
+}
+.setting-toggle {
+  display: grid !important;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 14px;
+  background: #f5f9f2;
+  border: 1px solid #dbe8dc;
+}
+.setting-toggle input {
+  width: auto;
+  margin-top: 3px;
+}
+.setting-toggle span {
+  display: grid;
+  gap: 5px;
+}
+.setting-toggle small,
+.setting-card label > small {
+  color: #6b7f73;
+  line-height: 1.5;
+}
+.session-picks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  max-height: 380px;
+  overflow: auto;
+  padding-right: 5px;
+}
+.session-picks label {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  padding: 13px;
+  border: 1px solid #d7e5da;
+  background: #fbfdf9;
+  cursor: pointer;
+}
+.session-picks label.selected {
+  border-color: #559a70;
+  background: #eaf7e7;
+}
+.session-picks input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.session-picks span {
+  display: grid;
+  gap: 4px;
+}
+.session-picks small {
+  color: #718379;
+}
+.session-picks i {
+  font-style: normal;
+  font-size: 18px;
+  color: #4b8d66;
+}
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.setting-card label {
+  display: grid;
+  gap: 7px;
+  font-size: 12px;
+}
+.setting-note {
+  margin: 0;
+  padding: 12px;
+  background: #f1f6ec;
+  color: #617569;
+  font-size: 11px;
+  line-height: 1.65;
+}
+.settings-submit {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  box-shadow: 0 -8px 28px #19402a10;
+}
+.settings-submit > div {
+  display: grid;
+  gap: 5px;
+}
+.settings-submit small {
+  color: #6c7f74;
+}
+.activity-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.activity-metrics article {
+  display: grid;
+  gap: 9px;
+}
+.activity-metrics small,
+.activity-metrics span {
+  color: #687e71;
+}
+.activity-metrics b {
+  font-size: 30px;
+}
+.run-list {
+  display: grid;
+  margin-top: 18px;
+}
+.run-list article {
+  display: grid;
+  grid-template-columns: 155px 105px 1fr;
+  gap: 16px;
+  align-items: start;
+  padding: 16px 0;
+  border-bottom: 1px solid #d8e6db;
+}
+.run-list time {
+  font-size: 11px;
+  color: #6f8177;
+}
+.run-status {
+  font-size: 10px;
+  padding: 5px 8px;
+  text-align: center;
+  background: #edf5e8;
+  color: #416e55;
+}
+.run-status[data-status="error"] {
+  background: #f7e8df;
+  color: #8b5139;
+}
+.run-list article > div {
+  display: grid;
+  gap: 5px;
+}
+.run-list small {
+  color: #74857b;
+}
+@keyframes time-spin {
   to {
     transform: rotate(360deg);
   }
 }
-@media (max-width: 1050px) {
-  .time-columns {
+@media (max-width: 1150px) {
+  .time-masthead {
+    grid-template-columns: 130px 1fr;
+  }
+  .time-control {
+    grid-column: 1/-1;
+    grid-template-columns: 1fr 1fr;
+  }
+  .inner-layout {
     grid-template-columns: 1fr;
   }
-  .time-hero > .status-tag {
-    display: none;
+  .attention-card dl {
+    grid-template-columns: repeat(4, 1fr);
   }
 }
-@media (max-width: 600px) {
-  .time-metrics {
+@media (max-width: 900px) {
+  .now-grid,
+  .settings-grid {
     grid-template-columns: 1fr;
   }
-  .time-hero {
-    gap: 16px;
-  }
-  .time-orbit {
-    width: 60px;
-    height: 60px;
-  }
-  .time-orbit span {
-    font-size: 36px;
-  }
-  .time-run {
+  .thought-preview {
     grid-template-columns: 1fr;
   }
-  .time-run small {
-    grid-column: 1;
+  .journal-heading {
+    display: grid;
   }
-  .time-journal > .row {
+  .journal-tools {
+    width: 100%;
+  }
+}
+@media (max-width: 650px) {
+  .time-studio {
+    gap: 14px;
+  }
+  .time-studio .surface {
+    padding: 18px;
+  }
+  .time-masthead {
+    grid-template-columns: 76px 1fr;
+    gap: 18px;
+    min-height: 0;
+  }
+  .time-art {
+    width: 66px;
+    height: 66px;
+  }
+  .time-art::before {
+    inset: -6px;
+  }
+  .time-art::after,
+  .time-art > i {
+    display: none;
+  }
+  .time-art span {
+    font-size: 25px;
+  }
+  .time-intro h2 {
+    letter-spacing: -1px;
+  }
+  .time-control {
+    grid-template-columns: 1fr;
+  }
+  .time-local-nav button {
+    min-height: 60px;
+    padding: 9px;
+  }
+  .time-local-nav button small,
+  .time-local-nav button span {
+    display: none;
+  }
+  .time-local-nav button b {
+    text-align: center;
+    font-size: 12px;
+  }
+  .time-savebar {
+    top: 64px;
+    font-size: 11px;
+  }
+  .inner-card {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+  .inner-sky {
+    height: 180px;
+  }
+  .inner-sky::before {
+    width: 150px;
+    height: 150px;
+  }
+  .inner-sky::after {
+    width: 75px;
+    height: 75px;
+  }
+  .inner-sky > span {
+    width: 165px;
+    height: 165px;
+  }
+  .attention-card dl {
+    grid-template-columns: 1fr 1fr;
+  }
+  .topic-row {
+    grid-template-columns: 1fr 42px;
+  }
+  .topic-meter {
+    grid-column: 1/-1;
+    grid-row: 2;
+  }
+  .state-list > div {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+  .time-note {
+    grid-template-columns: 42px 1fr;
+    gap: 10px;
+  }
+  .note-index {
+    font-size: 24px;
+  }
+  .journal-pagination {
     flex-wrap: wrap;
+  }
+  .session-picks,
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+  .settings-lead,
+  .settings-submit {
+    align-items: stretch;
+    display: grid;
+  }
+  .activity-metrics {
+    grid-template-columns: 1fr;
+  }
+  .run-list article {
+    grid-template-columns: 1fr;
+    gap: 7px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .time-orbit i {
+  .time-art::before,
+  .inner-sky > span {
     animation: none;
   }
 }
-:global(.quiet-motion) .time-orbit i {
+:global(.quiet-motion) .time-art::before,
+:global(.quiet-motion) .inner-sky > span {
   animation: none;
 }
 </style>
