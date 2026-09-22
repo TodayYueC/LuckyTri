@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from "vue";
+import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { studio } from "../store";
 import { toast } from "../api";
 import { clearSessionContext } from "../plates/sessions";
@@ -30,6 +30,14 @@ const busy = ref(false);
 const simulateText = ref("");
 const simulateUser = ref("10001");
 const mentioned = ref(true);
+const inspector = ref("decisions");
+const feedbackPage = ref(0);
+const sending = ref(false);
+const replyDecisions = () => decisions().filter((d: any) => d.reply);
+let loadedSession = "";
+watch(sessionId, () => {
+  feedbackPage.value = 0;
+});
 
 function sessions() {
   return (studio.core?.sessions || []).filter((s: any) => !s.archived);
@@ -37,14 +45,24 @@ function sessions() {
 
 async function load() {
   if (!sessionId.value || busy.value) return;
+  const requestedSession = sessionId.value;
   busy.value = true;
   try {
     const [rows, list] = await Promise.all([
-      listEvents(sessionId.value),
-      listTraces(sessionId.value),
+      listEvents(requestedSession),
+      listTraces(requestedSession),
     ]);
+    if (sessionId.value !== requestedSession) return;
+    const pane = document.getElementById("liveMessages");
+    const follow =
+      loadedSession !== requestedSession ||
+      !pane ||
+      pane.scrollHeight - pane.scrollTop - pane.clientHeight < 80;
     events.value = rows.reverse();
     traces.value = list;
+    loadedSession = requestedSession;
+    await nextTick();
+    if (pane && follow) pane.scrollTop = pane.scrollHeight;
     status.value = "实时同步 · " + new Date().toLocaleTimeString();
     const latest = list.find(
       (t: any) => t.status === "sent" || t.status === "silent",
@@ -52,20 +70,25 @@ async function load() {
     if (latest) {
       try {
         const detail = await getTrace(latest.id);
-        knowledge.value = detail.data?.snapshot?.knowledge || [];
+        if (sessionId.value === requestedSession)
+          knowledge.value = detail.data?.snapshot?.knowledge || [];
       } catch {
         knowledge.value = [];
       }
-    }
+    } else knowledge.value = [];
   } catch (e) {
     status.value = "同步失败：" + (e as Error).message;
   } finally {
     busy.value = false;
+    if (sessionId.value !== requestedSession) void load();
   }
 }
 
 watch(sessionId, (id) => {
   sessionStorage.activeSession = id;
+  events.value = [];
+  traces.value = [];
+  knowledge.value = [];
   load();
 });
 let timer: ReturnType<typeof setInterval>;
@@ -88,6 +111,8 @@ async function clearContext() {
 
 async function simulate(e: Event) {
   e.preventDefault();
+  if (sending.value) return;
+  sending.value = true;
   try {
     const r = await simulateTurn({
       sessionId: sessionId.value,
@@ -101,11 +126,14 @@ async function simulate(e: Event) {
     await load();
   } catch (err) {
     toast((err as Error).message);
+  } finally {
+    sending.value = false;
   }
 }
 
 async function feedback(id: number, tag: string) {
   await sendFeedback(id, tag);
+  toast("反馈已保存");
   studio.health = await fetchState();
 }
 
@@ -117,26 +145,32 @@ function decisions() {
 </script>
 
 <template>
-  <div class="live-layout">
-    <section class="panel">
-      <div class="row">
+  <div class="conversation-workbench">
+    <section class="conversation-pane surface">
+      <div class="conversation-toolbar">
         <label
-          >群聊 / 私聊
-          <select id="liveSession" v-model="sessionId">
+          >当前会话<select id="liveSession" v-model="sessionId">
+            <option value="" disabled>选择群聊或私聊</option>
             <option v-for="s in sessions()" :key="s.id" :value="s.id">
-              {{ s.name }} · {{ s.id }}
+              {{ s.name }}
             </option>
-          </select>
-        </label>
-        <span class="small" id="liveStatus">{{ status }}</span>
-        <button class="secondary" id="clearLiveContext" @click="clearContext">
-          清空当前上下文
-        </button>
+          </select></label
+        >
+        <div class="toolbar-end">
+          <span id="liveStatus" class="small">{{ status }}</span
+          ><button
+            id="clearLiveContext"
+            :disabled="!sessionId"
+            @click="clearContext"
+          >
+            清空上下文
+          </button>
+        </div>
       </div>
-      <p class="small">
-        消息会自动更新；右侧可查看回复原因，也可以发送模拟消息测试。
-      </p>
-      <div id="liveMessages" class="conversation-messages chat-messages">
+      <div
+        id="liveMessages"
+        class="conversation-messages chat-messages scroll-pane"
+      >
         <article
           v-for="r in events"
           :key="r.seq"
@@ -146,86 +180,157 @@ function decisions() {
             bot: r.role === 'assistant',
           }"
         >
-          <div class="small">
-            {{ r.payload.name }} · {{ new Date(r.time).toLocaleTimeString() }} ·
-            #{{ r.seq }}
+          <div class="message-meta">
+            <b>{{ r.payload.name }}</b
+            ><time>{{ new Date(r.time).toLocaleTimeString() }}</time
+            ><span v-if="r.payload.simulated" class="status-tag">模拟</span>
           </div>
           <p>{{ r.payload.text }}</p>
         </article>
-        <p v-if="!events.length" class="small">
-          此会话暂无归档消息，收到 QQ 消息后会自动显示。
-        </p>
+        <div v-if="!events.length" class="empty-state">
+          <span>↗</span>
+          <h3>{{ sessionId ? "等待新的消息" : "选择一段对话" }}</h3>
+          <p>群聊与私聊消息将在这里实时同步。</p>
+        </div>
+      </div>
+      <div class="pane-foot">
+        <span>LIVE FEED / 实时消息</span
+        ><span>{{ events.length }} 条已载入</span>
       </div>
     </section>
-    <div>
-      <section class="panel">
-        <h2>为什么回复 / 为什么安静</h2>
-        <div id="liveDecisions">
-          <p
-            v-for="t in traces.slice(0, 12)"
-            :key="t.id"
-            :class="{ danger: t.status === 'error' }"
-          >
-            <span class="small"
-              >{{ new Date(t.time).toLocaleTimeString() }} ·
-              {{ statusNames[t.status] || t.status }}</span
-            ><br />
-            {{ t.reason || (t.status === "running" ? "正在处理" : "暂无说明") }}
-          </p>
-          <p v-if="!traces.length" class="small">暂无决策</p>
-        </div>
-        <div
-          v-for="d in decisions().filter((x: any) => x.reply)"
-          :key="d.id"
-          class="row"
+    <aside class="inspector surface">
+      <div class="inspector-title">
+        <span class="eyebrow">BEHIND THE WORDS</span>
+        <h2>每一次回应背后</h2>
+      </div>
+      <div class="segment-tabs" aria-label="对话辅助面板">
+        <button
+          v-for="(label, key) in {
+            decisions: '决策',
+            feedback: '反馈',
+            simulate: '试聊',
+          }"
+          :key="key"
+          :class="{ active: inspector === key }"
+          @click="inspector = key"
         >
-          <span class="small">口吻反馈</span>
-          <select
-            :data-feedback="d.id"
-            :value="d.feedback || ''"
-            @change="feedback(d.id, ($event.target as HTMLSelectElement).value)"
+          {{ label }}
+        </button>
+      </div>
+      <div
+        v-show="inspector === 'decisions'"
+        class="inspector-content scroll-pane"
+      >
+        <div id="liveDecisions">
+          <article
+            v-for="t in traces.slice(0, 20)"
+            :key="t.id"
+            class="decision-item"
           >
-            <option value="">无反馈</option>
-            <option
-              v-for="(label, tag) in studio.health.feedbackLabels"
-              :key="tag"
-              :value="tag"
-            >
-              {{ label }}
-            </option>
-          </select>
+            <div class="row">
+              <time>{{ new Date(t.time).toLocaleTimeString() }}</time
+              ><span
+                class="status-tag"
+                :class="{ danger: t.status === 'error' }"
+                >{{ statusNames[t.status] || t.status }}</span
+              >
+            </div>
+            <p>
+              {{
+                t.reason ||
+                (t.status === "running" ? "正在理解这段对话…" : "暂无说明")
+              }}
+            </p>
+          </article>
+          <p v-if="!traces.length" class="empty-copy">
+            有新的互动后，这里会显示开口或旁听的原因。
+          </p>
         </div>
-      </section>
-      <section class="panel">
-        <h2>本轮引用的知识</h2>
-        <p v-for="k in knowledge" :key="k.id" class="small">
-          {{ k.title }} · {{ k.whySelected }}<br />{{ k.text }}
-        </p>
-        <p v-if="!knowledge.length" class="small">这次回复没有引用知识文档。</p>
-      </section>
-      <section class="panel">
-        <h2>试聊 / 模拟</h2>
+        <details class="reference-fold">
+          <summary>这次引用的知识 · {{ knowledge.length }}</summary>
+          <p v-for="k in knowledge" :key="k.id">
+            {{ k.title }}<br />{{ k.text }}
+          </p>
+          <p v-if="!knowledge.length" class="small">没有引用文档。</p>
+        </details>
+      </div>
+      <div v-show="inspector === 'feedback'" class="feedback-pane">
+        <p class="small">针对具体回复评价口吻，帮助调整聊天表现。</p>
+        <div id="feedbackList" class="scroll-pane">
+          <article
+            v-for="d in replyDecisions().slice(
+              feedbackPage * 6,
+              feedbackPage * 6 + 6,
+            )"
+            :key="d.id"
+            class="feedback-item"
+          >
+            <time>{{ new Date(d.time).toLocaleTimeString() }}</time>
+            <p class="reply-excerpt">{{ d.reply }}</p>
+            <label
+              >这句回复怎么样？<select
+                :data-feedback="d.id"
+                :value="d.feedback || ''"
+                @change="
+                  feedback(d.id, ($event.target as HTMLSelectElement).value)
+                "
+              >
+                <option value="">选择评价</option>
+                <option
+                  v-for="(label, tag) in studio.health.feedbackLabels"
+                  :key="tag"
+                  :value="tag"
+                >
+                  {{ label }}
+                </option>
+              </select></label
+            >
+          </article>
+          <p v-if="!replyDecisions().length" class="empty-copy">
+            还没有可以评价的回复。
+          </p>
+        </div>
+        <div class="pagination">
+          <button :disabled="feedbackPage === 0" @click="feedbackPage--">
+            ←</button
+          ><span
+            >{{ feedbackPage + 1 }} /
+            {{ Math.max(1, Math.ceil(replyDecisions().length / 6)) }}</span
+          ><button
+            :disabled="(feedbackPage + 1) * 6 >= replyDecisions().length"
+            @click="feedbackPage++"
+          >
+            →
+          </button>
+        </div>
+      </div>
+      <div
+        v-show="inspector === 'simulate'"
+        class="inspector-content scroll-pane"
+      >
+        <h3>试着说一句</h3>
+        <p class="small">只在工作室模拟，不会向 QQ 发送。</p>
         <form id="simulate" @submit="simulate">
           <label
             >体验用户 QQ<input
               name="userId"
               v-model="simulateUser"
               pattern="\d{4,20}"
-              required
-          /></label>
-          <label
+              required /></label
+          ><label
             >消息<textarea
               name="text"
               v-model="simulateText"
+              placeholder="今天发生了什么？"
               required
-            ></textarea>
-          </label>
-          <label class="check"
+            ></textarea></label
+          ><label class="check"
             ><input type="checkbox" v-model="mentioned" />视为 @ / 点名</label
-          >
-          <button class="primary">发送模拟消息</button>
+          ><button class="primary" :disabled="sending || !sessionId">
+            {{ sending ? "正在回复…" : "发送模拟消息 ↗" }}
+          </button>
         </form>
-      </section>
-    </div>
+      </div>
+    </aside>
   </div>
 </template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { onMounted, onUnmounted, ref, computed } from "vue";
 import { pages, studio, reload, go } from "./store";
 import { subscribe } from "./sse";
 import { toast } from "./api";
@@ -23,31 +23,61 @@ const views: Record<string, object> = {
   lab: Lab,
 };
 
-const groups = [
-  { label: "日常使用", items: ["overview", "live", "knowledge"] },
-  { label: "角色与行为", items: ["character", "spaces"] },
-  { label: "系统配置", items: ["models", "connect", "lab"] },
+const navigation = [
+  {
+    key: "overview",
+    label: "今日",
+    en: "TODAY",
+    number: "01",
+    pages: ["overview"],
+  },
+  {
+    key: "live",
+    label: "对话",
+    en: "SOCIAL LINK",
+    number: "02",
+    pages: ["live", "spaces", "lab"],
+  },
+  {
+    key: "knowledge",
+    label: "记忆",
+    en: "MEMORY",
+    number: "03",
+    pages: ["knowledge"],
+  },
+  {
+    key: "character",
+    label: "人格",
+    en: "PERSONA",
+    number: "04",
+    pages: ["character"],
+  },
+  {
+    key: "models",
+    label: "系统",
+    en: "SYSTEM",
+    number: "05",
+    pages: ["models", "connect"],
+  },
 ];
-const descriptions: Record<string, string> = {
-  overview: "连接、会话与最近动态，都在这里。",
-  live: "看看大家正在聊什么，以及 LuckyBot 为什么回应。",
-  knowledge: "按会话整理回忆，留住值得记住的事情。",
-  character: "定义她是谁，再试试她会怎么说。",
-  spaces: "选择参与哪些对话，分别调整聊天节奏。",
-  models: "连接模型，设置思考能力与上下文容量。",
-  connect: "从安装到登录，完成 QQ 连接。",
-  lab: "查看处理过程，用历史消息验证回复效果。",
+const activeGroup = computed(
+  () => navigation.find((n) => n.pages.includes(studio.page)) || navigation[0],
+);
+const subtitles: Record<string, string> = {
+  overview: "把日常连成故事。",
+  live: "现场",
+  spaces: "会话设置",
+  lab: "历史回放",
+  knowledge: "留下重要的，整理正在发生的。",
+  character: "一种性格，一直在场。",
+  models: "模型",
+  connect: "QQ 连接",
 };
-const marks: Record<string, string> = {
-  overview: "01",
-  live: "02",
-  knowledge: "03",
-  character: "04",
-  spaces: "05",
-  models: "06",
-  connect: "07",
-  lab: "08",
-};
+const dateLabel = new Intl.DateTimeFormat("zh-CN", {
+  month: "2-digit",
+  day: "2-digit",
+  weekday: "short",
+}).format(new Date());
 const quietMotion = ref(localStorage.luckyQuietMotion === "true");
 function toggleMotion() {
   quietMotion.value = !quietMotion.value;
@@ -55,7 +85,8 @@ function toggleMotion() {
 }
 function movePointer(event: PointerEvent) {
   const halo = document.getElementById("pointerHalo");
-  if (!halo || event.pointerType !== "mouse") return;
+  if (!halo || quietMotion.value || event.pointerType !== "mouse") return;
+  halo.classList.add("visible");
   halo.style.transform = `translate(${event.clientX}px, ${event.clientY}px)`;
   halo.classList.toggle(
     "over-control",
@@ -104,58 +135,61 @@ async function refresh() {
 
 <template>
   <div v-if="studio.error" class="startup">
-    <div class="eyebrow">CONNECTION</div>
-    <h1>暂时无法连接工作室</h1>
+    <span class="eyebrow">OFFLINE / 暂未连接</span>
+    <h1>工作室正在等你</h1>
     <p>{{ studio.error }}</p>
-    <button class="primary" @click="reloadPage">重新连接</button>
+    <button class="primary" @click="reloadPage">重新连接 ↗</button>
   </div>
   <div
     v-else-if="studio.core && studio.health"
     class="studio"
     :class="{ 'quiet-motion': quietMotion }"
   >
-    <div id="pointerHalo" aria-hidden="true"></div>
-    <div class="ambient-orbit" aria-hidden="true"></div>
     <a class="skip-link" href="#mainContent">跳到主要内容</a>
+    <div id="pointerHalo" aria-hidden="true"><span>✦</span></div>
     <aside class="sidebar">
       <a class="brand" href="#overview" @click.prevent="go('overview')"
-        ><span class="brand-symbol">L<span>✦</span></span
-        ><span>LuckyBot<small>让每一次相遇有回响</small></span></a
+        >Lucky<span>Bot</span><i>✦</i></a
       >
-      <nav aria-label="主导航">
-        <div v-for="group in groups" :key="group.label" class="nav-group">
-          <div class="nav-label">{{ group.label }}</div>
-          <button
-            v-for="key in group.items"
-            :key="key"
-            :data-page="key"
-            :class="{ active: studio.page === key }"
-            :aria-current="studio.page === key ? 'page' : undefined"
-            @click="go(key)"
-          >
-            <span class="nav-number">{{ marks[key] }}</span
-            ><span>{{ pages[key as keyof typeof pages] }}</span
-            ><span class="nav-arrow">↗</span>
-          </button>
-        </div>
-      </nav>
-      <div class="sidebar-bottom">
-        <span class="small">YOUR EVERYDAY COMPANION</span
-        ><a href="/guide.html">使用教程 <span>↗</span></a
-        ><button @click="toggleMotion" :aria-pressed="quietMotion">
-          {{ quietMotion ? "开启灵动效果" : "减少动画" }}
+      <div class="brand-caption">THE EVERYDAY CONNECTION</div>
+      <nav class="primary-nav" aria-label="主要功能">
+        <button
+          v-for="item in navigation"
+          :key="item.key"
+          :data-page="item.key"
+          :class="{ active: activeGroup.key === item.key }"
+          :aria-current="activeGroup.key === item.key ? 'page' : undefined"
+          @click="go(item.key)"
+        >
+          <span class="nav-number">{{ item.number }}</span
+          ><span class="nav-name"
+            >{{ item.label }}<small>{{ item.en }}</small></span
+          ><span class="nav-arrow">↗</span>
         </button>
+      </nav>
+      <div class="rail-art" aria-hidden="true">
+        <span class="rail-orbit"></span><b>LIVE<br />YOUR<br /><em>LINK.</em></b
+        ><i>✦</i>
+      </div>
+      <div class="sidebar-bottom">
+        <button @click="toggleMotion" :aria-pressed="quietMotion">
+          {{ quietMotion ? "开启灵动效果" : "减少动画" }} <span>◌</span></button
+        ><a href="/guide.html" target="_blank" rel="noopener">使用教程 ↗</a
+        ><span class="rail-version">LOCAL FIRST / LUCKYBOT</span>
       </div>
     </aside>
     <main id="mainContent" tabindex="-1">
       <header class="workspace-header">
-        <div>
-          <div class="eyebrow">LUCKYBOT / {{ marks[studio.page] }}</div>
-          <h1>{{ pages[studio.page] }}</h1>
-          <p class="page-description">{{ descriptions[studio.page] }}</p>
+        <div class="page-heading">
+          <span class="chapter-index">{{ activeGroup.number }}</span>
+          <div>
+            <div class="eyebrow">{{ activeGroup.en }} / LUCKYBOT</div>
+            <h1>{{ activeGroup.label }}<span class="heading-slash">/</span></h1>
+          </div>
         </div>
         <div class="header-actions">
-          <span
+          <span class="date-label">{{ dateLabel }}</span
+          ><span
             class="pill"
             :class="{ offline: !studio.health.connection.online }"
             id="connection"
@@ -164,14 +198,30 @@ async function refresh() {
               studio.health.connection.online ? "QQ 已连接" : "QQ 未连接"
             }}</span
           ><button id="refresh" @click="refresh" aria-label="刷新当前数据">
-            ↻ 刷新
+            ↻
           </button>
         </div>
       </header>
+      <nav
+        v-if="activeGroup.pages.length > 1"
+        class="workspace-tabs"
+        aria-label="工作区分区"
+      >
+        <button
+          v-for="key in activeGroup.pages"
+          :key="key"
+          :data-page="key"
+          :class="{ active: studio.page === key }"
+          :aria-current="studio.page === key ? 'page' : undefined"
+          @click="go(key)"
+        >
+          {{ subtitles[key] }}<span>↗</span>
+        </button>
+      </nav>
       <div v-if="studio.dirty" class="draft-banner" role="status">
-        有尚未保存的修改，请在当前页面保存后切换。
+        ● 草稿尚未保存 · 保存后才会应用到聊天
       </div>
-      <Transition name="page" mode="out-in"
+      <Transition name="scene" mode="out-in"
         ><div
           :key="studio.page"
           class="page-content"
@@ -180,13 +230,14 @@ async function refresh() {
           <component :is="views[studio.page]" /></div
       ></Transition>
       <footer class="workspace-footer">
-        <span>LuckyBot · 日常，正在发生</span><span>LOCAL WORKSPACE / ✦</span>
+        <span>EVERY CONNECTION COUNTS</span
+        ><span>LUCKYBOT <b>✦</b> {{ subtitles[studio.page] }}</span>
       </footer>
     </main>
   </div>
   <div v-else class="startup" role="status">
     <div class="loading-orbit"></div>
-    <h1>正在打开工作室</h1>
+    <h1>正在进入工作室</h1>
     <p>连接你的会话与记忆…</p>
   </div>
 </template>
