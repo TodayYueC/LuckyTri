@@ -100,6 +100,7 @@ export class ChatSystem {
       memory: true,
       deepCheck: true,
       comfortOnDistress: false,
+      selectiveVision: false,
       ...saved,
     };
   }
@@ -335,7 +336,9 @@ export class ChatSystem {
         ? this.models.profile(policy.visionModelId)
         : model;
       const direct = snapshot.batch.some((m) => m.relation === "direct");
-      const media = visionInputs(snapshot, visionModel);
+      const media = visionInputs(snapshot, visionModel, {
+        selective: !!policy.selectiveVision,
+      });
       const early = classifyVision(
         this.repo.db,
         snapshot.sessionId,

@@ -434,20 +434,66 @@ test("记忆整理在后台，不阻塞当前回复返回", async () => {
   store.db.close();
 });
 
-test("历史图片不重复送视觉，只选当前消息及引用", () => {
+test("没有 @ 或明确要求时不理解图片，点名后才看附近和引用", () => {
   const rows = [1, 2, 3].map((seq) => ({
     seq,
     userId: "1",
+    text: seq === 3 ? "[图片]" : "闲聊",
     replyChain: seq === 3 ? [2] : [],
     attachments: [{ type: "image", url: "https://gchat.qpic.cn/" + seq }],
   }));
-  const media = visionInputs(
-    { batchIds: [3], sourceRows: rows },
-    { vision: true },
+  assert.deepEqual(
+    visionInputs(
+      { batchIds: [3], sourceRows: rows },
+      { vision: true },
+    ).images.map((image) => image.messageId),
+    [2, 3],
   );
   assert.deepEqual(
-    media.images.map((i) => i.messageId),
-    [2, 3],
+    visionInputs(
+      { batchIds: [3], sourceRows: rows },
+      { vision: true },
+      { selective: true },
+    ).images,
+    [],
+  );
+  const asked = rows.map((row) =>
+    row.seq === 3
+      ? { ...row, text: "@LuckyBot 看看这张", accountId: "9", mentions: ["9"] }
+      : row,
+  );
+  assert.deepEqual(
+    visionInputs(
+      { batchIds: [3], sourceRows: asked },
+      { vision: true },
+      { selective: true },
+    ).images.map((image) => image.messageId),
+    [1, 2, 3],
+  );
+  const sticker = rows.map((row) =>
+    row.seq === 3
+      ? {
+          ...row,
+          text: "@LuckyBot",
+          accountId: "9",
+          mentions: ["9"],
+          attachments: [
+            {
+              type: "image",
+              emoji_id: "1",
+              url: "https://gchat.qpic.cn/sticker",
+            },
+          ],
+        }
+      : { ...row, attachments: [] },
+  );
+  assert.deepEqual(
+    visionInputs(
+      { batchIds: [3], sourceRows: sticker },
+      { vision: true },
+      { selective: true },
+    ).images,
+    [],
   );
 });
 
@@ -1087,7 +1133,10 @@ test("主模型不能看图时，视觉模型的观察进入回复且不附带�
       unavailable: [],
     }),
   });
-  system.repo.saveConfig("session:" + session, { visionModelId: "vision" });
+  system.repo.saveConfig("session:" + session, {
+    visionModelId: "vision",
+    selectiveVision: true,
+  });
   system.repo.append(
     msg(1, {
       sessionId: session,
@@ -1171,6 +1220,7 @@ test("同一张图只理解一次，引用和相同内容不再提交画面", as
     type: "image",
     url: "https://gchat.qpic.cn/auction.png",
   };
+  system.repo.saveConfig("session:" + session, { selectiveVision: true });
   system.repo.append(
     msg(1, { text: "[图片]看看这张土拍", attachments: [image] }),
   );
@@ -1191,8 +1241,18 @@ test("同一张图只理解一次，引用和相同内容不再提交画面", as
   assert.equal(seen.filter((item) => item.stage === "vision").length, 1);
   assert.equal(loads, 1);
   assert.equal(seen.at(-1).images.length, 0);
+  system.repo.append(msg(9, { text: "[图片]", attachments: [image] }));
+  const plain = system.repo.events(session).at(-1);
+  const ignored = await system.process(session, [plain]);
+  assert.equal(ignored.status, "sent");
+  assert.equal(loads, 1);
+  assert.equal(seen.filter((item) => item.stage === "vision").length, 1);
   system.repo.append(
-    msg(3, { text: "[图片]又发了一张", attachments: [image] }),
+    msg(3, {
+      text: "[图片]再看看这张",
+      attachments: [image],
+      mentions: ["99999"],
+    }),
   );
   const repost = system.repo.events(session).at(-1);
   const third = await system.process(session, [repost]);

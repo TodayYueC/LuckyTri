@@ -88,6 +88,9 @@ async function saveSession(e: Event, s: any) {
   v.comfortOnDistress = (
     f.elements.namedItem("comfortOnDistress") as HTMLInputElement
   ).checked;
+  v.selectiveVision = (
+    f.elements.namedItem("selectiveVision") as HTMLInputElement
+  ).checked;
   v.deepCheck = (f.elements.namedItem("deepCheck") as HTMLInputElement).checked;
   const personaRaw = String(v.persona || "").trim();
   delete v.persona;
@@ -218,6 +221,13 @@ async function saveSession(e: Event, s: any) {
                   </option>
                 </select>
               </label>
+              <label class="check span-two"
+                ><input
+                  name="selectiveVision"
+                  type="checkbox"
+                  :checked="s.policy.selectiveVision"
+                />节能看图：只在被 @ 或明确要求时，看这一条和附近的图</label
+              >
               <label
                 >旁听后的参与概率 0–1<input
                   name="probability"
