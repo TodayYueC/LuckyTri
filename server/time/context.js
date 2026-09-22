@@ -215,6 +215,19 @@ export function migrateTime(db) {
     factors TEXT DEFAULT '{}'
   );
   CREATE INDEX IF NOT EXISTS time_states_session ON time_states(session_id,created);`);
+  // Existing hand-written reflections already represent a past point of view.
+  // Seed one conservative state snapshot for them so upgrades keep continuity
+  // instead of showing an empty inner-life timeline.
+  db.exec(`INSERT OR IGNORE INTO time_states(
+    id,session_id,created,watermark,phase,mood,energy,social_pull,
+    attention,narrative,source_note_id,factors
+  )
+  SELECT 'legacy:' || n.id,n.session_id,n.created,n.watermark,'legacy',
+    CASE n.kind WHEN 'unfinished' THEN '有一点挂心' WHEN 'reconnection' THEN '想起了一些事' ELSE '平静' END,
+    'steady',CASE WHEN COALESCE(n.outreach,'')!='' THEN 'reconnect' ELSE 'settled' END,
+    substr(n.content,1,80),substr(n.content,1,180),n.id,'{"migrated":true}'
+  FROM time_notes n
+  WHERE NOT EXISTS (SELECT 1 FROM time_states s WHERE s.source_note_id=n.id);`);
   db.prepare(
     "UPDATE time_runs SET status='interrupted',finished=? WHERE status='running'",
   ).run(Date.now());
