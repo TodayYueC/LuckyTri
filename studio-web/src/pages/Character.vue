@@ -9,6 +9,10 @@ import {
 } from "../plates/character";
 import { patchSettings } from "../plates/workspace";
 
+const busy = ref(false);
+const previewBusy = ref(false);
+const editorTab = ref("identity");
+const promptKey = ref("system");
 const p = reactive({ ...studio.core.persona });
 const settings = reactive({ ...studio.health.settings });
 const history = ref<{ role: string; text: string }[]>([]);
@@ -18,18 +22,9 @@ const voiceMeta = ref(
 );
 const useModel = ref(false);
 const styleSession = ref("");
-const showPrompts = ref(false);
 const prompts = reactive({ ...studio.core.prompts });
+promptKey.value = Object.keys(prompts)[0] || "system";
 
-function jump(id: string) {
-  document
-    .getElementById(id)
-    ?.scrollIntoView({
-      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
-        ? "auto"
-        : "smooth",
-    });
-}
 function markDirty() {
   studio.dirty = true;
 }
@@ -43,26 +38,33 @@ async function savePersona(e: Event) {
           .split(/[,，\n]/)
           .map((s) => s.trim())
           .filter(Boolean);
-  await putPersona({
-    ...p,
-    interests: list(p.interests),
-    forbidden: list(p.forbidden),
-  });
-  await patchSettings({
-    persona: settings.persona,
-    voicePreset: settings.voicePreset,
-    slangLevel: Number(settings.slangLevel),
-    cooldown: Number(settings.cooldown),
-    probability: Number(settings.probability),
-    contextLimit: Number(settings.contextLimit),
-    maxReply: Number(settings.maxReply),
-    allowMildProfanity: !!settings.allowMildProfanity,
-    qualityRewrite: !!settings.qualityRewrite,
-    adaptGroupStyle: !!settings.adaptGroupStyle,
-  });
-  studio.dirty = false;
-  await reload();
-  toast("已保存并应用");
+  if (busy.value) return;
+  busy.value = true;
+  try {
+    await putPersona({
+      ...p,
+      interests: list(p.interests),
+      forbidden: list(p.forbidden),
+    });
+    await patchSettings({
+      persona: p.base,
+      voicePreset: settings.voicePreset,
+      slangLevel: Number(settings.slangLevel),
+      cooldown: Number(settings.cooldown),
+      probability: Number(settings.probability),
+      contextLimit: Number(settings.contextLimit),
+      maxReply: Number(settings.maxReply),
+      allowMildProfanity: !!settings.allowMildProfanity,
+      qualityRewrite: !!settings.qualityRewrite,
+      adaptGroupStyle: !!settings.adaptGroupStyle,
+    });
+    studio.dirty = false;
+    await reload();
+    settings.persona = p.base;
+    toast("已保存并应用");
+  } finally {
+    busy.value = false;
+  }
 }
 
 async function savePrompts(e: Event) {
@@ -74,12 +76,14 @@ async function savePrompts(e: Event) {
 
 async function preview(e: Event) {
   e.preventDefault();
+  if (previewBusy.value) return;
+  previewBusy.value = true;
   try {
     const r = await previewVoice({
       text: voiceText.value,
       useModel: useModel.value,
       styleSession: styleSession.value,
-      persona: settings.persona,
+      persona: p.base,
       history: history.value,
     });
     if (r.speak && r.reply)
@@ -90,6 +94,8 @@ async function preview(e: Event) {
     voiceMeta.value = `${r.mode === "model" ? "真实模型" : "规则样例（非模型）"} · ${r.emotion} · ${r.latency} ms${r.speak ? "" : " · " + r.reason}`;
   } catch (err) {
     voiceMeta.value = (err as Error).message;
+  } finally {
+    previewBusy.value = false;
   }
 }
 
@@ -99,203 +105,276 @@ function clearVoice() {
 </script>
 
 <template>
-  <div class="section-nav" aria-label="人格页分区">
-    <a href="#persona" @click.prevent="jump('persona')">基础设定</a
-    ><a href="#voice-lab" @click.prevent="jump('voice-lab')">口吻试聊</a>
-  </div>
-  <section class="panel" id="persona">
-    <form id="personaForm" @submit="savePersona" @input="markDirty">
-      <h2>基础设定</h2>
-      <p class="small">
-        先定义名字、情绪与表达习惯，再调整性格程度。数值越高，特征越明显。
-      </p>
-      <div class="grid">
-        <label>名字<input v-model="p.name" name="name" /></label>
-        <label>说话长度<input v-model="p.length" name="length" /></label>
-        <label>当前情绪<input v-model="p.mood" name="mood" /></label>
+  <div class="persona-workbench">
+    <section class="persona-editor surface" id="persona">
+      <div class="detail-heading">
+        <div>
+          <span class="eyebrow">PERSONA / DESIGN YOUR CHARACTER</span>
+          <h2>她是什么样的人？</h2>
+        </div>
+        <span class="persona-emblem" aria-hidden="true">✦</span>
       </div>
-      <h3 class="section-title">性格与聊天节奏</h3>
-      <div class="grid">
-        <label
-          >幽默程度 0–100<input
-            name="humor"
-            type="number"
-            v-model.number="p.humor"
-        /></label>
-        <label
-          >毒舌程度 0–100<input
-            name="sarcasm"
-            type="number"
-            v-model.number="p.sarcasm"
-        /></label>
-        <label
-          >温柔程度 0–100<input
-            name="warmth"
-            type="number"
-            v-model.number="p.warmth"
-        /></label>
-        <label
-          >活泼程度 0–100<input
-            name="activity"
-            type="number"
-            v-model.number="p.activity"
-        /></label>
-        <label
-          >主动程度 0–100<input
-            name="initiative"
-            type="number"
-            v-model.number="p.initiative"
-        /></label>
-        <label
-          >发言冷却（秒）<input
-            name="cooldown"
-            type="number"
-            v-model.number="settings.cooldown"
-        /></label>
-        <label
-          >旁听后的参与概率<input
-            name="probability"
-            type="number"
-            step="0.01"
-            v-model.number="settings.probability"
-        /></label>
-        <label
-          >网络梗
-          <input
-            name="slangLevel"
-            type="range"
-            min="0"
-            max="2"
-            v-model.number="settings.slangLevel"
-          />
-        </label>
-      </div>
-      <h3 class="section-title">人物背景与表达习惯</h3>
-      <label
-        >口吻试聊使用的人设草稿<textarea
-          name="persona"
-          v-model="settings.persona"
-        ></textarea>
-      </label>
-      <label
-        >聊天使用的核心人格<textarea
-          name="base"
-          v-model="p.base"
-          class="editor"
-        ></textarea>
-      </label>
-      <div class="row">
-        <label
-          v-for="preset in studio.health.voice.presets"
-          :key="preset.id"
-          class="voice-preset"
-          :class="{ picked: settings.voicePreset === preset.id }"
-        >
-          <input
-            type="radio"
-            name="voicePreset"
-            :value="preset.id"
-            v-model="settings.voicePreset"
-          />
-          {{ preset.name }}
-        </label>
-      </div>
-      <label class="check"
-        ><input
-          name="allowMildProfanity"
-          type="checkbox"
-          v-model="settings.allowMildProfanity"
-        />允许轻度脏话</label
-      >
-      <label class="check"
-        ><input
-          name="adaptGroupStyle"
-          type="checkbox"
-          v-model="settings.adaptGroupStyle"
-        />参考群体习惯</label
-      >
-      <label class="check"
-        ><input
-          name="qualityRewrite"
-          type="checkbox"
-          v-model="settings.qualityRewrite"
-        />质量重写</label
-      >
-      <button class="primary" type="submit">保存并应用</button>
-      <span class="small">保存后下一轮生效</span>
-    </form>
-  </section>
-  <section class="panel" id="voice-lab">
-    <h2>口吻试聊</h2>
-    <div id="voiceMeta" class="small">{{ voiceMeta }}</div>
-    <div id="voiceMessages">
-      <article
-        v-for="(m, i) in history"
-        :key="i"
-        class="message"
-        :class="{ reply: m.role === 'assistant', bot: m.role === 'assistant' }"
-      >
-        <p>{{ m.text }}</p>
-      </article>
-    </div>
-    <form id="voicePreviewForm" @submit="preview">
-      <label
-        >语气参考
-        <select id="voiceStyleSession" v-model="styleSession">
-          <option value="">默认普通口语</option>
-          <option
-            v-for="s in studio.core.sessions.filter(
-              (x: any) => String(x.kind) === 'group',
-            )"
-            :key="s.id"
-            :value="s.id"
-          >
-            {{ s.name }}
-          </option>
-        </select>
-      </label>
-      <label class="check"
-        ><input
-          id="voiceUseModel"
-          type="checkbox"
-          v-model="useModel"
-        />使用真实模型</label
-      >
-      <label>句子<input name="text" v-model="voiceText" /></label>
-      <div class="row">
+      <div class="segment-tabs">
         <button
-          v-for="(scene, i) in studio.health.voice.scenarios"
-          :key="scene.name"
-          type="button"
-          :data-voice-scene="i"
-          @click="voiceText = scene.text"
+          :class="{ active: editorTab === 'identity' }"
+          @click="editorTab = 'identity'"
         >
-          {{ scene.name }}
+          人格与表达</button
+        ><button
+          :class="{ active: editorTab === 'prompts' }"
+          @click="editorTab = 'prompts'"
+        >
+          高级 Prompt
         </button>
       </div>
-      <button class="primary">试聊一句</button>
-      <button type="button" id="clearVoice" @click="clearVoice">
-        清空试聊
-      </button>
-    </form>
-  </section>
-  <section class="panel">
-    <details
-      :open="showPrompts"
-      @toggle="showPrompts = ($event.target as HTMLDetailsElement).open"
-    >
-      <summary>Prompt 高级编辑</summary>
-      <form id="promptsForm" @submit="savePrompts" @input="markDirty">
-        <label v-for="(value, key) in prompts" :key="key"
-          >{{ key }}
-          <textarea
-            :name="key"
-            class="editor"
-            v-model="prompts[key]"
-          ></textarea>
-        </label>
-        <button class="primary">保存 Prompt</button>
+      <form
+        v-show="editorTab === 'identity'"
+        id="personaForm"
+        @submit="savePersona"
+        @input="markDirty"
+      >
+        <div class="form-scroll">
+          <div class="grid">
+            <label>名字<input v-model="p.name" name="name" /></label
+            ><label>当前情绪<input v-model="p.mood" name="mood" /></label>
+          </div>
+          <label
+            >核心人设<textarea
+              name="persona"
+              v-model="p.base"
+              class="persona-text"
+              placeholder="她的背景、性格、兴趣和社交边界…"
+            ></textarea
+            ><small>聊天与右侧真实模型试聊使用同一份人设。</small></label
+          >
+          <fieldset>
+            <legend>性格刻度</legend>
+            <div class="trait-grid">
+              <label
+                v-for="(label, key) in {
+                  warmth: '温柔',
+                  sarcasm: '毒舌',
+                  humor: '幽默',
+                  activity: '活泼',
+                  initiative: '主动',
+                }"
+                :key="key"
+                ><span
+                  >{{ label }}<b>{{ p[key] }}</b></span
+                ><input
+                  :name="key"
+                  type="number"
+                  min="0"
+                  max="100"
+                  v-model.number="p[key]" /></label
+              ><label
+                ><span>说话长度</span><input name="length" v-model="p.length"
+              /></label>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>表达习惯</legend>
+            <div class="preset-grid">
+              <label
+                v-for="preset in studio.health.voice.presets"
+                :key="preset.id"
+                class="voice-preset"
+                :class="{ picked: settings.voicePreset === preset.id }"
+                ><input
+                  type="radio"
+                  name="voicePreset"
+                  :value="preset.id"
+                  v-model="settings.voicePreset"
+                />{{ preset.name }}</label
+              >
+            </div>
+            <div class="grid">
+              <label
+                >网络用语<input
+                  name="slangLevel"
+                  type="range"
+                  min="0"
+                  max="2"
+                  v-model.number="settings.slangLevel" /></label
+              ><label
+                >默认冷却（秒）<input
+                  name="cooldown"
+                  type="number"
+                  v-model.number="settings.cooldown" /></label
+              ><label
+                >默认参与概率<input
+                  name="probability"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="1"
+                  v-model.number="settings.probability"
+              /></label>
+            </div>
+            <label class="check"
+              ><input
+                name="allowMildProfanity"
+                type="checkbox"
+                v-model="settings.allowMildProfanity"
+              />允许轻度脏话</label
+            ><label class="check"
+              ><input
+                name="adaptGroupStyle"
+                type="checkbox"
+                v-model="settings.adaptGroupStyle"
+              />参考群友的沟通习惯</label
+            ><label class="check"
+              ><input
+                name="qualityRewrite"
+                type="checkbox"
+                v-model="settings.qualityRewrite"
+              />对不自然的回复进行修正</label
+            >
+          </fieldset>
+          <fieldset>
+            <legend>兴趣与社交边界</legend>
+            <label
+              >兴趣<input
+                name="interests"
+                :value="
+                  Array.isArray(p.interests)
+                    ? p.interests.join('，')
+                    : p.interests
+                "
+                @input="p.interests = ($event.target as HTMLInputElement).value"
+                placeholder="用逗号分隔" /></label
+            ><label
+              >禁用表达<textarea
+                name="forbidden"
+                :value="
+                  Array.isArray(p.forbidden)
+                    ? p.forbidden.join('\n')
+                    : p.forbidden
+                "
+                @input="
+                  p.forbidden = ($event.target as HTMLTextAreaElement).value
+                "
+                placeholder="每行一个不希望出现的表达"
+              ></textarea>
+            </label>
+          </fieldset>
+        </div>
+        <div class="action-bar">
+          <button class="primary" :disabled="busy">
+            {{ busy ? "保存中…" : "保存人格 ↗" }}</button
+          ><span class="small">保存后用于下一轮聊天</span>
+        </div>
       </form>
-    </details>
-  </section>
+      <form
+        v-show="editorTab === 'prompts'"
+        id="promptsForm"
+        @submit="savePrompts"
+        @input="markDirty"
+      >
+        <div class="form-scroll">
+          <label
+            >要编辑的指令<select v-model="promptKey">
+              <option v-for="(_, key) in prompts" :key="key" :value="key">
+                {{
+                  (
+                    {
+                      system: "系统指令",
+                      decision: "发言判断",
+                      memory: "记忆整理",
+                      vision: "图片理解",
+                      generation: "回复生成",
+                      validation: "回复检查",
+                    } as any
+                  )[key] || key
+                }}
+              </option>
+            </select></label
+          ><label
+            >指令正文<textarea
+              :name="promptKey"
+              class="editor prompt-editor"
+              v-model="prompts[promptKey]"
+            ></textarea>
+          </label>
+        </div>
+        <div class="action-bar">
+          <button class="primary">保存 Prompt ↗</button>
+        </div>
+      </form>
+    </section>
+    <aside class="voice-preview surface" id="voice-lab">
+      <div class="detail-heading">
+        <div>
+          <span class="eyebrow">VOICE CHECK</span>
+          <h2>听听她怎么说</h2>
+        </div>
+        <button id="clearVoice" @click="clearVoice">清空</button>
+      </div>
+      <div id="voiceMeta" class="small preview-meta">{{ voiceMeta }}</div>
+      <div id="voiceMessages" class="scroll-pane">
+        <article
+          v-for="(m, i) in history"
+          :key="i"
+          class="message"
+          :class="{
+            reply: m.role === 'assistant',
+            bot: m.role === 'assistant',
+          }"
+        >
+          <p>{{ m.text }}</p>
+        </article>
+        <div v-if="!history.length" class="empty-state">
+          <span>“</span>
+          <h3>一句话，感受她的性格</h3>
+          <p>选择场景，或写下你想说的话。</p>
+        </div>
+      </div>
+      <form id="voicePreviewForm" @submit="preview">
+        <details class="scenario-picker">
+          <summary>选择试聊场景</summary>
+          <div class="scenario-grid">
+            <button
+              v-for="(scene, i) in studio.health.voice.scenarios"
+              :key="scene.name"
+              type="button"
+              :data-voice-scene="i"
+              @click="voiceText = scene.text"
+            >
+              {{ scene.name }}
+            </button>
+          </div>
+        </details>
+        <label
+          >语气参考<select id="voiceStyleSession" v-model="styleSession">
+            <option value="">默认普通口语</option>
+            <option
+              v-for="s in studio.core.sessions.filter(
+                (x: any) => x.kind === 'group',
+              )"
+              :key="s.id"
+              :value="s.id"
+            >
+              {{ s.name }}
+            </option>
+          </select></label
+        ><label class="check"
+          ><input
+            id="voiceUseModel"
+            type="checkbox"
+            v-model="useModel"
+          />使用真实模型（会消耗 Token）</label
+        >
+        <div class="composer">
+          <input
+            name="text"
+            v-model="voiceText"
+            placeholder="说一句试试看…"
+            required
+          /><button class="primary" :disabled="previewBusy">
+            {{ previewBusy ? "思考中…" : "试聊 ↗" }}
+          </button>
+        </div>
+      </form>
+    </aside>
+  </div>
 </template>

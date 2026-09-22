@@ -19,10 +19,12 @@ export async function api(path: string, method = "GET", body?: unknown) {
   return data;
 }
 
-export function toast(text: string) {
+let toastTimer: ReturnType<typeof setTimeout>;
+export function toast(text: string, error = false) {
   const el = document.querySelector("#toast");
   if (!el) return;
   el.textContent = text;
-  el.className = "show";
-  setTimeout(() => (el.className = ""), 4500);
+  el.className = error ? "show error" : "show";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (el.className = ""), 4500);
 }

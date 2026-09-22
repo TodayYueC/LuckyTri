@@ -42,9 +42,17 @@ try {
   p.on("pageerror", (e) => errors.push(e.message));
   p.on("dialog", (dialog) => dialog.accept());
   await p.addInitScript(() => (sessionStorage.token = "admin-test"));
+  async function navigate(page) {
+    const owner =
+      { spaces: "live", lab: "live", connect: "models" }[page] || page;
+    await p.locator(`.primary-nav [data-page=${owner}]`).click();
+    if (["live", "spaces", "lab", "models", "connect"].includes(page))
+      await p.locator(`.workspace-tabs [data-page=${page}]`).click();
+    await p.locator(`.page-${page}`).waitFor();
+  }
   await p.goto(base + "/");
-  await p.getByRole("heading", { name: "总览" }).waitFor();
-  for (const width of [1440, 390]) {
+  await p.locator(".page-overview").waitFor();
+  for (const width of [1440, 820, 390]) {
     await p.setViewportSize({ width, height: 1000 });
     for (const page of [
       "overview",
@@ -56,7 +64,7 @@ try {
       "connect",
       "lab",
     ]) {
-      await p.locator(`nav [data-page=${page}]`).click();
+      await navigate(page);
       await p.locator(`.page-${page}`).waitFor();
       await p.waitForTimeout(400);
       assert(
@@ -72,20 +80,22 @@ try {
     }
   }
   await p.setViewportSize({ width: 1440, height: 1000 });
-  await p.getByRole("button", { name: "减少动画", exact: true }).click();
+  await p.getByRole("button", { name: /减少动画/ }).click();
   assert.equal(
     await p
       .locator(".studio")
       .evaluate((el) => el.classList.contains("quiet-motion")),
     true,
   );
-  await p.getByRole("button", { name: "开启灵动效果", exact: true }).click();
-  await p.locator("nav [data-page=spaces]").click();
+  await p.getByRole("button", { name: /开启灵动效果/ }).click();
+  await navigate("spaces");
+  await p.getByRole("button", { name: "＋ 添加会话", exact: true }).click();
   await p.locator("#addSession [name=id]").fill("12345");
   await p.locator("#addSession [name=name]").fill("测试小分队");
   await p.locator("#addSession button").click();
   await p.locator("[data-session='group:12345']").waitFor();
-  await p.locator("nav [data-page=live]").click();
+  await navigate("live");
+  await p.getByRole("button", { name: "试聊", exact: true }).click();
   await p.locator("#simulate").waitFor();
   await p.locator("[name=text]").fill("Lucky，今天真的好难过");
   await p.locator("#simulate button").click();
@@ -95,7 +105,7 @@ try {
       await p.locator(".chat-messages .message.bot p").textContent(),
     ),
   );
-  await p.locator("nav [data-page=spaces]").click();
+  await navigate("spaces");
   await p.locator("#toggleSession").click();
   await p.getByRole("button", { name: "开启参与" }).waitFor();
   await p.locator("[data-session='group:12345'] [name=probability]").fill("0");
@@ -108,11 +118,12 @@ try {
       .inputValue(),
     "0",
   );
-  await p.locator("nav [data-page=knowledge]").click();
+  await navigate("knowledge");
   await p.getByRole("button", { name: "文档知识库", exact: true }).click();
   await p.getByRole("heading", { name: "文档知识库", exact: true }).waitFor();
   assert.equal(await p.locator("#memoryList").isVisible(), false);
   await p.getByRole("button", { name: "会话记忆", exact: true }).click();
+  await p.getByRole("button", { name: "＋ 手动记忆", exact: true }).click();
   await p.locator("#addMemory [name=subject]").fill("10001");
   await p.locator("#addMemory [name=content]").fill("喜欢拿铁");
   await p.locator("#addMemory button").click();
@@ -143,13 +154,13 @@ try {
     .locator("#memoryList summary")
     .filter({ hasText: "喜欢温拿铁" })
     .waitFor({ state: "detached" });
-  await p.locator("nav [data-page=character]").click();
+  await navigate("character");
   assert.equal(await p.locator("[name=slangLevel]").inputValue(), "0");
   assert.equal(await p.locator("[name=adaptGroupStyle]").isChecked(), true);
   await p.locator("[name=voicePreset][value=playful]").check();
   await p.locator("[name=allowMildProfanity]").check();
   await p.locator("[name=cooldown]").fill("60");
-  await p.locator("#persona .primary").click();
+  await p.locator("#personaForm .primary").click();
   await p.waitForTimeout(300);
   assert.equal(await p.locator("[name=cooldown]").inputValue(), "60");
   assert.equal(
@@ -157,6 +168,7 @@ try {
     true,
   );
   await p.locator("[name=persona]").fill("尚未保存的人设草稿");
+  await p.locator(".scenario-picker summary").click();
   await p.locator('[data-voice-scene="0"]').click();
   await p.locator("#voiceStyleSession").selectOption("group:12345");
   await p.locator("#voicePreviewForm button.primary").click();
@@ -166,7 +178,10 @@ try {
     "尚未保存的人设草稿",
   );
   assert.match(await p.locator("#voiceMeta").textContent(), /规则样例/);
-  await p.locator("#clearVoice").click();
+  await p
+    .locator(".voice-preview")
+    .getByRole("button", { name: "清空", exact: true })
+    .click();
   assert.equal(await p.locator("#voiceMessages .reply").count(), 0);
   assert.equal(
     await p.locator("[name=persona]").inputValue(),
@@ -179,14 +194,28 @@ try {
     .locator("#voiceMeta")
     .getByText("请先配置模型 API Key", { exact: true })
     .waitFor();
-  await p.locator("nav [data-page=models]").click();
-  await p.locator("#settings [name=model]").fill("test-model");
-  await p.locator("#settings .primary").click();
+  await navigate("models");
+  await p.locator("#modelForm [name=model]").fill("test-model");
+  await p.locator("#modelForm .primary").click();
   await p.waitForTimeout(300);
   assert.equal(
-    await p.locator("#settings [name=model]").inputValue(),
+    await p.locator("#modelForm [name=model]").inputValue(),
     "test-model",
   );
+  // One model editor owns connection and capacity; unsaved new models are discarded.
+  assert.equal(await p.locator("#settings").count(), 0);
+  await p.locator("#addModel").click();
+  await p.locator("[name=label]").fill("未保存模型");
+  await p.locator(".entity-row").first().click();
+  assert.equal(await p.locator(".entity-row").count(), 1);
+  await p.locator("#addModel").click();
+  await p.locator("[name=label]").fill("界面测试模型");
+  await p.locator("#modelForm .primary").click();
+  await p.waitForTimeout(300);
+  assert.equal(await p.locator(".entity-row").count(), 2);
+  await p.locator("#deleteModel").click();
+  await p.waitForTimeout(300);
+  assert.equal(await p.locator(".entity-row").count(), 1);
   await p.locator("#testModel").click();
   await p.getByText("请先配置模型 API Key", { exact: true }).waitFor();
   const ws = new WebSocket(`ws://127.0.0.1:${port}/onebot/v11/ws`, {
@@ -214,10 +243,10 @@ try {
       (s) => s.id === "onebot:88888:private:45678" && !s.enabled,
     ),
   );
-  await p.locator("nav [data-page=overview]").click();
+  await navigate("overview");
   await p.locator("[name=demo]").uncheck();
   await p.locator("#runtime .primary").click();
-  await p.locator("nav [data-page=spaces]").click();
+  await navigate("spaces");
   await p.locator("[data-toggle='group:12345']").click();
   await p
     .locator("[data-toggle='group:12345']")
@@ -236,21 +265,26 @@ try {
     }),
   );
   await p.waitForTimeout(500);
-  await p.locator("nav [data-page=knowledge]").click();
+  await navigate("knowledge");
+  await p.getByRole("button", { name: /待审核/ }).click();
   await p.locator("[data-review]").waitFor();
   await p.locator("[data-review]").click();
   assert.equal(
-    await p.locator("dialog [name=scope]").inputValue(),
+    await p.locator('[role="dialog"] [name=scope]').inputValue(),
     "group:12345",
   );
-  await p.locator("dialog [name=scope]").selectOption("shared");
-  await p.locator("dialog .primary").click();
+  await p.locator('[role="dialog"] [name=scope]').selectOption("shared");
+  await p.locator('[role="dialog"] .primary').click();
   await p.locator("[data-review]").waitFor({ state: "detached" });
-  await p.locator("#memoryList").getByText("我喜欢看海 · confirmed").waitFor();
+  await p.getByRole("button", { name: "会话记忆", exact: true }).click();
+  await p
+    .locator("#memoryList summary")
+    .getByText("我喜欢看海", { exact: true })
+    .waitFor();
   ws.close();
   await p.setViewportSize({ width: 390, height: 844 });
   for (const tab of ["spaces", "knowledge", "character", "models", "connect"]) {
-    await p.locator(`nav [data-page=${tab}]`).click();
+    await navigate(tab);
     assert.equal(
       await p.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
@@ -259,13 +293,13 @@ try {
       `overflow: ${tab}`,
     );
   }
-  await p.locator("nav [data-page=overview]").click();
+  await navigate("overview");
   assert.equal(
     await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
     true,
   );
   await p.setViewportSize({ width: 1440, height: 1000 });
-  await p.locator("nav [data-page=connect]").click();
+  await navigate("connect");
   await p.getByRole("heading", { name: "还差哪一步" }).waitFor();
   await p.getByRole("heading", { name: "QQ 接入助手" }).waitFor();
   await p.getByRole("button", { name: "生成连接配置" }).isEnabled();
@@ -287,9 +321,9 @@ try {
   assert.match(await download.text(), /npm run setup/);
   await p.setViewportSize({ width: 1440, height: 1000 });
   await p.goto(base);
-  await p.getByRole("heading", { name: "总览", exact: true }).waitFor();
+  await p.locator(".page-overview").waitFor();
   for (const tab of ["models", "spaces", "character", "knowledge", "lab"]) {
-    await p.locator(`[data-page=${tab}]`).click();
+    await navigate(tab);
     await p.waitForTimeout(150);
     assert.equal(
       await p.evaluate(
@@ -299,7 +333,7 @@ try {
       `studio overflow: ${tab}`,
     );
   }
-  await p.locator("[data-page=lab]").click();
+  await navigate("lab");
   await p.locator("#debugSession").selectOption("group:12345");
   await p.locator("#loadMessages").click();
   await p.locator("#events table").waitFor();
@@ -324,7 +358,7 @@ try {
     .locator("#events")
     .getByText("新面板实时消息验证", { exact: true })
     .waitFor({ timeout: 10000 });
-  await p.locator("[data-page=live]").click();
+  await navigate("live");
   await p.locator("#liveSession").selectOption("group:12345");
   await p
     .locator("#liveMessages")
@@ -366,22 +400,25 @@ try {
   await p.goto(base + "/#knowledge");
   await p.locator("#memoryScope").selectOption("group:12345");
   await p
-    .locator("#memoryList")
-    .getByText("第一群独立记忆 · confirmed", { exact: true })
+    .locator("#memoryList summary")
+    .getByText("第一群独立记忆", { exact: true })
     .waitFor();
   assert(
     !(await p.locator("#memoryList").textContent()).includes("第二群独立记忆"),
   );
   await p.locator("#memoryScope").selectOption("group:54321");
   await p
-    .locator("#memoryList")
-    .getByText("第二群独立记忆 · confirmed", { exact: true })
+    .locator("#memoryList summary")
+    .getByText("第二群独立记忆", { exact: true })
     .waitFor();
   assert(
     !(await p.locator("#memoryList").textContent()).includes("第一群独立记忆"),
   );
+  await p.getByRole("button", { name: "＋ 手动记忆", exact: true }).click();
   assert.equal(await p.locator("#memorySession").inputValue(), "group:54321");
+  await p.getByRole("button", { name: "关闭", exact: true }).click();
   await p.goto(base + "/#spaces");
+  await p.getByRole("button", { name: "＋ 添加会话", exact: true }).click();
   await p.locator("#addSession [name=id]").fill("65432");
   await p.locator("#addSession [name=name]").fill("手动添加群");
   await p.locator("#addSession button").click();
@@ -427,8 +464,9 @@ try {
   );
   await p.locator("[data-archive='group:65432']").click();
   await p.waitForTimeout(300);
-  await p.getByText("已移出面板（可恢复）", { exact: true }).waitFor();
+  await p.locator(".archive-list summary").click();
   await p.locator("[data-restore-session='group:65432']").click();
+  await p.locator(".entity-row").filter({ hasText: "手动添加群" }).click();
   await p.waitForTimeout(300);
   await p.locator("[data-session='group:65432']").waitFor();
   await p.goto(base + "/#live");
@@ -436,28 +474,86 @@ try {
   await p.locator("#clearLiveContext").click();
   await p
     .locator("#liveMessages")
-    .getByText("此会话暂无归档消息，收到 QQ 消息后会自动显示。", {
+    .getByText("等待新的消息", {
       exact: true,
     })
     .waitFor();
-  await p.locator("[data-page=character]").click();
+  await navigate("character");
   await p.locator("[name=sarcasm]").waitFor();
   await p.locator("[name=sarcasm]").fill("4");
   await p.locator("#personaForm button.primary").click();
   await p.waitForTimeout(300);
   assert.equal(await p.locator("[name=sarcasm]").inputValue(), "4");
-  await p.locator("[data-page=models]").click();
+  await navigate("models");
   await p.locator("[name=contextWindow]").waitFor();
   await p.locator("[name=contextWindow]").fill("200000");
   await p.locator("#modelForm button.primary").click();
   await p.waitForTimeout(300);
   assert.equal(await p.locator("[name=contextWindow]").inputValue(), "200000");
-  await p.locator("[data-page=overview]").click();
+  await navigate("overview");
   assert.equal(
     await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
     true,
     "studio desktop overflow",
   );
+  // A long feedback history must stay inside its pane at every breakpoint.
+  await p.route("**/api/state", async (route) => {
+    const response = await route.fetch();
+    const snapshot = await response.json();
+    snapshot.decisions = Array.from({ length: 137 }, (_, i) => ({
+      id: 90000 + i,
+      session_id: "group:12345",
+      time: Date.now(),
+      reply: `反馈压力测试 ${i}：` + "很长的回复内容。".repeat(80),
+    }));
+    await route.fulfill({ response, json: snapshot });
+  });
+  await p.goto(base + "/#live");
+  await p.locator("#liveSession").selectOption("group:12345");
+  await p.getByRole("button", { name: "反馈", exact: true }).click();
+  for (const width of [1440, 820, 390]) {
+    await p.setViewportSize({ width, height: 900 });
+    await p.waitForTimeout(400);
+    assert.equal(await p.locator(".feedback-item").count(), 6);
+    assert.match(await p.locator(".pagination").textContent(), /1 \/ 23/);
+    const size = await p
+      .locator("#feedbackList")
+      .evaluate((el) => ({
+        scroll: el.scrollHeight,
+        visible: el.clientHeight,
+      }));
+    assert(
+      size.scroll > size.visible && size.visible > 100,
+      "feedback has bounded internal scrolling",
+    );
+    assert(
+      await p.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+    );
+    assert(
+      await p.evaluate(
+        () =>
+          document.documentElement.scrollHeight <=
+          (innerWidth > 760 ? innerHeight : 1700),
+      ),
+      "feedback must not stretch the page",
+    );
+    await p.screenshot({
+      path: `workspace/ui-review/feedback-stress-${width}.png`,
+      fullPage: true,
+    });
+  }
+  await p
+    .locator(".pagination")
+    .getByRole("button", { name: "→", exact: true })
+    .click();
+  assert.match(
+    await p.locator(".feedback-item").first().textContent(),
+    /压力测试 6/,
+  );
+  assert.match(await p.locator(".pagination").textContent(), /2 \/ 23/);
+  await p.unroute("**/api/state");
   assert.deepEqual(errors, []);
   console.log(
     "PASS: Vue studio, channel session keys, simulation via ChatSystem, knowledge, OneBot, replay lab",
