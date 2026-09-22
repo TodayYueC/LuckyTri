@@ -109,6 +109,9 @@ export function mountCore(app, system) {
           )
           .run(id);
         for (const table of [
+          "time_notes",
+          "time_runs",
+          "core_topics",
           "core_memories",
           "core_stages",
           "core_cursors",
