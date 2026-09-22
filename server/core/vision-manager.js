@@ -20,14 +20,71 @@ const KNOWN_REASONS = new Set([
   "图片缓存不可用",
 ]);
 
-export function visionInputs(snapshot, profile) {
+const IMAGE_REQUEST =
+  /这张图|这个图|这图|看图|图里|图中|截图|什么图|这是什么|帮我看|看看这|看一下这|看下这|上面那张|下面那张|图上写|画面里/;
+
+export function wantsImageLook(message) {
+  if (!message) return false;
+  if (
+    message.mentioned === true ||
+    message.raw?.mentioned === true ||
+    (message.accountId &&
+      (message.mentions || []).map(String).includes(String(message.accountId)))
+  )
+    return true;
+  if (IMAGE_REQUEST.test(String(message.text || ""))) return true;
+  return (
+    message.kind === "private" &&
+    (message.attachments || []).some(
+      (item) => item?.type === "image" && !isStickerAttachment(item),
+    )
+  );
+}
+
+function lookFocus(rows, batchIds) {
+  if (!Array.isArray(batchIds)) return null;
+  const batch = new Set(batchIds);
+  const triggers = rows.filter(
+    (message) => batch.has(message.seq) && wantsImageLook(message),
+  );
+  if (!triggers.length) return new Set();
+  const focus = new Set();
+  const indexBySeq = new Map(
+    rows.map((message, index) => [message.seq, index]),
+  );
+  for (const message of triggers) {
+    focus.add(message.seq);
+    const index = indexBySeq.get(message.seq);
+    if (index != null)
+      for (
+        let cursor = Math.max(0, index - 3);
+        cursor <= Math.min(rows.length - 1, index + 1);
+        cursor++
+      )
+        focus.add(rows[cursor].seq);
+    const quoted = message.replyTo?.seq ?? message.replyChain?.[0];
+    if (quoted != null) focus.add(quoted);
+  }
+  return focus;
+}
+
+export function visionInputs(snapshot, profile, { selective = false } = {}) {
   const adapter = adapterFor(snapshot.sessionId || "onebot");
   const usable = (url) => adapter.usableMediaUrl(url);
   const images = [],
     unavailable = [];
-  const focus = snapshot.batchIds ? new Set(snapshot.batchIds) : null;
-  for (const m of snapshot.sourceRows || [])
-    if (focus?.has(m.seq)) for (const id of m.replyChain || []) focus.add(id);
+  const rows = snapshot.sourceRows || [];
+  let focus = null;
+  if (Array.isArray(snapshot.batchIds)) {
+    focus = selective
+      ? lookFocus(rows, snapshot.batchIds)
+      : new Set(snapshot.batchIds);
+    if (!selective)
+      for (const message of rows)
+        if (focus.has(message.seq))
+          for (const id of message.replyChain || []) focus.add(id);
+    if (!focus.size) return { images, unavailable };
+  }
   const seenOnMessage = new Map();
   for (const m of snapshot.sourceRows || [])
     for (const a of m.attachments || []) {
