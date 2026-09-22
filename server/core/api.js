@@ -298,6 +298,11 @@ export function mountCore(app, system) {
         typeof p.comfortOnDistress !== "boolean"
       )
         throw Error("主动安慰开关无效");
+      if (
+        p.selectiveVision !== undefined &&
+        typeof p.selectiveVision !== "boolean"
+      )
+        throw Error("节能看图开关无效");
       if (typeof p.memory !== "boolean" || typeof p.deepCheck !== "boolean")
         throw Error("开关无效");
       system.models.profile(p.modelId);
