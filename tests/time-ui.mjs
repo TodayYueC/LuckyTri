@@ -101,6 +101,25 @@ try {
         () => document.documentElement.scrollWidth > window.innerWidth,
       );
       assert.equal(overflow, false, `${target[1]} overflow at ${width}`);
+      if (target[1] === "settings") {
+        const button = page.locator(".settings-submit button");
+        await button.scrollIntoViewIfNeeded();
+        assert(await button.isVisible());
+        const geometry = await page.evaluate(() => ({
+          pageHeight: document.documentElement.scrollHeight,
+          viewport: window.innerHeight,
+          outerOverflow: getComputedStyle(document.querySelector(".studio"))
+            .overflowY,
+          pageOverflow: getComputedStyle(document.querySelector(".page-time"))
+            .overflowY,
+        }));
+        assert(
+          geometry.pageHeight > geometry.viewport,
+          "settings must use document scroll",
+        );
+        assert.equal(geometry.outerOverflow, "visible");
+        assert.equal(geometry.pageOverflow, "visible");
+      }
     }
   }
   assert.deepEqual(errors, []);

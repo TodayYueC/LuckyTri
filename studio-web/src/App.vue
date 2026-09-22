@@ -153,7 +153,10 @@ async function refresh() {
   <div
     v-else-if="studio.core && studio.health"
     class="studio"
-    :class="{ 'quiet-motion': quietMotion }"
+    :class="{
+      'quiet-motion': quietMotion,
+      'time-document': studio.page === 'time',
+    }"
   >
     <a class="skip-link" href="#mainContent">跳到主要内容</a>
     <div id="pointerHalo" aria-hidden="true"><span>✦</span></div>

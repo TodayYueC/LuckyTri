@@ -275,3 +275,14 @@ test("投递失败保留不确定状态，不会重试或再次主动追问", as
   await f.time.tick(f.session);
   assert.equal(attempts, 1);
 });
+
+test("安静期间可按设置重读旧想法，完成后不在相同时间窗口空转", async (t) => {
+  const f = setup(t);
+  f.time.save({ revisitHours: 8, intervalMinutes: 0 });
+  f.setAnswer({ skip: true });
+  await f.time.tick(f.session);
+  f.advance(9 * 3600000);
+  assert.equal(f.time.eligible(f.session), null);
+  await f.time.tick(f.session);
+  assert.match(f.time.eligible(f.session), /没有值得/);
+});
