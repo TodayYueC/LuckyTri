@@ -10,12 +10,13 @@ const busy = ref(false);
 const dirty = ref(false);
 const query = ref("");
 const before = ref<number | null>(null);
-const view = ref<"now" | "journal" | "settings" | "activity">("now");
+const view = ref<"now" | "journal" | "self" | "settings" | "activity">("now");
 let timer: ReturnType<typeof setInterval>;
 
 const views = [
   { id: "now", label: "此刻", en: "NOW" },
   { id: "journal", label: "时间手记", en: "JOURNAL" },
+  { id: "self", label: "自己的线索", en: "OWN THREADS" },
   { id: "settings", label: "独处方式", en: "RHYTHM" },
   { id: "activity", label: "运行记录", en: "ACTIVITY" },
 ] as const;
@@ -24,6 +25,12 @@ const kind: Record<string, string> = {
   revision: "重新理解",
   unfinished: "仍放在心上",
   reconnection: "久别想起",
+};
+const threadKind: Record<string, string> = {
+  curiosity: "好奇",
+  care: "放在心上",
+  stance: "自己的看法",
+  intention: "想做的事",
 };
 const energy: Record<string, string> = {
   low: "慢一点",
@@ -134,6 +141,15 @@ async function remove(note: any) {
   try {
     await api("/time/notes/" + encodeURIComponent(note.id), "DELETE", {});
     await load();
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
+}
+async function updateThread(thread: any, values: any) {
+  try {
+    await api("/time/threads/" + encodeURIComponent(thread.id), "PATCH", values);
+    await load();
+    toast("自己的线索已更新");
   } catch (error) {
     toast((error as Error).message, true);
   }
@@ -344,8 +360,8 @@ onUnmounted(() => clearInterval(timer));
               看全部 ↗
             </button>
           </div>
-          <div v-if="data.states.length" class="state-list">
-            <div v-for="state in data.states.slice(0, 4)" :key="state.id">
+          <div v-if="data.states.length > 1" class="state-list">
+            <div v-for="state in data.states.slice(1, 5)" :key="state.id">
               <time>{{ date(state.created) }}</time>
               <b
                 >{{ state.mood }} ·
@@ -355,10 +371,32 @@ onUnmounted(() => clearInterval(timer));
             </div>
           </div>
           <div v-else class="gentle-empty">
-            <b>还没有形成状态轨迹</b>
-            <p>第一次有意义的独处之后，这里会开始保留“那时的自己”。</p>
+            <b>还没有“过去的自己”可以回看</b>
+            <p>至少经历两次不同的独处，这里才会显示变化；当前状态在上方。</p>
           </div>
         </article>
+      </section>
+
+      <section class="surface own-preview">
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">OWN THREADS</span>
+            <h3>她选择继续想的事</h3>
+          </div>
+          <button type="button" @click="switchView('self')">看线索 ↗</button>
+        </div>
+        <p class="own-intro">这些不是对群友的定论，而是有来源、将来可以改变的关注和想法。</p>
+        <div v-if="data.ownThreads.length" class="own-preview-grid">
+          <article v-for="thread in data.ownThreads.slice(0, 3)" :key="thread.id">
+            <small>{{ threadKind[thread.kind] || thread.kind }} · {{ thread.origin === 'self' ? '自己的兴趣' : '来自聊天' }}</small>
+            <p>{{ thread.content }}</p>
+            <span v-if="thread.next_action">以后 · {{ thread.next_action }}</span>
+          </article>
+        </div>
+        <div v-else class="gentle-empty">
+          <b>还没有自己的线索</b>
+          <p>有值得再想的事情时才留下，不为了展示“有心”而制造想法。</p>
+        </div>
       </section>
 
       <section class="surface recent-thoughts">
@@ -522,6 +560,49 @@ onUnmounted(() => clearInterval(timer));
         >
           更早的自己 ↗
         </button>
+      </div>
+    </section>
+
+    <section v-else-if="view === 'self'" class="self-page surface">
+      <div class="journal-heading">
+        <div>
+          <span class="eyebrow">A THREAD OF HER OWN</span>
+          <h3>自己的线索</h3>
+          <p>她可以有自己的好奇、看法和想做的事。旧想法不会被悄悄改写，新的经历会留下修正或放下的痕迹。</p>
+        </div>
+      </div>
+      <div class="self-columns">
+        <div>
+          <h4>仍在继续 · {{ data.ownThreads.length }}</h4>
+          <div v-if="data.ownThreads.length" class="self-thread-list">
+            <article v-for="thread in data.ownThreads" :key="thread.id" class="self-thread">
+              <header><span>{{ threadKind[thread.kind] || thread.kind }} · {{ thread.origin === 'self' ? '自己的兴趣' : '来自聊天' }}</span><time>{{ date(thread.created) }}</time></header>
+              <p>{{ thread.content }}</p>
+              <small v-if="thread.next_action">下次想怎么对待它 · {{ thread.next_action }}</small>
+              <footer>
+                <span>把握度 {{ Math.round(thread.confidence * 100) }}%</span>
+                <button type="button" @click="updateThread(thread, { status: 'closed' })">暂时放下</button>
+                <button type="button" @click="updateThread(thread, { hidden: true })">不再带入聊天</button>
+              </footer>
+            </article>
+          </div>
+          <div v-else class="gentle-empty"><b>现在没有非得坚持的想法</b><p>这也是一种状态。她会在有新的经历时再决定什么值得留下。</p></div>
+        </div>
+        <div>
+          <h4>形成与改变的轨迹</h4>
+          <div v-if="data.threadHistory.length" class="self-thread-list history">
+            <article v-for="thread in data.threadHistory" :key="thread.id" class="self-thread">
+              <header><span>{{ threadKind[thread.kind] || thread.kind }} · {{ thread.status === 'closed' ? '已放下' : thread.parent_id ? '后来修正' : '最初写下' }}</span><time>{{ date(thread.created) }}</time></header>
+              <p>{{ thread.content }}</p>
+              <small v-if="thread.parent_id">↳ 接续之前的想法</small>
+              <footer v-if="thread.hidden || (thread.status === 'closed' && !data.threadHistory.some((item: any) => item.parent_id === thread.id))">
+                <button v-if="thread.hidden" type="button" @click="updateThread(thread, { hidden: false })">恢复带入聊天</button>
+                <button v-if="thread.status === 'closed' && !data.threadHistory.some((item: any) => item.parent_id === thread.id)" type="button" @click="updateThread(thread, { status: 'active' })">重新关注</button>
+              </footer>
+            </article>
+          </div>
+          <div v-else class="gentle-empty"><b>还没有变化轨迹</b><p>第一次留下想法后，这里会保存它如何形成、如何被修正。</p></div>
+        </div>
       </div>
     </section>
 
@@ -786,8 +867,8 @@ onUnmounted(() => clearInterval(timer));
           ><span>{{ allowance(data.settings.dailyTokens, " 上限") }}</span>
         </article>
         <article class="surface">
-          <small>内部手记</small><b>{{ data.count }}</b
-          ><span>{{ data.open }} 件仍待续</span>
+          <small>内部记录</small><b>{{ data.count + data.threadHistory.length }}</b
+          ><span>{{ data.count }} 篇手记 · {{ data.threadHistory.length }} 条想法</span>
         </article>
       </div>
       <section class="surface run-ledger">
@@ -804,6 +885,7 @@ onUnmounted(() => clearInterval(timer));
               (
                 {
                   written: "留下手记",
+                  thread: "留下自己的线索",
                   state: "状态变化",
                   empty: "没有新想法",
                   error: "未完成",
@@ -1067,7 +1149,7 @@ onUnmounted(() => clearInterval(timer));
 .time-local-nav {
   padding: 0 !important;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   position: sticky;
   top: 0;
   z-index: 8;
@@ -1374,6 +1456,83 @@ onUnmounted(() => clearInterval(timer));
   margin-top: auto;
   color: #7b8b82;
   font-size: 10px;
+}
+.own-intro {
+  color: #627e6d;
+  line-height: 1.7;
+  margin: 14px 0 0;
+}
+.own-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+.own-preview-grid article,
+.self-thread {
+  min-width: 0;
+  padding: 18px;
+  background: #f4f9f1;
+  border-left: 3px solid #80bd78;
+}
+.own-preview-grid small,
+.self-thread header span {
+  color: #3b7e5b;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+.own-preview-grid p,
+.self-thread p {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  line-height: 1.7;
+}
+.own-preview-grid span,
+.self-thread small {
+  color: #617569;
+  line-height: 1.6;
+}
+.self-page {
+  min-width: 0;
+}
+.self-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 30px;
+  margin-top: 28px;
+}
+.self-columns h4 {
+  font-size: 18px;
+  margin: 0 0 16px;
+}
+.self-thread-list {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+.self-thread-list.history .self-thread {
+  background: #fafcf8;
+  border-color: #c8d7c0;
+}
+.self-thread header,
+.self-thread footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.self-thread time,
+.self-thread footer span {
+  color: #75877b;
+  font-size: 11px;
+}
+.self-thread footer {
+  justify-content: flex-start;
+  margin-top: 14px;
+}
+.self-thread footer span {
+  margin-right: auto;
 }
 .journal-page {
   min-width: 0;
@@ -1709,6 +1868,10 @@ onUnmounted(() => clearInterval(timer));
     grid-template-columns: 1fr;
   }
   .thought-preview {
+    grid-template-columns: 1fr;
+  }
+  .own-preview-grid,
+  .self-columns {
     grid-template-columns: 1fr;
   }
   .journal-heading {

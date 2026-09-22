@@ -111,6 +111,8 @@ export function mountCore(app, system) {
         for (const table of [
           "time_notes",
           "time_runs",
+          "time_states",
+          "time_self_threads",
           "core_topics",
           "core_memories",
           "core_stages",

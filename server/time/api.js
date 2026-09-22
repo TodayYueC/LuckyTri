@@ -1,6 +1,9 @@
 import { wrap } from "../http.js";
 import { localClock } from "../core/conversation-cues.js";
 import { innerLife } from "./context.js";
+import { selfThreads } from "./self-threads.js";
+const comparable = (value) =>
+  String(value || "").replace(/[\s\p{P}\p{S}]/gu, "").toLowerCase();
 
 export function mountTime(app, time) {
   app.get(
@@ -29,13 +32,20 @@ export function mountTime(app, time) {
         busy: time.busy,
         reason: session ? time.eligible(session) : "选择一个会话查看时间轨迹",
         inner: innerLife(time.repo, session, now, settings.timeZone),
+        ownThreads: selfThreads(time.db, session, { now, limit: 30 }),
+        threadHistory: time.db
+          .prepare(
+            "SELECT * FROM time_self_threads WHERE session_id=? ORDER BY created DESC,rowid DESC LIMIT 100",
+          )
+          .all(session)
+          .map((row) => ({ ...row, sources: JSON.parse(row.sources) })),
         topics,
         notes: notes
           .filter((n) => n.created < before && (!q || n.content.includes(q)))
           .slice(0, 30),
         states: time.db
           .prepare(
-            "SELECT * FROM time_states WHERE session_id=? ORDER BY created DESC LIMIT 24",
+            "SELECT * FROM time_states WHERE session_id=? AND COALESCE(json_extract(factors,'$.migrated'),0)=0 ORDER BY created DESC LIMIT 24",
           )
           .all(session)
           .map((row) => ({
@@ -47,7 +57,22 @@ export function mountTime(app, time) {
                 return {};
               }
             })(),
-          })),
+          }))
+          .filter((state, index, all) => {
+            const linkedNote = notes.find((note) => note.id === state.source_note_id);
+            if (
+              linkedNote &&
+              comparable(state.narrative) === comparable(linkedNote.content) &&
+              comparable(state.attention) === comparable(linkedNote.content)
+            )
+              return false;
+            return (
+              index === 0 ||
+              comparable(state.narrative) !== comparable(all[index - 1].narrative) ||
+              comparable(state.attention) !== comparable(all[index - 1].attention) ||
+              state.mood !== all[index - 1].mood
+            );
+          }),
         runs,
         count: notes.length,
         open: notes.filter(
@@ -101,6 +126,29 @@ export function mountTime(app, time) {
       )
         throw Error("这条手记有后续修正，请隐藏以保留轨迹");
       time.db.prepare("DELETE FROM time_notes WHERE id=?").run(req.params.id);
+      time.repo.store.revision++;
+      res.json({ ok: true });
+    }),
+  );
+  app.patch(
+    "/api/time/threads/:id",
+    wrap((req, res) => {
+      const thread = time.db
+        .prepare("SELECT * FROM time_self_threads WHERE id=?")
+        .get(req.params.id);
+      if (!thread) throw Error("想法不存在");
+      const { status, hidden } = req.body;
+      if (status !== undefined && !["active", "closed"].includes(status))
+        throw Error("状态无效");
+      if (hidden !== undefined && typeof hidden !== "boolean")
+        throw Error("开关无效");
+      time.db
+        .prepare("UPDATE time_self_threads SET status=?,hidden=? WHERE id=?")
+        .run(
+          status ?? thread.status,
+          hidden === undefined ? thread.hidden : +hidden,
+          thread.id,
+        );
       time.repo.store.revision++;
       res.json({ ok: true });
     }),

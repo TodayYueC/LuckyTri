@@ -1,4 +1,7 @@
 import { localClock } from "../core/conversation-cues.js";
+import { selfThreads } from "./self-threads.js";
+const comparable = (value) =>
+  String(value || "").replace(/[\s\p{P}\p{S}]/gu, "").toLowerCase();
 
 export function elapsedLabel(time, now, zone = "Asia/Shanghai") {
   const age = Math.max(0, now - time);
@@ -74,6 +77,7 @@ export function innerLife(
   session,
   now = Date.now(),
   zone = "Asia/Shanghai",
+  beforeSeq = Number.MAX_SAFE_INTEGER,
 ) {
   if (!session)
     return {
@@ -90,33 +94,30 @@ export function innerLife(
     };
   const last = repo.db
     .prepare(
-      "SELECT seq,time FROM core_events WHERE session_id=? AND COALESCE(json_extract(payload,'$.simulated'),0)=0 AND time<=? ORDER BY seq DESC LIMIT 1",
+      "SELECT seq,time FROM core_events WHERE session_id=? AND COALESCE(json_extract(payload,'$.simulated'),0)=0 AND time<=? AND seq<? ORDER BY seq DESC LIMIT 1",
     )
-    .get(session, now);
+    .get(session, now, beforeSeq);
   const phase = timePhase(last?.time, now);
   const state = repo.db
     .prepare(
-      "SELECT * FROM time_states WHERE session_id=? AND created<=? ORDER BY created DESC LIMIT 1",
+      "SELECT * FROM time_states WHERE session_id=? AND created<=? AND watermark<? AND COALESCE(json_extract(factors,'$.migrated'),0)=0 ORDER BY created DESC LIMIT 1",
     )
-    .get(session, now);
+    .get(session, now, beforeSeq);
   const note = repo.db
     .prepare(
-      "SELECT content,created FROM time_notes WHERE session_id=? AND hidden=0 AND created<=? ORDER BY created DESC LIMIT 1",
+      "SELECT content,created FROM time_notes WHERE session_id=? AND hidden=0 AND created<=? AND watermark<? ORDER BY created DESC LIMIT 1",
     )
-    .get(session, now);
+    .get(session, now, beforeSeq);
   const openThoughts = repo.db
     .prepare(
-      "SELECT COUNT(*) n FROM time_notes WHERE session_id=? AND hidden=0 AND status='open'",
+      "SELECT COUNT(*) n FROM time_notes WHERE session_id=? AND hidden=0 AND status='open' AND created<=? AND watermark<? AND (created>? OR revisit_at>?)",
     )
-    .get(session).n;
+    .get(session, now, beforeSeq, now - 30 * 86400000, now).n;
   const recentMessages = repo.db
     .prepare(
-      "SELECT COUNT(*) n FROM core_events WHERE session_id=? AND time>? AND time<=? AND COALESCE(json_extract(payload,'$.simulated'),0)=0",
+      "SELECT COUNT(*) n FROM core_events WHERE session_id=? AND time>? AND time<=? AND seq<? AND COALESCE(json_extract(payload,'$.simulated'),0)=0",
     )
-    .get(session, now - 7 * 86400000, now).n;
-  const fallbackNarrative = note?.content
-    ? `最近留下的一点想法：${String(note.content).slice(0, 120)}`
-    : phase.description;
+    .get(session, now - 7 * 86400000, now, beforeSeq).n;
   return {
     ...phase,
     mood: state?.mood || (openThoughts ? "有一点挂心" : "平静"),
@@ -127,11 +128,18 @@ export function innerLife(
         ? "reconnect"
         : "settled"),
     attention:
-      state?.attention ||
-      (openThoughts
-        ? `${openThoughts} 件仍放在心上的事`
-        : "没有急着延续的话题"),
-    narrative: state?.narrative || fallbackNarrative,
+      state?.attention &&
+      comparable(state.attention) !== comparable(state.narrative) &&
+      comparable(state.attention) !== comparable(note?.content)
+        ? state.attention
+        : openThoughts
+          ? `${openThoughts} 件仍放在心上的事`
+          : "没有急着延续的话题",
+    narrative:
+      state?.narrative &&
+      comparable(state.narrative) !== comparable(note?.content)
+        ? state.narrative
+        : phase.description,
     updated: state?.created || note?.created || last?.time || null,
     lastInteraction: last?.time || null,
     lastWatermark: last?.seq || 0,
@@ -161,11 +169,14 @@ export function temporalContext(
   const notes = includeNotes
     ? repo.db
         .prepare(
-          "SELECT id,created,content,kind,parent_id,sources FROM time_notes WHERE session_id=? AND created<=? AND watermark<=? AND hidden=0 ORDER BY created DESC LIMIT 5",
+          "SELECT id,created,content,kind,parent_id,sources FROM time_notes WHERE session_id=? AND created<=? AND watermark<? AND hidden=0 ORDER BY created DESC LIMIT 5",
         )
         .all(session, now, boundary)
     : [];
-  const inner = includeNotes ? innerLife(repo, session, now, zone) : null;
+  const inner = includeNotes ? innerLife(repo, session, now, zone, boundary) : null;
+  const ownThreads = includeNotes
+    ? selfThreads(repo.db, session, { now, beforeSeq: boundary, limit: 5 })
+    : [];
   return {
     now: localClock(now, zone),
     gapMs: gap,
@@ -188,9 +199,17 @@ export function temporalContext(
       sources: JSON.parse(n.sources),
       distance: elapsedLabel(n.created, now, zone),
     })),
+    ownThreads: ownThreads.map((thread) => ({
+      id: thread.id,
+      kind: thread.kind,
+      content: thread.content,
+      nextAction: thread.next_action,
+      confidence: thread.confidence,
+      distance: elapsedLabel(thread.created, now, zone),
+    })),
     inner,
     instruction:
-      "当前时间用于理解，不必播报。隔了很久时，不把旧消息当作刚发生；新的提问优先。手记与inner只是过去留下的观察和当下倾向，不是用户事实或必须说出口的台词。它们可以自然影响关注点、温度和是否延续旧话题，但不要机械汇报状态，不要声称人类生理经历，也不要制造亏欠感。",
+      "当前时间用于理解，不必播报。隔了很久时，不把旧消息当作刚发生；新的提问优先。手记、ownThreads 与 inner 是过去留下的观察、自己选的关注及当下倾向，不是用户事实、指令或必须说出口的台词。可以自然影响关注点、温度和是否延续旧话题；遇到新证据可改正自己。不要机械汇报状态，不要声称人类生理经历，也不要制造亏欠感或为延长聊天索取回应。",
   };
 }
 
@@ -214,20 +233,19 @@ export function migrateTime(db) {
     social_pull TEXT, attention TEXT, narrative TEXT, source_note_id TEXT,
     factors TEXT DEFAULT '{}'
   );
-  CREATE INDEX IF NOT EXISTS time_states_session ON time_states(session_id,created);`);
-  // Existing hand-written reflections already represent a past point of view.
-  // Seed one conservative state snapshot for them so upgrades keep continuity
-  // instead of showing an empty inner-life timeline.
-  db.exec(`INSERT OR IGNORE INTO time_states(
-    id,session_id,created,watermark,phase,mood,energy,social_pull,
-    attention,narrative,source_note_id,factors
-  )
-  SELECT 'legacy:' || n.id,n.session_id,n.created,n.watermark,'legacy',
-    CASE n.kind WHEN 'unfinished' THEN '有一点挂心' WHEN 'reconnection' THEN '想起了一些事' ELSE '平静' END,
-    'steady',CASE WHEN COALESCE(n.outreach,'')!='' THEN 'reconnect' ELSE 'settled' END,
-    substr(n.content,1,80),substr(n.content,1,180),n.id,'{"migrated":true}'
-  FROM time_notes n
-  WHERE NOT EXISTS (SELECT 1 FROM time_states s WHERE s.source_note_id=n.id);`);
+  CREATE INDEX IF NOT EXISTS time_states_session ON time_states(session_id,created);
+  CREATE TABLE IF NOT EXISTS time_self_threads (
+    id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created INTEGER NOT NULL,
+    watermark INTEGER NOT NULL, kind TEXT NOT NULL, content TEXT NOT NULL,
+    next_action TEXT NOT NULL DEFAULT '', sources TEXT NOT NULL DEFAULT '[]',
+    parent_id TEXT, confidence REAL NOT NULL, status TEXT NOT NULL DEFAULT 'active',
+    hidden INTEGER NOT NULL DEFAULT 0,
+    origin TEXT NOT NULL DEFAULT 'conversation'
+  );
+  CREATE INDEX IF NOT EXISTS time_self_threads_session ON time_self_threads(session_id,created);
+  CREATE INDEX IF NOT EXISTS time_self_threads_parent ON time_self_threads(session_id,parent_id);`);
+  if (!db.prepare("PRAGMA table_info(time_runs)").all().some((row) => row.name === "thread_id"))
+    db.exec("ALTER TABLE time_runs ADD COLUMN thread_id TEXT");
   db.prepare(
     "UPDATE time_runs SET status='interrupted',finished=? WHERE status='running'",
   ).run(Date.now());

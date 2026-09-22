@@ -672,7 +672,7 @@ export class ChatSystem {
       };
       const needsDeepCheck = (response) =>
         policy.deepCheck &&
-        (["feeling", "vent", "repair"].includes(
+        (["feeling", "vent", "repair", "care"].includes(
           replyFocus(snapshot, decision).kind,
         ) ||
           (!fast &&

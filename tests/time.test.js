@@ -4,6 +4,7 @@ import { createStore } from "../server/store.js";
 import { ChatSystem } from "../server/core/orchestrator.js";
 import { defaultModel } from "../server/core/model-manager.js";
 import { TimeManager } from "../server/time/manager.js";
+import { saveSelfThread, selfThreads } from "../server/time/self-threads.js";
 import {
   temporalContext,
   elapsedLabel,
@@ -120,12 +121,89 @@ test("独处生成有来源的手记，默认不发送、不写人物事实；�
     f.store.db.prepare("SELECT COUNT(*) n FROM time_states").get().n,
     1,
   );
-  assert.match(innerLife(f.system.repo, f.session, f.now()).narrative, /面试/);
+  assert.doesNotMatch(innerLife(f.system.repo, f.session, f.now()).narrative, /面试/);
+  assert.match(f.time.notes(f.session)[0].content, /面试/);
   assert.equal(
     f.store.db.prepare("SELECT COUNT(*) n FROM core_memories").get().n,
     before,
   );
   assert.match((await f.time.tick(f.session)).reason, /太近/);
+});
+
+test("自己的线索独立保存、可以修正和放下，不会串会话或泄漏到历史回放", async (t) => {
+  const f = setup(t);
+  const firstSeq = f.system.repo.latest(f.session);
+  f.setAnswer({
+    skip: true,
+    selfThread: {
+      action: "new",
+      kind: "curiosity",
+      content: "我想看看他谈到面试时更在意岗位还是团队。",
+      nextAction: "下次他主动提起时再问具体一点",
+      sources: [firstSeq],
+      parentId: "",
+      confidence: 0.65,
+    },
+  });
+  assert.equal((await f.time.tick(f.session)).status, "thread");
+  const first = selfThreads(f.store.db, f.session, { now: f.now() })[0];
+  assert.equal(first.kind, "curiosity");
+  assert.equal(f.time.notes(f.session).length, 0);
+  assert.equal(selfThreads(f.store.db, "group:other", { now: f.now() }).length, 0);
+  assert.equal(
+    temporalContext(f.system.repo, f.session, [], [firstSeq], f.now(), "Asia/Shanghai")
+      .ownThreads.length,
+    0,
+  );
+  f.time.save({ minMessages: 0 });
+  f.advance(25 * 3600000);
+  f.add("想了想，我更在意团队氛围");
+  const nextSeq = f.system.repo.latest(f.session);
+  f.setAnswer({
+    skip: true,
+    selfThread: {
+      action: "revise",
+      kind: "curiosity",
+      content: "现在知道他更在意团队氛围，原来猜测的岗位优先不成立。",
+      nextAction: "以后不要替他预设选择标准",
+      sources: [nextSeq],
+      parentId: first.id,
+      confidence: 0.85,
+    },
+  });
+  assert.equal((await f.time.tick(f.session)).status, "thread");
+  assert.equal(selfThreads(f.store.db, f.session, { now: f.now() }).length, 1);
+  assert.notEqual(selfThreads(f.store.db, f.session, { now: f.now() })[0].id, first.id);
+  assert.equal(
+    f.store.db.prepare("SELECT COUNT(*) n FROM time_self_threads WHERE session_id=?").get(f.session).n,
+    2,
+  );
+  assert.equal(
+    temporalContext(f.system.repo, f.session, [], [nextSeq], f.now(), "Asia/Shanghai")
+      .ownThreads[0].id,
+    first.id,
+  );
+  const revised = selfThreads(f.store.db, f.session, { now: f.now() })[0];
+  f.advance(25 * 3600000);
+  f.add("后来已经有答案了，不用再帮我想这件事");
+  f.setAnswer({
+    skip: true,
+    selfThread: {
+      action: "close",
+      kind: "curiosity",
+      content: "这件事有了答案，先放下，不再替他琢磨选择标准。",
+      nextAction: "",
+      sources: [f.system.repo.latest(f.session)],
+      parentId: revised.id,
+      confidence: 0.9,
+    },
+  });
+  assert.equal((await f.time.tick(f.session)).status, "thread");
+  assert.equal(selfThreads(f.store.db, f.session, { now: f.now() }).length, 0);
+  assert.equal(
+    f.store.db.prepare("SELECT COUNT(*) n FROM time_self_threads WHERE session_id=?").get(f.session).n,
+    3,
+  );
 });
 test("时间容量可以设为不限，输入输出为零时跟随模型能力", (t) => {
   const f = setup(t);
@@ -141,6 +219,69 @@ test("时间容量可以设为不限，输入输出为零时跟随模型能力",
   assert.equal(value.dailyTokens, 0);
   assert.equal(value.inputTokens, 0);
   assert.equal(value.outputTokens, 0);
+});
+
+test("旧版由手记复制的状态不冒充独立的内心变化", (t) => {
+  const f = setup(t);
+  const seq = f.system.repo.latest(f.session);
+  f.store.db.prepare(
+    "INSERT INTO time_notes(id,session_id,created,watermark,kind,content,sources,confidence,importance) VALUES ('old-note',?,?,?,'reflection','面试还没有结果','[1]',0.7,0.6)",
+  ).run(f.session, f.now() - 1000, seq);
+  f.store.db.prepare(
+    "INSERT INTO time_states(id,session_id,created,watermark,attention,narrative,factors) VALUES ('legacy:old-note',?,?,?,?,?,'{\"migrated\":true}')",
+  ).run(f.session, f.now() - 1000, seq, "面试还没有结果", "面试还没有结果");
+  const inner = innerLife(f.system.repo, f.session, f.now());
+  assert.notEqual(inner.attention, "面试还没有结果");
+  assert.notEqual(inner.narrative, "面试还没有结果");
+  assert.equal(f.time.notes(f.session)[0].content, "面试还没有结果");
+});
+
+test("小输入窗口优先保留最近真实聊天，旧材料超预算时仍可独处", async (t) => {
+  const f = setup(t);
+  for (let i = 0; i < 90; i++)
+    f.add(`第${i}条补充：` + "这件事还没定，想再看看后面的发展。".repeat(8));
+  f.system.models.profile = () => ({
+    ...defaultModel(f.store.settings()),
+    maxInputTokens: 6000,
+  });
+  assert.equal((await f.time.tick(f.session)).status, "written");
+  const messages = f.inputs[0].messages;
+  assert(messages.length < 90);
+  assert.equal(messages.at(-1).seq, f.system.repo.latest(f.session));
+});
+
+test("无人说话时可以留下自己的好奇，但无来源的人物判断被拒绝", (t) => {
+  const f = setup(t);
+  const base = {
+    action: "new", kind: "curiosity", content: "我想更仔细分辨喜欢一首歌的理由。",
+    nextAction: "下次独处时再想想", sources: [], parentId: "", confidence: 0.6,
+  };
+  const id = saveSelfThread(
+    f.store.db, f.session, f.system.repo.latest(f.session), f.now(), base, new Set(),
+  );
+  assert(id);
+  assert.equal(selfThreads(f.store.db, f.session, { now: f.now() })[0].origin, "self");
+  const revisedId = saveSelfThread(
+    f.store.db, f.session, f.system.repo.latest(f.session), f.now() + 1,
+    { ...base, action: "revise", content: "我想先听听不同的旋律，再决定喜欢什么。", parentId: id, confidence: 0.99 },
+    new Set(),
+  );
+  assert(revisedId);
+  assert.equal(selfThreads(f.store.db, f.session, { now: f.now() + 1 })[0].confidence, 0.6);
+  assert.equal(
+    saveSelfThread(
+      f.store.db, f.session, f.system.repo.latest(f.session), f.now(),
+      { ...base, content: "他最近一定更喜欢我了。" }, new Set(),
+    ),
+    null,
+  );
+  assert.equal(
+    saveSelfThread(
+      f.store.db, f.session, f.system.repo.latest(f.session), f.now(),
+      { ...base, kind: "care", content: "我应该问问他。" }, new Set(),
+    ),
+    null,
+  );
 });
 test("旧手记修正追加保存，跨会话、未来和模拟语境不读取手记", async (t) => {
   const f = setup(t);

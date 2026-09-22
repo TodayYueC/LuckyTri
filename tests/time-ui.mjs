@@ -31,6 +31,9 @@ for (let i = 0; i < 35; i++)
       i === 0 ? "note-1" : null,
       now + 86400000,
     );
+store.db.prepare(
+  "INSERT INTO time_self_threads(id,session_id,created,watermark,kind,content,next_action,sources,confidence) VALUES ('thread-1','group:12345',?,1,'curiosity','她想弄清群友后来更在意什么','等对方再次提起时留意','[1]',0.7)",
+).run(now);
 const server = createApp({
   store,
   chatSystem: system,
@@ -84,8 +87,9 @@ try {
     for (const target of [
       [0, "now"],
       [1, "journal"],
-      [2, "settings"],
-      [3, "activity"],
+      [2, "self"],
+      [3, "settings"],
+      [4, "activity"],
     ]) {
       await page.locator(".time-local-nav button").nth(target[0]).click();
       await page.evaluate(() => {
@@ -101,6 +105,8 @@ try {
         () => document.documentElement.scrollWidth > window.innerWidth,
       );
       assert.equal(overflow, false, `${target[1]} overflow at ${width}`);
+      if (target[1] === "self")
+        assert(await page.getByText("她想弄清群友后来更在意什么").first().isVisible());
       if (target[1] === "settings") {
         const button = page.locator(".settings-submit button");
         await button.scrollIntoViewIfNeeded();

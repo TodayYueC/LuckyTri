@@ -14,6 +14,10 @@ The current connector is OneBot 11. QQ login and delivery are handled by QQClien
 - Documents can be stored in a knowledge collection. Retrieved passages enter the context as data and do not skip the speech decision.
 - LuckyBot shows the live conversation and edits sessions, persona, models, and the QQ connection. Historical replay does not send QQ messages or write production memory.
 
+## Time and continuity
+
+The Time workspace supports low-frequency reflection after conversations, dated private notes, and changing internal states. The `love` branch adds **Own Threads**: evidence-linked curiosities, viewpoints, and intentions that LuckyBot can revisit, revise, or set aside. These are separate from facts about users and scoped to each conversation. Replies to sincere questions about care avoid both cold stock disclaimers and ungrounded promises of human emotion. See the [design and validation report](docs/love-系统报告.md) (Chinese).
+
 ## Requirements
 
 - Windows, macOS, or Linux

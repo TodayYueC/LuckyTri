@@ -37,6 +37,14 @@ export function replyFocus(snapshot, decision) {
   );
   const latest = targets.at(-1)?.text || "";
   if (
+    /你是不是真的在乎我|(?:你|LuckyBot|lucky)(?:真的|到底|会|能|有没有|是否)?(?:在乎|关心|喜欢|想念)(?:我|我们)|(?:你|LuckyBot|lucky).{0,8}(?:有心|有感情|有情绪|会寂寞)|(?:你对我|我对你).{0,6}(?:算什么|是什么)/i.test(latest)
+  )
+    return {
+      kind: "care",
+      instruction:
+        "对方在认真问你们之间的关系。先回答他的具体疑问，不用身份免责声明开场，也不要无依据承诺自己有人的内心、永远在场或需要他。可以诚实承认有些词难界定，再说你实际会如何对待他说过的事：留意、记住、修正误解、尊重他不想聊的时候。别照抄示例台词，别把回答变成说明书。",
+    };
+  if (
     /别.*(?:重复|复述)|人机|不自然|没发现.*(?:早上|晚上)|说错|搞错/.test(latest)
   )
     return {
@@ -110,6 +118,13 @@ export function conversationalIssues(result, snapshot, decision = {}) {
     .slice(-8)
     .map((m) => m.text);
   const issues = [];
+  if (
+    replyFocus(snapshot, decision).kind === "care" &&
+    texts.some((t) =>
+      /我是AI[,，。\s]*我没有(?:情感|感情)|作为(?:一个)?AI[,，。\s]*我(?:没有|无法)(?:情感|感情|在乎)|我当然(?:真的)?在乎你|我(?:会)?永远(?:陪着|守着|等着)你|我需要你(?:一直)?陪着我/.test(t),
+    )
+  )
+    issues.push("认真回答关系问题，不用冷冰冰的身份免责声明，也不保证自己有人类情感或永远陪伴");
   if (
     replyFocus(snapshot, decision).kind === "feeling" &&
     texts.some((t) =>

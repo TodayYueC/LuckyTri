@@ -5,10 +5,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
 import { WebSocket } from "ws";
+import { createServer } from "node:net";
 
-// Keep the default convenient for local runs, but allow CI/desktop sessions
-// with an already reserved port to choose an isolated listener.
-const port = Number(process.env.UI_TEST_PORT || 3211);
+// Pick an isolated port by default; Windows hosts may already reserve 3211.
+const port = process.env.UI_TEST_PORT
+  ? Number(process.env.UI_TEST_PORT)
+  : await new Promise((resolve, reject) => {
+      const probe = createServer();
+      probe.once("error", reject);
+      probe.listen(0, "127.0.0.1", () => {
+        const selected = probe.address().port;
+        probe.close(() => resolve(selected));
+      });
+    });
 const server = spawn(process.execPath, ["server/index.js"], {
   env: {
     ...process.env,
@@ -515,10 +524,11 @@ try {
   });
   await p.goto(base + "/#live");
   await p.locator("#liveSession").selectOption("group:12345");
+  await p.locator("#refresh").click();
   await p.getByRole("button", { name: "反馈", exact: true }).click();
   for (const width of [1440, 820, 390]) {
     await p.setViewportSize({ width, height: 900 });
-    await p.waitForTimeout(400);
+    await p.locator(".feedback-item").first().waitFor();
     assert.equal(await p.locator(".feedback-item").count(), 6);
     assert.match(await p.locator(".pagination").textContent(), /1 \/ 23/);
     const size = await p.locator("#feedbackList").evaluate((el) => ({

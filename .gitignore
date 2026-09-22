@@ -5,6 +5,7 @@ data/
 .env.*
 !.env.example
 test-results/
+.codex-remote-attachments/
 npm-debug.log*
 *.log
 *.db
