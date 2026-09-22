@@ -260,7 +260,7 @@ onUnmounted(() => clearInterval(timer));
         </div>
       </section>
       <aside class="time-side">
-        <section class="surface">
+        <section class="surface time-topics">
           <div class="section-heading">
             <h2>慢慢降温的话题</h2>
             <span>◌</span>
@@ -507,10 +507,15 @@ onUnmounted(() => clearInterval(timer));
 .time-side {
   display: grid;
   gap: 24px;
+  min-width: 0;
+  min-height: 0;
+  align-content: start;
 }
 .time-side form {
   display: grid;
   gap: 18px;
+  min-width: 0;
+  min-height: 0;
 }
 .time-scroll {
   max-height: 720px;
@@ -520,6 +525,16 @@ onUnmounted(() => clearInterval(timer));
 }
 .small-scroll {
   max-height: 240px;
+}
+.time-topics {
+  min-height: 0;
+  overflow: hidden;
+}
+.time-topics .small-scroll {
+  height: 220px;
+  max-height: 220px;
+  min-height: 0;
+  overflow-y: auto;
 }
 .time-journal {
   min-width: 0;
