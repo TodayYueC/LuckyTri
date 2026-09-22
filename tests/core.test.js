@@ -9,7 +9,10 @@ import { defaultModel, ModelManager } from "../server/core/model-manager.js";
 import { MemoryManager } from "../server/core/memory-manager.js";
 import { deliver } from "../server/core/message-scheduler.js";
 import { ChatSystem } from "../server/core/orchestrator.js";
-import { visionInputs } from "../server/core/vision-manager.js";
+import {
+  loadVisionImages,
+  visionInputs,
+} from "../server/core/vision-manager.js";
 import { normalize } from "../server/channels/onebot.js";
 import { persistIncoming } from "../server/core/message-manager.js";
 import { fitInput } from "../server/core/input-budget.js";
@@ -569,6 +572,29 @@ test("长上下文配置超过16K字符，保护当前批次和引用", () => {
   );
   assert.equal(c.messages.length, 250);
   assert(c.budget.estimatedContext > 16000);
+  const older = buildContext(
+    repo,
+    "group:12345",
+    249,
+    m,
+    { contextMessages: 0 },
+    [249],
+    [],
+    p,
+  );
+  const newer = buildContext(
+    repo,
+    "group:12345",
+    250,
+    m,
+    { contextMessages: 0 },
+    [250],
+    [],
+    p,
+  );
+  const olderJson = JSON.stringify(older.messages);
+  const newerJson = JSON.stringify(newer.messages);
+  assert.equal(newerJson.startsWith(olderJson.slice(0, -1) + ","), true);
   store.db.close();
 });
 test("图片与对应消息ID一起提供，非信任媒体地址不进入模型", () => {
@@ -829,5 +855,431 @@ test("直接倾诉也按语义复审并最多重写一次，回放使用消息�
   ]);
   assert.deepEqual(trace.response.bubbles, ["这调休真不合理"]);
   system.close();
+  store.db.close();
+});
+
+const TINY_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+
+test("当前 QQ 图片域名可以进入视觉，内网和非图片表情不行", () => {
+  const media = visionInputs(
+    {
+      sourceRows: [
+        msg(1, {
+          seq: 1,
+          attachments: [
+            {
+              type: "image",
+              url: "https://multimedia.nt.qq.com.cn/download?fileid=1",
+            },
+            { type: "image", url: "https://notqq.com/a.png" },
+            { type: "image", url: "http://gchat.qpic.cn/a.png" },
+            {
+              type: "image",
+              emoji_id: "1",
+              url: "https://gchat.qpic.cn/s.png",
+            },
+            {
+              type: "image",
+              url: "https://evil.example/a.png",
+              file: "C:\\napcat\\cache\\a.png",
+            },
+          ],
+        }),
+      ],
+    },
+    { vision: true },
+  );
+  assert.deepEqual(
+    media.images.map((image) => image.messageId),
+    [1, 1],
+  );
+  assert.equal(media.images[0].url.includes("multimedia.nt.qq.com.cn"), true);
+  assert.equal(media.images[1].local, "C:\\napcat\\cache\\a.png");
+  assert.equal(media.unavailable.length, 2);
+});
+
+test("图片在送给模型前变成画面数据，不把 QQ 外链或内网地址发出去", async () => {
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+  const inline = await loadVisionImages([
+    {
+      messageId: 1,
+      speaker: "10001",
+      inline: "base64://" + jpeg.toString("base64"),
+    },
+  ]);
+  assert.equal(
+    inline.images[0].url,
+    "data:image/jpeg;base64," + jpeg.toString("base64"),
+  );
+
+  let fetched = [];
+  const blocked = await loadVisionImages(
+    [{ messageId: 2, speaker: "10001", url: "https://gchat.qpic.cn/a.png" }],
+    {
+      lookup: async () => [{ address: "127.0.0.1", family: 4 }],
+      fetch: async (url) => {
+        fetched.push(String(url));
+        throw Error("should not fetch");
+      },
+    },
+  );
+  assert.deepEqual(fetched, []);
+  assert.equal(blocked.images.length, 0);
+  assert.equal(blocked.unavailable[0].reason, "图片地址不可访问");
+
+  const remote = await loadVisionImages(
+    [
+      {
+        messageId: 3,
+        speaker: "10001",
+        url: "https://multimedia.nt.qq.com.cn/download?fileid=1",
+      },
+    ],
+    {
+      lookup: async () => [{ address: "1.1.1.1", family: 4 }],
+      fetch: async (url) => {
+        fetched.push(String(url));
+        if (String(url).includes("evil.example"))
+          throw Error("followed redirect");
+        return {
+          status: 302,
+          headers: {
+            get: (name) =>
+              name === "location" ? "https://evil.example/secret.png" : "",
+          },
+        };
+      },
+    },
+  );
+  assert.deepEqual(fetched, [
+    "https://multimedia.nt.qq.com.cn/download?fileid=1",
+  ]);
+  assert.equal(remote.images.length, 0);
+  assert.equal(remote.unavailable[0].reason, "图片地址不可访问");
+
+  const png = await loadVisionImages(
+    [{ messageId: 4, speaker: "10001", url: "https://gchat.qpic.cn/cat.png" }],
+    {
+      lookup: async () => [{ address: "1.1.1.1", family: 4 }],
+      fetch: async () => ({
+        status: 200,
+        headers: { get: () => "" },
+        arrayBuffer: async () => TINY_PNG,
+      }),
+    },
+  );
+  assert.equal(
+    png.images[0].url,
+    "data:image/png;base64," + TINY_PNG.toString("base64"),
+  );
+
+  const html = await loadVisionImages(
+    [{ messageId: 5, speaker: "10001", url: "https://gchat.qpic.cn/page" }],
+    {
+      lookup: async () => [{ address: "1.1.1.1", family: 4 }],
+      fetch: async () => ({
+        status: 200,
+        headers: { get: () => "" },
+        arrayBuffer: async () => Buffer.from("<html></html>"),
+      }),
+    },
+  );
+  assert.equal(html.unavailable[0].reason, "不是支持的图片格式");
+});
+
+test("开启图片理解后，回复拿到的是画面而不是图片占位符", async () => {
+  const { store } = setup();
+  store.save({ enabled: true, apiKey: "k" });
+  const session = "private:12345";
+  store.db
+    .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
+    .run(session, "测试", "private");
+  const seen = [];
+  const profile = {
+    ...defaultModel(store.settings()),
+    vision: true,
+    apiKey: "k",
+  };
+  const system = new ChatSystem(store, async () => ({ message_id: 1 }), {
+    models: {
+      profile: () => profile,
+      call: async (_profile, stage, _prompt, data, _trace, images) => {
+        seen.push({ stage, images, guide: data.imageGuide });
+        return { bubbles: ["这是一只猫"], reason: "看见画面" };
+      },
+    },
+    loadVisionImages: async (images) => ({
+      images: images.map((image) => ({
+        messageId: image.messageId,
+        speaker: image.speaker,
+        url: "data:image/png;base64,iVBORw0KGgo=",
+      })),
+      unavailable: [],
+    }),
+  });
+  system.repo.append(
+    msg(1, {
+      sessionId: session,
+      kind: "private",
+      text: "[图片]这是什么",
+      attachments: [
+        {
+          type: "image",
+          url: "https://multimedia.nt.qq.com.cn/download?fileid=1",
+        },
+      ],
+    }),
+  );
+  const trace = await system.process(session, system.repo.events(session));
+  assert.equal(trace.status, "sent");
+  assert.deepEqual(
+    seen.map((item) => item.stage),
+    ["generation"],
+  );
+  assert.equal(
+    seen[0].images[0].url.startsWith("data:image/png;base64,"),
+    true,
+  );
+  assert.match(seen[0].guide, /画面/);
+  system.close();
+  store.db.close();
+});
+
+test("主模型不能看图时，视觉模型的观察进入回复且不附带外链", async () => {
+  const { store } = setup();
+  store.save({ enabled: true, apiKey: "k" });
+  const session = "private:77";
+  store.db
+    .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
+    .run(session, "测试", "private");
+  const seen = [];
+  const textModel = {
+    ...defaultModel(store.settings()),
+    id: "chat",
+    vision: false,
+    apiKey: "k",
+  };
+  const visionModel = { ...textModel, id: "vision", vision: true };
+  const system = new ChatSystem(store, async () => ({ message_id: 1 }), {
+    models: {
+      profile: (id) => (id === "vision" ? visionModel : textModel),
+      call: async (profile, stage, _prompt, data, _trace, images = []) => {
+        seen.push({
+          stage,
+          id: profile.id,
+          images,
+          guide: data.imageGuide,
+        });
+        if (stage === "vision")
+          return { observations: [{ messageId: 1, description: "一只猫" }] };
+        return { bubbles: ["是一只猫"], reason: "根据观察" };
+      },
+    },
+    loadVisionImages: async (images) => ({
+      images: images.map((image) => ({
+        messageId: image.messageId,
+        speaker: image.speaker,
+        url: "data:image/png;base64,iVBORw0KGgo=",
+      })),
+      unavailable: [],
+    }),
+  });
+  system.repo.saveConfig("session:" + session, { visionModelId: "vision" });
+  system.repo.append(
+    msg(1, {
+      sessionId: session,
+      kind: "private",
+      text: "[图片]看看",
+      attachments: [{ type: "image", url: "https://gchat.qpic.cn/cat.png" }],
+    }),
+  );
+  const trace = await system.process(session, system.repo.events(session));
+  assert.equal(trace.status, "sent");
+  assert.deepEqual(
+    seen.map((item) => item.stage),
+    ["vision", "generation"],
+  );
+  assert.equal(seen[0].id, "vision");
+  assert.equal(seen[0].images[0].url.startsWith("data:image/"), true);
+  assert.equal(seen[1].images.length, 0);
+  assert.match(seen[1].guide, /观察/);
+  system.close();
+  store.db.close();
+});
+
+test("同一张图只理解一次，引用和相同内容不再提交画面", async () => {
+  const { store } = setup();
+  store.save({ enabled: true, apiKey: "k" });
+  const session = "group:12345";
+  store.db
+    .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
+    .run(session, "测试", "group");
+  const seen = [];
+  let loads = 0;
+  const profile = {
+    ...defaultModel(store.settings()),
+    vision: true,
+    apiKey: "k",
+  };
+  const system = new ChatSystem(store, async () => ({ message_id: 1 }), {
+    random: () => 0,
+    models: {
+      profile: () => profile,
+      call: async (_profile, stage, _prompt, data, _trace, images = []) => {
+        seen.push({
+          stage,
+          images: images.map((image) => image.messageId),
+          guide: data.imageGuide,
+          vision: data.context?.vision || data.vision,
+        });
+        if (stage === "vision")
+          return {
+            observations: images.map((image) => ({
+              messageId: image.messageId,
+              description: "土拍公告，地块编号可见",
+            })),
+          };
+        if (stage === "decision")
+          return {
+            action: "REPLY",
+            confidence: 0.9,
+            reason: "在看这张图",
+            targetMessageIds: [data.batchIds.at(-1)],
+            targetUserIds: ["10001"],
+            evidenceIds: [data.batchIds.at(-1)],
+            topic: "土拍",
+          };
+        return { bubbles: ["看到了"], reason: "根据观察" };
+      },
+    },
+    loadVisionImages: async (images) => {
+      loads += 1;
+      return {
+        images: images.map((image) => ({
+          ...image,
+          sha256: "land-auction",
+          url: "data:image/png;base64,iVBORw0KGgo=",
+        })),
+        unavailable: [],
+      };
+    },
+  });
+  const image = {
+    type: "image",
+    url: "https://gchat.qpic.cn/auction.png",
+  };
+  system.repo.append(
+    msg(1, { text: "[图片]看看这张土拍", attachments: [image] }),
+  );
+  const first = await system.process(session, system.repo.events(session));
+  assert.equal(first.status, "sent");
+  assert.deepEqual(
+    seen.map((item) => item.stage),
+    ["vision", "decision", "generation"],
+  );
+  assert.equal(seen[2].images.length, 0);
+  assert.match(seen[2].guide, /观察/);
+  system.repo.append(
+    msg(2, { text: "那这块地呢", replyId: "1", mentions: ["99999"] }),
+  );
+  const quoted = system.repo.events(session).at(-1);
+  const second = await system.process(session, [quoted]);
+  assert.equal(second.status, "sent");
+  assert.equal(seen.filter((item) => item.stage === "vision").length, 1);
+  assert.equal(loads, 1);
+  assert.equal(seen.at(-1).images.length, 0);
+  system.repo.append(
+    msg(3, { text: "[图片]又发了一张", attachments: [image] }),
+  );
+  const repost = system.repo.events(session).at(-1);
+  const third = await system.process(session, [repost]);
+  assert.equal(third.status, "sent");
+  assert.equal(seen.filter((item) => item.stage === "vision").length, 1);
+  assert.equal(loads, 2);
+  assert.equal(seen.at(-1).images.length, 0);
+  system.close();
+  store.db.close();
+});
+
+test("本地缓存和 QQ 图片缓存都能读成画面", async () => {
+  const { mkdtemp, rm, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const dir = await mkdtemp(join(tmpdir(), "lucky-vision-"));
+  try {
+    const file = join(dir, "cat.png");
+    await writeFile(file, TINY_PNG);
+    const local = await loadVisionImages([
+      {
+        messageId: 1,
+        speaker: "1",
+        local: file,
+        url: "https://expired.example/a.png",
+      },
+    ]);
+    assert.equal(
+      local.images[0].url,
+      "data:image/png;base64," + TINY_PNG.toString("base64"),
+    );
+    const cached = await loadVisionImages(
+      [{ messageId: 2, speaker: "1", file: "cat.jpg" }],
+      {
+        fetchImage: async (id) => {
+          assert.equal(id, "cat.jpg");
+          return { base64: TINY_PNG.toString("base64") };
+        },
+      },
+    );
+    assert.equal(
+      cached.images[0].url.startsWith("data:image/png;base64,"),
+      true,
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("图片字节不计入文本预算，调试记录不保存画面数据", async () => {
+  const { repo, store } = setup();
+  let body;
+  const models = new ModelManager(repo, {
+    fetcher: async (_url, opts) => {
+      body = JSON.parse(opts.body);
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: '{"ok":true}' } }],
+        }),
+      };
+    },
+  });
+  const trace = { calls: [] };
+  const payload = "A".repeat(200000);
+  await models.call(
+    { ...defaultModel(store.settings()), apiKey: "SECRET", vision: true },
+    "generation",
+    "规则",
+    { a: 1 },
+    trace,
+    [
+      {
+        messageId: 1,
+        speaker: "10001",
+        url: "data:image/png;base64," + payload,
+      },
+    ],
+  );
+  const parts = body.messages.at(-1).content;
+  const textAt = parts.findIndex((part) => part.type === "text");
+  const imageAt = parts.findIndex((part) => part.type === "image_url");
+  assert.ok(textAt >= 0 && textAt < imageAt);
+  assert.equal(
+    parts.some((part) => part.image_url?.url.endsWith(payload)),
+    true,
+  );
+  assert.equal(JSON.stringify(trace).includes(payload), false);
   store.db.close();
 });

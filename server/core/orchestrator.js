@@ -8,7 +8,17 @@ import { ConversationManager } from "./conversation-manager.js";
 import { persistIncoming, messageEnvelope } from "./message-manager.js";
 import { persona, replyPrompt, prompts } from "./persona-manager.js";
 import { buildContext } from "./context-builder.js";
-import { visionInputs } from "./vision-manager.js";
+import {
+  loadVisionImages,
+  visionInputs,
+  classifyVision,
+  classifyLoaded,
+  descriptionsFor,
+  mergeVision,
+  saveVision,
+  markVisionSeen,
+  visionWindow,
+} from "./vision-manager.js";
 import { decide } from "./speech-decision.js";
 import { generate } from "./response-generator.js";
 import { normalizeResponse, validateResponse } from "./response-validator.js";
@@ -35,6 +45,8 @@ export class ChatSystem {
       knowledge,
       localDemo = defaultLocalDemo,
       fetchQuoted,
+      fetchImage,
+      loadVisionImages: loadImages = loadVisionImages,
     } = {},
   ) {
     this.store = store;
@@ -52,6 +64,8 @@ export class ChatSystem {
     this.random = random;
     this.localDemo = localDemo;
     this.fetchQuoted = fetchQuoted;
+    this.fetchImage = fetchImage;
+    this.loadVisionImages = loadImages;
     this.clearEpoch = new Map();
     this.queue = new ConversationManager((id, batch) =>
       this.process(id, batch),
@@ -154,6 +168,7 @@ export class ChatSystem {
         "core_jobs",
         "core_outbox",
         "messages",
+        "core_vision_cache",
       ])
         this.repo.db
           .prepare(`DELETE FROM ${table} WHERE session_id=?`)
@@ -284,10 +299,39 @@ export class ChatSystem {
       const visionModel = policy.visionModelId
         ? this.models.profile(policy.visionModelId)
         : model;
+      const direct = snapshot.batch.some((m) => m.relation === "direct");
       const media = visionInputs(snapshot, visionModel);
-      const generationImages = model.vision ? media.images : [];
+      const early = classifyVision(
+        this.repo.db,
+        snapshot.sessionId,
+        media.images,
+      );
+      const loaded = early.pending.length
+        ? await this.loadVisionImages(early.pending, {
+            sessionId: snapshot.sessionId,
+            fetchImage: this.fetchImage,
+          })
+        : { images: [], unavailable: [] };
+      const planned = classifyLoaded(
+        this.repo.db,
+        snapshot.sessionId,
+        loaded.images,
+        {
+          batchIds: snapshot.batchIds,
+          direct,
+          modelCanSee: !!model.vision,
+        },
+      );
+      mergeVision(snapshot, [...early.cached, ...planned.cached]);
+      if (early.cached.length || planned.cached.length)
+        trace.steps.push("图片使用已保存的观察，不再提交画面");
+      const describe = planned.describe;
+      let show = planned.show.slice();
       if (!replay) snapshot.topics = this.topics.recent(session, watermark);
-      snapshot.unavailableImages = media.unavailable;
+      snapshot.unavailableImages = [
+        ...media.unavailable,
+        ...loaded.unavailable,
+      ];
       trace.snapshot = { ...snapshot, sourceRows: undefined, batch: undefined };
       trace.config = {
         persona: p,
@@ -328,18 +372,56 @@ export class ChatSystem {
         );
         return finish(trace.sent.length ? "sent" : "cancelled", local.reason);
       }
-      const direct = snapshot.batch.some((m) => m.relation === "direct");
-      // The decision model sees native images too, so image-only questions aren't discarded.
-      if (media.images.length && (!direct || !model.vision)) {
-        snapshot.vision = await this.models.call(
-          visionModel,
-          "vision",
-          prompt.system + "\n" + prompt.vision,
-          { messages: snapshot.messages, batchIds: snapshot.batchIds },
-          trace,
-          media.images,
-        );
+      // A picture is sent to a model once. Later turns reuse the text observation.
+      // The answering model still sees a brand-new image on a direct reply, so that
+      // first look does not wait on a second understanding call.
+      if (describe.length) {
+        try {
+          const observed = await this.models.call(
+            visionModel,
+            "vision",
+            prompt.system + "\n" + prompt.vision,
+            {
+              messages: visionWindow(snapshot.messages, [
+                ...describe.map((image) => image.messageId),
+                ...snapshot.batchIds,
+              ]),
+              batchIds: snapshot.batchIds,
+            },
+            trace,
+            describe,
+          );
+          const paired = descriptionsFor(describe, observed);
+          if (paired.length) {
+            saveVision(this.repo.db, snapshot.sessionId, paired);
+            mergeVision(
+              snapshot,
+              paired.map(({ image, description }) => ({
+                messageId: image.messageId,
+                description,
+              })),
+            );
+          } else if (
+            observed &&
+            typeof observed === "object" &&
+            !snapshot.vision
+          )
+            snapshot.vision = observed;
+        } catch (error) {
+          trace.steps.push(
+            `图片理解失败，本轮不根据画面编造：${error.message}`,
+          );
+          snapshot.unavailableImages.push(
+            ...describe.map((image) => ({
+              messageId: image.messageId,
+              reason: "图片理解调用失败",
+            })),
+          );
+          if (model.vision) show = show.concat(describe);
+        }
       }
+      if (snapshot.vision) trace.snapshot.vision = snapshot.vision;
+      let generationImages = model.vision ? show : [];
       const addressed = snapshot.batch.filter((m) => m.relation === "direct");
       const fast = addressed.length > 0;
       let decision = fast
@@ -362,7 +444,16 @@ export class ChatSystem {
             prompt.system + "\n" + prompt.decision,
             snapshot,
             trace,
-            { comfortOnDistress: policy.comfortOnDistress },
+            {
+              comfortOnDistress: policy.comfortOnDistress,
+              images: generationImages.filter(
+                (image) =>
+                  !(snapshot.vision?.observations || []).some(
+                    (item) =>
+                      String(item.messageId) === String(image.messageId),
+                  ),
+              ),
+            },
           );
       trace.decision = decision;
       trace.path = fast ? "direct" : "contextual";
@@ -482,6 +573,8 @@ export class ChatSystem {
             generationImages,
             issues,
           );
+          if (!issues.length && generationImages.length)
+            markVisionSeen(this.repo.db, snapshot.sessionId, generationImages);
           const normalized = normalizeResponse(raw, decision, fallbackText);
           if (
             !raw ||
@@ -498,16 +591,24 @@ export class ChatSystem {
       };
       const runDeepCheck = async (response) => {
         try {
+          const validationContext = { ...trace.snapshot };
+          delete validationContext.persona;
           const checked = await this.models.call(
             model,
             "validation",
             replyPrompt(p, prompt, "validation"),
             {
-              context: trace.snapshot,
-              persona: snapshot.persona,
+              context: validationContext,
               decision,
               response,
               replyFocus: replyFocus(snapshot, decision),
+              imageEvidence: generationImages.length
+                ? "本轮模型看见了图片画面，回复里的画面描述可以保留。"
+                : snapshot.vision
+                  ? "本轮有图片观察结果，回复可以依据 context.vision，不要当成编造。"
+                  : snapshot.unavailableImages?.length
+                    ? "本轮图片没有读取成功，回复不应包含具体画面细节。"
+                    : undefined,
             },
             trace,
           );

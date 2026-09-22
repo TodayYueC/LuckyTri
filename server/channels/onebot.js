@@ -106,7 +106,7 @@ export const onebot = {
     thread: false,
     sticker: true,
   },
-  mediaHosts: /(^|\.)(qpic\.cn|gtimg\.cn|qq\.com)$/,
+  mediaHosts: /(^|\.)(qpic\.cn|gtimg\.cn|qq\.com\.cn|qq\.com|myqcloud\.com)$/i,
   usableMediaUrl(url) {
     try {
       const u = new URL(url);
