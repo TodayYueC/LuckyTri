@@ -212,7 +212,7 @@ try {
   await p.locator(".entity-row").first().click();
   assert.equal(await p.locator(".entity-row").count(), 1);
   await p.locator("#addModel").click();
-  await p.locator("[data-preset=kimi-k2.6]").click();
+  await p.locator('[data-preset="kimi-k2.6"]').click();
   await p.locator("[name=label]").fill("界面测试模型");
   await p.locator("#modelForm .primary").click();
   await p.waitForTimeout(300);

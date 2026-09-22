@@ -261,8 +261,43 @@ export class ChatSystem {
       }
       const p = persona(this.repo, session),
         prompt = prompts(this.repo),
-        model = this.models.profile(policy.modelId),
-        now = batch.at(-1).time;
+        now = batch.at(-1).time,
+        hasKey = this.store.settings().apiKey || process.env.LLM_API_KEY;
+      let model;
+      try {
+        model = this.models.profile(policy.modelId);
+      } catch (error) {
+        // A fresh installation has no model profile yet. Keep the local demo
+        // usable in that state; a live turn must still surface the normal
+        // configuration error instead of silently pretending to reply.
+        if (simulatedTurn && this.store.settings().demo && !hasKey) {
+          const local = this.localDemo(
+            this.store.settings(),
+            {
+              message: batch.at(-1),
+              direct: true,
+              context: [],
+            },
+            this.random,
+          );
+          if (!local.speak) return finish("silent", local.reason);
+          const response = {
+            bubbles: [local.reply || "嗯"],
+            reason: local.reason,
+          };
+          trace.response = response;
+          trace.sent = await deliver(
+            this.repo,
+            batch.at(-1),
+            response.bubbles,
+            trace,
+            this.send,
+            () => this.enabled(session, { simulated: true }),
+          );
+          return finish(trace.sent.length ? "sent" : "cancelled", local.reason);
+        }
+        throw error;
+      }
       // Replays exclude mutable memory to avoid leaking later corrections into the past.
       const memories =
         policy.memory && !replay
@@ -342,7 +377,6 @@ export class ChatSystem {
         model: { ...model, apiKey: undefined },
         prompts: prompt,
       };
-      const hasKey = this.store.settings().apiKey || process.env.LLM_API_KEY;
       if (simulatedTurn && this.store.settings().demo && !hasKey) {
         const local = this.localDemo(
           this.store.settings(),
