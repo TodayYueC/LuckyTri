@@ -34,6 +34,14 @@ function active() {
 function archived() {
   return (studio.core.sessions || []).filter((s: any) => s.archived);
 }
+function modelChoice(session: any) {
+  const models = studio.core.models || [];
+  const id = session.policy?.modelId;
+  if (id && models.some((model: any) => model.id === id)) return id;
+  return (
+    models.find((model: any) => model.isDefault)?.id || models[0]?.id || ""
+  );
+}
 function personaText(value: any) {
   if (!value || typeof value !== "object") return "";
   const keys = Object.keys(value);
@@ -181,13 +189,16 @@ async function saveSession(e: Event, s: any) {
             <div class="grid">
               <label
                 >模型
-                <select name="modelId" :value="s.policy.modelId || 'default'">
+                <select name="modelId" :value="modelChoice(s)">
+                  <option v-if="!studio.core.models.length" value="">
+                    尚未添加模型
+                  </option>
                   <option
                     v-for="m in studio.core.models"
                     :key="m.id"
                     :value="m.id"
                   >
-                    {{ m.label || m.model }}
+                    {{ m.label || m.model }}{{ m.isDefault ? " · 默认" : "" }}
                   </option>
                 </select>
               </label>

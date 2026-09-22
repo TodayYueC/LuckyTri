@@ -715,7 +715,7 @@ test("MiMo 请求显式关闭或开启 thinking，并使用 max_completion_token
     ...defaultModel(store.settings()),
     provider: "mimo",
     baseUrl: "https://token-plan-cn.xiaomimimo.com/v1",
-    model: "mimo-v2.5-pro",
+    model: "mimo-v2.6-pro",
     apiKey: "SECRET",
     maxOutputTokens: 4096,
   };

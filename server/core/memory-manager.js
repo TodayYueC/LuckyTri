@@ -5,6 +5,11 @@ import {
 } from "../channels/session-key.js";
 import { ftsMatchQuery, lexicalTerms } from "../knowledge/retrieval.js";
 import { indexMemory } from "../knowledge/schema.js";
+import {
+  applySpeakerNames,
+  readableName,
+  speakerNames,
+} from "./speaker-names.js";
 
 export class MemoryManager {
   constructor(repo, models) {
@@ -207,6 +212,7 @@ export class MemoryManager {
       this.lastAttempt.set(session, Date.now());
       const block = rows.slice(0, 40),
         last = block.at(-1).seq;
+      const names = speakerNames(db, [session]);
       const value = await this.models.call(
         profile,
         "memory",
@@ -214,7 +220,11 @@ export class MemoryManager {
         {
           messages: block.map((m) => ({
             id: m.seq,
-            speaker: m.userId,
+            userId: m.userId,
+            name:
+              readableName(m.name, m.userId) ||
+              names.get(String(m.userId)) ||
+              m.userId,
             text: m.text,
             time: m.time,
           })),
@@ -225,6 +235,7 @@ export class MemoryManager {
         throw Error("记忆整理格式无效");
       db.exec("BEGIN IMMEDIATE");
       try {
+        const summary = applySpeakerNames(value.summary, names);
         db.prepare(
           "INSERT OR IGNORE INTO core_stages VALUES (?,?,?,?,?,?)",
         ).run(
@@ -233,7 +244,15 @@ export class MemoryManager {
           block[0].seq,
           last,
           Date.now(),
-          JSON.stringify(value),
+          JSON.stringify({
+            ...value,
+            summary,
+            facts: value.facts.map((fact) =>
+              typeof fact?.content === "string"
+                ? { ...fact, content: applySpeakerNames(fact.content, names) }
+                : fact,
+            ),
+          }),
         );
         for (const f of value.facts.slice(0, 30)) {
           if (
@@ -252,12 +271,13 @@ export class MemoryManager {
             /密码|验证码|密钥|身份证|银行卡/.test(f.content)
           )
             continue;
+          const content = applySpeakerNames(f.content, names);
           if (
             db
               .prepare(
                 "SELECT id FROM core_memories WHERE session_id=? AND subject=? AND content=?",
               )
-              .get(session, f.subject, f.content)
+              .get(session, f.subject, content)
           )
             continue;
           const id = randomUUID();
@@ -267,7 +287,7 @@ export class MemoryManager {
             id,
             session,
             f.subject,
-            f.content,
+            content,
             String(f.type || "event"),
             Math.min(1, Math.max(0, f.confidence)),
             Math.min(1, Math.max(0, f.importance)),
@@ -284,7 +304,7 @@ export class MemoryManager {
             Date.now(),
             Date.now(),
           );
-          indexMemory(db, id, f.content);
+          indexMemory(db, id, content);
         }
         db.prepare(
           "INSERT INTO core_cursors VALUES (?,?) ON CONFLICT(session_id) DO UPDATE SET seq=excluded.seq",

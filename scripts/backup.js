@@ -7,7 +7,7 @@ export function backupDatabase(
   source = process.env.DB_PATH || "data/friend.db",
   directory = "data/backups",
 ) {
-  if (!existsSync(source)) throw new Error("数据库不存在，请先启动一次工作室");
+  if (!existsSync(source)) throw new Error("数据库不存在，请先启动一次 LuckyBot");
   mkdirSync(directory, { recursive: true });
   const target = resolve(
     join(

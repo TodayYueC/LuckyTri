@@ -3,6 +3,7 @@ import { localClock, conversationCues } from "./conversation-cues.js";
 import { estimateTokens } from "./model-manager.js";
 import { resolveTargets } from "./reply-target-resolver.js";
 import { lexicalTerms, overlapScore } from "../knowledge/retrieval.js";
+import { readableName } from "./speaker-names.js";
 
 export function buildContext(
   repo,
@@ -36,11 +37,16 @@ export function buildContext(
   );
   const batch = resolved.filter((x) => batchIds.includes(x.seq));
   const mandatory = new Set(batch.flatMap((m) => [m.seq, ...m.replyChain]));
+  const names = new Map();
+  for (const m of resolved) {
+    const label = readableName(m.name, m.userId);
+    if (label) names.set(String(m.userId), label);
+  }
   const sanitize = (m) => ({
     id: m.seq,
     platformId: m.platformId,
     speaker: m.userId,
-    name: m.name,
+    name: names.get(String(m.userId)) || m.name,
     time: m.time,
     localTime: localClock(m.time, policy.timeZone).local,
     role: m.role,
@@ -59,6 +65,7 @@ export function buildContext(
   const packedMemories = (memories || []).map((m) => ({
     id: m.id,
     subject: m.subject,
+    subjectName: names.get(String(m.subject)) || m.subject,
     content: m.content,
     type: m.type,
     confidence: m.confidence,

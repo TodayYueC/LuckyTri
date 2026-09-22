@@ -1,8 +1,33 @@
 import { callModel } from "../core/llm.js";
+import { pickModel } from "../core/model-manager.js";
 import { generateReply, demoReply } from "../voice.js";
 import { recordModelCheck } from "../readiness.js";
 import { FEEDBACK_LABELS } from "../feedback.js";
 import { isGroupSession } from "../channels/session-key.js";
+
+function connectionSettings(store) {
+  const row = store.db
+    .prepare("SELECT value FROM core_config WHERE id='models'")
+    .get();
+  const models = row ? JSON.parse(row.value) : [];
+  const profile = Array.isArray(models) ? pickModel(models, "default") : null;
+  const settings = store.settings();
+  if (!profile) return settings;
+  return {
+    ...settings,
+    baseUrl: profile.baseUrl,
+    model: profile.model,
+    apiKey: profile.apiKey || "",
+    providerPreset: profile.provider || settings.providerPreset,
+    reasoningEffort: profile.reasoningEffort || "none",
+    temperature: profile.temperature ?? settings.temperature,
+    topP: profile.topP ?? settings.topP,
+    maxTokens: Math.min(
+      profile.maxOutputTokens || settings.maxTokens || 256,
+      256,
+    ),
+  };
+}
 
 export function mountManagement(app, store) {
   const db = store.db;
@@ -130,7 +155,7 @@ export function mountManagement(app, store) {
     if (testing) return res.status(429).json({ error: "连接测试正在进行" });
     testing = true;
     const started = Date.now();
-    const settings = store.settings();
+    const settings = connectionSettings(store);
     try {
       const result = await callModel(settings, [
         {

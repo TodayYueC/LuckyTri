@@ -106,6 +106,10 @@ async function addConfirmed(e: Event) {
   e.preventDefault();
   const form = e.target as HTMLFormElement;
   const data = Object.fromEntries(new FormData(form)) as any;
+  const named = (memorySummary.value.participants || []).find(
+    (person: any) => person.name === String(data.subject || "").trim(),
+  );
+  if (named) data.subject = named.id;
   await addMemory(data);
   form.reset();
   (form.elements.namedItem("session") as HTMLSelectElement).value =
@@ -427,12 +431,12 @@ const filtered = () =>
                 >
               </summary>
               <p class="small">
-                {{ m.subject }} ·
+                {{ m.subjectName || m.subject }} ·
                 {{ m.session_id === sessionId ? "本会话" : "共享 / 继承" }}
               </p>
               <textarea
                 :data-content="m.id"
-                :aria-label="'编辑记忆：' + m.subject"
+                :aria-label="'编辑记忆：' + (m.subjectName || m.subject)"
                 >{{ m.content }}</textarea>
               <div class="row">
                 <button @click="changeMemory(m, 'confirmed')">
@@ -540,8 +544,20 @@ const filtered = () =>
               {{ s.name }}
             </option>
           </select></label
-        ><label>用户 QQ<input name="subject" required pattern="\d+" /></label
-        ><label>已确认的事实<input name="content" required /></label
+        ><label
+          >用户 ID<input
+            name="subject"
+            required
+            list="memoryUsers"
+            placeholder="选择昵称，或填写用户 ID" /></label
+        ><datalist id="memoryUsers">
+          <option
+            v-for="person in memorySummary.participants || []"
+            :key="person.id"
+            :value="person.name"
+          ></option>
+        </datalist>
+        <label>已确认的事实<input name="content" required /></label>
         ><button class="primary">新增人工记忆 ↗</button>
       </form>
     </section>
