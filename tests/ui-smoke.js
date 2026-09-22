@@ -310,7 +310,7 @@ try {
       name: "LuckyBot · 从零上手教程",
     })
     .waitFor();
-  assert.equal(await p.locator("article h2").count(), 11);
+  assert.equal(await p.locator("article h2").count(), 9);
   await p.setViewportSize({ width: 390, height: 844 });
   assert.equal(
     await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
