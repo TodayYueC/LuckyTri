@@ -20,6 +20,15 @@ import { fetchState } from "../plates/workspace";
 const sessionId = ref(sessionStorage.memorySession || "");
 const search = ref("");
 const section = ref("memories");
+const adding = ref(false);
+const expandedSummary = ref(false);
+const memoryStatus: Record<string, string> = {
+  confirmed: "已确认",
+  candidate: "待确认",
+  disputed: "有争议",
+  expired: "已过期",
+  deleted: "已删除",
+};
 const visibleCount = ref(20);
 watch([sessionId, search], () => {
   visibleCount.value = 20;
@@ -49,17 +58,21 @@ function sessions() {
   return studio.core?.sessions || [];
 }
 function candidates() {
-  return studio.health?.candidates || [];
+  return (studio.health?.candidates || []).filter(
+    (c: any) => c.scope === sessionId.value,
+  );
 }
 
 async function loadMemories() {
   if (!sessionId.value) return;
-  sessionStorage.memorySession = sessionId.value;
+  const requestedSession = sessionId.value;
+  sessionStorage.memorySession = requestedSession;
   const [nextMemories, nextCollections, nextSummary] = await Promise.all([
     listMemories(sessionId.value),
     listCollections(sessionId.value),
     listMemorySummary(sessionId.value),
   ]);
+  if (sessionId.value !== requestedSession) return;
   memories.value = nextMemories;
   memorySummary.value = nextSummary;
   const allowed = new Set(
@@ -97,6 +110,7 @@ async function addConfirmed(e: Event) {
   form.reset();
   (form.elements.namedItem("session") as HTMLSelectElement).value =
     sessionId.value;
+  adding.value = false;
   await loadMemories();
   toast("记忆已写入");
 }
@@ -244,224 +258,316 @@ async function runConsolidate() {
 }
 
 const filtered = () =>
-  memories.value.filter((m) => JSON.stringify(m).includes(search.value));
+  memories.value.filter(
+    (m) => m.status !== "deleted" && JSON.stringify(m).includes(search.value),
+  );
 </script>
 
 <template>
-  <div class="section-nav" aria-label="记忆页分区">
-    <button
-      @click="section = 'memories'"
-      :aria-pressed="section === 'memories'"
-    >
-      会话记忆
-    </button>
-    <button
-      @click="section = 'documents'"
-      :aria-pressed="section === 'documents'"
-    >
-      文档知识库
-    </button>
-  </div>
-  <section v-show="section === 'memories'" class="panel">
-    <div class="row">
-      <label
-        >记忆所属会话
-        <select id="memoryScope" v-model="sessionId">
+  <div class="memory-workbench master-detail">
+    <aside class="master-list surface">
+      <div class="section-heading">
+        <h2>会话记忆</h2>
+        <span class="eyebrow">ARCHIVE</span>
+      </div>
+      <label class="mobile-select"
+        >当前会话<select id="memoryScope" v-model="sessionId">
+          <option value="" disabled>选择会话</option>
           <option v-for="s in sessions()" :key="s.id" :value="s.id">
-            {{ s.name }} · {{ s.id }}
+            {{ s.name }}
           </option>
-        </select>
-      </label>
-      <input
-        id="memorySearch"
-        v-model="search"
-        placeholder="搜索当前会话的内容或用户"
-      />
-    </div>
-    <p class="small">
-      先选择会话，再查看总结和管理记忆。共享记忆会单独标注，批量删除仅作用于当前会话。
-    </p>
-    <section id="memorySummary" class="memory-summary">
-      <div class="row">
-        <h2>最近记忆总结</h2>
-        <div class="row">
-          <button
-            id="refreshMemorySummary"
-            type="button"
-            @click="refreshSummary"
+        </select></label
+      >
+      <div class="list-scroll">
+        <button
+          v-for="s in sessions()"
+          :key="s.id"
+          class="entity-row"
+          :class="{ selected: sessionId === s.id }"
+          @click="sessionId = s.id"
+        >
+          <span class="entity-symbol">{{
+            s.kind === "group" ? "群" : "私"
+          }}</span
+          ><span
+            ><b>{{ s.name }}</b
+            ><small>{{ s.id }}</small></span
           >
-            {{ summaryLoading ? "刷新中…" : "刷新总结" }}
-          </button>
-          <button
-            id="consolidateMemory"
-            type="button"
-            class="primary"
-            :disabled="consolidating"
-            @click="runConsolidate"
+        </button>
+        <p v-if="!sessions().length" class="empty-copy">
+          先在“对话 → 会话设置”添加会话。
+        </p>
+      </div>
+      <div class="master-caption">
+        MEMORIES MAKE<br /><em>US WHO WE ARE.</em><span>✦</span>
+      </div>
+    </aside>
+    <section class="detail-pane surface">
+      <div class="detail-heading">
+        <div>
+          <span class="eyebrow">MEMORY / COLLECTION</span>
+          <h2>
+            {{
+              sessions().find((s: any) => s.id === sessionId)?.name ||
+              "记忆档案"
+            }}
+          </h2>
+        </div>
+        <button :disabled="!sessionId" @click="adding = true">
+          ＋ 手动记忆
+        </button>
+      </div>
+      <div class="segment-tabs">
+        <button
+          :class="{ active: section === 'memories' }"
+          :aria-pressed="section === 'memories'"
+          @click="section = 'memories'"
+        >
+          会话记忆</button
+        ><button
+          :class="{ active: section === 'documents' }"
+          :aria-pressed="section === 'documents'"
+          @click="section = 'documents'"
+        >
+          文档知识库</button
+        ><button
+          :class="{ active: section === 'review' }"
+          @click="section = 'review'"
+        >
+          待审核 {{ candidates().length || "" }}
+        </button>
+      </div>
+      <div v-show="section === 'memories'" class="memory-main">
+        <section id="memorySummary" class="memory-summary">
+          <div class="section-heading">
+            <h3>最近发生了什么</h3>
+            <div class="row">
+              <button
+                id="refreshMemorySummary"
+                :disabled="summaryLoading || !sessionId"
+                @click="refreshSummary"
+              >
+                {{ summaryLoading ? "刷新中…" : "↻" }}</button
+              ><button
+                id="consolidateMemory"
+                :disabled="consolidating || !sessionId"
+                @click="runConsolidate"
+              >
+                {{ consolidating ? "整理中…" : "整理记忆" }}
+              </button>
+            </div>
+          </div>
+          <p data-memory-summary :class="{ 'summary-clamp': !expandedSummary }">
+            {{ memorySummary.summary }}
+          </p>
+          <div class="summary-meta">
+            <span>{{
+              memorySummary.updated
+                ? new Date(memorySummary.updated).toLocaleString()
+                : "尚未整理"
+            }}</span
+            ><button @click="expandedSummary = !expandedSummary">
+              {{ expandedSummary ? "收起 ↑" : "展开 ↓" }}
+            </button>
+          </div>
+        </section>
+        <div class="memory-tools">
+          <input
+            id="memorySearch"
+            v-model="search"
+            placeholder="搜索记忆、人物或关键词"
+            aria-label="搜索记忆"
+          />
+          <div class="row">
+            <button id="selectAllMemories" @click="selectAllMemories">
+              全选</button
+            ><button
+              id="clearMemorySelection"
+              :disabled="!selectedMemoryIds.length"
+              @click="clearMemorySelection"
+            >
+              取消选择</button
+            ><button
+              id="deleteSelectedMemories"
+              class="danger"
+              :disabled="!selectedMemoryIds.length"
+              @click="deleteSelectedMemories"
+            >
+              删除已选 {{ selectedMemoryIds.length || "" }}</button
+            ><button
+              id="deleteAllSessionMemories"
+              class="danger push-end"
+              :disabled="!memories.filter(isSelectableMemory).length"
+              @click="deleteAllSessionMemories"
+            >
+              清空本会话
+            </button>
+          </div>
+        </div>
+        <div id="memoryList" class="scroll-pane">
+          <article
+            v-for="m in filtered().slice(0, visibleCount)"
+            :key="m.id"
+            class="memory-row"
           >
-            {{ consolidating ? "整理中…" : "立即整理" }}
+            <input
+              type="checkbox"
+              :aria-label="'选择记忆：' + m.content"
+              :data-memory-select="m.id"
+              :checked="memorySelected(m.id)"
+              :disabled="!isSelectableMemory(m)"
+              @change="toggleMemory(m.id, $event)"
+            />
+            <details class="memory">
+              <summary>
+                <span>{{ m.content }}</span
+                ><small class="status-tag"
+                  >{{ memoryStatus[m.status] || m.status }}
+                  {{ m.locked ? "· 已锁定" : "" }}</small
+                >
+              </summary>
+              <p class="small">
+                {{ m.subject }} ·
+                {{ m.session_id === sessionId ? "本会话" : "共享 / 继承" }}
+              </p>
+              <textarea
+                :data-content="m.id"
+                :aria-label="'编辑记忆：' + m.subject"
+                >{{ m.content }}</textarea>
+              <div class="row">
+                <button @click="changeMemory(m, 'confirmed')">
+                  确认 / 保存</button
+                ><button @click="changeMemory(m, 'lock')">
+                  {{ m.locked ? "解锁" : "锁定" }}</button
+                ><button class="danger" @click="changeMemory(m, 'deleted')">
+                  删除
+                </button>
+              </div>
+            </details>
+          </article>
+          <button
+            v-if="filtered().length > visibleCount"
+            @click="visibleCount += 20"
+          >
+            再显示 20 条
           </button>
+          <div v-if="!filtered().length" class="empty-state">
+            <span>◌</span>
+            <h3>这里还有空白</h3>
+            <p>聊天中的重要信息，或手动添加的记忆会保存在这里。</p>
+          </div>
+        </div>
+        <div class="pane-foot">
+          <span>共 {{ filtered().length }} 条记忆</span
+          ><span>共享与锁定记忆不会被批量选中</span>
         </div>
       </div>
-      <p data-memory-summary>{{ memorySummary.summary }}</p>
-      <p v-if="memorySummary.updated" class="small">
-        最近整理：{{ new Date(memorySummary.updated).toLocaleString() }}
-      </p>
-      <p v-else class="small">
-        总结来自当前会话的阶段记忆，不会覆盖已有长期记忆。
-      </p>
-    </section>
-    <div class="row memory-batch-toolbar">
-      <button id="selectAllMemories" type="button" @click="selectAllMemories">
-        全选本会话
-      </button>
-      <button
-        id="clearMemorySelection"
-        type="button"
-        :disabled="!selectedMemoryIds.length"
-        @click="clearMemorySelection"
-      >
-        取消选择
-      </button>
-      <button
-        id="deleteSelectedMemories"
-        type="button"
-        class="danger"
-        :disabled="!selectedMemoryIds.length"
-        @click="deleteSelectedMemories"
-      >
-        删除已选（{{ selectedMemoryIds.length }}）
-      </button>
-      <button
-        id="deleteAllSessionMemories"
-        type="button"
-        class="danger"
-        :disabled="!memories.filter(isSelectableMemory).length"
-        @click="deleteAllSessionMemories"
-      >
-        清空本会话
-      </button>
-    </div>
-    <div id="memoryList">
-      <details
-        v-for="m in filtered().slice(0, visibleCount)"
-        :key="m.id"
-        class="panel memory"
-      >
-        <summary>
-          <span>{{ m.content }} · {{ m.status }}</span>
-          <span v-if="m.session_id !== sessionId" class="small">共享/继承</span>
-          <span v-else-if="m.locked" class="small">已锁定</span>
-        </summary>
-        <label v-if="m.session_id === sessionId" class="memory-select check">
-          <input
-            type="checkbox"
-            :data-memory-select="m.id"
-            :checked="memorySelected(m.id)"
-            :disabled="!isSelectableMemory(m)"
-            @change="toggleMemory(m.id, $event)"
-          />
-          选择这条记忆
-        </label>
+      <div v-show="section === 'documents'" class="document-main scroll-pane">
+        <h3>文档知识库</h3>
         <p class="small">
-          {{ m.session_id }} / {{ m.subject }} · {{ m.whySelected || "" }}
+          存放可供聊天参考的资料，与自动记录的会话记忆分开管理。
         </p>
-        <textarea :data-content="m.id">{{ m.content }}</textarea>
-        <div class="row">
-          <button @click="changeMemory(m, 'confirmed')">确认 / 保存</button>
-          <button @click="changeMemory(m, 'lock')">
-            {{ m.locked ? "解锁" : "锁定" }}
-          </button>
-          <button @click="changeMemory(m, 'deleted')">删除</button>
-        </div>
-      </details>
-      <button
-        v-if="filtered().length > visibleCount"
-        @click="visibleCount += 20"
-      >
-        再显示 20 条（共 {{ filtered().length }} 条）
-      </button>
-      <p v-if="!filtered().length" class="small">暂无匹配记忆。</p>
-    </div>
-  </section>
-  <section v-show="section === 'memories'" class="panel">
-    <h2>手动记住一件事</h2>
-    <form id="addMemory" @submit="addConfirmed">
-      <div class="grid">
         <label
-          >所属会话
-          <select id="memorySession" name="session" v-model="sessionId">
+          >文档集合<select v-model="collectionId">
+            <option v-for="c in collections" :key="c.id" :value="c.id">
+              {{ c.name }}
+            </option>
+          </select></label
+        >
+        <details>
+          <summary>＋ 添加一份资料</summary>
+          <form @submit="ingest">
+            <label>标题<input v-model="docTitle" required /></label
+            ><label
+              >粘贴正文<textarea
+                v-model="docText"
+                class="editor"
+                required
+              ></textarea></label
+            ><button class="primary">保存到知识库</button>
+          </form>
+        </details>
+        <article class="document-item" v-for="d in documents" :key="d.id">
+          <b>{{ d.title }}</b
+          ><span class="status-tag">{{ d.status }}</span>
+        </article>
+        <form @submit="searchHits">
+          <label
+            >查找资料
+            <div class="composer">
+              <input v-model="probe" placeholder="试着搜索一个关键词" /><button>
+                检索 ↗
+              </button>
+            </div></label
+          >
+        </form>
+        <p v-for="h in hits" :key="h.id" class="notice">
+          {{ h.title }}<br />{{ h.text }}
+        </p>
+      </div>
+      <div v-show="section === 'review'" class="scroll-pane review-main">
+        <article v-for="c in candidates()" :key="c.id" class="review-item">
+          <p>{{ c.content }}</p>
+          <button data-review @click="openReview(c)">审核 ↗</button>
+        </article>
+        <div v-if="!candidates().length" class="empty-state">
+          <span>✓</span>
+          <h3>没有待审核的明确记忆请求</h3>
+          <p>自动整理的候选记忆可在“会话记忆”里展开确认。</p>
+        </div>
+      </div>
+    </section>
+  </div>
+  <div v-if="adding" class="modal-backdrop" @click.self="adding = false">
+    <section
+      class="modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="addMemoryTitle"
+    >
+      <div class="section-heading">
+        <h2 id="addMemoryTitle">手动记住一件事</h2>
+        <button aria-label="关闭" @click="adding = false">×</button>
+      </div>
+      <form id="addMemory" @submit="addConfirmed">
+        <label
+          >所属会话<select
+            id="memorySession"
+            name="session"
+            v-model="sessionId"
+          >
             <option v-for="s in sessions()" :key="s.id" :value="s.id">
               {{ s.name }}
             </option>
-          </select>
-        </label>
-        <label>用户 QQ<input name="subject" required pattern="\d+" /></label>
-        <label>已确认的事实<input name="content" required /></label>
-      </div>
-      <button class="primary">新增人工记忆</button>
-    </form>
-  </section>
-  <section v-show="section === 'memories'" class="panel">
-    <h2>需要你确认的记忆</h2>
-    <article v-for="c in candidates()" :key="c.id" class="memory">
-      <p>{{ c.content }}</p>
-      <button data-review @click="openReview(c)">审核</button>
-    </article>
-    <p v-if="!candidates().length" class="small">没有需要你确认的记忆。</p>
-    <dialog v-if="review" open>
-      <form @submit.prevent="acceptReview">
-        <h3>确认这条记忆</h3>
-        <label>内容<input v-model="reviewContent" name="content" /></label>
-        <label
-          >范围
-          <select v-model="reviewScope" name="scope">
-            <option value="shared">共享</option>
-            <option :value="review.scope">{{ review.scope }}</option>
-            <option value="private">仅私聊</option>
-          </select>
-        </label>
-        <button type="button" class="primary" @click="acceptReview">
-          保存
-        </button>
-        <button type="button" @click="review = null">取消</button>
+          </select></label
+        ><label>用户 QQ<input name="subject" required pattern="\d+" /></label
+        ><label>已确认的事实<input name="content" required /></label
+        ><button class="primary">新增人工记忆 ↗</button>
       </form>
-    </dialog>
-  </section>
-  <section v-show="section === 'documents'" class="panel">
-    <h2>文档知识库</h2>
-    <p class="small">
-      把希望 LuckyBot
-      参考的资料存放在这里，聊天时按需检索。与自动记录的会话记忆分开管理。
-    </p>
-    <label
-      >集合
-      <select v-model="collectionId">
-        <option v-for="c in collections" :key="c.id" :value="c.id">
-          {{ c.name }} · {{ c.scope }}
-        </option>
-      </select>
-    </label>
-    <form @submit="ingest">
-      <label>标题<input v-model="docTitle" required /></label>
-      <label
-        >粘贴文本 / Markdown / HTML<textarea
-          v-model="docText"
-          class="editor"
-          required
-        ></textarea>
-      </label>
-      <button class="primary">保存到知识库</button>
-    </form>
-    <p v-for="d in documents" :key="d.id" class="small">
-      {{ d.title }} · {{ d.status }}
-    </p>
-    <form @submit="searchHits">
-      <label>试着搜索文档<input v-model="probe" /></label>
-      <button>检索</button>
-    </form>
-    <p v-for="h in hits" :key="h.id" class="small">
-      {{ h.title }} · {{ h.whySelected }} · {{ h.text }}
-    </p>
-  </section>
+    </section>
+  </div>
+  <div v-if="review" class="modal-backdrop" @click.self="review = null">
+    <section
+      class="modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="确认记忆"
+    >
+      <h2>确认这条记忆</h2>
+      <form @submit.prevent="acceptReview">
+        <label>内容<input v-model="reviewContent" name="content" /></label
+        ><label
+          >范围<select v-model="reviewScope" name="scope">
+            <option value="shared">共享</option>
+            <option :value="review.scope">当前会话</option>
+            <option value="private">仅私聊</option>
+          </select></label
+        >
+        <div class="row">
+          <button class="primary">保存</button
+          ><button type="button" @click="review = null">取消</button>
+        </div>
+      </form>
+    </section>
+  </div>
 </template>
