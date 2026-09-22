@@ -127,3 +127,7 @@ vendor/napcat/       Verified NapCat Windows packages
 ## License
 
 Project code is released under the [MIT License](LICENSE). NapCat packages in `vendor/napcat/` keep their upstream licenses.
+
+## Time and continuity
+
+The Time workspace adds elapsed-time awareness, decaying topics, low-frequency reflection, and session-scoped journal entries with sources and revision links. Background reflection and proactive messages are opt-in, with quiet hours, persistent call/token budgets, and no repeated outreach without a user response. See the [time system guide (Chinese)](docs/时间系统.md).

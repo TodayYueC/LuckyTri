@@ -93,6 +93,7 @@ export class ChatSystem {
       {},
     );
     return {
+      timeZone: this.repo.config("time", {}).timeZone || "Asia/Shanghai",
       aggregateMs: 1200,
       maxWaitMs: 4000,
       contextMessages: 0,
@@ -261,7 +262,7 @@ export class ChatSystem {
       }
       const p = persona(this.repo, session),
         prompt = prompts(this.repo),
-        now = batch.at(-1).time,
+        now = replay || simulatedTurn ? batch.at(-1).time : Date.now(),
         hasKey = this.store.settings().apiKey || process.env.LLM_API_KEY;
       let model;
       try {
@@ -365,7 +366,8 @@ export class ChatSystem {
         trace.steps.push("图片使用已保存的观察，不再提交画面");
       const describe = planned.describe;
       let show = planned.show.slice();
-      if (!replay) snapshot.topics = this.topics.recent(session, watermark);
+      if (!replay)
+        snapshot.topics = this.topics.recent(session, watermark, now);
       snapshot.unavailableImages = [
         ...media.unavailable,
         ...loaded.unavailable,

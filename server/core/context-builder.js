@@ -1,3 +1,4 @@
+import { temporalContext } from "../time/context.js";
 import { effectivePersona } from "./persona-manager.js";
 import { localClock, conversationCues } from "./conversation-cues.js";
 import { estimateTokens } from "./model-manager.js";
@@ -178,7 +179,18 @@ export function buildContext(
         }
       : {}),
     ...(speakers.length ? { speakers } : {}),
-    conversation: conversationCues(kept, batchIds, now, policy.timeZone),
+    conversation: {
+      ...conversationCues(kept, batchIds, now, policy.timeZone),
+      time: temporalContext(
+        repo,
+        session,
+        kept,
+        batchIds,
+        now,
+        policy.timeZone,
+        extras.simulated !== true && policy.memory !== false && repo.store.settings().memoryEnabled !== false,
+      ),
+    },
     batch,
     sourceRows: resolved.filter((m) => kept.some((x) => x.id === m.seq)),
   };

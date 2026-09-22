@@ -58,6 +58,7 @@ try {
       "overview",
       "live",
       "knowledge",
+      "time",
       "character",
       "spaces",
       "models",

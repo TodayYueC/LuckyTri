@@ -1,3 +1,4 @@
+import { migrateTime } from "../time/context.js";
 import { randomUUID } from "node:crypto";
 import { parseSessionKey } from "../channels/session-key.js";
 import { indexMemory, migrateKnowledge } from "../knowledge/schema.js";
@@ -97,6 +98,7 @@ export function migrateCore(store) {
     "UPDATE core_traces SET status='interrupted' WHERE status='running'",
   ).run();
   migrateKnowledge(db);
+  migrateTime(db);
 }
 
 export class Repository {

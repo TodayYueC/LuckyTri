@@ -1,3 +1,4 @@
+import { TimeManager } from "./time/manager.js";
 import { createStore } from "./store.js";
 import { ChatSystem } from "./core/orchestrator.js";
 import { createApp } from "./app.js";
@@ -11,6 +12,10 @@ const chatSystem = new ChatSystem(store, gateway.send, {
   fetchQuoted: (message) => gateway.fetchQuoted(message),
   fetchImage: (file) => gateway.fetchImage(file),
 });
+const time = new TimeManager(chatSystem, {
+  online: () => gateway.status().online,
+});
+time.start();
 const host = process.env.HOST || "127.0.0.1";
 if (
   !["127.0.0.1", "localhost", "::1"].includes(host) &&
@@ -22,6 +27,7 @@ let stopping = false;
 function shutdown() {
   if (stopping) return;
   stopping = true;
+  time.close();
   chatSystem.close();
   gateway.close();
   store.revision++;
@@ -33,6 +39,7 @@ function shutdown() {
 const app = createApp({
   store,
   chatSystem,
+  time,
   runtime: {
     connection: () => gateway.status(),
     shutdown,

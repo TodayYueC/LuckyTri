@@ -10,6 +10,7 @@ import Character from "./pages/Character.vue";
 import Spaces from "./pages/Spaces.vue";
 import Models from "./pages/Models.vue";
 import Connect from "./pages/Connect.vue";
+import Time from "./pages/Time.vue";
 import Lab from "./pages/Lab.vue";
 
 const views: Record<string, object> = {
@@ -21,6 +22,7 @@ const views: Record<string, object> = {
   models: Models,
   connect: Connect,
   lab: Lab,
+  time: Time,
 };
 
 const navigation = [
@@ -46,17 +48,24 @@ const navigation = [
     pages: ["knowledge"],
   },
   {
+    key: "time",
+    label: "时间",
+    en: "PASSING TIME",
+    number: "04",
+    pages: ["time"],
+  },
+  {
     key: "character",
     label: "人格",
     en: "PERSONA",
-    number: "04",
+    number: "05",
     pages: ["character"],
   },
   {
     key: "models",
     label: "系统",
     en: "SYSTEM",
-    number: "05",
+    number: "06",
     pages: ["models", "connect"],
   },
 ];
@@ -68,6 +77,7 @@ const subtitles: Record<string, string> = {
   live: "现场",
   spaces: "会话设置",
   lab: "历史回放",
+  time: "让时间留下痕迹。",
   knowledge: "留下重要的，整理正在发生的。",
   character: "一种性格，一直在场。",
   models: "模型",

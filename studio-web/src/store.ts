@@ -10,6 +10,7 @@ export const pages = {
   models: "模型配置",
   connect: "QQ 连接",
   lab: "历史回放",
+  time: "时间",
 } as const;
 
 export type Page = keyof typeof pages;

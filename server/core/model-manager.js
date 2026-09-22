@@ -352,7 +352,7 @@ export class ModelManager {
       entry.usage = raw.usage || null;
       entry.raw = raw.choices?.[0]?.message?.content || "";
       entry.finishReason = raw.choices?.[0]?.finish_reason;
-      if (!entry.raw.trim() && attempt === 0) {
+      if (!entry.raw.trim() && attempt === 0 && stage !== "reflection") {
         entry.error = "服务返回空正文，重试一次";
         return await this.call(profile, stage, system, data, trace, images, 1);
       }
