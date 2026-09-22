@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { defaultModel, publicModel, validateModel } from "./model-manager.js";
+import {
+  normalizeModels,
+  publicModel,
+  storedModels,
+  validateModel,
+} from "./model-manager.js";
 import { persona, prompts, PROMPTS } from "./persona-manager.js";
 import { publicSession, parseSessionKey } from "../channels/session-key.js";
 import { wrap } from "../http.js";
@@ -9,6 +14,7 @@ import {
   setSessionEnabled,
   upsertSession,
 } from "./sessions.js";
+import { applySpeakerNames, speakerNames } from "./speaker-names.js";
 
 export function mountCore(app, system) {
   const { repo } = system;
@@ -25,9 +31,7 @@ export function mountCore(app, system) {
   });
   app.get("/api/core/state", (req, res) =>
     res.json({
-      models: repo
-        .config("models", [defaultModel(repo.store.settings())])
-        .map(publicModel),
+      models: normalizeModels(storedModels(repo)).map(publicModel),
       persona: persona(repo, ""),
       prompts: prompts(repo),
       sessions: repo.db
@@ -142,23 +146,20 @@ export function mountCore(app, system) {
   app.put(
     "/api/core/models",
     wrap((req, res) => {
-      if (
-        !Array.isArray(req.body.models) ||
-        !req.body.models.length ||
-        req.body.models.length > 30
-      )
-        throw Error("模型档案数量应为 1–30");
-      const old = repo.config("models", [defaultModel(repo.store.settings())]);
-      const profiles = req.body.models.map((m) =>
-        validateModel({
-          ...m,
-          apiKey: m.apiKey || old.find((x) => x.id === m.id)?.apiKey || "",
-        }),
+      if (!Array.isArray(req.body.models) || req.body.models.length > 30)
+        throw Error("模型档案数量应为 0–30");
+      const old = storedModels(repo);
+      const profiles = normalizeModels(
+        req.body.models.map((m) =>
+          validateModel({
+            ...m,
+            isDefault: !!m.isDefault,
+            apiKey: m.apiKey || old.find((x) => x.id === m.id)?.apiKey || "",
+          }),
+        ),
       );
       if (new Set(profiles.map((m) => m.id)).size !== profiles.length)
         throw Error("模型 ID 重复");
-      if (!profiles.some((m) => m.id === "default"))
-        throw Error("必须保留 default 模型");
       repo.saveConfig("models", profiles);
       res.json({ ok: true });
     }),
@@ -167,12 +168,11 @@ export function mountCore(app, system) {
     "/api/core/models/:id",
     wrap((req, res) => {
       const id = String(req.params.id || "");
-      if (!id || id === "default") throw Error("default 模型不能删除");
-      const old = repo.config("models", [defaultModel(repo.store.settings())]);
+      if (!id) throw Error("模型档案不存在");
+      const old = storedModels(repo);
       if (!old.some((m) => m.id === id)) throw Error("模型档案不存在");
-      const profiles = old.filter((m) => m.id !== id);
-      if (!profiles.length || !profiles.some((m) => m.id === "default"))
-        throw Error("必须保留 default 模型");
+      const profiles = normalizeModels(old.filter((m) => m.id !== id));
+      const fallback = profiles.find((m) => m.isDefault)?.id || "";
       const sessionConfigs = repo.db
         .prepare("SELECT id,value FROM core_config WHERE id LIKE 'session:%'")
         .all()
@@ -189,7 +189,7 @@ export function mountCore(app, system) {
           .run(JSON.stringify(profiles));
         for (const row of sessionConfigs) {
           const next = { ...row.value };
-          if (next.modelId === id) next.modelId = "default";
+          if (next.modelId === id) next.modelId = fallback;
           if (next.visionModelId === id) delete next.visionModelId;
           repo.db
             .prepare(
@@ -335,28 +335,40 @@ export function mountCore(app, system) {
     "/api/core/events",
     wrap((req, res) => {
       const before = Number(req.query.before) || Number.MAX_SAFE_INTEGER;
+      const session = String(req.query.session || "");
+      const names = speakerNames(repo.db, [session]);
       res.json(
         repo.db
           .prepare(
             "SELECT seq,session_id,time,role,payload FROM core_events WHERE session_id=? AND seq<? ORDER BY seq DESC LIMIT 100",
           )
-          .all(String(req.query.session || ""), before)
-          .map((r) => ({ ...r, payload: JSON.parse(r.payload) })),
+          .all(session, before)
+          .map((r) => {
+            const payload = JSON.parse(r.payload);
+            const label = names.get(String(payload.userId));
+            if (label) payload.name = label;
+            return { ...r, payload };
+          }),
       );
     }),
   );
   app.get("/api/core/traces", (req, res) => {
     const mode = repo.store.settings().demo ? "demo" : "live";
+    const session = String(req.query.session || "");
+    const rows = repo.db
+      .prepare(
+        "SELECT id,session_id,time,mode,status,json_extract(data,'$.reason') reason,json_extract(data,'$.error') error FROM core_traces WHERE (?='' OR session_id=?) AND mode IN (?,'memory','replay') ORDER BY time DESC LIMIT 100",
+      )
+      .all(session, session, mode);
+    const names = speakerNames(
+      repo.db,
+      rows.map((row) => row.session_id),
+    );
     res.json(
-      repo.db
-        .prepare(
-          "SELECT id,session_id,time,mode,status,json_extract(data,'$.reason') reason,json_extract(data,'$.error') error FROM core_traces WHERE (?='' OR session_id=?) AND mode IN (?,'memory','replay') ORDER BY time DESC LIMIT 100",
-        )
-        .all(
-          String(req.query.session || ""),
-          String(req.query.session || ""),
-          mode,
-        ),
+      rows.map((row) => ({
+        ...row,
+        reason: row.reason ? applySpeakerNames(row.reason, names) : row.reason,
+      })),
     );
   });
   app.get(
@@ -366,7 +378,11 @@ export function mountCore(app, system) {
         .prepare("SELECT * FROM core_traces WHERE id=?")
         .get(req.params.id);
       if (!t) throw Error("日志不存在");
-      res.json({ ...t, data: JSON.parse(t.data) });
+      const data = JSON.parse(t.data);
+      const names = speakerNames(repo.db, [t.session_id]);
+      if (typeof data.reason === "string")
+        data.reason = applySpeakerNames(data.reason, names);
+      res.json({ ...t, data });
     }),
   );
   let replaying = false;

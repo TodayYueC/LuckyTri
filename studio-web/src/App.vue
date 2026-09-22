@@ -136,7 +136,7 @@ async function refresh() {
 <template>
   <div v-if="studio.error" class="startup">
     <span class="eyebrow">OFFLINE / 暂未连接</span>
-    <h1>工作室正在等你</h1>
+    <h1>LuckyBot 正在等你</h1>
     <p>{{ studio.error }}</p>
     <button class="primary" @click="reloadPage">重新连接 ↗</button>
   </div>
@@ -237,7 +237,7 @@ async function refresh() {
   </div>
   <div v-else class="startup" role="status">
     <div class="loading-orbit"></div>
-    <h1>正在进入工作室</h1>
+    <h1>正在进入 LuckyBot</h1>
     <p>连接你的会话与记忆…</p>
   </div>
 </template>

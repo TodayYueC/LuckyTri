@@ -3,6 +3,11 @@ import { wrap } from "../http.js";
 import { prompts } from "../core/persona-manager.js";
 import { indexMemory } from "./schema.js";
 import {
+  applySpeakerNames,
+  presentMemory,
+  speakerNames,
+} from "../core/speaker-names.js";
+import {
   deleteReviewedMemory,
   insertReviewedMemory,
   memoryValid,
@@ -15,23 +20,24 @@ export function mountKnowledge(app, system) {
   app.get("/api/core/memories", (req, res) => {
     const session = String(req.query.session || "");
     if (!session) {
-      return res.json(
-        repo.db
-          .prepare(
-            "SELECT * FROM core_memories ORDER BY updated DESC LIMIT 500",
-          )
-          .all(),
+      const rows = repo.db
+        .prepare("SELECT * FROM core_memories ORDER BY updated DESC LIMIT 500")
+        .all();
+      const names = speakerNames(
+        repo.db,
+        rows.map((row) => row.session_id),
       );
+      return res.json(rows.map((row) => presentMemory(row, names)));
     }
     const scopes = system.memory.scopes(session);
     const placeholders = scopes.map(() => "?").join(",");
-    res.json(
-      repo.db
-        .prepare(
-          `SELECT * FROM core_memories WHERE session_id IN (${placeholders}) ORDER BY updated DESC LIMIT 500`,
-        )
-        .all(...scopes),
-    );
+    const rows = repo.db
+      .prepare(
+        `SELECT * FROM core_memories WHERE session_id IN (${placeholders}) ORDER BY updated DESC LIMIT 500`,
+      )
+      .all(...scopes);
+    const names = speakerNames(repo.db, [session, ...scopes]);
+    res.json(rows.map((row) => presentMemory(row, names)));
   });
   app.post(
     "/api/core/memories",
@@ -45,7 +51,7 @@ export function mountKnowledge(app, system) {
         content.length > 4000 ||
         !repo.db.prepare("SELECT id FROM sessions WHERE id=?").get(session)
       )
-        throw Error("请选择会话、用户 QQ 并填写记忆");
+        throw Error("请选择会话、用户 ID 并填写记忆");
       const id = randomUUID(),
         now = Date.now();
       repo.db
@@ -95,18 +101,26 @@ export function mountKnowledge(app, system) {
           }
         })
         .filter((row) => row && row.summary);
-      const summary = stages.length
-        ? stages
-            .map((stage) => stage.summary)
-            .join(" ")
-            .slice(0, 5000)
-        : "这个会话还没有阶段性记忆总结。消息积累后会自动整理，也可以点击“立即整理”。";
+      const names = speakerNames(repo.db, [session]);
+      const summary = applySpeakerNames(
+        stages.length
+          ? stages
+              .map((stage) => stage.summary)
+              .join(" ")
+              .slice(0, 5000)
+          : "这个会话还没有阶段性记忆总结。消息积累后会自动整理，也可以点击“立即整理”。",
+        names,
+      );
       res.json({
         session,
         summary,
         updated: stages[0]?.time || null,
         source: stages.length ? "stage" : "empty",
-        stages,
+        stages: stages.map((stage) => ({
+          ...stage,
+          summary: applySpeakerNames(stage.summary, names),
+        })),
+        participants: [...names.entries()].map(([id, name]) => ({ id, name })),
       });
     }),
   );

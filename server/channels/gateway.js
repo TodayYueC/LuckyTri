@@ -54,6 +54,11 @@ export function createOneBotGateway(store) {
     return onebot.quotedMessage(data, message);
   }
 
+  async function fetchImage(file) {
+    const data = await rpc("get_image", { file: String(file) }, 8000);
+    return data && typeof data === "object" ? data : null;
+  }
+
   function attach(httpServer, chatSystem) {
     wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 });
     httpServer.on("upgrade", (req, sock, head) => {
@@ -144,5 +149,5 @@ export function createOneBotGateway(store) {
     };
   }
 
-  return { send, fetchQuoted, attach, close, status };
+  return { send, fetchQuoted, fetchImage, attach, close, status };
 }

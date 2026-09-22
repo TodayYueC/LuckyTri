@@ -51,6 +51,17 @@ const stickerTypes = new Set([
   "rps",
   "poke",
 ]);
+export function senderLabel(sender, userId) {
+  const id = String(userId ?? "");
+  const values = [sender?.card, sender?.nickname, sender?.nick]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  const readable = values.find(
+    (value) => value !== id && !/^\d{4,20}$/.test(value),
+  );
+  return (readable || values.find((value) => value !== id) || id).slice(0, 100);
+}
+
 export const isSticker = (segment) =>
   stickerTypes.has(String(segment?.type || "").toLowerCase()) ||
   [segment?.data?.sub_type, segment?.data?.type]
@@ -95,7 +106,7 @@ export const onebot = {
     thread: false,
     sticker: true,
   },
-  mediaHosts: /(^|\.)(qpic\.cn|gtimg\.cn|qq\.com)$/,
+  mediaHosts: /(^|\.)(qpic\.cn|gtimg\.cn|qq\.com\.cn|qq\.com|myqcloud\.com)$/i,
   usableMediaUrl(url) {
     try {
       const u = new URL(url);
@@ -142,7 +153,7 @@ export const onebot = {
       sessionId: current.sessionId,
       kind: current.kind,
       userId: sender === current.accountId ? "bot" : sender,
-      name: data.sender?.nickname || sender,
+      name: senderLabel(data.sender, sender),
       text: data.message
         .filter((s) => s.type === "text")
         .map((s) => s.data?.text || "")
@@ -232,9 +243,7 @@ export function normalize(event, { botMessageIds } = {}) {
     segments: safeSegments,
     kind,
     userId: String(event.user_id),
-    name: String(
-      event.sender?.card || event.sender?.nickname || event.user_id,
-    ).slice(0, 100),
+    name: senderLabel(event.sender, event.user_id),
     text: text.slice(0, 4000),
     mentioned: atSelf || replyToBot,
     replyToBot,
