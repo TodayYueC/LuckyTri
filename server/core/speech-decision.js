@@ -4,7 +4,7 @@ export async function decide(
   prompt,
   snapshot,
   trace,
-  { comfortOnDistress = false } = {},
+  { comfortOnDistress = false, images = [] } = {},
 ) {
   const input = { ...snapshot };
   delete input.sourceRows;
@@ -16,6 +16,7 @@ export async function decide(
       "\n额外输出 distress:{clear:boolean,confidence:0到1,targetMessageIds:[]}。只有当前批次里说话者本人明确难受、垂头丧气、遭遇挫折才为true；排除转述、剧情、玩梗、引用他人、明确不想被回复，不因“笑死”“累死”单词直接判定。",
     input,
     trace,
+    images,
   );
   const distressIds = result.distress?.targetMessageIds;
   if (

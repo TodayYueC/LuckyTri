@@ -18,6 +18,7 @@ export function migrateCore(store) {
     CREATE TABLE IF NOT EXISTS core_cursors (session_id TEXT PRIMARY KEY, seq INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS core_jobs (seq INTEGER PRIMARY KEY, session_id TEXT, status TEXT, trace_id TEXT, time INTEGER);
     CREATE TABLE IF NOT EXISTS core_references (id INTEGER PRIMARY KEY, session_id TEXT, platform_id TEXT, account_id TEXT, payload TEXT, UNIQUE(session_id,platform_id,account_id));
+    CREATE TABLE IF NOT EXISTS core_vision_cache (cache_key TEXT PRIMARY KEY, session_id TEXT, message_id INTEGER, description TEXT NOT NULL, created INTEGER NOT NULL);
   `);
   // Keep existing workspaces on the new public name without touching chat
   // history or model credentials. Custom persona and prompt text may contain
@@ -123,12 +124,14 @@ export class Repository {
   // callers building a live or demo prompt must choose one side of the
   // boundary so a preview can never leak into a real conversation.
   events(session, before = Number.MAX_SAFE_INTEGER, { simulated = null } = {}) {
-    const filter = simulated === null
-      ? ""
-      : " AND COALESCE(json_extract(payload,'$.simulated'),0)=?";
-    const args = simulated === null
-      ? [session, before]
-      : [session, before, Number(!!simulated)];
+    const filter =
+      simulated === null
+        ? ""
+        : " AND COALESCE(json_extract(payload,'$.simulated'),0)=?";
+    const args =
+      simulated === null
+        ? [session, before]
+        : [session, before, Number(!!simulated)];
     return this.db
       .prepare(
         `SELECT * FROM core_events WHERE session_id=? AND seq<=?${filter} ORDER BY seq`,
@@ -150,12 +153,12 @@ export class Repository {
     );
   }
   references(session, { simulated = null } = {}) {
-    const filter = simulated === null
-      ? ""
-      : " AND COALESCE(json_extract(payload,'$.simulated'),0)=?";
-    const args = simulated === null
-      ? [session]
-      : [session, Number(!!simulated)];
+    const filter =
+      simulated === null
+        ? ""
+        : " AND COALESCE(json_extract(payload,'$.simulated'),0)=?";
+    const args =
+      simulated === null ? [session] : [session, Number(!!simulated)];
     return this.db
       .prepare(`SELECT * FROM core_references WHERE session_id=?${filter}`)
       .all(...args)

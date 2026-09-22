@@ -413,6 +413,9 @@ async function testModel() {
                   placeholder="留空跟随对话模型"
               /></label>
             </div>
+            <p class="small">
+              打开图片理解后，聊天里的图片会先在本机读取，再连同画面交给这个模型。主模型不能看图时，到会话设置另选一个打开了图片理解的视觉兼容模型。
+            </p>
             <div class="capability-grid">
               <label
                 v-for="(label, key) in {

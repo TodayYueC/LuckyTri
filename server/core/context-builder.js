@@ -46,7 +46,8 @@ export function buildContext(
     id: m.seq,
     platformId: m.platformId,
     speaker: m.userId,
-    name: names.get(String(m.userId)) || m.name,
+    name:
+      readableName(m.name, m.userId) || names.get(String(m.userId)) || m.name,
     time: m.time,
     localTime: localClock(m.time, policy.timeZone).local,
     role: m.role,
@@ -101,25 +102,53 @@ export function buildContext(
   }
   if (used > budget)
     throw Error("当前消息批次和引用链超过预算，请增加模型输入预算");
-  const batchTerms = lexicalTerms(batch.map((m) => m.text || "").join(" "));
-  const optional = resolved
+  // Keep a contiguous recent suffix. The next turn appends to it, so the
+  // provider can reuse the transcript prefix instead of rebuilding it.
+  const recentFirst = resolved
     .filter((m) => !mandatory.has(m.seq) && !m.referenceOnly)
-    .map((m) => ({
-      row: m,
-      score: overlapScore(m.text, batchTerms) * 4 + m.seq / 1e12,
-    }))
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => b.seq - a.seq);
   let n = 0;
-  for (const item of optional) {
+  let cursor = 0;
+  for (; cursor < recentFirst.length; cursor++) {
     if (policy.contextMessages && n >= policy.contextMessages) break;
-    const row = sanitize(item.row),
-      cost = estimateTokens(row);
-    if (used + cost > budget) continue;
+    const row = sanitize(recentFirst[cursor]);
+    const cost = estimateTokens(row);
+    if (used + cost > budget) break;
     kept.push(row);
     used += cost;
     n++;
   }
+  const recalled = [];
+  if (!policy.contextMessages && cursor < recentFirst.length) {
+    const batchTerms = lexicalTerms(batch.map((m) => m.text || "").join(" "));
+    const ranked = recentFirst
+      .slice(cursor)
+      .map((m) => ({
+        m,
+        score: overlapScore(m.text, batchTerms) * 4 + m.seq / 1e12,
+      }))
+      .sort((a, b) => b.score - a.score);
+    for (const item of ranked) {
+      if (recalled.length >= 8) break;
+      const row = sanitize(item.m);
+      const cost = estimateTokens(row);
+      if (used + cost > budget) continue;
+      recalled.push(row);
+      used += cost;
+    }
+    recalled.sort((a, b) => a.id - b.id);
+  }
   kept.sort((a, b) => a.id - b.id);
+  const speakers = [];
+  for (const [id, name] of [...names.entries()].sort((a, b) =>
+    a[0].localeCompare(b[0]),
+  ))
+    if (
+      kept
+        .concat(recalled)
+        .some((m) => String(m.speaker) === id && m.name && m.name !== name)
+    )
+      speakers.push({ id, name });
   return {
     sessionId: session,
     watermark,
@@ -135,8 +164,20 @@ export function buildContext(
       maxInput: model.maxInputTokens,
       estimatedContext: used,
       method: "UTF-8 conservative estimate",
-      omitted: resolved.filter((m) => !m.referenceOnly).length - kept.length,
+      omitted:
+        resolved.filter((m) => !m.referenceOnly).length -
+        kept.length -
+        recalled.length,
     },
+    ...(recalled.length
+      ? {
+          recalled: {
+            note: "更早的相关原文，不是本轮新消息。",
+            messages: recalled,
+          },
+        }
+      : {}),
+    ...(speakers.length ? { speakers } : {}),
     conversation: conversationCues(kept, batchIds, now, policy.timeZone),
     batch,
     sourceRows: resolved.filter((m) => kept.some((x) => x.id === m.seq)),

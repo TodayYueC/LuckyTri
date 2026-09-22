@@ -159,6 +159,18 @@ export function validateModel(m) {
     throw Error("采样参数无效");
   return m;
 }
+function withoutImageBytes(messages) {
+  return messages.map((message) => ({
+    ...message,
+    content: Array.isArray(message.content)
+      ? message.content.map((part) =>
+          part?.type === "image_url"
+            ? { type: "image_url", image_url: { url: "" } }
+            : part,
+        )
+      : message.content,
+  }));
+}
 export function estimateTokens(value) {
   return Math.ceil(
     Buffer.byteLength(
@@ -167,15 +179,64 @@ export function estimateTokens(value) {
     ) / 2,
   );
 }
+const STABLE_KEYS = [
+  "context",
+  "persona",
+  "sessionId",
+  "messages",
+  "knowledgeInstruction",
+];
+const REUSABLE_KEYS = ["memories", "knowledge", "stages"];
+const VOLATILE_KEYS = [
+  "recalled",
+  "speakers",
+  "watermark",
+  "batchIds",
+  "budget",
+  "conversation",
+  "topics",
+  "vision",
+  "unavailableImages",
+  "decision",
+  "issues",
+  "imageGuide",
+  "replyFocus",
+  "comfort",
+  "maxBubbles",
+  "imageEvidence",
+  "response",
+];
+const PROMPT_NOISE = new Set([
+  "whySelected",
+  "platformId",
+  "sourceRows",
+  "batch",
+  "score",
+]);
+function dropPromptNoise(value) {
+  if (Array.isArray(value)) return value.map(dropPromptNoise);
+  if (!value || typeof value !== "object") return value;
+  const out = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (PROMPT_NOISE.has(key)) continue;
+    out[key] = dropPromptNoise(item);
+  }
+  return out;
+}
 export function cacheOrdered(value) {
   if (Array.isArray(value)) return value.map(cacheOrdered);
   if (!value || typeof value !== "object") return value;
-  const priority = ["context", "persona", "sessionId", "messages"];
+  const skip = new Set([...STABLE_KEYS, ...REUSABLE_KEYS, ...VOLATILE_KEYS]);
   const keys = [
-    ...priority.filter((k) => k in value),
-    ...Object.keys(value).filter((k) => !priority.includes(k)),
+    ...STABLE_KEYS.filter((k) => k in value),
+    ...REUSABLE_KEYS.filter((k) => k in value),
+    ...Object.keys(value).filter((k) => !skip.has(k)),
+    ...VOLATILE_KEYS.filter((k) => k in value),
   ];
   return Object.fromEntries(keys.map((k) => [k, cacheOrdered(value[k])]));
+}
+export function promptPayload(value) {
+  return cacheOrdered(dropPromptNoise(value));
 }
 export class ModelManager {
   constructor(repo, { fetcher = fetch } = {}) {
@@ -197,14 +258,15 @@ export class ModelManager {
     if (profile.json && !/json/i.test(system))
       system += "\nReturn a JSON object.";
     const build = (payload) => {
-      const text = JSON.stringify(cacheOrdered(payload));
+      const text = JSON.stringify(promptPayload(payload));
+      // Text stays in front of image bytes so a stable transcript can still hit the provider prefix cache.
       const content = images.length
         ? [
             { type: "text", text },
             ...images.flatMap((x) => [
               {
                 type: "text",
-                text: `图片对应消息 ${x.messageId}，发送人 ${x.speaker}`,
+                text: `下面这张图属于消息 ${x.messageId}，发送人 ${x.speaker}。请看画面本身，不要只根据“[图片]”占位符回答。`,
               },
               { type: "image_url", image_url: { url: x.url } },
             ]),
@@ -228,7 +290,8 @@ export class ModelManager {
     const { messages, inputEstimate, removed } = fitInput(
       data,
       build,
-      (messages) => estimateTokens(messages) + images.length * 2048,
+      (messages) =>
+        estimateTokens(withoutImageBytes(messages)) + images.length * 2048,
       Math.min(
         profile.maxInputTokens,
         profile.contextWindow - profile.maxOutputTokens,
