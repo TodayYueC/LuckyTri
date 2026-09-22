@@ -243,6 +243,44 @@ test("模拟路径由 ChatSystem 发言，无 Key 时走本地样例", async () 
   }
 });
 
+test("未添加模型时模拟模式仍可使用本地样例", async () => {
+  const store = createStore(":memory:");
+  const previous = process.env.LLM_API_KEY;
+  delete process.env.LLM_API_KEY;
+  store.save({ demo: true, enabled: true, apiKey: "" });
+  store.db
+    .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
+    .run("group:12345", "测试", "group");
+  const sent = [];
+  const system = new ChatSystem(
+    store,
+    async (_message, text) => {
+      sent.push(text);
+      return { message_id: "sim" };
+    },
+    { localDemo: () => ({ speak: true, reply: "本地预览", reason: "预览" }) },
+  );
+  try {
+    const trace = await system.receive({
+      eventId: "sim-no-model",
+      sessionId: "group:12345",
+      kind: "group",
+      userId: "10001",
+      name: "甲",
+      text: "Lucky，试聊一下",
+      mentioned: true,
+      simulated: true,
+    });
+    assert.equal(trace.status, "sent");
+    assert.deepEqual(sent, ["本地预览"]);
+  } finally {
+    if (previous === undefined) delete process.env.LLM_API_KEY;
+    else process.env.LLM_API_KEY = previous;
+    system.close();
+    store.db.close();
+  }
+});
+
 test("模拟消息与真实上下文、长期记忆严格隔离", async () => {
   const store = createStore(":memory:");
   store.save({ demo: true, enabled: true, apiKey: "", probability: 1 });
