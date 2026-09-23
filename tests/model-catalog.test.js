@@ -16,7 +16,11 @@ const GPT_IDS = [
   "gpt-5.6-terra",
   "gpt-5.6-luna",
 ];
-const BEDROCK_GPT_IDS = GPT_IDS.map((id) => "bedrock-" + id);
+const BEDROCK_GPT_IDS = [
+  "bedrock-gpt-6-astra",
+  "bedrock-gpt-6-sol",
+  "bedrock-gpt-6-luna",
+];
 
 test("模型目录使用当前厂商参数，且预算能通过校验", () => {
   const ids = MODEL_CATALOG.map((item) => item.id);
@@ -34,13 +38,6 @@ test("模型目录使用当前厂商参数，且预算能通过校验", () => {
     "qwen3.8-max",
     "qwen3.8-flash",
     ...BEDROCK_GPT_IDS,
-    "bedrock-kimi-k3",
-    "bedrock-grok-4.6",
-    "bedrock-glm-5",
-    "bedrock-deepseek-v3.2",
-    "bedrock-qwen3-235b",
-    "bedrock-minimax-m2.5",
-    "bedrock-mistral-large-3",
     "custom",
   ])
     assert.ok(ids.includes(name), name);
@@ -114,49 +111,33 @@ test("思考档位和输出字段按各厂商文档填写", () => {
     assert.equal(qwen.reasoningEffort, "xhigh", id);
   }
   assert.equal(find("kimi-k2.6").tokenField, "max_completion_tokens");
-  assert.deepEqual(find("gpt-6-astra").reasoningEfforts, [
-    "low",
-    "medium",
-    "high",
-    "xhigh",
-    "max",
-  ]);
-  assert.deepEqual(find("bedrock-grok-4.6").reasoningEfforts, [
-    "low",
-    "medium",
-    "high",
-    "xhigh",
-  ]);
+  for (const id of ["gpt-6-astra", "bedrock-gpt-6-astra"])
+    assert.deepEqual(find(id).reasoningEfforts, [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
 });
 
-test("Bedrock 预设走 us-east-1 的 Chat Completions，并按模型卡关闭不支持的 JSON 输出", () => {
-  const bedrock = MODEL_CATALOG.filter(
-    (item) => item.vendor === "亚马逊 Bedrock",
+test("Bedrock 只保留 GPT-6 三款，走 us-east-1 的 Chat Completions 并关闭 JSON 输出", () => {
+  assert.deepEqual(
+    MODEL_CATALOG.filter((item) => item.vendor === "亚马逊 Bedrock").map(
+      (item) => item.id,
+    ),
+    BEDROCK_GPT_IDS,
   );
-  assert.equal(bedrock.length, 13);
-  for (const item of bedrock)
+  for (const id of BEDROCK_GPT_IDS) {
+    const item = find(id);
     assert.equal(
       item.baseUrl,
       "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1",
-      item.id,
+      id,
     );
-  assert.deepEqual(
-    BEDROCK_GPT_IDS.map((id) => find(id).model),
-    GPT_IDS.map((id) => "us.openai." + id),
-  );
-  for (const id of [
-    "bedrock-gpt-6-astra",
-    "bedrock-gpt-6-sol",
-    "bedrock-gpt-6-luna",
-    "bedrock-gpt-5.6-sol",
-    "bedrock-gpt-5.6-terra",
-    "bedrock-grok-4.6",
-  ])
-    assert.equal(find(id).json, false, id);
-  assert.equal(find("bedrock-gpt-5.6-luna").json, true);
-  assert.equal(find("bedrock-kimi-k3").model, "us.moonshotai.kimi-k3");
-  assert.equal(find("bedrock-grok-4.6").model, "us.xai.grok-4.6");
-  assert.equal(find("bedrock-glm-5").model, "zai.glm-5");
+    assert.equal(item.model, "us.openai." + id.replace("bedrock-", ""), id);
+    assert.equal(item.json, false, id);
+  }
 });
 
 test("空模型库没有默认档案，有模型时只保留一个默认", () => {
