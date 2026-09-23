@@ -186,7 +186,6 @@ function capacity(item: any) {
 }
 
 function effortName(value: string) {
-  if (draft.thinkingStyle === "fixed") return "按模型默认";
   if (["mimo", "qwen", "kimi-toggle"].includes(draft.thinkingStyle))
     return value === "none" ? "关闭" : "开启";
   return `${effortLabels.value[value] || value} / ${value}`;
