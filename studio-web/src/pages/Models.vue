@@ -48,29 +48,31 @@ const vendorModels = computed(() =>
     (item: any) => item.vendor && item.vendor === draft.vendor,
   ),
 );
-const contextOptions = computed(() => {
-  const preset =
+const draftPreset = computed(
+  () =>
     catalog.value.find((item: any) => item.id === draft.presetId) ||
-    catalog.value.find((item: any) => item.model && item.model === draft.model);
-  const windows = Array.isArray(preset?.contextWindows)
-    ? preset.contextWindows
-    : Array.isArray(draft.contextWindows)
-      ? draft.contextWindows
-      : [];
+    catalog.value.find(
+      (item: any) =>
+        item.model &&
+        item.model === draft.model &&
+        item.baseUrl === draft.baseUrl,
+    ),
+);
+const contextOptions = computed(() => {
+  const windows = draftPreset.value?.contextWindows || [];
   if (windows.length < 2) return [];
-  const options = windows.map((item: any) => ({ ...item }));
-  if (
-    !options.some(
-      (item: any) => item.contextWindow === Number(draft.contextWindow),
-    )
-  )
-    options.push({
-      label: formatTokens(Number(draft.contextWindow)),
-      contextWindow: Number(draft.contextWindow),
+  const current = Number(draft.contextWindow);
+  if (windows.some((item: any) => item.contextWindow === current))
+    return windows;
+  return [
+    ...windows,
+    {
+      label: "已保存 " + formatTokens(current),
+      contextWindow: current,
       maxInputTokens: Number(draft.maxInputTokens),
       maxOutputTokens: Number(draft.maxOutputTokens),
-    });
-  return options;
+    },
+  ];
 });
 const effortOptions = computed(() => {
   const list =
@@ -110,11 +112,22 @@ function blank() {
     reasoningEfforts: ["none", "low", "medium", "high"],
     thinkingStyle: "openai",
     tokenField: "max_tokens",
+    omitSampling: false,
     temperature: 0.85,
     topP: 1,
     timeoutMs: 90000,
     isDefault: false,
   };
+}
+
+function presetFields(preset: any) {
+  const { summary: _summary, contextWindows: _windows, ...fields } = preset;
+  return { ...fields, presetId: preset.id };
+}
+
+function withoutWindows(model: any) {
+  const { contextWindows: _windows, ...rest } = model;
+  return rest;
 }
 
 function fitBudget(profile: any) {
@@ -145,16 +158,38 @@ function applyContextWindow(event: Event) {
   studio.dirty = true;
 }
 
+// Vendors publish both decimal (128,000) and binary (131,072) ceilings and
+// call both "128K", so show whichever reading gives a whole number.
 function formatTokens(value: number) {
-  if (value >= 1000000) {
-    const scaled = value / 1000000;
-    const text = Number.isInteger(scaled)
-      ? String(scaled)
-      : scaled.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
-    return text + "M";
-  }
-  if (value >= 1000) return Math.round(value / 1000) + "K";
-  return String(value || 0);
+  const n = Number(value) || 0;
+  if (n >= 1000000)
+    return (
+      (n % 1048576 === 0 ? n / 1048576 : Number((n / 1000000).toFixed(2))) + "M"
+    );
+  if (n >= 1000)
+    return (
+      (n % 1000 === 0
+        ? n / 1000
+        : n % 1024 === 0
+          ? n / 1024
+          : Math.round(n / 1000)) + "K"
+    );
+  return String(n);
+}
+
+function capacity(item: any) {
+  const windows = item.contextWindows || [];
+  const context = windows.length
+    ? windows.map((w: any) => w.label).join(" / ")
+    : formatTokens(item.contextWindow);
+  return `上下文 ${context} · 输出 ${formatTokens(item.maxOutputTokens)}`;
+}
+
+function effortName(value: string) {
+  if (draft.thinkingStyle === "fixed") return "按模型默认";
+  if (["mimo", "qwen", "kimi-toggle"].includes(draft.thinkingStyle))
+    return value === "none" ? "关闭" : "开启";
+  return `${effortLabels.value[value] || value} / ${value}`;
 }
 
 function select(i: number) {
@@ -187,12 +222,10 @@ function openPicker() {
 }
 
 function choosePreset(preset: any) {
-  const { summary: _summary, ...fields } = preset;
   modelList.value = studio.core.models.map((m: any) => ({ ...m }));
   const row = {
     ...blank(),
-    ...fields,
-    presetId: preset.id,
+    ...presetFields(preset),
     id: "model-" + Date.now(),
     apiKey: "",
     hasApiKey: false,
@@ -210,9 +243,7 @@ function switchPreset(event: Event) {
   const id = (event.target as HTMLSelectElement).value;
   const preset = catalog.value.find((item: any) => item.id === id);
   if (!preset) return;
-  const { summary: _summary, ...fields } = preset;
-  Object.assign(draft, fields, {
-    presetId: preset.id,
+  Object.assign(draft, blank(), presetFields(preset), {
     id: draft.id,
     apiKey: draft.apiKey,
     hasApiKey: draft.hasApiKey,
@@ -233,16 +264,18 @@ async function save(e: Event) {
   e.preventDefault();
   const fitted = fitBudget(draft);
   const models = modelList.value.map((m: any, i: number) =>
-    i === index.value
-      ? {
-          ...draft,
-          ...fitted,
-          isDefault: !!draft.isDefault,
-          timeoutMs: Number(draft.timeoutMs),
-          temperature: Number(draft.temperature),
-          topP: Number(draft.topP),
-        }
-      : { ...m, isDefault: !!m.isDefault && m.id !== draft.id },
+    withoutWindows(
+      i === index.value
+        ? {
+            ...draft,
+            ...fitted,
+            isDefault: !!draft.isDefault,
+            timeoutMs: Number(draft.timeoutMs),
+            temperature: Number(draft.temperature),
+            topP: Number(draft.topP),
+          }
+        : { ...m, isDefault: !!m.isDefault && m.id !== draft.id },
+    ),
   );
   if (!models.some((m: any) => m.isDefault) && models.length)
     models[0].isDefault = true;
@@ -392,7 +425,7 @@ async function testModel() {
           <fieldset>
             <legend>02 / 容量与思考</legend>
             <p class="small">
-              支持百万上下文的模型可以在标准（或厂商未单独定义时的常用）窗口和百万窗口之间选择。换到百万上下文时，输出上限恢复为该模型的官方上限。思考强度只列出这个模型支持的档位。
+              官方按输入长度分档计价的模型可以在标准和百万之间切换；官方只有一个窗口的模型直接按官方上限填写。输出上限默认是官方最大值，思考强度只列出这个模型支持的档位。
             </p>
             <div class="grid">
               <label v-if="contextOptions.length"
@@ -430,7 +463,7 @@ async function testModel() {
                   v-model="draft.reasoningEffort"
                 >
                   <option v-for="v in effortOptions" :value="v" :key="v">
-                    {{ effortLabels[v] || v }} / {{ v }}
+                    {{ effortName(v) }}
                   </option>
                 </select></label
               >
@@ -561,15 +594,7 @@ async function testModel() {
           >
             <b>{{ item.label }}</b>
             <small>{{ item.model }}</small>
-            <small v-if="item.contextWindows?.length"
-              >上下文 {{ item.contextWindows[0].label }} 或百万 · 输出
-              {{
-                formatTokens(item.contextWindows.at(-1).maxOutputTokens)
-              }}</small
-            ><small v-else
-              >上下文 {{ formatTokens(item.contextWindow) }} · 输出
-              {{ formatTokens(item.maxOutputTokens) }}</small
-            >
+            <small>{{ capacity(item) }}</small>
             <small>{{ item.summary }}</small>
           </button>
         </div>

@@ -16,6 +16,7 @@ import {
 import { normalize } from "../server/channels/onebot.js";
 import { persistIncoming } from "../server/core/message-manager.js";
 import { fitInput } from "../server/core/input-budget.js";
+import { MODEL_CATALOG } from "../server/model-presets.js";
 const setup = () => {
   const store = createStore(":memory:");
   store.save({ demo: false, probability: 1 });
@@ -812,6 +813,60 @@ test("MiMo 请求显式关闭或开启 thinking，并使用 max_completion_token
   assert.equal(bodies[1].thinking.type, "enabled");
   assert.equal("reasoning_effort" in bodies[1], false);
   assert.deepEqual(bodies[2].thinking, { type: "disabled" });
+  store.db.close();
+});
+test("千问按档位发送 reasoning_effort，Bedrock 固定思考模型不带思考和采样参数", async () => {
+  const { repo, store } = setup();
+  const bodies = [];
+  const models = new ModelManager(repo, {
+    fetcher: async (_url, options) => {
+      bodies.push(JSON.parse(options.body));
+      return {
+        ok: true,
+        json: async () => ({
+          usage: { prompt_tokens: 3, completion_tokens: 2 },
+          choices: [{ message: { content: '{"ok":true}' } }],
+        }),
+      };
+    },
+  });
+  const preset = (id) => ({
+    ...MODEL_CATALOG.find((item) => item.id === id),
+    id: "test-" + id,
+    apiKey: "SECRET",
+  });
+  const call = (profile) =>
+    models.call(profile, "test", "规则", { a: 1 }, { calls: [] });
+  await call(preset("qwen3.8-max"));
+  await call({ ...preset("qwen3.8-max"), reasoningEffort: "none" });
+  await call({
+    ...preset("qwen3.8-max"),
+    thinkingStyle: "qwen",
+    omitSampling: undefined,
+    reasoningEffort: "high",
+  });
+  await call(preset("bedrock-deepseek-v3.2"));
+  const [qwen, qwenOff, legacyQwen, fixed] = bodies;
+  assert.equal(qwen.enable_thinking, true);
+  assert.equal(qwen.reasoning_effort, "xhigh");
+  assert.equal(qwen.max_completion_tokens, 131072);
+  assert.equal("max_tokens" in qwen, false);
+  assert.equal("temperature" in qwen, false);
+  assert.equal("top_p" in qwen, false);
+  assert.equal(qwenOff.enable_thinking, false);
+  assert.equal("reasoning_effort" in qwenOff, false);
+  assert.equal(legacyQwen.enable_thinking, true);
+  assert.equal("reasoning_effort" in legacyQwen, false);
+  assert.equal(legacyQwen.temperature, 0.6);
+  assert.equal(fixed.max_tokens, 8000);
+  for (const key of [
+    "reasoning_effort",
+    "thinking",
+    "enable_thinking",
+    "temperature",
+    "top_p",
+  ])
+    assert.equal(key in fixed, false, key);
   store.db.close();
 });
 test("回放不发送、不写记忆、不读取截止之后的消息", async () => {

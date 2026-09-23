@@ -1,6 +1,6 @@
 // Checked against vendor API docs on 2026-09-23.
-// Context and output ceilings are the published limits. maxInputTokens leaves
-// the output ceiling inside that window so the profile stays valid.
+// maxOutputTokens is the published output ceiling and maxInputTokens is what
+// the window leaves after it, so every preset passes validateModel as is.
 
 function limits(contextWindow, maxOutputTokens) {
   return {
@@ -10,27 +10,22 @@ function limits(contextWindow, maxOutputTokens) {
   };
 }
 
-const STANDARD_OUTPUT = 8192;
-
-function withContextChoice(
-  maxContext,
-  maxOutput,
-  standardContext = 128000,
-  standardLabel = "常用",
-) {
-  const extendedOutput = Math.min(maxOutput, maxContext - 1);
-  const standardOutput = Math.min(STANDARD_OUTPUT, standardContext - 1);
-  const choices = [
-    {
-      label: `${standardLabel} ${standardContext / 1000}K`,
-      ...limits(standardContext, standardOutput),
-    },
-    {
-      label: "百万上下文",
-      ...limits(maxContext, extendedOutput),
-    },
-  ];
-  return { contextWindows: choices, ...choices[0] };
+// OpenAI and Bedrock bill the whole GPT request at the long-context rate once
+// input passes 272K tokens. The standard tier stops input there and keeps the
+// full 128K output.
+function gptWindows() {
+  const standard = {
+    contextWindow: 272000 + 128000,
+    maxInputTokens: 272000,
+    maxOutputTokens: 128000,
+  };
+  return {
+    ...standard,
+    contextWindows: [
+      { label: "标准（输入 ≤272K）", ...standard },
+      { label: "百万（1.05M）", ...limits(1050000, 128000) },
+    ],
+  };
 }
 
 const shared = {
@@ -41,6 +36,46 @@ const shared = {
   json: true,
   tools: true,
 };
+
+const OPENAI = "https://api.openai.com/v1";
+const BEDROCK = "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1";
+const GPT_EFFORTS = ["none", "low", "medium", "high", "xhigh", "max"];
+const ASTRA_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+
+function gpt(fields) {
+  return {
+    ...gptWindows(),
+    ...shared,
+    vision: true,
+    thinkingStyle: "openai",
+    tokenField: "max_completion_tokens",
+    reasoningEfforts: GPT_EFFORTS,
+    reasoningEffort: "medium",
+    temperature: 1,
+    topP: 1,
+    ...fields,
+  };
+}
+
+// Bedrock documents no thinking parameter for these models on Chat
+// Completions, so requests carry no reasoning or sampling fields.
+function bedrockFixed(fields) {
+  return {
+    ...shared,
+    vendor: "亚马逊 Bedrock",
+    provider: "bedrock",
+    baseUrl: BEDROCK,
+    vision: false,
+    thinkingStyle: "fixed",
+    tokenField: "max_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["none"],
+    reasoningEffort: "none",
+    temperature: 1,
+    topP: 1,
+    ...fields,
+  };
+}
 
 export const EFFORT_LABELS = {
   none: "关闭",
@@ -58,11 +93,11 @@ export const MODEL_CATALOG = [
     vendor: "DeepSeek",
     label: "DeepSeek V4.1 Flash",
     summary:
-      "当前 Flash。上下文 1M，输出上限 384K，默认可思考（high），支持看图。",
+      "当前主力。思考默认开启（high），可关闭；支持看图。1M 内同一价格，没有分档。",
     provider: "deepseek",
     baseUrl: "https://api.deepseek.com",
     model: "deepseek-flash",
-    ...withContextChoice(1000000, 384000),
+    ...limits(1000000, 393216),
     ...shared,
     vision: true,
     thinkingStyle: "deepseek",
@@ -77,11 +112,11 @@ export const MODEL_CATALOG = [
     vendor: "DeepSeek",
     label: "DeepSeek V4 Pro",
     summary:
-      "V4-Pro-0813。上下文 1M，输出上限 384K，默认可思考（high），仅文本。",
+      "V4-Pro-0813。思考默认开启（high），可关闭；仅文本。1M 内同一价格，没有分档。",
     provider: "deepseek",
     baseUrl: "https://api.deepseek.com",
     model: "deepseek-v4-pro",
-    ...withContextChoice(1000000, 384000),
+    ...limits(1000000, 393216),
     ...shared,
     vision: false,
     thinkingStyle: "deepseek",
@@ -96,11 +131,11 @@ export const MODEL_CATALOG = [
     vendor: "小米 MiMo",
     label: "MiMo V2.6 Pro",
     summary:
-      "当前旗舰。上下文 1M，输出上限 128K，思考默认开启，可看图、音视频。",
+      "旗舰。思考默认开启，可关闭；支持图片、视频、音频输入。1M 内同一价格，没有分档。",
     provider: "mimo",
     baseUrl: "https://api.xiaomimimo.com/v1",
     model: "mimo-v2.6-pro",
-    ...withContextChoice(1048576, 131072),
+    ...limits(1048576, 131072),
     ...shared,
     vision: true,
     thinkingStyle: "mimo",
@@ -115,11 +150,11 @@ export const MODEL_CATALOG = [
     vendor: "小米 MiMo",
     label: "MiMo V2.6 Flash",
     summary:
-      "当前高速全模态。上下文 1M，输出上限 128K，思考默认开启，适合高频调用。",
+      "高频调用。思考默认开启，可关闭；支持图片、视频、音频输入。1M 内同一价格，没有分档。",
     provider: "mimo",
     baseUrl: "https://api.xiaomimimo.com/v1",
     model: "mimo-v2.6-flash",
-    ...withContextChoice(1048576, 131072),
+    ...limits(1048576, 131072),
     ...shared,
     vision: true,
     thinkingStyle: "mimo",
@@ -133,12 +168,11 @@ export const MODEL_CATALOG = [
     id: "glm-5.3",
     vendor: "智谱 GLM",
     label: "GLM-5.3",
-    summary:
-      "当前旗舰。上下文 1M，输出上限 128K，思考不能关闭，默认最深（max），仅文本。",
+    summary: "旗舰。思考不能关闭，默认 max；仅文本。1M 内同一价格，没有分档。",
     provider: "glm",
     baseUrl: "https://open.bigmodel.cn/api/paas/v4",
     model: "glm-5.3",
-    ...withContextChoice(1000000, 131072),
+    ...limits(1000000, 131072),
     ...shared,
     vision: false,
     thinkingStyle: "glm",
@@ -153,11 +187,11 @@ export const MODEL_CATALOG = [
     vendor: "智谱 GLM",
     label: "GLM-5.3 Flash",
     summary:
-      "当前轻量多模态。上下文 1M，输出上限 128K，思考不能关闭，默认最深（max）。",
+      "原生多模态。思考不能关闭，默认 max；支持图片、视频。1M 内同一价格，没有分档。",
     provider: "glm",
     baseUrl: "https://open.bigmodel.cn/api/paas/v4",
     model: "glm-5.3-flash",
-    ...withContextChoice(1000000, 131072),
+    ...limits(1000000, 131072),
     ...shared,
     vision: true,
     thinkingStyle: "glm",
@@ -172,11 +206,11 @@ export const MODEL_CATALOG = [
     vendor: "Kimi",
     label: "Kimi K3",
     summary:
-      "当前旗舰。上下文 1M，默认输出 128K，思考不能关闭，默认最深（max）。国内接口，国际站可改 api.moonshot.ai。",
+      "旗舰。思考不能关闭，默认 max；支持看图。1M 内同一价格；输出和输入共用窗口，官方默认输出 128K。",
     provider: "kimi",
     baseUrl: "https://api.moonshot.cn/v1",
     model: "kimi-k3",
-    ...withContextChoice(1048576, 131072),
+    ...limits(1048576, 131072),
     ...shared,
     vision: true,
     thinkingStyle: "kimi-effort",
@@ -192,7 +226,7 @@ export const MODEL_CATALOG = [
     vendor: "Kimi",
     label: "Kimi K2.6",
     summary:
-      "通用多模态。上下文 256K，思考默认开启，可关闭。国内接口，国际站可改 api.moonshot.ai。",
+      "通用模型。思考默认开启，可关闭；支持看图。输出和输入共用 256K 窗口，官方默认输出 32K。",
     provider: "kimi",
     baseUrl: "https://api.moonshot.cn/v1",
     model: "kimi-k2.6",
@@ -200,201 +234,256 @@ export const MODEL_CATALOG = [
     ...shared,
     vision: true,
     thinkingStyle: "kimi-toggle",
-    tokenField: "max_tokens",
+    tokenField: "max_completion_tokens",
     omitSampling: true,
     reasoningEfforts: ["none", "high"],
     reasoningEffort: "high",
     temperature: 1,
     topP: 0.95,
   },
-  {
+  gpt({
     id: "gpt-6-astra",
     vendor: "OpenAI",
     label: "GPT-6 Astra",
     summary:
-      "当前旗舰 gpt-6-astra。上下文 1.05M，输出上限 128K。思考无关闭档；官方未写默认档，这里预填 medium。",
+      "最强旗舰。思考不能关闭，官方未写默认档，预填 medium；支持看图。输入超过 272K 整单按长上下文计价。",
     provider: "openai",
-    baseUrl: "https://api.openai.com/v1",
+    baseUrl: OPENAI,
     model: "gpt-6-astra",
-    ...withContextChoice(1050000, 128000, 272000, "标准"),
-    ...shared,
-    vision: true,
-    thinkingStyle: "openai",
-    tokenField: "max_completion_tokens",
-    reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
-    reasoningEffort: "medium",
-    temperature: 1,
-    topP: 1,
-  },
-  {
+    reasoningEfforts: ASTRA_EFFORTS,
+  }),
+  gpt({
     id: "gpt-6-sol",
     vendor: "OpenAI",
     label: "GPT-6 Sol",
     summary:
-      "复杂编码和智能体。上下文 1.05M，输出上限 128K，思考默认 medium，可关闭，可看图。",
+      "复杂编码与智能体。思考默认 medium，可关闭；支持看图。输入超过 272K 整单按长上下文计价。",
     provider: "openai",
-    baseUrl: "https://api.openai.com/v1",
+    baseUrl: OPENAI,
     model: "gpt-6-sol",
-    ...withContextChoice(1050000, 128000, 272000, "标准"),
-    ...shared,
-    vision: true,
-    thinkingStyle: "openai",
-    tokenField: "max_completion_tokens",
-    reasoningEfforts: ["none", "low", "medium", "high", "xhigh", "max"],
-    reasoningEffort: "medium",
-    temperature: 1,
-    topP: 1,
-  },
-  {
+  }),
+  gpt({
     id: "gpt-6-luna",
     vendor: "OpenAI",
     label: "GPT-6 Luna",
     summary:
-      "高频轻量。上下文 1.05M，输出上限 128K，思考默认 medium，可关闭，可看图。",
+      "高频轻量。思考默认 medium，可关闭；支持看图。输入超过 272K 整单按长上下文计价。",
     provider: "openai",
-    baseUrl: "https://api.openai.com/v1",
+    baseUrl: OPENAI,
     model: "gpt-6-luna",
-    ...withContextChoice(1050000, 128000, 272000, "标准"),
-    ...shared,
-    vision: true,
-    thinkingStyle: "openai",
-    tokenField: "max_completion_tokens",
-    reasoningEfforts: ["none", "low", "medium", "high", "xhigh", "max"],
-    reasoningEffort: "medium",
-    temperature: 1,
-    topP: 1,
-  },
-  {
+  }),
+  gpt({
     id: "gpt-5.6-sol",
     vendor: "OpenAI",
     label: "GPT-5.6 Sol",
     summary:
-      "专业旗舰，别名 gpt-5.6。上下文 1.05M，输出上限 128K，思考默认 medium，可关闭。",
+      "上一代旗舰，别名 gpt-5.6。思考默认 medium，可关闭；支持看图。输入超过 272K 整单按长上下文计价。",
     provider: "openai",
-    baseUrl: "https://api.openai.com/v1",
+    baseUrl: OPENAI,
     model: "gpt-5.6-sol",
-    ...withContextChoice(1050000, 128000, 272000, "标准"),
-    ...shared,
-    vision: true,
-    thinkingStyle: "openai",
-    tokenField: "max_completion_tokens",
-    reasoningEfforts: ["none", "low", "medium", "high", "xhigh", "max"],
-    reasoningEffort: "medium",
-    temperature: 1,
-    topP: 1,
-  },
-  {
+  }),
+  gpt({
+    id: "gpt-5.6-terra",
+    vendor: "OpenAI",
+    label: "GPT-5.6 Terra",
+    summary:
+      "上一代均衡款。思考默认 medium，可关闭；支持看图。输入超过 272K 整单按长上下文计价。",
+    provider: "openai",
+    baseUrl: OPENAI,
+    model: "gpt-5.6-terra",
+  }),
+  gpt({
     id: "gpt-5.6-luna",
     vendor: "OpenAI",
     label: "GPT-5.6 Luna",
-    summary: "高性价比。上下文 1.05M，输出上限 128K，思考默认 medium，可关闭。",
+    summary:
+      "上一代高性价比。思考默认 medium，可关闭；支持看图。输入超过 272K 整单按长上下文计价。",
     provider: "openai",
-    baseUrl: "https://api.openai.com/v1",
+    baseUrl: OPENAI,
     model: "gpt-5.6-luna",
-    ...withContextChoice(1050000, 128000, 272000, "标准"),
-    ...shared,
-    vision: true,
-    thinkingStyle: "openai",
-    tokenField: "max_completion_tokens",
-    reasoningEfforts: ["none", "low", "medium", "high", "xhigh", "max"],
-    reasoningEffort: "medium",
-    temperature: 1,
-    topP: 1,
-  },
+  }),
   {
     id: "qwen3.8-max",
     vendor: "通义千问",
     label: "Qwen3.8 Max",
     summary:
-      "当前旗舰，快照 qwen3.8-max-0902。上下文 1M，输出上限 128K，思考默认开启，可看图和视频。",
+      "旗舰，快照 qwen3.8-max-0902。思考默认开启（xhigh），可关闭；支持图片、视频。1M 内同一价格，没有分档。",
     provider: "qwen",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     model: "qwen3.8-max",
-    ...withContextChoice(1000000, 131072),
+    ...limits(1000000, 131072),
     ...shared,
     vision: true,
-    thinkingStyle: "qwen",
-    tokenField: "max_tokens",
-    reasoningEfforts: ["none", "high"],
-    reasoningEffort: "high",
-    temperature: 1,
-    topP: 1,
+    thinkingStyle: "qwen-effort",
+    tokenField: "max_completion_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["none", "low", "medium", "xhigh"],
+    reasoningEffort: "xhigh",
+    temperature: 0.6,
+    topP: 0.95,
   },
   {
     id: "qwen3.8-flash",
     vendor: "通义千问",
     label: "Qwen3.8 Flash",
-    summary: "当前轻量。上下文 1M，输出上限 128K，思考默认开启，可看图和视频。",
+    summary:
+      "轻量。思考默认开启（xhigh），可关闭；支持图片、视频。1M 内同一价格，没有分档。",
     provider: "qwen",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     model: "qwen3.8-flash",
-    ...withContextChoice(1000000, 131072),
+    ...limits(1000000, 131072),
     ...shared,
     vision: true,
-    thinkingStyle: "qwen",
-    tokenField: "max_tokens",
-    reasoningEfforts: ["none", "high"],
-    reasoningEffort: "high",
-    temperature: 1,
-    topP: 1,
+    thinkingStyle: "qwen-effort",
+    tokenField: "max_completion_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["none", "low", "medium", "xhigh"],
+    reasoningEffort: "xhigh",
+    temperature: 0.6,
+    topP: 0.95,
   },
-  {
+  gpt({
     id: "bedrock-gpt-6-astra",
     vendor: "亚马逊 Bedrock",
     label: "GPT-6 Astra",
     summary:
-      "Bedrock Runtime（us-east-1），模型名 us.openai.gpt-6-astra。上下文 1.05M，输出上限 128K。思考无关闭档，预填 medium。",
+      "美国跨区推理。思考不能关闭，预填 medium；支持看图。runtime 不支持结构化输出，已关闭 JSON 输出。输入超过 272K 整单按长上下文计价。",
     provider: "bedrock",
-    baseUrl: "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1",
+    baseUrl: BEDROCK,
     model: "us.openai.gpt-6-astra",
-    ...withContextChoice(1050000, 128000, 272000, "标准"),
-    ...shared,
-    vision: true,
-    thinkingStyle: "openai",
-    tokenField: "max_completion_tokens",
-    reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
-    reasoningEffort: "medium",
-    temperature: 1,
-    topP: 1,
-  },
-  {
+    json: false,
+    reasoningEfforts: ASTRA_EFFORTS,
+  }),
+  gpt({
     id: "bedrock-gpt-6-sol",
     vendor: "亚马逊 Bedrock",
     label: "GPT-6 Sol",
     summary:
-      "Bedrock Runtime（us-east-1），模型名 us.openai.gpt-6-sol。上下文 1.05M，输出上限 128K，思考默认 medium，可关闭。",
+      "AWS 模型卡尚未发布，模型 ID 取自 OpenAI 的 Bedrock 指南，JSON 输出先关闭。思考默认 medium，可关闭；支持看图。输入超过 272K 整单按长上下文计价。",
     provider: "bedrock",
-    baseUrl: "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1",
+    baseUrl: BEDROCK,
     model: "us.openai.gpt-6-sol",
-    ...withContextChoice(1050000, 128000, 272000, "标准"),
-    ...shared,
-    vision: true,
-    thinkingStyle: "openai",
-    tokenField: "max_completion_tokens",
-    reasoningEfforts: ["none", "low", "medium", "high", "xhigh", "max"],
-    reasoningEffort: "medium",
-    temperature: 1,
-    topP: 1,
-  },
-  {
+    json: false,
+  }),
+  gpt({
     id: "bedrock-gpt-6-luna",
     vendor: "亚马逊 Bedrock",
     label: "GPT-6 Luna",
     summary:
-      "Bedrock Runtime（us-east-1），模型名 us.openai.gpt-6-luna。上下文 1.05M，输出上限 128K，思考默认 medium，可关闭。",
+      "AWS 模型卡尚未发布，模型 ID 取自 OpenAI 的 Bedrock 指南，JSON 输出先关闭。思考默认 medium，可关闭；支持看图。输入超过 272K 整单按长上下文计价。",
     provider: "bedrock",
-    baseUrl: "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1",
+    baseUrl: BEDROCK,
     model: "us.openai.gpt-6-luna",
-    ...withContextChoice(1050000, 128000, 272000, "标准"),
+    json: false,
+  }),
+  gpt({
+    id: "bedrock-gpt-5.6-sol",
+    vendor: "亚马逊 Bedrock",
+    label: "GPT-5.6 Sol",
+    summary:
+      "美国跨区推理。思考默认 medium，可关闭；支持看图。runtime 不支持结构化输出，已关闭 JSON 输出。输入超过 272K 整单按长上下文计价。",
+    provider: "bedrock",
+    baseUrl: BEDROCK,
+    model: "us.openai.gpt-5.6-sol",
+    json: false,
+  }),
+  gpt({
+    id: "bedrock-gpt-5.6-terra",
+    vendor: "亚马逊 Bedrock",
+    label: "GPT-5.6 Terra",
+    summary:
+      "美国跨区推理。思考默认 medium，可关闭；支持看图。runtime 不支持结构化输出，已关闭 JSON 输出。输入超过 272K 整单按长上下文计价。",
+    provider: "bedrock",
+    baseUrl: BEDROCK,
+    model: "us.openai.gpt-5.6-terra",
+    json: false,
+  }),
+  gpt({
+    id: "bedrock-gpt-5.6-luna",
+    vendor: "亚马逊 Bedrock",
+    label: "GPT-5.6 Luna",
+    summary:
+      "美国跨区推理。思考默认 medium，可关闭；支持看图。输入超过 272K 整单按长上下文计价。",
+    provider: "bedrock",
+    baseUrl: BEDROCK,
+    model: "us.openai.gpt-5.6-luna",
+  }),
+  {
+    id: "bedrock-kimi-k3",
+    vendor: "亚马逊 Bedrock",
+    label: "Kimi K3",
+    summary:
+      "美国跨区推理。思考始终开启，Bedrock 未提供强度参数，按模型默认；支持看图。1M 内同一价格。AWS 未公布输出上限，按月之暗面官方默认 128K 填写。",
+    provider: "bedrock",
+    baseUrl: BEDROCK,
+    model: "us.moonshotai.kimi-k3",
+    ...limits(1000000, 131072),
     ...shared,
+    vision: true,
+    thinkingStyle: "fixed",
+    tokenField: "max_completion_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["none"],
+    reasoningEffort: "none",
+    temperature: 1,
+    topP: 0.95,
+  },
+  {
+    id: "bedrock-grok-4.6",
+    vendor: "亚马逊 Bedrock",
+    label: "Grok 4.6",
+    summary:
+      "美国跨区推理。思考不能关闭，默认 high；支持看图。runtime 不支持结构化输出，已关闭 JSON 输出。xAI 不设单独输出上限，按 128K 填写。",
+    provider: "bedrock",
+    baseUrl: BEDROCK,
+    model: "us.xai.grok-4.6",
+    ...limits(500000, 128000),
+    ...shared,
+    json: false,
     vision: true,
     thinkingStyle: "openai",
     tokenField: "max_completion_tokens",
-    reasoningEfforts: ["none", "low", "medium", "high", "xhigh", "max"],
-    reasoningEffort: "medium",
+    reasoningEfforts: ["low", "medium", "high", "xhigh"],
+    reasoningEffort: "high",
     temperature: 1,
     topP: 1,
   },
+  bedrockFixed({
+    id: "bedrock-glm-5",
+    label: "GLM 5",
+    summary: "上一代 GLM。仅文本；Bedrock 未提供思考参数，按模型默认。",
+    model: "zai.glm-5",
+    ...limits(200000, 128000),
+  }),
+  bedrockFixed({
+    id: "bedrock-deepseek-v3.2",
+    label: "DeepSeek V3.2",
+    summary: "上一代 DeepSeek。仅文本；Bedrock 未提供思考参数，按模型默认。",
+    model: "deepseek.v3.2",
+    ...limits(164000, 8000),
+  }),
+  bedrockFixed({
+    id: "bedrock-qwen3-235b",
+    label: "Qwen3 235B A22B 2507",
+    summary: "Qwen3 开源旗舰。仅文本；Bedrock 未提供思考参数，按模型默认。",
+    model: "qwen.qwen3-235b-a22b-2507-v1:0",
+    ...limits(256000, 8000),
+  }),
+  bedrockFixed({
+    id: "bedrock-minimax-m2.5",
+    label: "MiniMax M2.5",
+    summary: "仅文本；Bedrock 未提供思考参数，按模型默认。",
+    model: "minimax.minimax-m2.5",
+    ...limits(196000, 8000),
+  }),
+  bedrockFixed({
+    id: "bedrock-mistral-large-3",
+    label: "Mistral Large 3",
+    summary: "支持看图；不带思考。",
+    model: "mistral.mistral-large-3-675b-instruct",
+    ...limits(256000, 32000),
+    vision: true,
+  }),
   {
     id: "custom",
     vendor: "自定义",
@@ -437,12 +526,12 @@ export const MODEL_PRESETS = {
   },
   openai: {
     label: "OpenAI",
-    baseUrl: "https://api.openai.com/v1",
+    baseUrl: OPENAI,
     model: "gpt-6-astra",
   },
   bedrock: {
     label: "亚马逊 Bedrock",
-    baseUrl: "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1",
+    baseUrl: BEDROCK,
     model: "us.openai.gpt-6-astra",
   },
   qwen: {

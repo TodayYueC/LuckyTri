@@ -112,9 +112,13 @@ function applyGenerationControls(body, profile, stage) {
     body.thinking = { type: off ? "disabled" : "enabled" };
   } else if (style === "kimi-effort") {
     if (!off) body.reasoning_effort = profile.reasoningEffort;
-  } else if (style === "qwen") {
+  } else if (style === "qwen" || style === "qwen-effort") {
     body.enable_thinking = !off;
-    body.temperature = profile.temperature;
+    if (style === "qwen-effort" && !off)
+      body.reasoning_effort = profile.reasoningEffort;
+    if (!profile.omitSampling) body.temperature = profile.temperature;
+  } else if (style === "fixed") {
+    if (!profile.omitSampling) body.temperature = profile.temperature;
   } else if (!off) body.reasoning_effort = profile.reasoningEffort;
   else body.temperature = profile.temperature;
   if (!profile.omitSampling && profile.topP !== 1) body.top_p = profile.topP;
