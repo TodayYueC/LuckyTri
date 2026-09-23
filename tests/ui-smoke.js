@@ -196,6 +196,10 @@ try {
     .waitFor();
   await navigate("models");
   await p.locator("#addModel").click();
+  assert.equal(
+    await p.locator("[data-preset=deepseek-flash] b").innerText(),
+    "DeepSeek V4.1 Flash",
+  );
   await p.locator("[data-preset=deepseek-flash]").click();
   await p.locator("#modelForm [name=model]").fill("test-model");
   await p.locator("#modelForm .primary").click();
@@ -209,6 +213,18 @@ try {
   await p.locator("#addModel").click();
   await p.locator("[data-preset=deepseek-flash]").click();
   await p.locator("[name=label]").fill("未保存模型");
+  await p.locator(".entity-row").first().click();
+  assert.equal(await p.locator(".entity-row").count(), 1);
+  await p.locator("#addModel").click();
+  await p.locator("[data-preset=gpt-6-sol]").click();
+  assert.equal(await p.locator("[name=label]").inputValue(), "GPT-6 Sol");
+  assert.equal(await p.locator("[name=maxInputTokens]").inputValue(), "272000");
+  await p.locator("[name=contextWindow]").selectOption("1050000");
+  assert.equal(await p.locator("[name=maxInputTokens]").inputValue(), "922000");
+  assert.equal(
+    await p.locator("[name=maxOutputTokens]").inputValue(),
+    "128000",
+  );
   await p.locator(".entity-row").first().click();
   assert.equal(await p.locator(".entity-row").count(), 1);
   await p.locator("#addModel").click();
@@ -490,10 +506,10 @@ try {
   assert.equal(await p.locator("[name=sarcasm]").inputValue(), "4");
   await navigate("models");
   await p.locator("[name=contextWindow]").waitFor();
-  await p.locator("[name=contextWindow]").selectOption("1000000");
+  await p.locator("[name=contextWindow]").fill("600000");
   await p.locator("#modelForm button.primary").click();
   await p.waitForTimeout(300);
-  assert.equal(await p.locator("[name=contextWindow]").inputValue(), "1000000");
+  assert.equal(await p.locator("[name=contextWindow]").inputValue(), "600000");
   await navigate("overview");
   assert.equal(
     await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
@@ -515,6 +531,9 @@ try {
   await p.goto(base + "/#live");
   await p.locator("#liveSession").selectOption("group:12345");
   await p.getByRole("button", { name: "反馈", exact: true }).click();
+  // Changing only the hash keeps the page, so the routed state arrives with
+  // the Live page's next poll rather than immediately.
+  await p.locator(".feedback-item").first().waitFor();
   for (const width of [1440, 820, 390]) {
     await p.setViewportSize({ width, height: 900 });
     await p.waitForTimeout(400);

@@ -7,6 +7,17 @@ import {
   validateModel,
 } from "../server/core/model-manager.js";
 
+const find = (id) => MODEL_CATALOG.find((item) => item.id === id);
+const GPT_IDS = [
+  "gpt-6-astra",
+  "gpt-6-sol",
+  "gpt-6-luna",
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
+];
+const BEDROCK_GPT_IDS = GPT_IDS.map((id) => "bedrock-" + id);
+
 test("模型目录使用当前厂商参数，且预算能通过校验", () => {
   const ids = MODEL_CATALOG.map((item) => item.id);
   assert.equal(new Set(ids).size, ids.length);
@@ -19,16 +30,17 @@ test("模型目录使用当前厂商参数，且预算能通过校验", () => {
     "glm-5.3-flash",
     "kimi-k3",
     "kimi-k2.6",
-    "gpt-6-astra",
-    "gpt-6-sol",
-    "gpt-6-luna",
-    "gpt-5.6-sol",
-    "gpt-5.6-luna",
+    ...GPT_IDS,
     "qwen3.8-max",
     "qwen3.8-flash",
-    "bedrock-gpt-6-astra",
-    "bedrock-gpt-6-sol",
-    "bedrock-gpt-6-luna",
+    ...BEDROCK_GPT_IDS,
+    "bedrock-kimi-k3",
+    "bedrock-grok-4.6",
+    "bedrock-glm-5",
+    "bedrock-deepseek-v3.2",
+    "bedrock-qwen3-235b",
+    "bedrock-minimax-m2.5",
+    "bedrock-mistral-large-3",
     "custom",
   ])
     assert.ok(ids.includes(name), name);
@@ -37,49 +49,114 @@ test("模型目录使用当前厂商参数，且预算能通过校验", () => {
     for (const effort of item.reasoningEfforts)
       assert.ok(EFFORT_LABELS[effort], effort);
     if (item.id === "custom") continue;
-    validateModel({
-      ...item,
-      id: "catalog-" + item.id,
-      apiKey: "",
-      isDefault: false,
-    });
+    for (const window of item.contextWindows || [item])
+      validateModel({
+        ...item,
+        ...window,
+        id: "catalog-" + item.id,
+        apiKey: "",
+        isDefault: false,
+      });
   }
-  assert.equal(
-    MODEL_CATALOG.find((item) => item.id === "deepseek-flash").model,
-    "deepseek-flash",
-  );
-  const astra = MODEL_CATALOG.find((item) => item.id === "gpt-6-astra");
-  assert.equal(astra.contextWindow, 272000);
+  for (const vendor of new Set(MODEL_CATALOG.map((item) => item.vendor))) {
+    const labels = MODEL_CATALOG.filter((item) => item.vendor === vendor).map(
+      (item) => item.label,
+    );
+    assert.equal(new Set(labels).size, labels.length, vendor);
+  }
+  assert.equal(find("deepseek-flash").label, "DeepSeek V4.1 Flash");
+  assert.equal(find("gpt-6-astra").label, "GPT-6 Astra");
+});
+
+test("只有官方按输入分档计价的 GPT 提供标准和百万两档", () => {
   assert.deepEqual(
-    astra.contextWindows.map((item) => item.contextWindow),
-    [272000, 1050000],
+    MODEL_CATALOG.filter((item) => item.contextWindows).map((item) => item.id),
+    [...GPT_IDS, ...BEDROCK_GPT_IDS],
   );
-  assert.equal(astra.contextWindows[1].maxOutputTokens, 128000);
-  const flash = MODEL_CATALOG.find((item) => item.id === "deepseek-flash");
-  assert.equal(flash.contextWindows[1].contextWindow, 1000000);
-  assert.equal(flash.contextWindows[1].maxOutputTokens, 384000);
-  assert.equal(
-    MODEL_CATALOG.find((item) => item.id === "kimi-k2.6").contextWindows,
-    undefined,
+  for (const id of [...GPT_IDS, ...BEDROCK_GPT_IDS]) {
+    const item = find(id);
+    assert.deepEqual(
+      item.contextWindows.map((w) => [
+        w.contextWindow,
+        w.maxInputTokens,
+        w.maxOutputTokens,
+      ]),
+      [
+        [400000, 272000, 128000],
+        [1050000, 922000, 128000],
+      ],
+      id,
+    );
+    assert.equal(item.maxInputTokens, 272000, id);
+  }
+  assert.equal(find("deepseek-flash").contextWindow, 1000000);
+  assert.equal(find("deepseek-flash").maxOutputTokens, 393216);
+  assert.equal(find("mimo-v2.6-pro").maxOutputTokens, 131072);
+  assert.equal(find("glm-5.3").maxOutputTokens, 131072);
+  assert.equal(find("kimi-k3").contextWindow, 1048576);
+  assert.equal(find("kimi-k2.6").contextWindow, 262144);
+  assert.equal(find("qwen3.8-max").maxOutputTokens, 131072);
+});
+
+test("思考档位和输出字段按各厂商文档填写", () => {
+  assert.deepEqual(find("glm-5.3").reasoningEfforts, ["low", "high", "max"]);
+  assert.deepEqual(find("deepseek-flash").reasoningEfforts, [
+    "none",
+    "low",
+    "high",
+    "max",
+  ]);
+  for (const id of ["qwen3.8-max", "qwen3.8-flash"]) {
+    const qwen = find(id);
+    assert.equal(qwen.thinkingStyle, "qwen-effort", id);
+    assert.equal(qwen.tokenField, "max_completion_tokens", id);
+    assert.deepEqual(qwen.reasoningEfforts, ["none", "low", "medium", "xhigh"]);
+    assert.equal(qwen.reasoningEffort, "xhigh", id);
+  }
+  assert.equal(find("kimi-k2.6").tokenField, "max_completion_tokens");
+  assert.deepEqual(find("gpt-6-astra").reasoningEfforts, [
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+  ]);
+  assert.deepEqual(find("bedrock-grok-4.6").reasoningEfforts, [
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+  ]);
+});
+
+test("Bedrock 预设走 us-east-1 的 Chat Completions，并按模型卡关闭不支持的 JSON 输出", () => {
+  const bedrock = MODEL_CATALOG.filter(
+    (item) => item.vendor === "亚马逊 Bedrock",
   );
+  assert.equal(bedrock.length, 13);
+  for (const item of bedrock)
+    assert.equal(
+      item.baseUrl,
+      "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1",
+      item.id,
+    );
   assert.deepEqual(
-    MODEL_CATALOG.find((item) => item.id === "glm-5.3").reasoningEfforts,
-    ["low", "high", "max"],
+    BEDROCK_GPT_IDS.map((id) => find(id).model),
+    GPT_IDS.map((id) => "us.openai." + id),
   );
-  const bedrock = MODEL_CATALOG.filter((item) =>
-    item.id.startsWith("bedrock-gpt-6-"),
-  );
-  assert.deepEqual(
-    bedrock.map((item) => item.model),
-    ["us.openai.gpt-6-astra", "us.openai.gpt-6-sol", "us.openai.gpt-6-luna"],
-  );
-  assert.ok(
-    bedrock.every(
-      (item) =>
-        item.baseUrl ===
-        "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1",
-    ),
-  );
+  for (const id of [
+    "bedrock-gpt-6-astra",
+    "bedrock-gpt-6-sol",
+    "bedrock-gpt-6-luna",
+    "bedrock-gpt-5.6-sol",
+    "bedrock-gpt-5.6-terra",
+    "bedrock-grok-4.6",
+  ])
+    assert.equal(find(id).json, false, id);
+  assert.equal(find("bedrock-gpt-5.6-luna").json, true);
+  assert.equal(find("bedrock-kimi-k3").model, "us.moonshotai.kimi-k3");
+  assert.equal(find("bedrock-grok-4.6").model, "us.xai.grok-4.6");
+  assert.equal(find("bedrock-glm-5").model, "zai.glm-5");
 });
 
 test("空模型库没有默认档案，有模型时只保留一个默认", () => {
