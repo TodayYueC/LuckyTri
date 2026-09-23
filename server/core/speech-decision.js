@@ -13,7 +13,7 @@ export async function decide(
     profile,
     "decision",
     prompt +
-      "\n额外输出 distress:{clear:boolean,confidence:0到1,targetMessageIds:[]}。只有当前批次里说话者本人明确难受、垂头丧气、遭遇挫折才为true；排除转述、剧情、玩梗、引用他人、明确不想被回复，不因“笑死”“累死”单词直接判定。",
+      "\ntargetMessageIds 只能选择 batchIds 中的本轮新消息；历史消息可以作为 evidenceIds 帮助理解，但不能再次作为回复对象。额外输出 distress:{clear:boolean,confidence:0到1,targetMessageIds:[]}。只有当前批次里说话者本人明确难受、垂头丧气、遭遇挫折才为true；排除转述、剧情、玩梗、引用他人、明确不想被回复，不因“笑死”“累死”单词直接判定。",
     input,
     trace,
     images,
@@ -51,9 +51,37 @@ export async function decide(
     throw Error("发言决策引用了不存在的消息");
   if (result.action !== "SILENT" && !result.targetMessageIds.length)
     throw Error("回复缺少目标消息");
-  const targets = snapshot.messages.filter((m) =>
-    result.targetMessageIds.includes(m.id),
+  const batchIds = new Set((snapshot.batchIds || []).map(String));
+  const requestedTargets = new Set(result.targetMessageIds.map(String));
+  const targets = snapshot.messages.filter(
+    (m) => batchIds.has(String(m.id)) && requestedTargets.has(String(m.id)),
   );
+  if (targets.length !== result.targetMessageIds.length) {
+    trace?.steps?.push("已移除不属于本轮消息批次的历史回复目标");
+    result.targetMessageIds = targets.map((m) => m.id);
+    result.targetUserIds = [
+      ...new Set(targets.map((m) => m.speaker).filter(Boolean).map(String)),
+    ];
+  }
+  if (!targets.length) {
+    result.targetUserIds = [];
+    if (result.action !== "SILENT") {
+      trace?.steps?.push(
+        "模型选中了本轮之前的历史消息，已收住，避免重复回应旧话题",
+      );
+      return {
+        ...result,
+        action: "SILENT",
+        targetMessageIds: [],
+        targetUserIds: [],
+        evidenceIds: [],
+        reason: "回复目标只指向历史消息，本轮没有新的明确回复对象",
+      };
+    }
+    // A sampled reply may promote SILENT later in the orchestrator. Clear stale
+    // evidence too, so that promotion can only fall back to this batch's event.
+    result.evidenceIds = [];
+  }
   if (
     result.action !== "SILENT" &&
     (result.confidence < 0.55 ||
