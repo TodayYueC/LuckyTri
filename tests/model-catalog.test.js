@@ -26,6 +26,9 @@ test("模型目录使用当前厂商参数，且预算能通过校验", () => {
     "gpt-5.6-luna",
     "qwen3.8-max",
     "qwen3.8-flash",
+    "bedrock-gpt-6-astra",
+    "bedrock-gpt-6-sol",
+    "bedrock-gpt-6-luna",
     "custom",
   ])
     assert.ok(ids.includes(name), name);
@@ -45,13 +48,37 @@ test("模型目录使用当前厂商参数，且预算能通过校验", () => {
     MODEL_CATALOG.find((item) => item.id === "deepseek-flash").model,
     "deepseek-flash",
   );
+  const astra = MODEL_CATALOG.find((item) => item.id === "gpt-6-astra");
+  assert.equal(astra.contextWindow, 272000);
+  assert.deepEqual(
+    astra.contextWindows.map((item) => item.contextWindow),
+    [272000, 1050000],
+  );
+  assert.equal(astra.contextWindows[1].maxOutputTokens, 128000);
+  const flash = MODEL_CATALOG.find((item) => item.id === "deepseek-flash");
+  assert.equal(flash.contextWindows[1].contextWindow, 1000000);
+  assert.equal(flash.contextWindows[1].maxOutputTokens, 384000);
   assert.equal(
-    MODEL_CATALOG.find((item) => item.id === "gpt-6-astra").contextWindow,
-    1050000,
+    MODEL_CATALOG.find((item) => item.id === "kimi-k2.6").contextWindows,
+    undefined,
   );
   assert.deepEqual(
     MODEL_CATALOG.find((item) => item.id === "glm-5.3").reasoningEfforts,
     ["low", "high", "max"],
+  );
+  const bedrock = MODEL_CATALOG.filter((item) =>
+    item.id.startsWith("bedrock-gpt-6-"),
+  );
+  assert.deepEqual(
+    bedrock.map((item) => item.model),
+    ["us.openai.gpt-6-astra", "us.openai.gpt-6-sol", "us.openai.gpt-6-luna"],
+  );
+  assert.ok(
+    bedrock.every(
+      (item) =>
+        item.baseUrl ===
+        "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1",
+    ),
   );
 });
 
