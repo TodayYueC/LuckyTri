@@ -490,10 +490,10 @@ try {
   assert.equal(await p.locator("[name=sarcasm]").inputValue(), "4");
   await navigate("models");
   await p.locator("[name=contextWindow]").waitFor();
-  await p.locator("[name=contextWindow]").fill("200000");
+  await p.locator("[name=contextWindow]").selectOption("1000000");
   await p.locator("#modelForm button.primary").click();
   await p.waitForTimeout(300);
-  assert.equal(await p.locator("[name=contextWindow]").inputValue(), "200000");
+  assert.equal(await p.locator("[name=contextWindow]").inputValue(), "1000000");
   await navigate("overview");
   assert.equal(
     await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth),

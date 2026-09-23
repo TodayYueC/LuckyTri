@@ -48,6 +48,30 @@ const vendorModels = computed(() =>
     (item: any) => item.vendor && item.vendor === draft.vendor,
   ),
 );
+const contextOptions = computed(() => {
+  const preset =
+    catalog.value.find((item: any) => item.id === draft.presetId) ||
+    catalog.value.find((item: any) => item.model && item.model === draft.model);
+  const windows = Array.isArray(preset?.contextWindows)
+    ? preset.contextWindows
+    : Array.isArray(draft.contextWindows)
+      ? draft.contextWindows
+      : [];
+  if (windows.length < 2) return [];
+  const options = windows.map((item: any) => ({ ...item }));
+  if (
+    !options.some(
+      (item: any) => item.contextWindow === Number(draft.contextWindow),
+    )
+  )
+    options.push({
+      label: formatTokens(Number(draft.contextWindow)),
+      contextWindow: Number(draft.contextWindow),
+      maxInputTokens: Number(draft.maxInputTokens),
+      maxOutputTokens: Number(draft.maxOutputTokens),
+    });
+  return options;
+});
 const effortOptions = computed(() => {
   const list =
     Array.isArray(draft.reasoningEfforts) && draft.reasoningEfforts.length
@@ -107,6 +131,18 @@ function fitBudget(profile: any) {
     maxInputTokens: input,
     maxOutputTokens: output,
   };
+}
+
+function applyContextWindow(event: Event) {
+  const selected = Number((event.target as HTMLSelectElement).value);
+  const option = contextOptions.value.find(
+    (item: any) => item.contextWindow === selected,
+  );
+  if (!option) return;
+  draft.contextWindow = option.contextWindow;
+  draft.maxInputTokens = option.maxInputTokens;
+  draft.maxOutputTokens = option.maxOutputTokens;
+  studio.dirty = true;
 }
 
 function formatTokens(value: number) {
@@ -356,10 +392,24 @@ async function testModel() {
           <fieldset>
             <legend>02 / 容量与思考</legend>
             <p class="small">
-              上下文和输出上限已按该模型当前官方参数填好，仍可按聊天需要改小。思考强度只列出这个模型支持的档位。
+              支持百万上下文的模型可以在标准（或厂商未单独定义时的常用）窗口和百万窗口之间选择。换到百万上下文时，输出上限恢复为该模型的官方上限。思考强度只列出这个模型支持的档位。
             </p>
             <div class="grid">
-              <label
+              <label v-if="contextOptions.length"
+                >上下文容量<select
+                  name="contextWindow"
+                  :value="draft.contextWindow"
+                  @change="applyContextWindow"
+                >
+                  <option
+                    v-for="option in contextOptions"
+                    :key="option.contextWindow"
+                    :value="option.contextWindow"
+                  >
+                    {{ option.label }}
+                  </option>
+                </select></label
+              ><label v-else
                 >上下文容量<input
                   name="contextWindow"
                   type="number"
@@ -511,7 +561,12 @@ async function testModel() {
           >
             <b>{{ item.label }}</b>
             <small>{{ item.model }}</small>
-            <small
+            <small v-if="item.contextWindows?.length"
+              >上下文 {{ item.contextWindows[0].label }} 或百万 · 输出
+              {{
+                formatTokens(item.contextWindows.at(-1).maxOutputTokens)
+              }}</small
+            ><small v-else
               >上下文 {{ formatTokens(item.contextWindow) }} · 输出
               {{ formatTokens(item.maxOutputTokens) }}</small
             >
