@@ -1,4 +1,4 @@
-// Checked against vendor API docs on 2026-09-22.
+// Checked against vendor API docs on 2026-09-23.
 // Context and output ceilings are the published limits. maxInputTokens leaves
 // the output ceiling inside that window so the profile stays valid.
 
@@ -199,6 +199,44 @@ export const MODEL_CATALOG = [
     thinkingStyle: "openai",
     tokenField: "max_completion_tokens",
     reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
+    reasoningEffort: "medium",
+    temperature: 1,
+    topP: 1,
+  },
+  {
+    id: "gpt-6-sol",
+    vendor: "OpenAI",
+    label: "GPT-6 Sol",
+    summary:
+      "复杂编码和智能体。上下文 1.05M，输出上限 128K，思考默认 medium，可关闭，可看图。",
+    provider: "openai",
+    baseUrl: "https://api.openai.com/v1",
+    model: "gpt-6-sol",
+    ...limits(1050000, 128000),
+    ...shared,
+    vision: true,
+    thinkingStyle: "openai",
+    tokenField: "max_completion_tokens",
+    reasoningEfforts: ["none", "low", "medium", "high", "xhigh", "max"],
+    reasoningEffort: "medium",
+    temperature: 1,
+    topP: 1,
+  },
+  {
+    id: "gpt-6-luna",
+    vendor: "OpenAI",
+    label: "GPT-6 Luna",
+    summary:
+      "高频轻量。上下文 1.05M，输出上限 128K，思考默认 medium，可关闭，可看图。",
+    provider: "openai",
+    baseUrl: "https://api.openai.com/v1",
+    model: "gpt-6-luna",
+    ...limits(1050000, 128000),
+    ...shared,
+    vision: true,
+    thinkingStyle: "openai",
+    tokenField: "max_completion_tokens",
+    reasoningEfforts: ["none", "low", "medium", "high", "xhigh", "max"],
     reasoningEffort: "medium",
     temperature: 1,
     topP: 1,
