@@ -20,6 +20,8 @@ test("模型目录使用当前厂商参数，且预算能通过校验", () => {
     "kimi-k3",
     "kimi-k2.6",
     "gpt-6-astra",
+    "gpt-6-sol",
+    "gpt-6-luna",
     "gpt-5.6-sol",
     "gpt-5.6-luna",
     "qwen3.8-max",
