@@ -657,52 +657,60 @@ test("A连续两条与B补充在同一窗口处理，不逐条生成", async () 
   );
   q.close();
 });
-test("长上下文配置超过16K字符，保护当前批次和引用", () => {
+test("原文窗口只带最近几十条并按块对齐，前缀稳定且保护当前批次和引用", () => {
   const { repo, store } = setup();
   for (let n = 1; n <= 250; n++)
     repo.append(msg(n, { text: "甲".repeat(100) }));
   const p = { name: "Lucky" },
     m = {
       ...defaultModel(store.settings()),
-      contextWindow: 200000,
-      maxInputTokens: 180000,
-      maxOutputTokens: 10000,
+      contextWindow: 1050000,
+      maxInputTokens: 922000,
+      maxOutputTokens: 128000,
     };
-  const c = buildContext(
-    repo,
-    "group:12345",
-    250,
-    m,
-    { contextMessages: 0 },
-    [250],
-    [],
-    p,
-  );
-  assert.equal(c.messages.length, 250);
-  assert(c.budget.estimatedContext > 16000);
-  const older = buildContext(
-    repo,
-    "group:12345",
-    249,
-    m,
-    { contextMessages: 0 },
-    [249],
-    [],
-    p,
-  );
-  const newer = buildContext(
-    repo,
-    "group:12345",
-    250,
-    m,
-    { contextMessages: 0 },
-    [250],
-    [],
-    p,
-  );
+  const build = (watermark, policy = { contextMessages: 40 }, extras = {}) =>
+    buildContext(
+      repo,
+      "group:12345",
+      watermark,
+      m,
+      policy,
+      [watermark],
+      [],
+      p,
+      Date.now(),
+      extras,
+    );
+  const c = build(250);
+  assert.equal(c.messages.length, 40);
+  assert.equal(c.historyStart, 211);
+  assert(c.budget.estimatedContext < 16000);
+  // Old saves stored 0 for "fill the model window"; that is now the default.
+  assert.equal(build(250, { contextMessages: 0 }).messages.length, 40);
+  const older = build(245);
+  const newer = build(246);
+  assert.equal(older.messages[0].id, 181);
+  assert.equal(newer.messages[0].id, 181);
   const olderJson = JSON.stringify(older.messages);
   const newerJson = JSON.stringify(newer.messages);
   assert.equal(newerJson.startsWith(olderJson.slice(0, -1) + ","), true);
+  const summarized = build(250, undefined, {
+    summaries: [{ level: 0, period: "09-24 08:00–09:00", summary: "在聊天气" }],
+    coverage: 200,
+    summaryStart: 1,
+  });
+  assert.equal(summarized.messages[0].id, 201);
+  assert.equal(summarized.messages.length, 50);
+  assert.equal(summarized.summaries.length, 1);
+  assert.equal(summarized.budget.summarizedThrough, 200);
+  repo.append(msg(251, { text: "还记得这个吗", replyId: "5" }));
+  const quoting = build(251);
+  assert.equal(quoting.messages[0].id, 5);
+  assert.ok(quoting.historyStart > 5);
+  assert.deepEqual(
+    quoting.messages.find((row) => row.id === 251).replyChain,
+    [5],
+  );
   store.db.close();
 });
 test("图片与对应消息ID一起提供，非信任媒体地址不进入模型", () => {
@@ -978,10 +986,19 @@ test("连接重置后遇到 429 仍保留后续重试机会", async () => {
   assert.deepEqual(result, { ok: true });
   assert.equal(attempts, 3);
   assert.equal(trace.calls[0].networkRetries, 2);
-  assert.deepEqual(trace.calls[0].retryHistory, [
-    { attempt: 1, networkCause: "ECONNRESET", status: null, delayMs: null },
-    { attempt: 2, status: 429, delayMs: 10 },
-  ]);
+  assert.deepEqual(
+    trace.calls[0].retryHistory.map(({ attempt, networkCause, status }) => ({
+      attempt,
+      networkCause,
+      status,
+    })),
+    [
+      { attempt: 1, networkCause: "ECONNRESET", status: null },
+      { attempt: 2, networkCause: undefined, status: 429 },
+    ],
+  );
+  assert.equal(trace.calls[0].retryHistory[0].detail, "socket reset");
+  assert.ok(trace.calls[0].retryHistory[1].waitMs >= 10);
   store.db.close();
 });
 test("OpenRouter 使用其 OpenAI 兼容 Chat Completions 地址和 Bearer 密钥", async () => {

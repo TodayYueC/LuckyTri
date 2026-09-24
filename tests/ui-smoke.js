@@ -245,7 +245,7 @@ try {
   assert.equal(await p.locator(".entity-row").count(), 1);
   await p.locator("#addModel").click();
   await p.locator('[data-preset="opencode-go-grok-4.7"]').waitFor();
-  await p.locator('[data-preset="opencode-zen-qwen3.8-max"]').waitFor();
+  await p.locator('[data-preset="opencode-zen-qwen3.8-flash"]').waitFor();
   assert.equal(await p.locator('[data-preset^="opencode-go-"]').count(), 7);
   assert.equal(await p.locator('[data-preset^="opencode-zen-"]').count(), 11);
   assert.equal(await p.locator('[data-preset*="muse-spark"]').count(), 0);
@@ -520,7 +520,9 @@ try {
       .probability,
     0.35,
   );
-  await p.locator("[data-session='group:65432'] details summary").click();
+  await p
+    .locator("[data-session='group:65432'] details.advanced-policy summary")
+    .click();
   await p
     .locator("[data-session='group:65432'] [name=persona]")
     .fill("你叫 Lucky，说话自然一点，少用网络梗。");

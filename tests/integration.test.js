@@ -413,6 +413,68 @@ test(
         .status,
       200,
     );
+    const backupProfile = {
+      ...defaultProfile,
+      id: "backup-model",
+      label: "备用测试模型",
+      isDefault: false,
+    };
+    assert.equal(
+      (
+        await request("/core/models", "PUT", {
+          models: [defaultProfile, backupProfile],
+        })
+      ).status,
+      200,
+    );
+    const policyOf = async () =>
+      (await request("/core/state")).data.sessions.find(
+        (s) => s.id === "group:54321",
+      ).policy;
+    const basePolicy = await policyOf();
+    assert.equal(basePolicy.contextMessages, 40);
+    assert.equal(basePolicy.compaction, true);
+    const putPolicy = (policy) =>
+      request("/core/sessions/group%3A54321", "PUT", policy);
+    assert.equal(
+      (await putPolicy({ ...basePolicy, contextMessages: 5 })).status,
+      400,
+    );
+    assert.equal(
+      (
+        await putPolicy({
+          ...basePolicy,
+          modelId: "backup-model",
+          fallbackModelId: "backup-model",
+        })
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await putPolicy({
+          ...basePolicy,
+          fallbackModelId: "backup-model",
+          compaction: false,
+        })
+      ).status,
+      200,
+    );
+    assert.equal((await policyOf()).fallbackModelId, "backup-model");
+    assert.equal((await policyOf()).compaction, false);
+    const summaries = await request("/core/sessions/group%3A54321/summaries");
+    assert.equal(summaries.status, 200);
+    assert.deepEqual(summaries.data, []);
+    assert.equal(
+      (await request("/core/models/backup-model", "DELETE", {})).status,
+      200,
+    );
+    const afterDelete = await policyOf();
+    assert.equal(afterDelete.fallbackModelId, undefined);
+    assert.equal(
+      (await putPolicy({ ...afterDelete, compaction: true })).status,
+      200,
+    );
     const batchMemoryA = await request("/core/memories", "POST", {
       session: "group:54321",
       subject: "10002",

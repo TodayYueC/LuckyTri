@@ -565,14 +565,15 @@ export const MODEL_CATALOG = [
     reasoningEffort: "high",
     summary: "OpenCode Zen · Kimi 旗舰 · Chat Completions 接口。",
   }),
+  // Qwen3.8 Max is only served through Go; Zen offers Qwen3.8 Flash.
   openCodeModel({
     channel: "zen",
-    model: "qwen3.8-max",
-    label: "Qwen3.8 Max",
+    model: "qwen3.8-flash",
+    label: "Qwen3.8 Flash",
     protocol: "anthropic",
     vision: true,
     limits: limits(1000000, 131072),
-    summary: "OpenCode Zen · 通义千问旗舰 · Anthropic Messages 接口。",
+    summary: "OpenCode Zen · 通义千问轻量多模态 · Anthropic Messages 接口。",
   }),
   openCodeModel({
     channel: "zen",
