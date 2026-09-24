@@ -1,6 +1,6 @@
 {
   "name": "luckybot",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "本地优先、具备长期记忆和语境判断的 AI 群友平台",
   "license": "MIT",
   "repository": {
