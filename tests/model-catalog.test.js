@@ -49,7 +49,7 @@ const OPENCODE_ZEN_MODELS = [
   "glm-5.3-flash",
   "glm-5.3",
   "kimi-k3",
-  "qwen3.8-max",
+  "qwen3.8-flash",
   "minimax-m3",
 ];
 const OPENROUTER_GPT_MODELS = {
@@ -201,7 +201,8 @@ test("OpenCode Go 与 Zen 只显示精选模型，且目录中没有 Muse Spark"
     ),
     false,
   );
-  assert.equal(find("opencode-zen-qwen3.8-max").apiProtocol, "anthropic");
+  assert.equal(find("opencode-zen-qwen3.8-flash").apiProtocol, "anthropic");
+  assert.equal(find("opencode-zen-qwen3.8-max"), undefined);
   assert.equal(find("opencode-go-minimax-m3").apiProtocol, "anthropic");
   assert.equal(find("opencode-zen-minimax-m3").apiProtocol, "chat");
 });

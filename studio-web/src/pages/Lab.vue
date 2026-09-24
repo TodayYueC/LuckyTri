@@ -55,6 +55,20 @@ async function openTrace(id: string) {
   selectedTrace.value = await getTrace(id);
   detail.value = JSON.stringify(selectedTrace.value, null, 2);
 }
+
+const MODE_LABELS: Record<string, string> = {
+  live: "真实聊天",
+  demo: "模拟预览",
+  replay: "测试回放",
+  memory: "记忆整理",
+  summary: "语境压缩",
+};
+
+function tokenSummary(tokens: any) {
+  if (!tokens) return "—";
+  const n = (value: unknown) => Number(value || 0).toLocaleString();
+  return `输入 ${n(tokens.input)}（缓存读 ${n(tokens.cachedRead)} / 写 ${n(tokens.cacheWrite)}）· 输出 ${n(tokens.output)}`;
+}
 </script>
 
 <template>
@@ -171,7 +185,7 @@ async function openTrace(id: string) {
           ><div class="trace-metrics">
             <span
               >模式<b>{{
-                selectedTrace.mode === "live" ? "真实聊天" : "测试回放"
+                MODE_LABELS[selectedTrace.mode] || selectedTrace.mode
               }}</b></span
             ><span
               >耗时<b>{{ selectedTrace.data?.elapsed ?? "—" }} ms</b></span
@@ -179,6 +193,8 @@ async function openTrace(id: string) {
               >模型调用<b
                 >{{ selectedTrace.data?.calls?.length ?? 0 }} 次</b
               ></span
+            ><span id="traceTokens"
+              >Token<b>{{ tokenSummary(selectedTrace.data?.tokens) }}</b></span
             >
           </div>
           <p class="notice">

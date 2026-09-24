@@ -284,6 +284,8 @@ function clearVoice() {
                       vision: "图片理解",
                       generation: "回复生成",
                       validation: "回复检查",
+                      summary: "上下文压缩",
+                      summaryMerge: "摘要合并",
                     } as any
                   )[key] || key
                 }}

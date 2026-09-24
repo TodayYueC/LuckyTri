@@ -21,6 +21,9 @@ export function migrateCore(store) {
     CREATE TABLE IF NOT EXISTS core_jobs (seq INTEGER PRIMARY KEY, session_id TEXT, status TEXT, trace_id TEXT, time INTEGER);
     CREATE TABLE IF NOT EXISTS core_references (id INTEGER PRIMARY KEY, session_id TEXT, platform_id TEXT, account_id TEXT, payload TEXT, UNIQUE(session_id,platform_id,account_id));
     CREATE TABLE IF NOT EXISTS core_vision_cache (cache_key TEXT PRIMARY KEY, session_id TEXT, message_id INTEGER, description TEXT NOT NULL, created INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS core_traces_time ON core_traces(time);
+    CREATE TABLE IF NOT EXISTS core_context_summaries (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, level INTEGER NOT NULL, first_seq INTEGER NOT NULL, last_seq INTEGER NOT NULL, first_time INTEGER, last_time INTEGER, created INTEGER NOT NULL, data TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS core_context_summaries_session ON core_context_summaries(session_id,first_seq);
   `);
   // Keep existing workspaces on the new public name without touching chat
   // history or model credentials. Custom persona and prompt text may contain
@@ -101,6 +104,31 @@ export function migrateCore(store) {
   migrateKnowledge(db);
 }
 
+const TOKEN_FIELDS = [
+  "input",
+  "cachedRead",
+  "cacheWrite",
+  "output",
+  "reasoning",
+];
+export const TRACE_RETENTION_DAYS = 14;
+
+function eventRow(r) {
+  return {
+    ...JSON.parse(r.payload),
+    seq: r.seq,
+    eventId: r.event_id,
+    platformId: r.platform_id,
+    accountId: r.account_id,
+  };
+}
+
+function simulatedFilter(simulated) {
+  return simulated === null
+    ? ""
+    : " AND COALESCE(json_extract(payload,'$.simulated'),0)=?";
+}
+
 export class Repository {
   constructor(store) {
     this.store = store;
@@ -126,26 +154,29 @@ export class Repository {
   // callers building a live or demo prompt must choose one side of the
   // boundary so a preview can never leak into a real conversation.
   events(session, before = Number.MAX_SAFE_INTEGER, { simulated = null } = {}) {
-    const filter =
-      simulated === null
-        ? ""
-        : " AND COALESCE(json_extract(payload,'$.simulated'),0)=?";
     const args =
       simulated === null
         ? [session, before]
         : [session, before, Number(!!simulated)];
     return this.db
       .prepare(
-        `SELECT * FROM core_events WHERE session_id=? AND seq<=?${filter} ORDER BY seq`,
+        `SELECT * FROM core_events WHERE session_id=? AND seq<=?${simulatedFilter(simulated)} ORDER BY seq`,
       )
       .all(...args)
-      .map((r) => ({
-        ...JSON.parse(r.payload),
-        seq: r.seq,
-        eventId: r.event_id,
-        platformId: r.platform_id,
-        accountId: r.account_id,
-      }));
+      .map(eventRow);
+  }
+  eventsAfter(session, after = 0, { simulated = null, limit = null } = {}) {
+    const args =
+      simulated === null
+        ? [session, after]
+        : [session, after, Number(!!simulated)];
+    const bounded = Number.isSafeInteger(limit) && limit > 0;
+    return this.db
+      .prepare(
+        `SELECT * FROM core_events WHERE session_id=? AND seq>?${simulatedFilter(simulated)} ORDER BY seq${bounded ? " LIMIT ?" : ""}`,
+      )
+      .all(...args, ...(bounded ? [limit] : []))
+      .map(eventRow);
   }
   latest(session) {
     return (
@@ -205,8 +236,36 @@ export class Repository {
   finish(trace, status) {
     trace.status = status;
     trace.elapsed = Date.now() - trace.started;
+    const counted = (trace.calls || []).filter((call) => call.tokens);
+    if (counted.length) {
+      trace.tokens = { calls: counted.length };
+      for (const field of TOKEN_FIELDS)
+        trace.tokens[field] = counted.reduce(
+          (sum, call) => sum + (Number(call.tokens[field]) || 0),
+          0,
+        );
+    }
     this.db
       .prepare("UPDATE core_traces SET status=?,data=? WHERE id=?")
       .run(status, JSON.stringify(trace), trace.id);
+  }
+  // Small batches: old traces can be megabytes each and SQLite runs on the
+  // event loop, so a large backlog is cleared over several maintenance ticks.
+  pruneTraces(
+    now = Date.now(),
+    { days = TRACE_RETENTION_DAYS, batchSize = 200, maxBatches = 5 } = {},
+  ) {
+    const remove = this.db.prepare(
+      "DELETE FROM core_traces WHERE rowid IN (SELECT rowid FROM core_traces WHERE time<? AND status!='running' LIMIT ?)",
+    );
+    let removed = 0;
+    for (let batch = 0; batch < maxBatches; batch++) {
+      const changes = Number(
+        remove.run(now - days * 86400000, batchSize).changes,
+      );
+      removed += changes;
+      if (changes < batchSize) return { removed, more: false };
+    }
+    return { removed, more: true };
   }
 }

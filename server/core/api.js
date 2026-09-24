@@ -115,6 +115,7 @@ export function mountCore(app, system) {
         for (const table of [
           "core_memories",
           "core_stages",
+          "core_context_summaries",
           "core_cursors",
           "core_jobs",
           "core_outbox",
@@ -146,6 +147,17 @@ export function mountCore(app, system) {
     wrap((req, res) => {
       const removed = system.clearContext(req.params.id);
       res.json({ ok: true, removed });
+    }),
+  );
+  app.get(
+    "/api/core/sessions/:id/summaries",
+    wrap((req, res) => {
+      const id = String(req.params.id || "");
+      if (!repo.db.prepare("SELECT id FROM sessions WHERE id=?").get(id))
+        throw Error("会话不存在");
+      res.json(
+        system.compactor.list(id, { timeZone: system.policy(id).timeZone }),
+      );
     }),
   );
   app.put(
@@ -183,7 +195,10 @@ export function mountCore(app, system) {
         .all()
         .map((row) => ({ id: row.id, value: JSON.parse(row.value) }))
         .filter(
-          ({ value }) => value.modelId === id || value.visionModelId === id,
+          ({ value }) =>
+            value.modelId === id ||
+            value.visionModelId === id ||
+            value.fallbackModelId === id,
         );
       repo.db.exec("BEGIN IMMEDIATE");
       try {
@@ -196,6 +211,11 @@ export function mountCore(app, system) {
           const next = { ...row.value };
           if (next.modelId === id) next.modelId = fallback;
           if (next.visionModelId === id) delete next.visionModelId;
+          if (
+            next.fallbackModelId === id ||
+            next.fallbackModelId === next.modelId
+          )
+            delete next.fallbackModelId;
           repo.db
             .prepare(
               "UPDATE core_config SET value=?,version=version+1 WHERE id=?",
@@ -291,11 +311,16 @@ export function mountCore(app, system) {
       for (const [k, min, max] of [
         ["aggregateMs", 0, 30000],
         ["maxWaitMs", 0, 60000],
-        ["contextMessages", 0, 1000000],
+        ["contextMessages", 0, 500],
         ["maxReply", 1, 2000],
       ])
         if (!Number.isInteger(p[k]) || p[k] < min || p[k] > max)
           throw Error(`${k} 超出范围`);
+      // 0 is what older saves stored; it now means the default window.
+      if (p.contextMessages > 0 && p.contextMessages < 10)
+        throw Error("近期原文条数应在 10–500 之间");
+      if (p.compaction !== undefined && typeof p.compaction !== "boolean")
+        throw Error("上下文压缩开关无效");
       if (p.maxWaitMs < p.aggregateMs)
         throw Error("最大聚合时间不能小于基础窗口");
       if (
@@ -310,9 +335,20 @@ export function mountCore(app, system) {
         throw Error("节能看图开关无效");
       if (typeof p.memory !== "boolean" || typeof p.deepCheck !== "boolean")
         throw Error("开关无效");
-      system.models.profile(p.modelId);
+      const primary = system.models.profile(p.modelId);
       if (p.visionModelId && !system.models.profile(p.visionModelId).vision)
         throw Error("视觉兼容模型必须开启视觉能力");
+      if (
+        p.fallbackModelId !== undefined &&
+        typeof p.fallbackModelId !== "string"
+      )
+        throw Error("备用模型无效");
+      if (p.fallbackModelId) {
+        if (p.fallbackModelId === "default")
+          throw Error("请从模型库中选择具体的备用模型");
+        if (system.models.profile(p.fallbackModelId).id === primary.id)
+          throw Error("备用模型不能和主模型相同");
+      } else delete p.fallbackModelId;
       if (
         p.persona &&
         (typeof p.persona !== "object" || Array.isArray(p.persona))
@@ -385,12 +421,12 @@ export function mountCore(app, system) {
     const rows = session
       ? repo.db
           .prepare(
-            `SELECT ${fields} FROM core_traces WHERE session_id=? AND mode IN (?,'memory','replay') ORDER BY time DESC LIMIT ?`,
+            `SELECT ${fields} FROM core_traces WHERE session_id=? AND mode IN (?,'memory','summary','replay') ORDER BY time DESC LIMIT ?`,
           )
           .all(session, mode, limit)
       : repo.db
           .prepare(
-            `SELECT ${fields} FROM core_traces WHERE mode IN (?,'memory','replay') ORDER BY time DESC LIMIT ?`,
+            `SELECT ${fields} FROM core_traces WHERE mode IN (?,'memory','summary','replay') ORDER BY time DESC LIMIT ?`,
           )
           .all(mode, limit);
     const names = speakerNames(

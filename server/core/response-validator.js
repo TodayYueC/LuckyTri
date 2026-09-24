@@ -1,6 +1,35 @@
 import { conversationalIssues, replyFocus } from "./conversation-cues.js";
 import { gentlePersona } from "./persona-manager.js";
 const norm = (s) => s.toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
+// The reviewer judges one reply; it needs the turn and its recent lead-in,
+// not the summaries, recall or the rest of the transcript.
+export function reviewContext(snapshot, decision = {}) {
+  const {
+    persona: _persona,
+    sourceRows: _sourceRows,
+    batch: _batch,
+    summaries: _summaries,
+    summaryInstruction: _summaryInstruction,
+    stages: _stages,
+    recalled: _recalled,
+    budget: _budget,
+    historyStart: _historyStart,
+    ...rest
+  } = snapshot;
+  const messages = snapshot.messages || [];
+  const focus = new Set([
+    ...(snapshot.batchIds || []),
+    ...(decision.targetMessageIds || []),
+    ...(decision.evidenceIds || []),
+  ]);
+  for (const m of messages)
+    if (focus.has(m.id)) for (const id of m.replyChain || []) focus.add(id);
+  const recent = new Set(messages.slice(-30).map((m) => m.id));
+  return {
+    ...rest,
+    messages: messages.filter((m) => focus.has(m.id) || recent.has(m.id)),
+  };
+}
 export function normalizeResponse(result, decision, fallback = "嗯") {
   const maxBubbles = decision.action === "MULTI_MESSAGE" ? 3 : 2;
   let bubbles = [];
