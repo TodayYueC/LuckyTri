@@ -42,30 +42,60 @@ try {
   p.on("pageerror", (e) => errors.push(e.message));
   p.on("dialog", (dialog) => dialog.accept());
   await p.addInitScript(() => (sessionStorage.token = "admin-test"));
-  async function navigate(page) {
-    const owner =
-      { spaces: "live", lab: "live", connect: "models" }[page] || page;
-    await p.locator(`.primary-nav [data-page=${owner}]`).click();
-    if (["live", "spaces", "lab", "models", "connect"].includes(page))
-      await p.locator(`.workspace-tabs [data-page=${page}]`).click();
-    await p.locator(`.page-${page}`).waitFor();
+  // Names from the old studio map onto the new areas and their sub-views.
+  const AREA = {
+    overview: ["now"],
+    live: ["chats"],
+    spaces: ["chats"],
+    lab: ["chats", "replay"],
+    knowledge: ["memory"],
+    her: ["nature"],
+    models: ["system", "models"],
+    connect: ["system", "connect"],
+    runtime: ["system", "runtime"],
+  };
+  async function navigate(name) {
+    const [area, sub] = AREA[name] || [name];
+    if (await p.locator(".sheet-layer").count()) {
+      await p.keyboard.press("Escape");
+      await p.locator(".sheet-layer").waitFor({ state: "detached" });
+    }
+    if (p.viewportSize().width > 760)
+      await p.locator(`.dock .dock-link[data-page=${area}]`).click();
+    else if (["now", "chats", "heart", "life"].includes(area))
+      await p.locator(`.tabbar [data-page=${area}]`).click();
+    else {
+      await p.locator(".tabbar-more").click();
+      await p.locator(`.more-grid [data-page=${area}]`).click();
+    }
+    await p.locator(`.page-${area}`).waitFor();
+    if (area === "system" && sub)
+      await p.locator(`.page-system [data-tab=${sub}]`).click();
+    if (sub === "replay")
+      await p.getByRole("button", { name: "回到那一刻" }).click();
+  }
+  // In-app dialogs replace the browser's confirm and prompt.
+  async function confirmDialog() {
+    await p.locator(".dialog-confirm").click();
+    await p.locator(".dialog").waitFor({ state: "detached" });
   }
   await p.goto(base + "/");
-  await p.locator(".page-overview").waitFor();
+  await p.locator(".page-now").waitFor();
   for (const width of [1440, 820, 390]) {
     await p.setViewportSize({ width, height: 1000 });
     for (const page of [
-      "overview",
-      "live",
-      "her",
-      "knowledge",
-      "spaces",
+      "now",
+      "chats",
+      "heart",
+      "people",
+      "life",
+      "memory",
+      "nature",
       "models",
       "connect",
       "lab",
     ]) {
       await navigate(page);
-      await p.locator(`.page-${page}`).waitFor();
       await p.waitForTimeout(400);
       assert(
         await p.evaluate(
@@ -80,14 +110,19 @@ try {
     }
   }
   await p.setViewportSize({ width: 1440, height: 1000 });
-  await p.getByRole("button", { name: /减少动画/ }).click();
+  await navigate("now");
+  await p
+    .getByRole("button", { name: /减少动画/ })
+    .first()
+    .click();
   assert.equal(
-    await p
-      .locator(".studio")
-      .evaluate((el) => el.classList.contains("quiet-motion")),
-    true,
+    await p.evaluate(() => document.documentElement.dataset.motion),
+    "quiet",
   );
-  await p.getByRole("button", { name: /开启灵动效果/ }).click();
+  await p
+    .getByRole("button", { name: /开启灵动效果/ })
+    .first()
+    .click();
   await navigate("spaces");
   await p.getByRole("button", { name: "＋ 添加会话", exact: true }).click();
   await p.locator("#addSession [name=id]").fill("12345");
@@ -95,14 +130,14 @@ try {
   await p.locator("#addSession button").click();
   await p.locator("[data-session='group:12345']").waitFor();
   await navigate("live");
-  await p.getByRole("button", { name: "试聊", exact: true }).click();
+  await p.getByRole("button", { name: "模拟消息", exact: true }).click();
   await p.locator("#simulate").waitFor();
-  await p.locator("[name=text]").fill("Lucky，今天真的好难过");
+  await p.locator("#simulate [name=text]").fill("Lucky，今天真的好难过");
   await p.locator("#simulate button").click();
-  await p.locator(".chat-messages .message.bot p").waitFor();
+  await p.locator(".chat-messages .message.bot p").first().waitFor();
   assert(
     !/听起来真的累坏了|然后呢然后呢/.test(
-      await p.locator(".chat-messages .message.bot p").textContent(),
+      await p.locator(".chat-messages .message.bot p").first().textContent(),
     ),
   );
   await navigate("spaces");
@@ -111,7 +146,7 @@ try {
   assert.equal(
     await p.locator("[data-session='group:12345'] [name=probability]").count(),
     0,
-    "开不开口由她决定，会话里没有概率",
+    "开不开口由 TA 决定，会话里没有概率",
   );
   assert.equal(
     await p.locator("[data-session='group:12345'] [name=cooldown]").count(),
@@ -120,10 +155,10 @@ try {
   await p.locator("[data-session='group:12345'] button.primary").click();
   await p.waitForTimeout(400);
   await navigate("knowledge");
-  await p.getByRole("button", { name: "文档知识库", exact: true }).click();
-  await p.getByRole("heading", { name: "文档知识库", exact: true }).waitFor();
+  await p.getByRole("tab", { name: "资料书架", exact: true }).click();
+  await p.getByRole("heading", { name: "资料书架", exact: true }).waitFor();
   assert.equal(await p.locator("#memoryList").isVisible(), false);
-  await p.getByRole("button", { name: "她记得的事", exact: true }).click();
+  await p.getByRole("tab", { name: "TA 记得的事", exact: true }).click();
   await p.getByRole("button", { name: "＋ 手动记忆", exact: true }).click();
   await p.locator("#addMemory [name=subject]").fill("10001");
   await p.locator("#addMemory [name=content]").fill("喜欢拿铁");
@@ -151,12 +186,12 @@ try {
   await p.locator("#selectAllMemories").click();
   assert.equal(await p.locator("#deleteSelectedMemories").isEnabled(), true);
   await p.locator("#deleteSelectedMemories").click();
+  await confirmDialog();
   await p
     .locator("#memoryList summary")
     .filter({ hasText: "喜欢温拿铁" })
     .waitFor({ state: "detached" });
   await navigate("her");
-  await p.locator("[data-her=nature]").click();
   await p.locator("#natureForm [name=base]").fill("尚未保存的天性草稿");
   await p.locator("#previewForm [name=text]").fill("下班前又来活了");
   await p.locator("#previewForm button.primary").click();
@@ -167,10 +202,14 @@ try {
     "尚未保存的天性草稿",
   );
   await p
-    .locator("#her-preview")
+    .locator("#ta-preview")
     .getByRole("button", { name: "清空", exact: true })
     .click();
   assert.equal(await p.locator("#previewMessages .preview-bubble").count(), 0);
+  // Leaving with an unsaved draft asks first.
+  await p.locator(".dock .dock-link[data-page=system]").click();
+  await confirmDialog();
+  await p.locator(".page-system").waitFor();
   await navigate("models");
   await p.locator("#addModel").click();
   assert.equal(
@@ -191,6 +230,7 @@ try {
   await p.locator("[data-preset=deepseek-flash]").click();
   await p.locator("[name=label]").fill("未保存模型");
   await p.locator(".entity-row").first().click();
+  await confirmDialog();
   assert.equal(await p.locator(".entity-row").count(), 1);
   await p.locator("#addModel").click();
   await p.locator("[data-preset=gpt-6-sol]").click();
@@ -203,6 +243,7 @@ try {
     "128000",
   );
   await p.locator(".entity-row").first().click();
+  await confirmDialog();
   assert.equal(await p.locator(".entity-row").count(), 1);
   await p.locator("#addModel").click();
   await p.locator('[data-preset="kimi-k2.6"]').click();
@@ -218,6 +259,7 @@ try {
     .filter({ hasText: "请先配置模型 API Key" })
     .waitFor();
   await p.locator("#deleteModel").click();
+  await confirmDialog();
   await p.waitForTimeout(300);
   assert.equal(await p.locator(".entity-row").count(), 1);
   await p.locator("#addModel").click();
@@ -235,6 +277,7 @@ try {
   );
   assert.equal(await p.locator('[name="model"]').inputValue(), "");
   await p.locator(".entity-row").first().click();
+  await confirmDialog();
   await p.locator("#addModel").click();
   for (const id of [
     "openrouter-gpt-6-astra",
@@ -254,6 +297,7 @@ try {
     "1050000",
   );
   await p.locator(".entity-row").first().click();
+  await confirmDialog();
   await p.locator("#addModel").click();
   await p.locator('[data-preset="openrouter-glm-5.3-flash"]').click();
   assert.equal(
@@ -266,6 +310,7 @@ try {
   );
   assert.equal(await p.locator('[name="vision"]').isChecked(), true);
   await p.locator(".entity-row").first().click();
+  await confirmDialog();
   await p.locator("#testModel").click();
   await p.getByText("请先配置模型 API Key", { exact: true }).waitFor();
   const ws = new WebSocket(`ws://127.0.0.1:${port}/onebot/v11/ws`, {
@@ -293,7 +338,7 @@ try {
       (s) => s.id === "onebot:88888:private:45678" && !s.enabled,
     ),
   );
-  await navigate("overview");
+  await navigate("runtime");
   await p.locator("[name=demo]").uncheck();
   await p.locator("#runtime .primary").click();
   await navigate("spaces");
@@ -361,7 +406,7 @@ try {
   assert.match(await download.text(), /npm run setup/);
   await p.setViewportSize({ width: 1440, height: 1000 });
   await p.goto(base);
-  await p.locator(".page-overview").waitFor();
+  await p.locator(".page-now").waitFor();
   for (const tab of ["models", "spaces", "her", "knowledge", "lab"]) {
     await navigate(tab);
     await p.waitForTimeout(150);
@@ -373,8 +418,9 @@ try {
       `studio overflow: ${tab}`,
     );
   }
-  await navigate("lab");
-  await p.locator("#debugSession").selectOption("group:12345");
+  await navigate("live");
+  await p.locator("#liveSession").selectOption("group:12345");
+  await p.getByRole("button", { name: "回到那一刻" }).click();
   await p.locator("#loadMessages").click();
   await p.locator("#events table").waitFor();
   const live = new WebSocket(`ws://127.0.0.1:${port}/onebot/v11/ws`, {
@@ -482,12 +528,16 @@ try {
   await p.waitForTimeout(300);
   await p.locator(".archive-list summary").click();
   await p.locator("[data-restore-session='group:65432']").click();
-  await p.locator(".entity-row").filter({ hasText: "手动添加群" }).click();
+  await p
+    .locator(".session-row .row-main")
+    .filter({ hasText: "手动添加群" })
+    .click();
   await p.waitForTimeout(300);
   await p.locator("[data-session='group:65432']").waitFor();
   await p.goto(base + "/#live");
   await p.locator("#liveSession").selectOption("group:65432");
   await p.locator("#clearLiveContext").click();
+  await confirmDialog();
   await p
     .locator("#liveMessages")
     .getByText("等待新的消息", {
@@ -495,7 +545,6 @@ try {
     })
     .waitFor();
   await navigate("her");
-  await p.locator("[data-her=nature]").click();
   await p.locator("#natureForm [name=sarcasm]").waitFor();
   await p.locator("#natureForm [name=sarcasm]").fill("4");
   await p.locator("#natureForm button.primary").click();
@@ -527,9 +576,8 @@ try {
   });
   await p.goto(base + "/#live");
   await p.locator("#liveSession").selectOption("group:12345");
-  await p.getByRole("button", { name: "反馈", exact: true }).click();
-  // Changing only the hash keeps the page, so the routed state arrives with
-  // the Live page's next poll rather than immediately.
+  // Opening the feedback tab fetches the (routed) state again.
+  await p.getByRole("tab", { name: "反馈", exact: true }).click();
   await p.locator(".feedback-item").first().waitFor();
   for (const width of [1440, 820, 390]) {
     await p.setViewportSize({ width, height: 900 });

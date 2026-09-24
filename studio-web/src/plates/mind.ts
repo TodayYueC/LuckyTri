@@ -2,6 +2,9 @@ import { api } from "../api";
 
 export const mind = {
   overview: () => api("/mind"),
+  presence: () => api("/mind/presence"),
+  today: () => api("/mind/today"),
+  person: (id: string) => api("/mind/people/" + encodeURIComponent(id)),
   self: () => api("/mind/self"),
   thread: (id: string) => api("/mind/self/" + encodeURIComponent(id)),
   bonds: () => api("/mind/bonds"),
@@ -55,8 +58,88 @@ export const ORIGIN_LABELS: Record<string, string> = {
   solitude: "独处时",
   daily: "写日记时",
   weekly: "回顾时",
-  memory: "从她说过的话里",
+  memory: "从 TA 说过的话里",
   migration: "旧版本",
+};
+
+export const RUN_LABELS: Record<string, string> = {
+  solitude: "独处",
+  daily: "写日记",
+  weekly: "回顾这段日子",
+  night: "夜里整理",
+};
+
+export const RUN_STATES: Record<string, string> = {
+  running: "进行中",
+  written: "留下了东西",
+  state: "心情变了",
+  empty: "没什么新的",
+  error: "出了点问题",
+  skipped: "跳过了",
+  cancelled: "作废了",
+  interrupted: "重启中断",
+};
+
+export const SELF_STATUS: Record<string, string> = {
+  active: "已经是 TA 的一部分",
+  emerging: "刚开始有这种感觉",
+  closed: "已经放下",
+};
+
+// Star colors on the always-dark sky of the heart page.
+export const KIND_COLORS: Record<string, string> = {
+  interest: "#ffc15f",
+  view: "#7fc8ff",
+  trait: "#ff9a8b",
+  habit: "#b9a4ff",
+  intention: "#6fe0b8",
+  care: "#ff8fbf",
+  curiosity: "#9ef0ff",
+};
+
+export const CHANGE_LABELS: Record<string, string> = {
+  warmer: "更亲近了一点",
+  closer: "走近了",
+  trust_up: "更信任了",
+  trust_down: "有点失望",
+  friction: "有了别扭",
+  repair: "和好了",
+  distance: "疏远了一点",
+  impression: "印象",
+};
+
+export const COOLING = new Set(["friction", "trust_down", "distance"]);
+
+export const DIMENSIONS = [
+  ["familiarity", "熟悉"],
+  ["closeness", "亲近"],
+  ["trust", "信任"],
+  ["tension", "别扭"],
+] as const;
+
+export const DISCRETION: Record<string, string> = {
+  open: "公开",
+  private: "私下知道",
+  secret: "要 TA 保密",
+};
+
+export const MEMORY_STATUS: Record<string, string> = {
+  confirmed: "TA 这样认为",
+  superseded: "已被新的取代",
+  candidate: "旧版待确认",
+  disputed: "有争议",
+  expired: "已过期",
+  deleted: "已撤销",
+};
+
+export const OUTREACH_STATUS: Record<string, string> = {
+  planned: "等合适的时候",
+  sending: "正在发",
+  sent: "说出口了",
+  declined: "TA 后来决定不说",
+  skipped: "时机不合适",
+  cancelled: "没有发",
+  uncertain: "投递未确认",
 };
 
 export const CHOICE_LABELS: Record<string, string> = {
