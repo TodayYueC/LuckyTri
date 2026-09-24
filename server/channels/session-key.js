@@ -68,7 +68,10 @@ export function scopedSessionAliases(db, id) {
       )
       .all(legacy)
       .map((row) => String(row.account_id));
-    if (accounts.length && accounts.some((account) => account !== parsed.accountId))
+    if (
+      accounts.length &&
+      accounts.some((account) => account !== parsed.accountId)
+    )
       return aliases.filter(
         (alias) =>
           alias !== legacy &&
@@ -97,8 +100,7 @@ export function bindSessionId(db, sessionId) {
     // Legacy `group:<id>` rows predate account-qualified channels. Reuse one
     // only for the account that already owns its events; a second bot account
     // gets its own canonical session instead of silently sharing memory.
-    if (parsed.legacy || id !== `${parsed.kind}:${parsed.nativeId}`)
-      return id;
+    if (parsed.legacy || id !== `${parsed.kind}:${parsed.nativeId}`) return id;
     const accounts = db
       .prepare(
         "SELECT DISTINCT account_id FROM core_events WHERE session_id=? AND account_id IS NOT NULL AND account_id!=''",

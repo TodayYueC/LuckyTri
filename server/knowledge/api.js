@@ -7,13 +7,6 @@ import {
   presentMemory,
   speakerNames,
 } from "../core/speaker-names.js";
-import {
-  deleteReviewedMemory,
-  insertReviewedMemory,
-  memoryValid,
-  reviewCandidate,
-  updateReviewedMemory,
-} from "./reviewed.js";
 
 export function mountKnowledge(app, system) {
   const { repo } = system;
@@ -52,13 +45,20 @@ export function mountKnowledge(app, system) {
         !repo.db.prepare("SELECT id FROM sessions WHERE id=?").get(session)
       )
         throw Error("请选择会话、用户 ID 并填写记忆");
+      const discretion = ["open", "private", "secret"].includes(
+        req.body.discretion,
+      )
+        ? req.body.discretion
+        : /private/.test(session)
+          ? "private"
+          : "open";
       const id = randomUUID(),
         now = Date.now();
       repo.db
         .prepare(
-          "INSERT INTO core_memories(id,session_id,subject,content,type,confidence,importance,status,sources,created,updated) VALUES (?,?,?,?,'manual',1,1,'confirmed','[]',?,?)",
+          "INSERT INTO core_memories(id,session_id,subject,content,type,confidence,importance,status,sources,created,updated,discretion) VALUES (?,?,?,?,'manual',1,1,'confirmed','[]',?,?,?)",
         )
-        .run(id, session, subject, content, now, now);
+        .run(id, session, subject, content, now, now, discretion);
       indexMemory(repo.db, id, content);
       repo.store.revision++;
       res.json({ id });
@@ -154,6 +154,7 @@ export function mountKnowledge(app, system) {
         "confidence",
         "importance",
         "expires",
+        "discretion",
       ])
         if (k in req.body) allowed[k] = req.body[k];
       if (
@@ -298,38 +299,4 @@ export function mountKnowledge(app, system) {
       );
     }),
   );
-  app.post("/api/memories", (req, res) => {
-    if (!memoryValid(req.body))
-      return res.status(400).json({ error: "记忆格式无效" });
-    insertReviewedMemory(repo.db, req.body);
-    repo.store.revision++;
-    res.json({ ok: true });
-  });
-  app.patch("/api/memories/:id", (req, res) => {
-    if (!memoryValid(req.body))
-      return res.status(400).json({ error: "记忆格式无效" });
-    try {
-      updateReviewedMemory(repo.db, req.params.id, req.body);
-    } catch (error) {
-      return res
-        .status(error.message === "记忆不存在" ? 404 : 400)
-        .json({ error: error.message });
-    }
-    repo.store.revision++;
-    res.json({ ok: true });
-  });
-  app.delete("/api/memories/:id", (req, res) => {
-    deleteReviewedMemory(repo.db, req.params.id);
-    repo.store.revision++;
-    res.json({ ok: true });
-  });
-  app.post("/api/memory-candidates/:id/review", (req, res) => {
-    try {
-      reviewCandidate(repo.db, req.params.id, req.body || {});
-    } catch (error) {
-      return res.status(error.status || 400).json({ error: error.message });
-    }
-    repo.store.revision++;
-    res.json({ ok: true });
-  });
 }

@@ -1,6 +1,5 @@
 import { realpathSync } from "node:fs";
 import { publicSession } from "../channels/session-key.js";
-import { VOICE_PRESETS, VOICE_SCENARIOS } from "../voice.js";
 import { readiness } from "../readiness.js";
 import { FEEDBACK_LABELS } from "../feedback.js";
 import {
@@ -9,7 +8,6 @@ import {
   MODEL_PRESETS,
   REASONING_EFFORTS,
 } from "../model-presets.js";
-import { effectiveOneBotToken } from "../qq-setup.js";
 import { applySpeakerNames, speakerNames } from "../core/speaker-names.js";
 
 export function mountStudio(app, store, runtime) {
@@ -28,10 +26,6 @@ export function mountStudio(app, store, runtime) {
       settings: {
         ...settings,
         hasApiKey: !!(apiKey || process.env.LLM_API_KEY),
-      },
-      voice: {
-        presets: Object.entries(VOICE_PRESETS).map(([id, v]) => ({ id, ...v })),
-        scenarios: VOICE_SCENARIOS,
       },
       readiness: readiness(store, {
         online: connection.online,
@@ -52,14 +46,6 @@ export function mountStudio(app, store, runtime) {
           ...publicSession(session),
           style: store.groupStyle(session.id, demo),
         })),
-      memories: store.db
-        .prepare("SELECT * FROM memories ORDER BY id DESC")
-        .all(),
-      candidates: store.db
-        .prepare(
-          "SELECT * FROM memory_candidates WHERE status='pending' ORDER BY id DESC LIMIT 200",
-        )
-        .all(),
       decisions: (() => {
         const rows = store.db
           .prepare(
@@ -87,13 +73,13 @@ export function mountStudio(app, store, runtime) {
       },
     });
   });
+  // Connection and runtime switches only. Who she is lives in her nature;
+  // whether she speaks is hers to decide.
   app.patch("/api/settings", (req, res) => {
     const v = req.body;
     const allowed = {};
     for (const k of [
-      "name",
       "aliases",
-      "persona",
       "baseUrl",
       "model",
       "apiKey",
@@ -105,26 +91,13 @@ export function mountStudio(app, store, runtime) {
           return res.status(400).json({ error: "文本配置无效" });
         allowed[k] = v[k];
       }
-    for (const k of [
-      "enabled",
-      "demo",
-      "memoryEnabled",
-      "memoryCandidates",
-      "allowMildProfanity",
-      "qualityRewrite",
-      "adaptGroupStyle",
-    ])
+    for (const k of ["enabled", "demo", "memoryEnabled", "memoryCandidates"])
       if (k in v) {
         if (typeof v[k] !== "boolean")
           return res.status(400).json({ error: "开关配置无效" });
         allowed[k] = v[k];
       }
     for (const [k, min, max] of [
-      ["cooldown", 0, 3600],
-      ["probability", 0, 1],
-      ["contextLimit", 1, 100],
-      ["maxReply", 1, 500],
-      ["slangLevel", 0, 2],
       ["temperature", 0, 2],
       ["topP", 0, 1],
       ["maxTokens", 64, 2000],
@@ -134,20 +107,26 @@ export function mountStudio(app, store, runtime) {
           !Number.isFinite(v[k]) ||
           v[k] < min ||
           v[k] > max ||
-          (!["probability", "temperature", "topP"].includes(k) &&
-            !Number.isInteger(v[k]))
+          (k === "maxTokens" && !Number.isInteger(v[k]))
         )
           return res.status(400).json({ error: "数值配置超出范围" });
         allowed[k] = v[k];
       }
-    if ("voicePreset" in v) {
-      if (
-        typeof v.voicePreset !== "string" ||
-        !Object.hasOwn(VOICE_PRESETS, v.voicePreset)
-      )
-        return res.status(400).json({ error: "口吻预设无效" });
-      allowed.voicePreset = v.voicePreset;
-    }
+    const retired = [
+      "probability",
+      "cooldown",
+      "voicePreset",
+      "slangLevel",
+      "allowMildProfanity",
+      "qualityRewrite",
+      "adaptGroupStyle",
+      "persona",
+      "name",
+    ].filter((k) => k in v);
+    if (retired.length)
+      return res.status(400).json({
+        error: `这些设置已经不存在：${retired.join("、")}。名字和天性在「她 → 天性」里修改`,
+      });
     if (
       "providerPreset" in allowed &&
       !Object.hasOwn(MODEL_PRESETS, allowed.providerPreset)
@@ -173,8 +152,8 @@ export function mountStudio(app, store, runtime) {
         return res.status(400).json({ error: "API 地址无效" });
       }
     }
-    if (["name", "model"].some((k) => k in allowed && !allowed[k].trim()))
-      return res.status(400).json({ error: "名字和模型名称不能为空" });
+    if ("model" in allowed && !allowed.model.trim())
+      return res.status(400).json({ error: "模型名称不能为空" });
     store.save(allowed);
     res.json({ ok: true });
   });

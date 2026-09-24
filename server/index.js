@@ -1,21 +1,19 @@
-import { TimeManager } from "./time/manager.js";
 import { createStore } from "./store.js";
 import { ChatSystem } from "./core/orchestrator.js";
+import { Life } from "./mind/life.js";
 import { createApp } from "./app.js";
 import { createOneBotGateway } from "./channels/gateway.js";
-import { demoReply } from "./voice.js";
 
 const store = createStore();
 const gateway = createOneBotGateway(store);
 const chatSystem = new ChatSystem(store, gateway.send, {
-  localDemo: demoReply,
   fetchQuoted: (message) => gateway.fetchQuoted(message),
   fetchImage: (file) => gateway.fetchImage(file),
 });
-const time = new TimeManager(chatSystem, {
+const life = new Life(chatSystem, {
   online: () => gateway.status().online,
 });
-time.start();
+life.start();
 const host = process.env.HOST || "127.0.0.1";
 if (
   !["127.0.0.1", "localhost", "::1"].includes(host) &&
@@ -27,7 +25,7 @@ let stopping = false;
 function shutdown() {
   if (stopping) return;
   stopping = true;
-  time.close();
+  life.close();
   chatSystem.close();
   gateway.close();
   store.revision++;
@@ -39,7 +37,7 @@ function shutdown() {
 const app = createApp({
   store,
   chatSystem,
-  time,
+  life,
   runtime: {
     connection: () => gateway.status(),
     shutdown,

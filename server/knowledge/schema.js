@@ -9,34 +9,6 @@ export function indexMemory(db, id, content) {
     ).run(id, tokens);
 }
 
-export function memorySessionFromScope(scope, userId) {
-  if (scope === "shared") return "__shared__";
-  if (scope === "private") return `__private__:${userId}`;
-  return scope;
-}
-
-export function upsertLegacyMemory(db, row) {
-  const id = "legacy:" + row.id;
-  const sessionId = memorySessionFromScope(row.scope, row.user_id);
-  const now = Date.now();
-  if (db.prepare("SELECT id FROM core_memories WHERE id=?").get(id))
-    db.prepare(
-      "UPDATE core_memories SET subject=?,content=?,session_id=?,updated=? WHERE id=?",
-    ).run(row.user_id, row.content, sessionId, now, id);
-  else
-    db.prepare(
-      "INSERT INTO core_memories(id,session_id,subject,content,type,confidence,importance,status,locked,sources,created,updated) VALUES (?,?,?,?,'reviewed',1,1,'confirmed',1,'[]',?,?)",
-    ).run(id, sessionId, row.user_id, row.content, row.time || now, now);
-  indexMemory(db, id, row.content);
-}
-
-export function deleteLegacyMemory(db, id) {
-  const coreId = "legacy:" + id;
-  db.prepare("DELETE FROM core_memory_fts WHERE memory_id=?").run(coreId);
-  db.prepare("DELETE FROM core_memory_versions WHERE memory_id=?").run(coreId);
-  db.prepare("DELETE FROM core_memories WHERE id=?").run(coreId);
-}
-
 export function indexChunk(db, id, content) {
   db.prepare("DELETE FROM core_chunk_fts WHERE chunk_id=?").run(id);
   const tokens = ftsTokens(content);

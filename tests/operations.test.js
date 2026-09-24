@@ -7,7 +7,7 @@ import { createStore } from "../server/store.js";
 import { initializeEnvironment } from "../scripts/setup.js";
 import { backupDatabase } from "../scripts/backup.js";
 import { recordModelCheck, readiness } from "../server/readiness.js";
-import { inspectReply, voicePrompt } from "../server/voice.js";
+import { ChatSystem } from "../server/core/orchestrator.js";
 
 test("生成两枚不同随机令牌且不覆盖已有配置", () => {
   const dir = mkdtempSync(join(tmpdir(), "lucky-setup-"));
@@ -58,35 +58,29 @@ test("模型检查绑定地址、模型和有效密钥，其他人设设置不�
   assert(!JSON.stringify(readiness(store)).includes("signature"));
   store.db.close();
 });
-test("反馈不跨会话或模式，影响短回复和网络词检查", () => {
+test("反馈是她在那个会话里听到的话，不跨会话或模式，也不改写天性", () => {
   const store = createStore(":memory:");
+  const system = new ChatSystem(store, async () => ({}));
+  const nature = system.mind.nature.current();
   store.log("group:12345", "分享", "回复", "这句不自然", 0);
   const id = store.db.prepare("SELECT id FROM decisions").get().id;
   store.db
     .prepare("INSERT INTO reply_feedback VALUES (?,?,?)")
     .run(id, "too_meme", Date.now());
-  assert.deepEqual(store.feedback("group:12345", 1), []);
-  assert.deepEqual(store.feedback("private:10001", 0), []);
-  const feedback = store.feedback("group:12345", 0),
-    settings = {
-      name: "Lucky",
-      persona: "随和",
-      slangLevel: 2,
-      maxReply: 100,
-    },
-    input = { message: { text: "下班了", kind: "group" }, feedback };
-  assert(
-    inspectReply("绷不住了", settings, input).includes(
-      "本会话反馈要求少用网络词",
-    ),
-  );
-  assert.match(voicePrompt(settings, input), /此前梗太多/);
-  assert(
-    inspectReply("这句话特别长".repeat(8), settings, {
-      ...input,
-      feedback: [{ tag: "too_long" }],
-    }).includes("本会话反馈希望日常回复更短"),
-  );
+  const heard = (session) =>
+    system.mind.view({ session, kind: "group" }).inner.heard || [];
+  assert.match(heard("group:12345").join(""), /这句不自然.*梗太多/);
+  assert.deepEqual(heard("group:99999"), []);
+  store.log("group:12345", "分享", "回复", "模拟回复", 1);
+  const demoId = store.db
+    .prepare("SELECT id FROM decisions WHERE is_demo=1")
+    .get().id;
+  store.db
+    .prepare("INSERT INTO reply_feedback VALUES (?,?,?)")
+    .run(demoId, "too_long", Date.now());
+  assert(!heard("group:12345").join("").includes("模拟回复"));
+  assert.deepEqual(system.mind.nature.current(), nature);
+  system.close();
   store.db.prepare("DELETE FROM decisions").run();
   store.maintenance();
   assert.equal(
