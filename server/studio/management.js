@@ -1,35 +1,59 @@
 import { callModel } from "../core/llm.js";
-import { pickModel } from "../core/model-manager.js";
+import { defaultModel, pickModel } from "../core/model-manager.js";
 import { generateReply, demoReply } from "../voice.js";
 import { recordModelCheck } from "../readiness.js";
 import { FEEDBACK_LABELS } from "../feedback.js";
 import { isGroupSession } from "../channels/session-key.js";
 
-function connectionSettings(store) {
+function connectionSettings(store, modelId = "") {
   const row = store.db
     .prepare("SELECT value FROM core_config WHERE id='models'")
     .get();
   const models = row ? JSON.parse(row.value) : [];
-  const profile = Array.isArray(models) ? pickModel(models, "default") : null;
+  const profile = Array.isArray(models)
+    ? modelId
+      ? models.find((item) => item.id === modelId)
+      : pickModel(models, "default")
+    : null;
+  if (modelId && !profile) return null;
   const settings = store.settings();
-  if (!profile) return settings;
+  const resolved = profile || defaultModel(settings);
+  const effectiveSettings = profile
+    ? {
+        ...settings,
+        baseUrl: profile.baseUrl,
+        model: profile.model,
+        apiKey: profile.apiKey || "",
+        providerPreset: profile.provider || settings.providerPreset,
+        reasoningEffort: profile.reasoningEffort || "none",
+        tokenField: profile.tokenField || "max_tokens",
+        apiProtocol: profile.apiProtocol || "chat",
+        json: profile.json !== false,
+        thinkingStyle: profile.thinkingStyle || "",
+        temperature: profile.temperature ?? settings.temperature,
+        topP: profile.topP ?? settings.topP,
+        maxTokens: Math.min(
+          profile.maxOutputTokens || settings.maxTokens || 256,
+          256,
+        ),
+      }
+    : settings;
   return {
-    ...settings,
-    baseUrl: profile.baseUrl,
-    model: profile.model,
-    apiKey: profile.apiKey || "",
-    providerPreset: profile.provider || settings.providerPreset,
-    reasoningEffort: profile.reasoningEffort || "none",
-    temperature: profile.temperature ?? settings.temperature,
-    topP: profile.topP ?? settings.topP,
-    maxTokens: Math.min(
-      profile.maxOutputTokens || settings.maxTokens || 256,
-      256,
-    ),
+    settings: effectiveSettings,
+    isDefault: !profile || !!profile.isDefault,
+    profile: {
+      ...resolved,
+      apiKey: resolved.apiKey || "",
+      maxOutputTokens: Math.min(
+        resolved.maxOutputTokens || settings.maxTokens || 256,
+        256,
+      ),
+      timeoutMs: Math.min(resolved.timeoutMs || 25000, 25000),
+    },
   };
 }
 
-export function mountManagement(app, store) {
+export function mountManagement(app, store, chatSystem) {
   const db = store.db;
   app.post("/api/decisions/:id/feedback", (req, res) => {
     const { tag } = req.body;
@@ -152,35 +176,49 @@ export function mountManagement(app, store) {
   });
   let testing = false;
   app.post("/api/model/test", async (req, res) => {
+    const modelId = req.body?.modelId;
+    if (
+      modelId !== undefined &&
+      (typeof modelId !== "string" || !modelId.trim() || modelId.length > 200)
+    )
+      return res.status(400).json({ error: "模型 ID 无效" });
+    const selected = connectionSettings(store, modelId?.trim() || "");
+    if (!selected)
+      return res.status(404).json({ error: "找不到这个已保存的模型" });
     if (testing) return res.status(429).json({ error: "连接测试正在进行" });
     testing = true;
     const started = Date.now();
-    const settings = connectionSettings(store);
+    const { settings, profile, isDefault } = selected;
     try {
-      const result = await callModel(settings, [
-        {
-          role: "system",
-          content: '连通性测试。只输出 JSON 对象 {"ok":true}。',
-        },
-        { role: "user", content: "测试连接" },
-      ]);
+      if (!(profile.apiKey || process.env.LLM_API_KEY))
+        throw Error("请先配置模型 API Key");
+      const result = await chatSystem.models.call(
+        profile,
+        "test",
+        '连通性测试。只输出 JSON 对象 {"ok":true}。',
+        { sessionId: "model-connection-test", prompt: "测试连接" },
+        { calls: [] },
+      );
       if (result.ok !== true) {
-        recordModelCheck(
-          store,
-          settings,
-          false,
-          Date.now() - started,
-          "接口已响应，但 JSON 输出不符合预期",
-        );
+        if (isDefault)
+          recordModelCheck(
+            store,
+            settings,
+            false,
+            Date.now() - started,
+            "接口已响应，但 JSON 输出不符合预期",
+          );
         return res
           .status(422)
           .json({ error: "接口已响应，但 JSON 输出不符合预期" });
       }
-      recordModelCheck(store, settings, true, Date.now() - started);
-      res.json({
+      if (isDefault)
+        recordModelCheck(store, settings, true, Date.now() - started);
+      return res.json({
         ok: true,
         latency: Date.now() - started,
-        model: settings.model,
+        model: profile.model,
+        profileId: profile.id,
       });
     } catch (error) {
       const message = /timeout|abort/i.test(error.name)
@@ -188,7 +226,8 @@ export function mountManagement(app, store) {
         : error instanceof TypeError
           ? "无法连接模型服务，请检查地址或网络"
           : error.message;
-      recordModelCheck(store, settings, false, Date.now() - started, message);
+      if (isDefault)
+        recordModelCheck(store, settings, false, Date.now() - started, message);
       res.status(502).json({ error: message });
     } finally {
       testing = false;

@@ -25,6 +25,7 @@ import { normalizeResponse, validateResponse } from "./response-validator.js";
 import { deliver } from "./message-scheduler.js";
 import { captureMemoryCandidate } from "../knowledge/candidates.js";
 import { TopicTracker } from "./topic-tracker.js";
+import { invalidateSpeakerNames } from "./speaker-names.js";
 
 function defaultLocalDemo() {
   return {
@@ -182,6 +183,7 @@ export class ChatSystem {
       this.repo.db.exec("ROLLBACK");
       throw error;
     }
+    invalidateSpeakerNames(this.repo.db, session);
     this.store.revision++;
     return removed;
   }

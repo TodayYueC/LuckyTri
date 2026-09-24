@@ -233,9 +233,61 @@ try {
   await p.locator("#modelForm .primary").click();
   await p.waitForTimeout(300);
   assert.equal(await p.locator(".entity-row").count(), 2);
+  assert.equal(await p.locator("#testModel").isVisible(), true);
+  assert.equal(await p.locator("#testModel").innerText(), "测试此模型连接");
+  await p.locator("#testModel").click();
+  await p
+    .locator("#modelTestResult")
+    .filter({ hasText: "请先配置模型 API Key" })
+    .waitFor();
   await p.locator("#deleteModel").click();
   await p.waitForTimeout(300);
   assert.equal(await p.locator(".entity-row").count(), 1);
+  await p.locator("#addModel").click();
+  await p.locator('[data-preset="opencode-go-grok-4.7"]').waitFor();
+  await p.locator('[data-preset="opencode-zen-qwen3.8-max"]').waitFor();
+  assert.equal(await p.locator('[data-preset^="opencode-go-"]').count(), 7);
+  assert.equal(await p.locator('[data-preset^="opencode-zen-"]').count(), 11);
+  assert.equal(await p.locator('[data-preset*="muse-spark"]').count(), 0);
+  await p.locator('[data-preset="openrouter"]').click();
+  assert.equal(await p.locator('[name="provider"]').inputValue(), "openrouter");
+  assert.equal(
+    await p.locator('[name="baseUrl"]').inputValue(),
+    "https://openrouter.ai/api/v1",
+  );
+  assert.equal(await p.locator('[name="model"]').inputValue(), "");
+  await p.locator(".entity-row").first().click();
+  await p.locator("#addModel").click();
+  for (const id of [
+    "openrouter-gpt-6-astra",
+    "openrouter-gpt-6-sol",
+    "openrouter-gpt-6-luna",
+    "openrouter-glm-5.3-flash",
+  ])
+    await p.locator(`[data-preset="${id}"]`).waitFor();
+  await p.locator('[data-preset="openrouter-gpt-6-astra"]').click();
+  assert.equal(await p.locator('[name="provider"]').inputValue(), "openrouter");
+  assert.equal(
+    await p.locator('[name="model"]').inputValue(),
+    "openai/gpt-6-astra",
+  );
+  assert.equal(
+    await p.locator('[name="contextWindow"]').inputValue(),
+    "1050000",
+  );
+  await p.locator(".entity-row").first().click();
+  await p.locator("#addModel").click();
+  await p.locator('[data-preset="openrouter-glm-5.3-flash"]').click();
+  assert.equal(
+    await p.locator('[name="model"]').inputValue(),
+    "z-ai/glm-5.3-flash",
+  );
+  assert.equal(
+    await p.locator('[name="contextWindow"]').inputValue(),
+    "1310720",
+  );
+  assert.equal(await p.locator('[name="vision"]').isChecked(), true);
+  await p.locator(".entity-row").first().click();
   await p.locator("#testModel").click();
   await p.getByText("请先配置模型 API Key", { exact: true }).waitFor();
   const ws = new WebSocket(`ws://127.0.0.1:${port}/onebot/v11/ws`, {

@@ -39,6 +39,9 @@ const shared = {
 
 const OPENAI = "https://api.openai.com/v1";
 const BEDROCK = "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1";
+const OPENROUTER = "https://openrouter.ai/api/v1";
+const OPENCODE_GO = "https://opencode.ai/zen/go/v1";
+const OPENCODE_ZEN = "https://opencode.ai/zen/v1";
 const GPT_EFFORTS = ["none", "low", "medium", "high", "xhigh", "max"];
 const ASTRA_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 
@@ -56,6 +59,80 @@ function gpt(fields) {
     ...fields,
   };
 }
+
+function openRouterGpt(fields) {
+  const profile = gpt({
+    ...fields,
+    provider: "openrouter",
+    baseUrl: OPENROUTER,
+    contextWindow: 1050000,
+    maxInputTokens: 922000,
+    maxOutputTokens: 128000,
+  });
+  delete profile.contextWindows;
+  return profile;
+}
+
+function openCodeModel({
+  channel,
+  model,
+  label,
+  protocol = "chat",
+  summary,
+  vision = false,
+  reasoningEfforts,
+  reasoningEffort = "none",
+  limits: modelLimits = limits(128000, 8192),
+  temperature = 0.85,
+  topP = 1,
+}) {
+  const isGo = channel === "go";
+  const anthropic = protocol === "anthropic";
+  return {
+    id: `opencode-${channel}-${model}`,
+    vendor: isGo ? "OpenCode Go" : "OpenCode Zen",
+    label,
+    summary,
+    provider: isGo ? "opencode-go" : "opencode-zen",
+    baseUrl: isGo ? OPENCODE_GO : OPENCODE_ZEN,
+    model,
+    apiProtocol: protocol,
+    ...modelLimits,
+    ...shared,
+    vision,
+    thinkingStyle: anthropic ? "anthropic" : "openai",
+    tokenField:
+      protocol === "responses" ? "max_completion_tokens" : "max_tokens",
+    reasoningEfforts:
+      reasoningEfforts ||
+      (anthropic
+        ? ["none", "low", "medium", "high"]
+        : ["none", "low", "medium", "high"]),
+    reasoningEffort,
+    temperature,
+    topP,
+    timeoutMs: 120000,
+  };
+}
+
+const OPENCODE_GO_MODELS = [
+  ["grok-4.7", "Grok 4.7", "responses"],
+  ["gpt-5.6-luna", "GPT-5.6 Luna", "responses", true],
+  ["deepseek-v4-pro", "DeepSeek V4 Pro", "chat"],
+  ["glm-5.3-flash", "GLM-5.3 Flash", "chat", true],
+  ["kimi-k3", "Kimi K3", "chat"],
+  ["minimax-m3", "MiniMax M3", "anthropic"],
+  ["qwen3.8-max", "Qwen3.8 Max", "anthropic", true],
+].map(([model, label, protocol, vision]) =>
+  openCodeModel({
+    channel: "go",
+    model,
+    label,
+    protocol,
+    vision: !!vision,
+    summary: `OpenCode Go · ${model} · ${protocol === "responses" ? "Responses" : protocol === "anthropic" ? "Messages" : "Chat Completions"} 接口。默认上下文和输出预算为保守起始值，可按账户实际模型上限调整。`,
+  }),
+);
 
 export const EFFORT_LABELS = {
   none: "关闭",
@@ -252,6 +329,50 @@ export const MODEL_CATALOG = [
     baseUrl: OPENAI,
     model: "gpt-6-luna",
   }),
+  openRouterGpt({
+    id: "openrouter-gpt-6-astra",
+    vendor: "OpenRouter",
+    label: "GPT-6 Astra",
+    summary:
+      "OpenRouter 路由 · openai/gpt-6-astra。1.05M 上下文、128K 最大输出；支持图片、结构化输出和工具调用。",
+    model: "openai/gpt-6-astra",
+    reasoningEfforts: ASTRA_EFFORTS,
+  }),
+  openRouterGpt({
+    id: "openrouter-gpt-6-sol",
+    vendor: "OpenRouter",
+    label: "GPT-6 Sol",
+    summary:
+      "OpenRouter 路由 · openai/gpt-6-sol。1.05M 上下文、128K 最大输出；支持图片、结构化输出和工具调用。",
+    model: "openai/gpt-6-sol",
+  }),
+  openRouterGpt({
+    id: "openrouter-gpt-6-luna",
+    vendor: "OpenRouter",
+    label: "GPT-6 Luna",
+    summary:
+      "OpenRouter 路由 · openai/gpt-6-luna。1.05M 上下文、128K 最大输出；支持图片、结构化输出和工具调用。",
+    model: "openai/gpt-6-luna",
+  }),
+  {
+    id: "openrouter-glm-5.3-flash",
+    vendor: "OpenRouter",
+    label: "GLM-5.3 Flash",
+    summary:
+      "OpenRouter 路由 · z-ai/glm-5.3-flash。1,310,720 上下文、131,072 最大输出；支持图片、结构化输出和工具调用。",
+    provider: "openrouter",
+    baseUrl: OPENROUTER,
+    model: "z-ai/glm-5.3-flash",
+    ...limits(1310720, 131072),
+    ...shared,
+    vision: true,
+    thinkingStyle: "openai",
+    tokenField: "max_tokens",
+    reasoningEfforts: ["low", "high", "max"],
+    reasoningEffort: "max",
+    temperature: 1,
+    topP: 0.95,
+  },
   gpt({
     id: "gpt-5.6-sol",
     vendor: "OpenAI",
@@ -356,6 +477,111 @@ export const MODEL_CATALOG = [
     model: "us.openai.gpt-6-luna",
     json: false,
   }),
+  ...OPENCODE_GO_MODELS,
+  gpt({
+    id: "opencode-zen-gpt-6-astra",
+    vendor: "OpenCode Zen",
+    label: "GPT-6 Astra",
+    summary: "OpenCode Zen · GPT-6 系列旗舰 · Responses 接口。",
+    provider: "opencode-zen",
+    baseUrl: OPENCODE_ZEN,
+    model: "gpt-6-astra",
+    apiProtocol: "responses",
+    reasoningEfforts: ASTRA_EFFORTS,
+  }),
+  gpt({
+    id: "opencode-zen-gpt-6-sol",
+    vendor: "OpenCode Zen",
+    label: "GPT-6 Sol",
+    summary: "OpenCode Zen · GPT-6 均衡款 · Responses 接口。",
+    provider: "opencode-zen",
+    baseUrl: OPENCODE_ZEN,
+    model: "gpt-6-sol",
+    apiProtocol: "responses",
+  }),
+  gpt({
+    id: "opencode-zen-gpt-6-luna",
+    vendor: "OpenCode Zen",
+    label: "GPT-6 Luna",
+    summary: "OpenCode Zen · GPT-6 轻量款 · Responses 接口。",
+    provider: "opencode-zen",
+    baseUrl: OPENCODE_ZEN,
+    model: "gpt-6-luna",
+    apiProtocol: "responses",
+  }),
+  openCodeModel({
+    channel: "zen",
+    model: "deepseek-v4.1-flash",
+    label: "DeepSeek V4.1 Flash",
+    limits: limits(1000000, 393216),
+    reasoningEfforts: ["none", "low", "high", "max"],
+    reasoningEffort: "high",
+    summary: "OpenCode Zen · 快速推理 · Chat Completions 接口。",
+  }),
+  openCodeModel({
+    channel: "zen",
+    model: "deepseek-v4-pro",
+    label: "DeepSeek V4 Pro",
+    limits: limits(1000000, 393216),
+    reasoningEfforts: ["none", "low", "high", "max"],
+    reasoningEffort: "high",
+    summary: "OpenCode Zen · DeepSeek V4 旗舰 · Chat Completions 接口。",
+  }),
+  openCodeModel({
+    channel: "zen",
+    model: "deepseek-v4-flash",
+    label: "DeepSeek V4 Flash",
+    limits: limits(1000000, 393216),
+    reasoningEfforts: ["none", "low", "high", "max"],
+    reasoningEffort: "high",
+    summary: "OpenCode Zen · 轻量高速 · Chat Completions 接口。",
+  }),
+  openCodeModel({
+    channel: "zen",
+    model: "glm-5.3-flash",
+    label: "GLM-5.3 Flash",
+    vision: true,
+    limits: limits(1000000, 131072),
+    reasoningEfforts: ["none", "low", "high", "max"],
+    reasoningEffort: "high",
+    summary: "OpenCode Zen · 智谱轻量多模态 · Chat Completions 接口。",
+  }),
+  openCodeModel({
+    channel: "zen",
+    model: "glm-5.3",
+    label: "GLM-5.3",
+    limits: limits(1000000, 131072),
+    reasoningEfforts: ["none", "low", "high", "max"],
+    reasoningEffort: "high",
+    summary: "OpenCode Zen · 智谱旗舰 · Chat Completions 接口。",
+  }),
+  openCodeModel({
+    channel: "zen",
+    model: "kimi-k3",
+    label: "Kimi K3",
+    vision: true,
+    limits: limits(1048576, 131072),
+    reasoningEfforts: ["none", "low", "high", "max"],
+    reasoningEffort: "high",
+    summary: "OpenCode Zen · Kimi 旗舰 · Chat Completions 接口。",
+  }),
+  openCodeModel({
+    channel: "zen",
+    model: "qwen3.8-max",
+    label: "Qwen3.8 Max",
+    protocol: "anthropic",
+    vision: true,
+    limits: limits(1000000, 131072),
+    summary: "OpenCode Zen · 通义千问旗舰 · Anthropic Messages 接口。",
+  }),
+  openCodeModel({
+    channel: "zen",
+    model: "minimax-m3",
+    label: "MiniMax M3",
+    limits: limits(128000, 8192),
+    reasoningEfforts: ["none", "low", "medium", "high"],
+    summary: "OpenCode Zen · MiniMax 主力模型 · Chat Completions 接口。",
+  }),
   {
     id: "custom",
     vendor: "自定义",
@@ -363,6 +589,38 @@ export const MODEL_CATALOG = [
     summary: "OpenAI 兼容接口。上下文先按 128K 填，思考档可按供应商再改。",
     provider: "custom",
     baseUrl: "",
+    model: "",
+    ...limits(128000, 8192),
+    embedding: false,
+    embeddingModel: "",
+    timeoutMs: 90000,
+    system: true,
+    json: true,
+    tools: false,
+    vision: false,
+    thinkingStyle: "openai",
+    tokenField: "max_tokens",
+    reasoningEfforts: [
+      "none",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ],
+    reasoningEffort: "none",
+    temperature: 0.85,
+    topP: 1,
+  },
+  {
+    id: "openrouter",
+    vendor: "OpenRouter",
+    label: "OpenRouter · 自选模型",
+    summary:
+      "已填好 OpenRouter API 地址。请自行填写模型 ID、API Key，并按所选模型设置上下文、输出和能力参数。",
+    provider: "openrouter",
+    baseUrl: OPENROUTER,
     model: "",
     ...limits(128000, 8192),
     embedding: false,
@@ -443,7 +701,7 @@ export const MODEL_PRESETS = {
   },
   openrouter: {
     label: "OpenRouter",
-    baseUrl: "https://openrouter.ai/api/v1",
+    baseUrl: OPENROUTER,
     model: "",
   },
 };

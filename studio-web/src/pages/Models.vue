@@ -20,6 +20,7 @@ const effortLabels = computed(
 const modelList = ref(studio.core.models.map((m: any) => ({ ...m })));
 const index = ref(modelList.value.length ? 0 : -1);
 const busy = ref(false);
+const testingModel = ref(false);
 const picker = ref(false);
 const testResult = ref("");
 const draft = reactive(blank());
@@ -83,9 +84,8 @@ const effortOptions = computed(() => {
     list.unshift(draft.reasoningEffort);
   return list;
 });
-const canTest = computed(
-  () =>
-    !!draft.isDefault && studio.core.models.some((m: any) => m.id === draft.id),
+const hasSavedProfile = computed(() =>
+  studio.core.models.some((m: any) => m.id === draft.id),
 );
 
 function blank() {
@@ -178,6 +178,8 @@ function formatTokens(value: number) {
 }
 
 function capacity(item: any) {
+  if (item.id === "openrouter") return "按所选模型填写上下文和输出参数";
+  if (!item.model) return "填写模型 ID 和对应参数";
   const windows = item.contextWindows || [];
   const context = windows.length
     ? windows.map((w: any) => w.label).join(" / ")
@@ -312,12 +314,16 @@ async function remove() {
 }
 
 async function testModel() {
-  testResult.value = "正在测试已保存的默认模型…";
+  if (!hasSavedProfile.value || studio.dirty || testingModel.value) return;
+  testingModel.value = true;
+  testResult.value = `正在测试「${draft.label || draft.model}」…`;
   try {
-    const r = await testSavedModel();
-    testResult.value = `✓ 连接成功 · ${r.model} · ${r.latency} ms`;
+    const r = await testSavedModel(draft.id);
+    testResult.value = `✓ ${draft.label || r.model} 连接成功 · ${r.latency} ms`;
   } catch (e) {
     testResult.value = (e as Error).message;
+  } finally {
+    testingModel.value = false;
   }
 }
 </script>
@@ -535,12 +541,19 @@ async function testModel() {
           >
             设为默认模型</button
           ><button
-            v-if="canTest"
+            v-if="hasSavedProfile"
             type="button"
             id="testModel"
+            :disabled="busy || testingModel || studio.dirty"
             @click="testModel"
           >
-            测试默认模型连接</button
+            {{
+              testingModel
+                ? "正在测试…"
+                : studio.dirty
+                  ? "保存后测试此模型"
+                  : "测试此模型连接"
+            }}</button
           ><button
             type="button"
             id="deleteModel"
@@ -557,8 +570,8 @@ async function testModel() {
         <span>✦</span>
         <h3>还没有模型</h3>
         <p>
-          选择厂商后会填好接口地址、模型名、上下文和思考强度，只需再填写 API
-          Key。
+          常见厂商会预填模型参数；OpenRouter 可选 GPT-6
+          预设，也可用自选模型手动填写模型 ID 和参数。
         </p>
         <button class="primary" @click="openPicker">＋ 新增模型</button>
       </div>
@@ -578,7 +591,8 @@ async function testModel() {
         </button>
       </div>
       <p class="small">
-        参数来自各厂商当前文档，包含上下文、输出上限和思考档位。保存前仍可修改。
+        常见厂商预设会填入对应参数。OpenRouter 提供 GPT-6
+        预设和自选模型；自选模型只预填 API 地址，其余按模型信息填写。
       </p>
       <div v-for="group in groups" :key="group.vendor" class="vendor-block">
         <h3>{{ group.vendor }}</h3>
@@ -592,7 +606,9 @@ async function testModel() {
             @click="choosePreset(item)"
           >
             <b>{{ item.label }}</b>
-            <small>{{ item.model }}</small>
+            <small>{{
+              item.model || "填写你在 OpenRouter 选择的模型 ID"
+            }}</small>
             <small>{{ capacity(item) }}</small>
             <small>{{ item.summary }}</small>
           </button>

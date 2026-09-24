@@ -110,7 +110,7 @@ onMounted(async () => {
     studio.error = (e as Error).message;
   }
   subscribe(async () => {
-    if (!studio.dirty) {
+    if (!studio.dirty && studio.page !== "live") {
       try {
         await reload();
       } catch {
