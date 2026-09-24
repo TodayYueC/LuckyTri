@@ -262,7 +262,7 @@ test(
       request("/core/sessions/group%3A54321", "PUT", value);
     const refused = await putPolicy({ ...policy, probability: 0.5 });
     assert.equal(refused.status, 400);
-    assert.match(refused.data.error, /由她自己决定/);
+    assert.match(refused.data.error, /由 TA 自己决定/);
     assert.equal(
       (await putPolicy({ ...policy, contextMessages: 5 })).status,
       400,

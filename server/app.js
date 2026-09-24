@@ -46,11 +46,26 @@ export function createApp({ store, chatSystem, runtime, life }) {
   mountMind(app, chatSystem, life || new Life(chatSystem));
   mountKnowledge(app, chatSystem);
   mountEvents(app, chatSystem);
-  app.use("/app", express.static(join(process.cwd(), "public", "app")));
+  // Built assets carry a content hash; the page that names them must not be
+  // cached, or an upgrade leaves the browser asking for files that are gone.
+  app.use(
+    "/app",
+    express.static(join(process.cwd(), "public", "app"), {
+      setHeaders(res, path) {
+        res.setHeader(
+          "Cache-Control",
+          path.endsWith(".html")
+            ? "no-cache"
+            : "public, max-age=31536000, immutable",
+        );
+      },
+    }),
+  );
   const studioIndex = join(process.cwd(), "public", "app", "index.html");
   app.get(["/", "/index.html", "/app", "/app/"], (req, res, next) => {
-    if (existsSync(studioIndex)) return res.sendFile(studioIndex);
-    next();
+    if (!existsSync(studioIndex)) return next();
+    res.setHeader("Cache-Control", "no-cache");
+    res.sendFile(studioIndex);
   });
   app.use(express.static("public"));
   app.use((err, req, res, next) => {

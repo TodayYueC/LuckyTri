@@ -125,7 +125,7 @@ export function mountStudio(app, store, runtime) {
     ].filter((k) => k in v);
     if (retired.length)
       return res.status(400).json({
-        error: `这些设置已经不存在：${retired.join("、")}。名字和天性在「她 → 天性」里修改`,
+        error: `这些设置已经不存在：${retired.join("、")}。名字和天性在「TA → 天性」里修改`,
       });
     if (
       "providerPreset" in allowed &&
