@@ -848,6 +848,33 @@ tr:hover td {
 .archive-list .row {
   margin-top: 8px;
 }
+.summary-list {
+  margin-top: 14px;
+}
+.summary-list article {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.summary-list header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+.summary-list small {
+  color: var(--muted);
+}
+.summary-list p {
+  margin: 6px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.summary-list ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
 /* Task-specific working surfaces. */
 .today-layout {
   display: grid;
@@ -1645,10 +1672,14 @@ tr:hover td {
 .trace-metrics span {
   display: flex;
   justify-content: space-between;
+  gap: 12px;
   color: var(--muted);
 }
 .trace-metrics b {
+  min-width: 0;
   color: var(--ink);
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 .connection-workbench {
   height: 100%;

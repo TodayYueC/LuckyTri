@@ -1,11 +1,19 @@
 import { api } from "../api";
 
-export async function listEvents(session: string) {
-  return api("/core/events?session=" + encodeURIComponent(session));
+export async function listEvents(session: string, after?: number) {
+  const query = new URLSearchParams({ session });
+  if (after !== undefined) query.set("after", String(after));
+  return api("/core/events?" + query.toString());
 }
 
-export async function listTraces(session: string) {
-  return api("/core/traces?session=" + encodeURIComponent(session));
+export async function listTraces(
+  session: string,
+  options: { limit?: number; compact?: boolean } = {},
+) {
+  const query = new URLSearchParams({ session });
+  if (options.limit) query.set("limit", String(options.limit));
+  if (options.compact) query.set("compact", "1");
+  return api("/core/traces?" + query.toString());
 }
 
 export async function getTrace(id: string) {

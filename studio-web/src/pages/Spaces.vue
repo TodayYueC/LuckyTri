@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import { studio, reload } from "../store";
 import { toast } from "../api";
 import {
   addSession as createSession,
   archiveSession,
   deleteSession,
+  listSummaries,
   saveSession as putSession,
   setSessionEnabled,
 } from "../plates/sessions";
@@ -50,6 +51,23 @@ function personaText(value: any) {
     : JSON.stringify(value, null, 2);
 }
 
+const LEVEL_LABELS = ["近期细摘要", "中期摘要", "较早摘要", "远期摘要"];
+const summaries = ref<any[]>([]);
+watch(
+  () => selected.value?.id,
+  async (id) => {
+    summaries.value = [];
+    if (!id) return;
+    try {
+      const rows = await listSummaries(id);
+      if (selected.value?.id === id) summaries.value = [...rows].reverse();
+    } catch {
+      summaries.value = [];
+    }
+  },
+  { immediate: true },
+);
+
 async function addSession(e: Event) {
   e.preventDefault();
   const data = Object.fromEntries(new FormData(e.target as HTMLFormElement));
@@ -92,6 +110,10 @@ async function saveSession(e: Event, s: any) {
     f.elements.namedItem("selectiveVision") as HTMLInputElement
   ).checked;
   v.deepCheck = (f.elements.namedItem("deepCheck") as HTMLInputElement).checked;
+  v.compaction = (
+    f.elements.namedItem("compaction") as HTMLInputElement
+  ).checked;
+  v.fallbackModelId = String(v.fallbackModelId || "");
   const personaRaw = String(v.persona || "").trim();
   delete v.persona;
   if (personaRaw) {
@@ -221,6 +243,24 @@ async function saveSession(e: Event, s: any) {
                   </option>
                 </select>
               </label>
+              <label
+                >备用模型（主模型连不上时接替）
+                <select
+                  name="fallbackModelId"
+                  :value="s.policy.fallbackModelId || ''"
+                >
+                  <option value="">不使用</option>
+                  <option
+                    v-for="m in studio.core.models.filter(
+                      (x: any) => x.id !== modelChoice(s),
+                    )"
+                    :key="m.id"
+                    :value="m.id"
+                  >
+                    {{ m.label || m.model }}
+                  </option>
+                </select>
+              </label>
               <label class="check span-two"
                 ><input
                   name="selectiveVision"
@@ -242,7 +282,7 @@ async function saveSession(e: Event, s: any) {
                   :value="s.cooldown ?? studio.health.settings.cooldown"
               /></label>
             </div>
-            <details>
+            <details class="advanced-policy">
               <summary>高级策略</summary>
               <div class="grid">
                 <label
@@ -258,9 +298,11 @@ async function saveSession(e: Event, s: any) {
                     :value="s.policy.maxWaitMs"
                 /></label>
                 <label
-                  >近期条数（0 = 使用模型预算）<input
+                  >近期原文条数（10–500）<input
                     name="contextMessages"
                     type="number"
+                    min="10"
+                    max="500"
                     :value="s.policy.contextMessages"
                 /></label>
                 <label
@@ -270,6 +312,13 @@ async function saveSession(e: Event, s: any) {
                     :value="s.policy.maxReply"
                 /></label>
               </div>
+              <label class="check"
+                ><input
+                  name="compaction"
+                  type="checkbox"
+                  :checked="s.policy.compaction !== false"
+                />上下文压缩：更早的聊天定期整理成分层摘要，越近越详细</label
+              >
               <label class="check"
                 ><input
                   name="memory"
@@ -296,6 +345,24 @@ async function saveSession(e: Event, s: any) {
                   personaText(s.policy.persona)
                 }}</textarea>
               </label>
+            </details>
+            <details class="summary-list">
+              <summary>语境摘要 · {{ summaries.length }} 段</summary>
+              <p v-if="!summaries.length" class="empty-copy">
+                还没有摘要。聊天超过近期原文条数后，更早的内容会自动整理到这里。
+              </p>
+              <article v-for="item in summaries" :key="item.id">
+                <header>
+                  <b>{{ LEVEL_LABELS[item.level] || "摘要" }}</b
+                  ><small>{{ item.period }} · {{ item.messages }} 条消息</small>
+                </header>
+                <p>{{ item.summary }}</p>
+                <ul v-if="item.keyPoints?.length">
+                  <li v-for="(point, index) in item.keyPoints" :key="index">
+                    {{ point.open ? "未完：" : "" }}{{ point.text }}
+                  </li>
+                </ul>
+              </article>
             </details>
           </div>
           <div class="action-bar">

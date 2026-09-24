@@ -159,6 +159,63 @@ test(
     assert.equal(probe.status, 200);
     assert.equal(probe.data.model, "local-mock");
     assert.equal((await request("/state")).data.readiness.modelTest.ok, true);
+    const profileBase = {
+      vendor: "本地测试",
+      provider: "compatible",
+      baseUrl: `http://127.0.0.1:${provider.address().port}/v1`,
+      apiKey: "test-only-key",
+      contextWindow: 4096,
+      maxInputTokens: 3584,
+      maxOutputTokens: 512,
+      timeoutMs: 25000,
+      vision: false,
+      system: true,
+      json: true,
+      tools: false,
+      embedding: false,
+      embeddingModel: "",
+      reasoningEffort: "none",
+      reasoningEfforts: ["none"],
+      thinkingStyle: "openai",
+      tokenField: "max_tokens",
+      temperature: 0.7,
+      topP: 1,
+    };
+    const savedProfiles = await request("/core/models", "PUT", {
+      models: [
+        {
+          ...profileBase,
+          id: "primary-profile",
+          label: "默认测试模型",
+          model: "local-mock",
+          isDefault: true,
+        },
+        {
+          ...profileBase,
+          id: "secondary-profile",
+          label: "独立测试模型",
+          model: "secondary-mock",
+          isDefault: false,
+        },
+      ],
+    });
+    assert.equal(savedProfiles.status, 200);
+    const secondaryProbe = await request("/model/test", "POST", {
+      modelId: "secondary-profile",
+    });
+    assert.equal(secondaryProbe.status, 200);
+    assert.equal(secondaryProbe.data.model, "secondary-mock");
+    assert.equal(secondaryProbe.data.profileId, "secondary-profile");
+    assert.equal(prompts.at(-1).model, "secondary-mock");
+    assert.equal(
+      (await request("/model/test", "POST", { modelId: "missing-profile" }))
+        .status,
+      404,
+    );
+    assert.equal(
+      (await request("/core/models", "PUT", { models: [] })).status,
+      200,
+    );
     assert.equal(
       (await request("/settings", "PATCH", { voicePreset: "toString" })).status,
       400,
@@ -354,6 +411,68 @@ test(
     assert.equal(
       (await request("/core/models", "PUT", { models: [defaultProfile] }))
         .status,
+      200,
+    );
+    const backupProfile = {
+      ...defaultProfile,
+      id: "backup-model",
+      label: "备用测试模型",
+      isDefault: false,
+    };
+    assert.equal(
+      (
+        await request("/core/models", "PUT", {
+          models: [defaultProfile, backupProfile],
+        })
+      ).status,
+      200,
+    );
+    const policyOf = async () =>
+      (await request("/core/state")).data.sessions.find(
+        (s) => s.id === "group:54321",
+      ).policy;
+    const basePolicy = await policyOf();
+    assert.equal(basePolicy.contextMessages, 40);
+    assert.equal(basePolicy.compaction, true);
+    const putPolicy = (policy) =>
+      request("/core/sessions/group%3A54321", "PUT", policy);
+    assert.equal(
+      (await putPolicy({ ...basePolicy, contextMessages: 5 })).status,
+      400,
+    );
+    assert.equal(
+      (
+        await putPolicy({
+          ...basePolicy,
+          modelId: "backup-model",
+          fallbackModelId: "backup-model",
+        })
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await putPolicy({
+          ...basePolicy,
+          fallbackModelId: "backup-model",
+          compaction: false,
+        })
+      ).status,
+      200,
+    );
+    assert.equal((await policyOf()).fallbackModelId, "backup-model");
+    assert.equal((await policyOf()).compaction, false);
+    const summaries = await request("/core/sessions/group%3A54321/summaries");
+    assert.equal(summaries.status, 200);
+    assert.deepEqual(summaries.data, []);
+    assert.equal(
+      (await request("/core/models/backup-model", "DELETE", {})).status,
+      200,
+    );
+    const afterDelete = await policyOf();
+    assert.equal(afterDelete.fallbackModelId, undefined);
+    assert.equal(
+      (await putPolicy({ ...afterDelete, compaction: true })).status,
       200,
     );
     const batchMemoryA = await request("/core/memories", "POST", {

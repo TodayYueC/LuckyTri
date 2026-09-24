@@ -14,14 +14,18 @@ import {
   setSessionEnabled,
   upsertSession,
 } from "./sessions.js";
-import { applySpeakerNames, speakerNames } from "./speaker-names.js";
+import {
+  applySpeakerNames,
+  invalidateSpeakerNames,
+  speakerNames,
+} from "./speaker-names.js";
 
 export function mountCore(app, system) {
   const { repo } = system;
   app.get("/api/core/health", (req, res) => {
     const row = repo.db
       .prepare(
-        "SELECT time,status,json_extract(data,'$.error') error FROM core_traces WHERE mode='live' AND status!='running' AND json_array_length(data,'$.calls')>0 ORDER BY time DESC LIMIT 1",
+        "SELECT time,status,json_extract(data,'$.error') error FROM core_traces WHERE mode='live' AND status!='running' AND json_array_length(data,'$.calls')>0 ORDER BY rowid DESC LIMIT 1",
       )
       .get();
     res.json({
@@ -114,6 +118,7 @@ export function mountCore(app, system) {
           "core_topics",
           "core_memories",
           "core_stages",
+          "core_context_summaries",
           "core_cursors",
           "core_jobs",
           "core_outbox",
@@ -135,6 +140,7 @@ export function mountCore(app, system) {
         repo.db.exec("ROLLBACK");
         throw error;
       }
+      invalidateSpeakerNames(repo.db, id);
       repo.store.revision++;
       res.json({ ok: true, deleted: id });
     }),
@@ -144,6 +150,17 @@ export function mountCore(app, system) {
     wrap((req, res) => {
       const removed = system.clearContext(req.params.id);
       res.json({ ok: true, removed });
+    }),
+  );
+  app.get(
+    "/api/core/sessions/:id/summaries",
+    wrap((req, res) => {
+      const id = String(req.params.id || "");
+      if (!repo.db.prepare("SELECT id FROM sessions WHERE id=?").get(id))
+        throw Error("会话不存在");
+      res.json(
+        system.compactor.list(id, { timeZone: system.policy(id).timeZone }),
+      );
     }),
   );
   app.put(
@@ -181,7 +198,10 @@ export function mountCore(app, system) {
         .all()
         .map((row) => ({ id: row.id, value: JSON.parse(row.value) }))
         .filter(
-          ({ value }) => value.modelId === id || value.visionModelId === id,
+          ({ value }) =>
+            value.modelId === id ||
+            value.visionModelId === id ||
+            value.fallbackModelId === id,
         );
       repo.db.exec("BEGIN IMMEDIATE");
       try {
@@ -194,6 +214,11 @@ export function mountCore(app, system) {
           const next = { ...row.value };
           if (next.modelId === id) next.modelId = fallback;
           if (next.visionModelId === id) delete next.visionModelId;
+          if (
+            next.fallbackModelId === id ||
+            next.fallbackModelId === next.modelId
+          )
+            delete next.fallbackModelId;
           repo.db
             .prepare(
               "UPDATE core_config SET value=?,version=version+1 WHERE id=?",
@@ -289,11 +314,16 @@ export function mountCore(app, system) {
       for (const [k, min, max] of [
         ["aggregateMs", 0, 30000],
         ["maxWaitMs", 0, 60000],
-        ["contextMessages", 0, 1000000],
+        ["contextMessages", 0, 500],
         ["maxReply", 1, 2000],
       ])
         if (!Number.isInteger(p[k]) || p[k] < min || p[k] > max)
           throw Error(`${k} 超出范围`);
+      // 0 is what older saves stored; it now means the default window.
+      if (p.contextMessages > 0 && p.contextMessages < 10)
+        throw Error("近期原文条数应在 10–500 之间");
+      if (p.compaction !== undefined && typeof p.compaction !== "boolean")
+        throw Error("上下文压缩开关无效");
       if (p.maxWaitMs < p.aggregateMs)
         throw Error("最大聚合时间不能小于基础窗口");
       if (
@@ -308,9 +338,20 @@ export function mountCore(app, system) {
         throw Error("节能看图开关无效");
       if (typeof p.memory !== "boolean" || typeof p.deepCheck !== "boolean")
         throw Error("开关无效");
-      system.models.profile(p.modelId);
+      const primary = system.models.profile(p.modelId);
       if (p.visionModelId && !system.models.profile(p.visionModelId).vision)
         throw Error("视觉兼容模型必须开启视觉能力");
+      if (
+        p.fallbackModelId !== undefined &&
+        typeof p.fallbackModelId !== "string"
+      )
+        throw Error("备用模型无效");
+      if (p.fallbackModelId) {
+        if (p.fallbackModelId === "default")
+          throw Error("请从模型库中选择具体的备用模型");
+        if (system.models.profile(p.fallbackModelId).id === primary.id)
+          throw Error("备用模型不能和主模型相同");
+      } else delete p.fallbackModelId;
       if (
         p.persona &&
         (typeof p.persona !== "object" || Array.isArray(p.persona))
@@ -344,30 +385,53 @@ export function mountCore(app, system) {
     wrap((req, res) => {
       const before = Number(req.query.before) || Number.MAX_SAFE_INTEGER;
       const session = String(req.query.session || "");
+      const after =
+        req.query.after === undefined ? null : Number(req.query.after);
       const names = speakerNames(repo.db, [session]);
+      const rows =
+        Number.isSafeInteger(after) && after >= 0
+          ? repo.db
+              .prepare(
+                "SELECT seq,session_id,time,role,payload FROM core_events WHERE session_id=? AND seq>? ORDER BY seq ASC LIMIT 100",
+              )
+              .all(session, after)
+          : repo.db
+              .prepare(
+                "SELECT seq,session_id,time,role,payload FROM core_events WHERE session_id=? AND seq<? ORDER BY seq DESC LIMIT 100",
+              )
+              .all(session, before);
       res.json(
-        repo.db
-          .prepare(
-            "SELECT seq,session_id,time,role,payload FROM core_events WHERE session_id=? AND seq<? ORDER BY seq DESC LIMIT 100",
-          )
-          .all(session, before)
-          .map((r) => {
-            const payload = JSON.parse(r.payload);
-            const label = names.get(String(payload.userId));
-            if (label) payload.name = label;
-            return { ...r, payload };
-          }),
+        rows.map((r) => {
+          const payload = JSON.parse(r.payload);
+          const label = names.get(String(payload.userId));
+          if (label) payload.name = label;
+          return { ...r, payload };
+        }),
       );
     }),
   );
   app.get("/api/core/traces", (req, res) => {
     const mode = repo.store.settings().demo ? "demo" : "live";
     const session = String(req.query.session || "");
-    const rows = repo.db
-      .prepare(
-        "SELECT id,session_id,time,mode,status,json_extract(data,'$.reason') reason,json_extract(data,'$.error') error FROM core_traces WHERE (?='' OR session_id=?) AND mode IN (?,'memory','replay') ORDER BY time DESC LIMIT 100",
-      )
-      .all(session, session, mode);
+    const requestedLimit = Number(req.query.limit);
+    const limit = Number.isSafeInteger(requestedLimit)
+      ? Math.max(1, Math.min(100, requestedLimit))
+      : 100;
+    const compact = req.query.compact === "1";
+    const fields = compact
+      ? "id,session_id,time,mode,status,json_extract(data,'$.reason') reason"
+      : "id,session_id,time,mode,status,json_extract(data,'$.reason') reason,json_extract(data,'$.error') error";
+    const rows = session
+      ? repo.db
+          .prepare(
+            `SELECT ${fields} FROM core_traces WHERE session_id=? AND mode IN (?,'memory','summary','replay') ORDER BY time DESC LIMIT ?`,
+          )
+          .all(session, mode, limit)
+      : repo.db
+          .prepare(
+            `SELECT ${fields} FROM core_traces WHERE mode IN (?,'memory','summary','replay') ORDER BY time DESC LIMIT ?`,
+          )
+          .all(mode, limit);
     const names = speakerNames(
       repo.db,
       rows.map((row) => row.session_id),

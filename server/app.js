@@ -41,7 +41,7 @@ export function createApp({ store, chatSystem, runtime, time }) {
   });
   mountStudio(app, store, runtime);
   mountQqSetup(app, store);
-  mountManagement(app, store);
+  mountManagement(app, store, chatSystem);
   mountCore(app, chatSystem);
   mountTime(app, time || new TimeManager(chatSystem));
   mountKnowledge(app, chatSystem);
