@@ -16,6 +16,7 @@ export const mind = {
     ),
   day: (day: string) => api("/mind/day/" + day),
   chapter: (n: number) => api("/mind/chapters/" + n),
+  story: () => api("/mind/story"),
   nature: () => api("/mind/nature"),
   saveNature: (value: unknown) => api("/mind/nature", "PUT", value),
   saveSettings: (value: unknown) => api("/mind/settings", "PUT", value),
@@ -29,6 +30,33 @@ export const mind = {
     api("/mind/thoughts/" + encodeURIComponent(id), "DELETE", {}),
   preview: (value: unknown) => api("/mind/preview", "POST", value),
   savePrompts: (value: unknown) => api("/core/prompts", "PUT", value),
+};
+
+export const ANTICIPATION_LABELS: Record<string, string> = {
+  promise: "答应的事",
+  plan: "想做的事",
+  event: "别人的安排",
+  date: "每年的日子",
+};
+
+export const ANTICIPATION_STATES: Record<string, string> = {
+  pending: "还在等",
+  lapsed: "悄悄错过了",
+  done: "做到了",
+  missed: "错过了",
+  let_go: "不再惦记",
+  revoked: "已撤销",
+};
+
+export const ORIGIN_LABELS: Record<string, string> = {
+  turn: "聊天时",
+  direct: "聊天时",
+  group: "聊天时",
+  solitude: "独处时",
+  daily: "写日记时",
+  weekly: "回顾时",
+  memory: "从她说过的话里",
+  migration: "旧版本",
 };
 
 export const CHOICE_LABELS: Record<string, string> = {

@@ -380,7 +380,15 @@ onMounted(load);
         ><input type="checkbox" v-model="settings.life.diary" /><span
           ><b>睡前写日记</b
           ><small
-            >一天结束时写下这一天，和昨天的自己对照，隔一段时间重写自传。</small
+            >一天结束时写下这一天，和昨天的自己对照；隔一段时间在夜里回顾，改写自传、翻开新的一章。</small
+          ></span
+        ></label
+      >
+      <label class="setting-toggle"
+        ><input type="checkbox" v-model="settings.life.night" /><span
+          ><b>夜里整理</b
+          ><small
+            >睡着以后，把白天没整理的聊天记进记忆和约定里（消息少的私聊也不用等攒够），再按回顾间隔回顾这段日子。</small
           ></span
         ></label
       >
@@ -412,7 +420,7 @@ onMounted(load);
             v-model.number="settings.life.minMessages"
         /></label>
         <label
-          >自传多久重写一章（天）<input
+          >回顾间隔（天）<input
             type="number"
             min="1"
             v-model.number="settings.life.chapterDays"

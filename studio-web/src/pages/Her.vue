@@ -57,6 +57,9 @@ onUnmounted(() => clearInterval(timer));
           <template v-if="data.affect.cause">
             · 因为{{ data.affect.cause }}</template
           >
+          <template v-if="data.affect.lately">
+            · {{ data.affect.lately }}</template
+          >
         </p>
       </div>
       <div class="her-control">
