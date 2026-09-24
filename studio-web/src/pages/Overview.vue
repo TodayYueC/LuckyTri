@@ -92,7 +92,13 @@ async function saveRuntime(e: Event) {
           class="activity-item"
         >
           <time>{{ new Date(d.time).toLocaleTimeString() }}</time
-          ><span class="status-tag">{{ d.reply ? "已回应" : "在旁听" }}</span>
+          ><span class="status-tag">{{
+            d.reply
+              ? "开口了"
+              : /扫了一眼|睡着/.test(d.reason)
+                ? "扫了一眼"
+                : "没出声"
+          }}</span>
           <p>{{ d.reply || d.reason }}</p>
           <details v-if="d.reply">
             <summary>查看原因</summary>
@@ -108,10 +114,10 @@ async function saveRuntime(e: Event) {
       </div>
     </section>
     <section class="today-note">
-      <span class="eyebrow">MAKE IT YOURS</span>
-      <h2>让她有自己的<br /><em>表达方式。</em></h2>
-      <p>设定性格，再用一句话感受变化。</p>
-      <button @click="go('character')">编辑人格 ↗</button
+      <span class="eyebrow">A LIFE OF HER OWN</span>
+      <h2>记得昨天的自己，<br /><em>成为今天的自己。</em></h2>
+      <p>看看她此刻的心情、在意的人和写下的日记。</p>
+      <button data-page="her" @click="go('her')">走近她 ↗</button
       ><span class="note-star" aria-hidden="true">✦</span>
     </section>
   </div>

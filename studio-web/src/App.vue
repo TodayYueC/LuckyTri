@@ -1,28 +1,26 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed } from "vue";
-import { pages, studio, reload, go } from "./store";
+import { pageFromHash, studio, reload, go } from "./store";
 import { subscribe } from "./sse";
 import { toast } from "./api";
 import Overview from "./pages/Overview.vue";
 import Live from "./pages/Live.vue";
 import Knowledge from "./pages/Knowledge.vue";
-import Character from "./pages/Character.vue";
+import Her from "./pages/Her.vue";
 import Spaces from "./pages/Spaces.vue";
 import Models from "./pages/Models.vue";
 import Connect from "./pages/Connect.vue";
-import Time from "./pages/Time.vue";
 import Lab from "./pages/Lab.vue";
 
 const views: Record<string, object> = {
   overview: Overview,
   live: Live,
   knowledge: Knowledge,
-  character: Character,
+  her: Her,
   spaces: Spaces,
   models: Models,
   connect: Connect,
   lab: Lab,
-  time: Time,
 };
 
 const navigation = [
@@ -41,31 +39,24 @@ const navigation = [
     pages: ["live", "spaces", "lab"],
   },
   {
+    key: "her",
+    label: "她",
+    en: "HER LIFE",
+    number: "03",
+    pages: ["her"],
+  },
+  {
     key: "knowledge",
     label: "记忆",
     en: "MEMORY",
-    number: "03",
-    pages: ["knowledge"],
-  },
-  {
-    key: "time",
-    label: "时间",
-    en: "PASSING TIME",
     number: "04",
-    pages: ["time"],
-  },
-  {
-    key: "character",
-    label: "人格",
-    en: "PERSONA",
-    number: "05",
-    pages: ["character"],
+    pages: ["knowledge"],
   },
   {
     key: "models",
     label: "系统",
     en: "SYSTEM",
-    number: "06",
+    number: "05",
     pages: ["models", "connect"],
   },
 ];
@@ -77,9 +68,8 @@ const subtitles: Record<string, string> = {
   live: "现场",
   spaces: "会话设置",
   lab: "历史回放",
-  time: "让时间留下痕迹。",
-  knowledge: "留下重要的，整理正在发生的。",
-  character: "一种性格，一直在场。",
+  her: "记得昨天的自己，也成为今天的自己。",
+  knowledge: "她记得的事，和她读过的资料。",
   models: "模型",
   connect: "QQ 连接",
 };
@@ -107,11 +97,15 @@ function reloadPage() {
   window.location.reload();
 }
 function onHash() {
-  const next = location.hash.slice(1);
-  if (Object.hasOwn(pages, next)) studio.page = next as keyof typeof pages;
+  const next = pageFromHash();
+  if (!next) return;
+  studio.page = next;
+  if (location.hash.slice(1) !== next)
+    history.replaceState(null, "", "#" + next);
 }
 
 onMounted(async () => {
+  onHash();
   window.addEventListener("hashchange", onHash);
   window.addEventListener("pointermove", movePointer, { passive: true });
   try {
@@ -155,7 +149,7 @@ async function refresh() {
     class="studio"
     :class="{
       'quiet-motion': quietMotion,
-      'time-document': studio.page === 'time',
+      'document-page': studio.page === 'her',
     }"
   >
     <a class="skip-link" href="#mainContent">跳到主要内容</a>

@@ -37,7 +37,9 @@ test(
         const batch = payload.context?.batchIds || [];
         result = {
           appraisal: "朋友在跟我说话",
-          feelings: [{ feeling: "开心", intensity: 0.4, valence: 0.5, cause: batch }],
+          feelings: [
+            { feeling: "开心", intensity: 0.4, valence: 0.5, cause: batch },
+          ],
           choice: "speak",
           reason: "回应朋友",
           targetMessageIds: batch.slice(-1),
@@ -193,7 +195,10 @@ test(
     assert.equal(preview.data.mode, "model");
     assert.equal(preview.data.choice, "speak");
     assert.equal(preview.data.reply, "记得呀，慢慢聊");
-    assert.match(prompts.at(-1).messages[0].content, /speak\|react\|decline\|silent/);
+    assert.match(
+      prompts.at(-1).messages[0].content,
+      /speak\|react\|decline\|silent/,
+    );
     assert.deepEqual((await request("/state")).data.stats, beforePreview);
     const untouched = (await request("/mind")).data;
     assert.equal(untouched.choices.length, 0, "试聊不写入她的选择");
@@ -248,7 +253,9 @@ test(
       1,
       "恢复会话应保留归档前的参与开关",
     );
-    const policy = coreState.sessions.find((s) => s.id === "group:54321").policy;
+    const policy = coreState.sessions.find(
+      (s) => s.id === "group:54321",
+    ).policy;
     assert.equal(policy.probability, undefined);
     assert.equal(policy.contextMessages, 40);
     const putPolicy = (value) =>
@@ -256,8 +263,14 @@ test(
     const refused = await putPolicy({ ...policy, probability: 0.5 });
     assert.equal(refused.status, 400);
     assert.match(refused.data.error, /由她自己决定/);
-    assert.equal((await putPolicy({ ...policy, contextMessages: 5 })).status, 400);
-    assert.equal((await putPolicy({ ...policy, compaction: false })).status, 200);
+    assert.equal(
+      (await putPolicy({ ...policy, contextMessages: 5 })).status,
+      400,
+    );
+    assert.equal(
+      (await putPolicy({ ...policy, compaction: false })).status,
+      200,
+    );
     assert.equal(
       (await request("/core/sessions/group%3A54321/summaries")).status,
       200,
@@ -412,7 +425,10 @@ test(
     );
     const afterRevoke = (await request("/core/memories?session=group%3A12345"))
       .data;
-    assert.equal(afterRevoke.find((m) => m.id === memories[0].id).status, "deleted");
+    assert.equal(
+      afterRevoke.find((m) => m.id === memories[0].id).status,
+      "deleted",
+    );
     assert.equal(
       (
         await request("/mind/settings", "PUT", {
@@ -432,7 +448,9 @@ test(
     const malformed = await request("/model/test", "POST", {});
     assert.equal(malformed.status, 502);
     assert(!JSON.stringify(malformed).includes("SECRET_FROM_PROVIDER"));
-    assert(!JSON.stringify((await request("/state")).data).includes("test-only-key"));
+    assert(
+      !JSON.stringify((await request("/state")).data).includes("test-only-key"),
+    );
     assert.equal((await request("/service/status")).data.app, "luckybot");
     const exited = new Promise((resolve) => child.once("exit", resolve));
     assert.equal((await request("/service/stop", "POST", {})).status, 200);

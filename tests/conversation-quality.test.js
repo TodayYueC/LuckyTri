@@ -91,7 +91,10 @@ test("a real crisis overrides her choice to stay silent; history cannot become a
   );
   assert.equal(stale.choice, "speak");
   assert.deepEqual(stale.targetMessageIds, [2]);
-  assert.throws(() => normalizeTurn({ reason: "?" }, snapshot, trace), SyntaxError);
+  assert.throws(
+    () => normalizeTurn({ reason: "?" }, snapshot, trace),
+    SyntaxError,
+  );
   const react = normalizeTurn(
     { choice: "react", bubbles: ["hh", "多余的"] },
     snapshot,
@@ -99,15 +102,17 @@ test("a real crisis overrides her choice to stay silent; history cannot become a
   );
   assert.deepEqual(react.bubbles, ["hh"]);
   assert(
-    validateResponse({ bubbles: ["这也太好笑了吧真的"] }, { messages: [] }, react)
-      .length,
+    validateResponse(
+      { bubbles: ["这也太好笑了吧真的"] },
+      { messages: [] },
+      react,
+    ).length,
   );
 });
 
 test("unchanged built-in prompts are sent once; custom ones are extra guidance", async () => {
-  const { replyPrompt, PROMPTS } = await import(
-    "../server/core/persona-manager.js"
-  );
+  const { replyPrompt, PROMPTS } =
+    await import("../server/core/persona-manager.js");
   const p = { name: "Lucky", base: "随和" };
   const plain = replyPrompt(p, PROMPTS, "turn");
   assert(!plain.includes("补充配置"));
