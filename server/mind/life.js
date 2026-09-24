@@ -22,6 +22,7 @@ export const LIFE_DEFAULTS = {
   solitude: true,
   proactive: false,
   diary: true,
+  reading: true,
   idleMinutes: 20,
   intervalMinutes: 90,
   minMessages: 6,
@@ -59,7 +60,7 @@ export class Life {
   }
   save(value) {
     const next = { ...this.settings(), ...value };
-    for (const key of ["solitude", "proactive", "diary"])
+    for (const key of ["solitude", "proactive", "diary", "reading"])
       if (typeof next[key] !== "boolean") throw Error("开关无效");
     localClock(this.now(), next.timeZone);
     for (const [key, min, max] of [
@@ -247,7 +248,18 @@ export class Life {
     const feedback = this.db
       .prepare("SELECT 1 FROM reply_feedback WHERE time>? LIMIT 1")
       .get(last?.started || 0);
-    if ((s.minMessages === 0 || fresh < s.minMessages) && !revisit && !feedback)
+    // Something unread on the shelf is reason enough for a quiet hour now
+    // and then, even when nothing new has happened.
+    const shelf =
+      s.reading &&
+      (!last || now - last.started >= 6 * HOUR) &&
+      this.mind.reading.unreadCount() > 0;
+    if (
+      (s.minMessages === 0 || fresh < s.minMessages) &&
+      !revisit &&
+      !feedback &&
+      !shelf
+    )
       return fresh ? "新经历还不多" : "没有新的经历";
     return null;
   }
@@ -397,7 +409,9 @@ export class Life {
       const version = nature.version;
       const experiences = this.experiences(since, now);
       const thoughts = this.mind.thoughts.open({ now, limit: 10 });
+      const chunk = s.reading ? this.mind.reading.next(now) : null;
       const input = {
+        ...(chunk ? { reading: this.mind.reading.passage(chunk) } : {}),
         clock: localClock(now, this.mind.timeZone()),
         mood: (({ mood, cause, energyLabel, phaseLabel }) => ({
           mood,
@@ -449,13 +463,20 @@ export class Life {
         status = "cancelled";
         reason = "独处期间又有了新的对话，这次想法不作数";
       } else if (result?.skip === true && !result.mood) {
-        status = "empty";
+        if (chunk)
+          this.mind.reading.record(chunk, result?.readingNote || "", id, now);
+        status = chunk ? "written" : "empty";
+        reason = chunk ? `读了《${chunk.title}》，没多想` : reason;
+        if (chunk) summary = { read: chunk.title };
       } else {
         const valid = new Set([
           ...experiences.flatMap((e) => e.messages.map((m) => `m:${m.seq}`)),
           ...thoughts.map((t) => `t:${t.id}`),
           ...input.feedback.map((f) => f.ref),
+          ...(chunk ? [`r:${chunk.id}`] : []),
         ]);
+        if (chunk)
+          this.mind.reading.record(chunk, result?.readingNote || "", id, now);
         const noted = this.writeThought(result?.thought, {
           valid,
           thoughts,
@@ -476,16 +497,22 @@ export class Life {
             origin: "solitude",
             time: now,
           });
-        summary = { thought: noted, ...applied };
+        summary = {
+          thought: noted,
+          ...applied,
+          ...(chunk ? { read: chunk.title } : {}),
+        };
         status =
-          noted || applied.self || applied.faces || applied.bonds
+          noted || applied.self || applied.faces || applied.bonds || chunk
             ? "written"
             : result?.mood?.feeling
               ? "state"
               : "empty";
         reason =
           status === "written"
-            ? "留下了新的理解"
+            ? chunk
+              ? `读了《${chunk.title}》，${noted || applied.self ? "留下了新的理解" : "没多想"}`
+              : "留下了新的理解"
             : status === "state"
               ? "没有新想法，但心情有了变化"
               : "没有新的理解";

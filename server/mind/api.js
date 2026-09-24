@@ -146,6 +146,8 @@ export function mountMind(app, chat, life) {
           )
           .all(),
         thoughts: mind.thoughts.list({ before, q, limit: 30 }),
+        readings: mind.reading.recent({ limit: 30 }),
+        unread: mind.reading.unreadCount(),
         runs: life.runs(60),
       });
     }),

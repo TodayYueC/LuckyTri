@@ -47,6 +47,9 @@ export function innerView(
       "SELECT day,content FROM mind_diary WHERE created<=? ORDER BY created DESC LIMIT 1",
     )
     .get(now);
+  const read = mind.reading
+    .recent({ now, limit: 2 })
+    .filter((r) => r.created > now - 7 * DAY);
   const self = {
     ...(face || kind === "group"
       ? {
@@ -68,6 +71,14 @@ export function innerView(
       : {}),
     ...(diary
       ? { lastDiary: `${diary.day}：${text(diary.content, 110)}` }
+      : {}),
+    ...(read.length
+      ? {
+          readLately: read.map(
+            (r) =>
+              `读过《${r.title}》第 ${r.ordinal + 1} 段${r.note ? `：${text(r.note, 60)}` : ""}`,
+          ),
+        }
       : {}),
   };
   if (!self.here) delete self.here;

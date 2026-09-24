@@ -143,7 +143,7 @@ test("GPT 模型逐条发送原文、本轮数据放在尾部，前缀可复用�
   assert.match(first.body.prompt_cache_key, /^luckybot-[a-f0-9]{20}-decision$/);
   assert.equal(second.body.prompt_cache_key, first.body.prompt_cache_key);
   assert.match(rewrite.body.prompt_cache_key, /-generation$/);
-  assert.equal(first.headers["User-Agent"], "LuckyBot/0.7.0");
+  assert.equal(first.headers["User-Agent"], "LuckyBot/0.8.0");
   assert.match(first.headers["x-opencode-session"], /^[a-f0-9]{32}$/);
   assert.equal(first.body.max_output_tokens, 2048 + 8192);
   assert.deepEqual(trace.calls[0].tokens, {
@@ -651,9 +651,7 @@ test("她在想的时候对方又补充了消息，就不再为旧批次发送�
       },
     },
   );
-  system.repo.append(
-    msg(1, { text: "LuckyBot，有人知道这题怎么办吗？" }),
-  );
+  system.repo.append(msg(1, { text: "LuckyBot，有人知道这题怎么办吗？" }));
   const trace = await system.process(session, system.repo.events(session));
   assert.equal(trace.status, "stale");
   assert.deepEqual(stages, ["turn"]);

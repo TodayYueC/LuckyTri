@@ -8,6 +8,7 @@ import { Faces } from "./faces.js";
 import { Thoughts } from "./thoughts.js";
 import { MemoryManager } from "./memory.js";
 import { Budget } from "./budget.js";
+import { Reading } from "./reading.js";
 import { innerView } from "./view.js";
 import { clamp, dayKey, parse, text } from "./util.js";
 
@@ -36,6 +37,7 @@ export class Mind {
     this.thoughts = new Thoughts(this);
     this.memory = new MemoryManager(repo, models, this);
     this.budget = new Budget(repo);
+    this.reading = new Reading(this);
   }
   timeZone() {
     return this.repo.config("life", {})?.timeZone || "Asia/Shanghai";
