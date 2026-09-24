@@ -340,7 +340,7 @@ export function mountCore(app, system) {
       ])
         if (p[retired] !== undefined)
           throw Error(
-            "开不开口由她自己决定，会话里不再设置概率、冷却、主动安慰或群人格；她在各群的样子见「她 → 关系」",
+            "开不开口由 TA 自己决定，会话里不再设置概率、冷却、主动安慰或群人格；TA 在各群的样子见「人际」",
           );
       if (
         p.selectiveVision !== undefined &&

@@ -39,7 +39,7 @@ export function readiness(
       done: tokenConfigured,
       detail: tokenConfigured
         ? "已配置"
-        : "在 QQ 接入助手中生成并写入配置，或在 .env 中填写 ONEBOT_TOKEN",
+        : "在「系统 → 连接 QQ」中生成并写入配置，或在 .env 中填写 ONEBOT_TOKEN",
       tab: "setup",
     },
     {
@@ -81,7 +81,7 @@ export function readiness(
       done: sessions > 0,
       detail: sessions
         ? `${sessions} 个会话已开启`
-        : "到会话空间开启一个群聊或私聊",
+        : "到「对话」里开启一个群聊或私聊",
       tab: "sessions",
     },
   ];

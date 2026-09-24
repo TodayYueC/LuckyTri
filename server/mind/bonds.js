@@ -312,10 +312,14 @@ export class Bonds {
   changes(kind, id, limit = 40) {
     return this.db
       .prepare(
-        "SELECT * FROM mind_bond_events WHERE subject_kind=? AND subject_id=? AND change!='interaction' ORDER BY created DESC LIMIT ?",
+        "SELECT e.*, EXISTS(SELECT 1 FROM mind_revocations r WHERE r.target_kind='bond' AND r.target_id=e.id) revoked FROM mind_bond_events e WHERE e.subject_kind=? AND e.subject_id=? AND e.change!='interaction' ORDER BY e.created DESC LIMIT ?",
       )
       .all(kind, String(id), limit)
-      .map((row) => ({ ...row, sources: JSON.parse(row.sources) }));
+      .map((row) => ({
+        ...row,
+        revoked: !!row.revoked,
+        sources: JSON.parse(row.sources),
+      }));
   }
   name(userId) {
     return (
