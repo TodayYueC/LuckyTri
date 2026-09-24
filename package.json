@@ -13,11 +13,11 @@
   "homepage": "https://github.com/TodayYueC/LuckyBot",
   "type": "module",
   "engines": {
-    "node": ">=24"
+    "node": ">=24.5"
   },
   "scripts": {
     "launch": "node scripts/launch.js",
-    "start": "node --env-file-if-exists=.env server/index.js",
+    "start": "node --env-file-if-exists=.env scripts/start-server.js",
     "dev:ui": "vite --config studio-web/vite.config.ts",
     "build:ui": "vite build --config studio-web/vite.config.ts",
     "test": "node --test tests/*.test.js",

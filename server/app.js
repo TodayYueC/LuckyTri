@@ -39,7 +39,7 @@ export function createApp({ store, chatSystem, runtime }) {
   });
   mountStudio(app, store, runtime);
   mountQqSetup(app, store);
-  mountManagement(app, store);
+  mountManagement(app, store, chatSystem);
   mountCore(app, chatSystem);
   mountKnowledge(app, chatSystem);
   mountEvents(app, chatSystem);

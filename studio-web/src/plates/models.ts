@@ -8,6 +8,6 @@ export async function deleteModel(id: string) {
   return api("/core/models/" + encodeURIComponent(id), "DELETE", {});
 }
 
-export async function testSavedModel() {
-  return api("/model/test", "POST", {});
+export async function testSavedModel(modelId: string) {
+  return api("/model/test", "POST", { modelId });
 }

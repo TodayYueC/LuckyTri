@@ -1,10 +1,31 @@
 export async function subscribe(
   onChange: (value: unknown) => Promise<void> | void,
+  options: {
+    session?: string;
+    signal?: AbortSignal;
+    reconnectMs?: number;
+  } = {},
 ) {
-  while (true) {
+  const { session = "", signal, reconnectMs = 3000 } = options;
+  const wait = (ms: number) =>
+    new Promise<void>((resolve) => {
+      if (signal?.aborted) return resolve();
+      const timer = setTimeout(done, ms);
+      function done() {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", done);
+        resolve();
+      }
+      signal?.addEventListener("abort", done, { once: true });
+    });
+
+  while (!signal?.aborted) {
     try {
-      const r = await fetch("/api/core/stream", {
+      const url = new URL("/api/core/stream", location.origin);
+      if (session) url.searchParams.set("session", session);
+      const r = await fetch(url, {
         headers: { Authorization: "Bearer " + (sessionStorage.token || "") },
+        signal,
       });
       if (!r.ok) throw Error("stream unavailable");
       const reader = r.body!.getReader();
@@ -25,6 +46,6 @@ export async function subscribe(
     } catch {
       /* reconnect */
     }
-    await new Promise((r) => setTimeout(r, 3000));
+    if (!signal?.aborted) await wait(reconnectMs);
   }
 }
