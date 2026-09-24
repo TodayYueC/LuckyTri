@@ -1,8 +1,11 @@
 import { summarizeGroupStyle } from "../group-style.js";
-import { elapsedLabel } from "./clock.js";
+import { interestTerms } from "./attention.js";
+import { agoLabel, elapsedLabel } from "./clock.js";
 import { describeFace } from "./faces.js";
 import { SELF_KINDS } from "./self.js";
 import { DAY, text } from "./util.js";
+
+const FORGOTTEN = "（很久没想起了）";
 
 const FEEDBACK = {
   too_long: "太长了",
@@ -33,15 +36,28 @@ function feedback(mind, session, now) {
 }
 
 // Who she is right now, in a few hundred tokens. `self` changes a few times a
-// day and sits in the cached head of the prompt; `inner` changes every turn.
+// day and sits in the cached head of the prompt; `inner` changes every turn,
+// so anything this batch of messages brings back to mind belongs there.
 export function innerView(
   mind,
-  { session, kind = "group", people = [], now = Date.now() },
+  { session, kind = "group", people = [], cue = [], now = Date.now() },
 ) {
   const nature = mind.nature.current(now);
   const affect = mind.affect.state(now, { nature });
   const face = mind.faces.current(session, now);
-  const threads = mind.self.active({ before: now, limit: 6 });
+  const threads = mind.self.active({ before: now, now, limit: 6 });
+  const terms = interestTerms(cue);
+  const reminded = [
+    ...mind.self
+      .reminded({ before: now, now, cue: terms, limit: 2 })
+      .map((t) => `${SELF_KINDS[t.kind]}：${text(t.content, 80)}${FORGOTTEN}`),
+    ...mind.thoughts
+      .reminded({ now, cue: terms, session, limit: 1 })
+      .map(
+        (t) =>
+          `${elapsedLabel(t.created, now, mind.timeZone())}想到：${text(t.content, 110)}${FORGOTTEN}`,
+      ),
+  ];
   const diary = mind.db
     .prepare(
       "SELECT day,content FROM mind_diary WHERE created<=? ORDER BY created DESC LIMIT 1",
@@ -95,15 +111,25 @@ export function innerView(
       name: bond.name,
       feel: bond.feel,
       ...(bond.impression ? { impression: bond.impression } : {}),
+      // Someone coming back after days away, or someone who has been around
+      // without talking with her for a while.
+      ...(bond.awayDays >= 3
+        ? { away: `上次见到是 ${agoLabel(now - bond.seenAt)}` }
+        : bond.absentDays >= 7
+          ? { lastTalked: `上次说上话是 ${agoLabel(now - bond.lastTalkedAt)}` }
+          : {}),
     });
   }
   const group = kind === "group" ? mind.bonds.group(session, now) : null;
   const thoughts = mind.thoughts.open({ now, limit: 3, session });
   const heard = feedback(mind, session, now);
+  const expecting = mind.anticipations
+    .upcoming({ now, people, session, limit: 3 })
+    .map((a) => a.text);
   return {
     self,
     inner: {
-      state: `${affect.phaseLabel}，精力${affect.energyLabel}，心情${affect.mood}${affect.cause ? `（${text(affect.cause, 40)}）` : ""}`,
+      state: `${affect.phaseLabel}，精力${affect.energyLabel}，心情${affect.mood}${affect.cause ? `（${text(affect.cause, 40)}）` : ""}${affect.lately ? `，${affect.lately}` : ""}`,
       ...(persons.length ? { people: persons } : {}),
       ...(group ? { thisGroup: group.feel } : {}),
       ...(thoughts.length
@@ -114,6 +140,8 @@ export function innerView(
             ),
           }
         : {}),
+      ...(expecting.length ? { expecting } : {}),
+      ...(reminded.length ? { reminded } : {}),
       ...(heard.length ? { heard } : {}),
     },
     affect,

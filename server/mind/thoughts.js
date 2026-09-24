@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { THOUGHT_FADED, thoughtSalience, touches } from "./salience.js";
 import { HOUR, clamp, evidence, parse, text } from "./util.js";
 
 export const THOUGHT_KINDS = {
@@ -87,22 +88,40 @@ export class Thoughts {
       )
       .map(row);
   }
-  open({ now = Date.now(), limit = 12, session = "" } = {}) {
+  // Still on her mind at `now`, ranked by how present each one is; a thought
+  // let go of later still counts as open when looking back.
+  weighed({ now = Date.now(), session = "" } = {}) {
+    const lived = this.mind.days.lived(now);
     return this.db
       .prepare(
-        "SELECT * FROM mind_thoughts WHERE status='open' AND hidden=0 AND created<=? ORDER BY created DESC LIMIT 200",
+        "SELECT * FROM mind_thoughts WHERE hidden=0 AND created<=? AND (status='open' OR resolved_at>?) ORDER BY created DESC LIMIT 400",
       )
-      .all(now)
+      .all(now, now)
       .map(row)
       .filter((t) => !session || t.sessions.includes(session))
-      .sort(
-        (a, b) =>
-          Number(!!(b.revisit_at && b.revisit_at <= now)) -
-            Number(!!(a.revisit_at && a.revisit_at <= now)) ||
-          b.importance - a.importance ||
-          b.created - a.created,
-      )
+      .map((t) => ({ ...t, salience: thoughtSalience(t, lived, now) }))
+      .sort((a, b) => b.salience - a.salience || b.created - a.created);
+  }
+  open({ now = Date.now(), limit = 12, session = "" } = {}) {
+    return this.weighed({ now, session })
+      .filter((t) => t.salience >= THOUGHT_FADED)
       .slice(0, limit);
+  }
+  // Faded thoughts from this place that the conversation brings back.
+  reminded({ now = Date.now(), cue, session = "", limit = 1 } = {}) {
+    if (!cue?.size) return [];
+    return this.weighed({ now, session })
+      .filter((t) => t.salience < THOUGHT_FADED && touches(t.content, cue))
+      .slice(0, limit);
+  }
+  resolve(id, resolution = "", time = Date.now()) {
+    return (
+      this.db
+        .prepare(
+          "UPDATE mind_thoughts SET status='resolved',resolved_at=?,resolution=? WHERE id=? AND status='open'",
+        )
+        .run(time, text(resolution, 120), id).changes > 0
+    );
   }
   update(id, { status, hidden }) {
     const current = this.get(id);
@@ -111,11 +130,21 @@ export class Thoughts {
       throw Error("状态无效");
     if (hidden !== undefined && typeof hidden !== "boolean")
       throw Error("开关无效");
+    const next = status ?? current.status;
+    const resolved =
+      next === current.status
+        ? [current.resolved_at ?? null, current.resolution ?? ""]
+        : next === "resolved"
+          ? [Date.now(), "在工作台里放下"]
+          : [null, ""];
     this.db
-      .prepare("UPDATE mind_thoughts SET status=?,hidden=? WHERE id=?")
+      .prepare(
+        "UPDATE mind_thoughts SET status=?,hidden=?,resolved_at=?,resolution=? WHERE id=?",
+      )
       .run(
-        status ?? current.status,
+        next,
         hidden === undefined ? current.hidden : +hidden,
+        ...resolved,
         id,
       );
   }

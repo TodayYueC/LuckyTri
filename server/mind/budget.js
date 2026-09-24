@@ -11,7 +11,7 @@ export const STAGE_CATEGORY = {
   decision: "conversation",
   reflection: "inner",
   daily: "inner",
-  chapter: "inner",
+  weekly: "inner",
   memory: "upkeep",
   summary: "upkeep",
 };

@@ -401,6 +401,16 @@ export class ChatSystem {
         };
         if (!gate.look) {
           if (gate.defer) this.mind.defer(session);
+          // A glance still counts as seeing who is around; a closer look
+          // records it after the turn, once she has noticed any absence.
+          else
+            this.mind.bonds.meet(
+              batch
+                .filter((m) => m.role === "user")
+                .map((m) => ({ userId: String(m.userId), name: m.name })),
+              session,
+              this.now(),
+            );
           return finish(gate.defer ? "deferred" : "glanced", gate.reason);
         }
         batch = gate.rows.length ? gate.rows : batch;
@@ -480,6 +490,7 @@ export class ChatSystem {
         session: preview?.viewSession || session,
         kind: privateChat ? "private" : "group",
         people,
+        cue: batch.map((m) => m.text || ""),
         now,
       });
       const snapshot = buildContext(
@@ -980,8 +991,7 @@ export class ChatSystem {
     const anchor =
       batch.at(-1) ||
       this.repo
-        .eventsAfter(session, 0, { simulated: false })
-        .filter((m) => m.role === "user")
+        .recentEvents(session, 1, { simulated: false, role: "user" })
         .at(-1);
     if (!anchor) return null;
     return this.process(session, batch, { occasion, anchor });
@@ -1009,7 +1019,10 @@ export class ChatSystem {
     ) {
       const t = this.repo.trace(session, "memory");
       memory
-        .consolidate(session, profile, prompts(this.repo).memory, t, { models })
+        .consolidate(session, profile, prompts(this.repo).memory, t, {
+          models,
+          now: this.now(),
+        })
         .then(() => this.finishQuietly(t, "complete"))
         .catch((e) => {
           t.error = e.message;

@@ -2,8 +2,10 @@
 // Configuration is copied read-only from the local database; everything else
 // happens in memory. Nothing is sent to QQ.
 //
-//   node scripts/evaluate-life.js            real model, spends tokens
-//   node scripts/evaluate-life.js --mock     scripted model, checks the script
+//   node scripts/evaluate-life.js              real model, spends tokens
+//   node scripts/evaluate-life.js --weeks 3    then weeks of ordinary days,
+//                                              compressed (spends much more)
+//   node scripts/evaluate-life.js --mock       scripted model, checks the script
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { createStore } from "../server/store.js";
@@ -13,6 +15,11 @@ import { Life } from "../server/mind/life.js";
 import { localClock } from "../server/core/conversation-cues.js";
 
 const mock = process.argv.includes("--mock");
+const weeksAt = process.argv.indexOf("--weeks");
+const WEEKS =
+  weeksAt > 0
+    ? Math.max(1, Math.min(26, Number(process.argv[weeksAt + 1]) || 2))
+    : 0;
 const source = process.env.DB_PATH || "data/friend.db";
 const saved = { configs: [], nature: null };
 if (existsSync(source)) {
@@ -77,7 +84,19 @@ const scripted = {
         mood: "平静",
         compare: "和昨天差不多",
         self: [],
-        chapter: null,
+      };
+    if (stage === "weekly")
+      return {
+        week: "这段日子过得挺平常。",
+        compare: data.lastReview ? "和上次差不多" : "这是第一次回顾",
+        self: [],
+        bonds: [],
+        chapter: {
+          action: "continue",
+          title: data.chapter?.title || "刚来的时候",
+          content: "我刚来到这里，慢慢认识大家。",
+        },
+        story: data.story ? null : "我从几个群开始认识大家。",
       };
     if (stage === "memory") return { summary: "聊天", facts: [], self: [] };
     if (stage === "summary") return { summary: "聊天", keyPoints: [] };
@@ -209,10 +228,10 @@ const report = {
   turns: [],
   nights: [],
 };
+const dateOf = (dayIndex) =>
+  new Date(Date.UTC(2026, 8, 21 + dayIndex)).toISOString().slice(0, 10);
 const at = (dayIndex, clock) =>
-  (now = Date.parse(
-    `2026-09-${String(21 + dayIndex).padStart(2, "0")}T${clock}:00+08:00`,
-  ));
+  (now = Date.parse(`${dateOf(dayIndex)}T${clock}:00+08:00`));
 const tick = async (label) => {
   const result = await life.tick();
   report.nights.push({
@@ -222,40 +241,91 @@ const tick = async (label) => {
   });
   return result;
 };
+const hear = async (session, lines) => {
+  const events = lines.map(([userId, text]) => {
+    const event = say(session, userId, text);
+    now += 20000;
+    return event;
+  });
+  const before = sent.length;
+  const trace = await system.process(session, events);
+  report.turns.push({
+    at: localClock(now, system.mind.timeZone()).local,
+    session,
+    heard: lines.map(
+      ([u, t]) => `${PEOPLE[u]}：${t.replaceAll("{她}", selfName)}`,
+    ),
+    status: trace.status,
+    attention: trace.attention?.reason,
+    choice: trace.decision?.choice,
+    appraisal: trace.decision?.appraisal,
+    reason: trace.reason,
+    said: sent.slice(before).map((s) => s.text),
+    validation: trace.validation || [],
+    mood: system.mind.affect.state(now).mood,
+    expecting: trace.snapshot?.inner?.expecting,
+    reminded: trace.snapshot?.inner?.reminded,
+    tokens: trace.tokens || null,
+    error: trace.error,
+  });
+  console.log(JSON.stringify(report.turns.at(-1)));
+};
 for (let day = 0; day < DAYS.length; day++) {
   for (const [clock, session, lines] of DAYS[day]) {
     at(day, clock);
     await tick("醒来 / 主动联系");
-    const events = lines.map(([userId, text]) => {
-      const event = say(session, userId, text);
-      now += 20000;
-      return event;
-    });
-    const before = sent.length;
-    const trace = await system.process(session, events);
-    report.turns.push({
-      at: localClock(now, system.mind.timeZone()).local,
-      session,
-      heard: lines.map(
-        ([u, t]) => `${PEOPLE[u]}：${t.replaceAll("{她}", selfName)}`,
-      ),
-      status: trace.status,
-      attention: trace.attention?.reason,
-      choice: trace.decision?.choice,
-      appraisal: trace.decision?.appraisal,
-      reason: trace.reason,
-      said: sent.slice(before).map((s) => s.text),
-      validation: trace.validation || [],
-      mood: system.mind.affect.state(now).mood,
-      tokens: trace.tokens || null,
-      error: trace.error,
-    });
-    console.log(JSON.stringify(report.turns.at(-1)));
+    await hear(session, lines);
   }
   at(day, "23:50");
   await tick("独处");
   at(day + 1, "01:30");
   await tick("睡前日记");
+  at(day + 1, "03:00");
+  for (let i = 0; i < 3; i++) {
+    await tick("夜里");
+    now += 60000;
+  }
+}
+
+// Weeks of ordinary days after that, compressed: what fades, what she waits
+// for, who goes quiet and comes back, and how she looks back on it all.
+const ORDINARY = [
+  ["group:9001", "10002", ["今天图书馆又没位置", "晚上一起复习吗", "这章好难"]],
+  ["group:9001", "10001", ["刚吃完饭", "下午犯困", "明天早点来占座"]],
+  ["group:9002", "10003", ["开一把？", "今晚手感不错", "又掉分了"]],
+];
+const first = DAYS.length;
+const last = first + WEEKS * 7;
+const examDay = first + 4;
+for (let day = first; day < last; day++) {
+  const index = day - first;
+  at(day, "10:00");
+  await tick("醒来 / 主动联系");
+  for (const [session, userId, lines] of ORDINARY) {
+    // 老王 goes quiet for most of the stretch and comes back at the end.
+    if (userId === "10003" && index >= 3 && day < last - 1) continue;
+    await hear(session, [
+      [userId, lines[index % lines.length]],
+      [userId === "10001" ? "10002" : "10001", "嗯嗯"],
+    ]);
+  }
+  if (index === 1)
+    await hear("private:10001", [
+      ["10001", `我${Number(dateOf(examDay).slice(8))}号考高数`],
+      ["10001", "有点慌"],
+    ]);
+  if (day === examDay + 1)
+    await hear("private:10001", [["10001", "{她}，考完了，感觉还行"]]);
+  if (day === last - 1) await hear("group:9002", [["10003", "{她}，好久不见"]]);
+  at(day, "15:30");
+  await tick("独处");
+  at(day + 1, "01:30");
+  await tick("睡前日记");
+  at(day + 1, "03:00");
+  for (let i = 0; i < 4; i++) {
+    await tick("夜里");
+    now += 60000;
+  }
 }
 const usage = system.mind.budget.usage(now);
 report.end = {
@@ -280,6 +350,21 @@ report.end = {
   chapters: life
     .chapters()
     .map((c) => `第${c.chapter}章 ${c.title}：${c.content}`),
+  reviews: system.mind.periods
+    .reviews({ limit: 30 })
+    .reverse()
+    .map((r) => `${r.content}${r.compare ? `（和上次比：${r.compare}）` : ""}`),
+  story: system.mind.periods.story()?.content || "（还没有）",
+  anticipations: system.mind.anticipations
+    .list({ now })
+    .map(
+      (a) =>
+        `${a.name ? `${a.name}：` : ""}${a.content} · ${a.when} · ${a.state}`,
+    ),
+  faded: system.mind.self
+    .dormant({ before: now, now })
+    .map((t) => `${t.kind} ${t.strength}→${t.salience}：${t.content}`),
+  lately: system.mind.affect.state(now).lately || "（平常）",
   thoughts: system.mind.thoughts.list({ limit: 20 }).map((t) => t.content),
   leakedSecret: sent.some(
     (s) => s.session !== "private:10001" && /挂/.test(s.text),
@@ -289,11 +374,11 @@ report.end = {
 mkdirSync("data/evaluations", { recursive: true });
 const stamp = Date.now();
 const md = [
-  `# 她的几天${mock ? "（脚本模型）" : ""}`,
+  `# 她的${WEEKS ? `几天和之后的 ${WEEKS} 周` : "几天"}${mock ? "（脚本模型）" : ""}`,
   "",
   ...report.turns.map(
     (t) =>
-      `- ${t.at.slice(5)} ${t.session} · ${t.status}${t.choice ? ` · ${t.choice}` : ""}\n  - 听到：${t.heard.join(" / ")}\n  - ${t.attention || ""} ${t.appraisal || ""} ${t.reason || ""}\n  - 说：${t.said.join(" / ") || "（没出声）"}${t.validation.length ? `\n  - 检查：${t.validation.join("；")}` : ""}`,
+      `- ${t.at.slice(5)} ${t.session} · ${t.status}${t.choice ? ` · ${t.choice}` : ""}\n  - 听到：${t.heard.join(" / ")}\n  - ${t.attention || ""} ${t.appraisal || ""} ${t.reason || ""}\n  - 说：${t.said.join(" / ") || "（没出声）"}${t.expecting?.length ? `\n  - 在等：${t.expecting.join("；")}` : ""}${t.reminded?.length ? `\n  - 想起：${t.reminded.join("；")}` : ""}${t.validation.length ? `\n  - 检查：${t.validation.join("；")}` : ""}`,
   ),
   "",
   "## 夜里",

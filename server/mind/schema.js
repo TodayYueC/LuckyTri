@@ -31,6 +31,12 @@ export function migrateMind(db, store) {
     CREATE TABLE IF NOT EXISTS mind_usage (id INTEGER PRIMARY KEY, time INTEGER NOT NULL, category TEXT NOT NULL, stage TEXT NOT NULL, session_id TEXT, input INTEGER NOT NULL DEFAULT 0, cached INTEGER NOT NULL DEFAULT 0, output INTEGER NOT NULL DEFAULT 0, estimated INTEGER NOT NULL DEFAULT 0);
     CREATE INDEX IF NOT EXISTS mind_usage_time ON mind_usage(time);
     CREATE TABLE IF NOT EXISTS mind_attention (session_id TEXT PRIMARY KEY, looked_seq INTEGER NOT NULL DEFAULT 0, looked_at INTEGER);
+    CREATE TABLE IF NOT EXISTS mind_days (day TEXT PRIMARY KEY, created INTEGER NOT NULL, lived INTEGER NOT NULL DEFAULT 0, events INTEGER NOT NULL DEFAULT 0, valence REAL, arousal REAL, looked INTEGER NOT NULL DEFAULT 0, spoke INTEGER NOT NULL DEFAULT 0, people INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS mind_anticipations (id TEXT PRIMARY KEY, created INTEGER NOT NULL, kind TEXT NOT NULL, subject TEXT, session_id TEXT, content TEXT NOT NULL, due_at INTEGER NOT NULL, due_precision TEXT NOT NULL DEFAULT 'day', recurrence TEXT NOT NULL DEFAULT 'none', discretion TEXT NOT NULL DEFAULT 'open', sources TEXT NOT NULL DEFAULT '[]', origin TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', closed_at INTEGER, closed_note TEXT NOT NULL DEFAULT '', closed_sources TEXT NOT NULL DEFAULT '[]');
+    CREATE INDEX IF NOT EXISTS mind_anticipations_due ON mind_anticipations(status,due_at);
+    CREATE TABLE IF NOT EXISTS mind_periods (id TEXT PRIMARY KEY, level TEXT NOT NULL, created INTEGER NOT NULL, period_start INTEGER, period_end INTEGER, title TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, compare TEXT NOT NULL DEFAULT '', sources TEXT NOT NULL DEFAULT '[]', run_id TEXT);
+    CREATE INDEX IF NOT EXISTS mind_periods_level ON mind_periods(level,created);
+    CREATE INDEX IF NOT EXISTS core_memories_subject ON core_memories(subject,status);
   `);
   const addColumn = (table, column, definition) => {
     if (
@@ -42,7 +48,10 @@ export function migrateMind(db, store) {
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   };
   addColumn("core_memories", "discretion", "TEXT NOT NULL DEFAULT 'open'");
+  addColumn("core_memories", "superseded_by", "TEXT");
   addColumn("mind_attention", "deferred", "INTEGER NOT NULL DEFAULT 0");
+  addColumn("mind_thoughts", "resolved_at", "INTEGER");
+  addColumn("mind_thoughts", "resolution", "TEXT NOT NULL DEFAULT ''");
   db.prepare(
     "UPDATE mind_runs SET status='interrupted',finished=? WHERE status='running'",
   ).run(Date.now());

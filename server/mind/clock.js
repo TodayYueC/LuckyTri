@@ -11,6 +11,17 @@ export function elapsedLabel(time, now, zone = "Asia/Shanghai") {
   return age < 7 * 86400000 ? "好几天前" : "很久以前";
 }
 
+// Coarse distance in time, the way a person would say it.
+export function agoLabel(ms) {
+  const days = Math.floor(Math.max(0, ms) / 86400000);
+  if (days < 1) return "今天";
+  if (days < 2) return "昨天";
+  if (days < 7) return `${days} 天前`;
+  if (days < 30) return `${Math.floor(days / 7)} 周前`;
+  if (days < 365) return `${Math.floor(days / 30)} 个月前`;
+  return `${Math.floor(days / 365)} 年前`;
+}
+
 export function topicWeight(
   time,
   now,

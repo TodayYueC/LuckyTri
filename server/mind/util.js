@@ -61,6 +61,23 @@ export function dayKey(time, timeZone) {
   return localClock(time, timeZone).local.slice(0, 10);
 }
 
+// "2026-10-02" or "2026-10-02 14:30" as a moment in her time zone.
+export function zonedTime(value, timeZone) {
+  const match = String(value ?? "")
+    .trim()
+    .match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?$/);
+  if (!match) return null;
+  const [, y, mo, d, h = "00", mi = "00"] = match;
+  const guess = Date.UTC(+y, +mo - 1, +d, +h, +mi);
+  if (!Number.isFinite(guess)) return null;
+  const shown = localClock(guess, timeZone).local;
+  const offset = Date.parse(`${shown.replace(" ", "T")}:00Z`) - guess;
+  const time = guess - offset;
+  return localClock(time, timeZone).local === `${y}-${mo}-${d} ${h}:${mi}`
+    ? time
+    : null;
+}
+
 // Exponential return toward a baseline.
 export function relax(value, baseline, elapsed, halfLife) {
   if (!(elapsed > 0)) return value;
@@ -69,12 +86,12 @@ export function relax(value, baseline, elapsed, halfLife) {
 
 // Evidence is stored as short typed strings so every kind of experience can
 // be cited the same way: "m:<event seq>", "t:<thought id>", "d:<day>",
-// "f:<decision id>".
+// "f:<decision id>", "r:<passage id>", "a:<anticipation id>".
 export function evidence(list) {
   const out = [];
   for (const item of Array.isArray(list) ? list : []) {
     if (Number.isSafeInteger(item) && item > 0) out.push(`m:${item}`);
-    else if (typeof item === "string" && /^[mtdfr]:[\w:.-]{1,80}$/.test(item))
+    else if (typeof item === "string" && /^[mtdfra]:[\w:.-]{1,80}$/.test(item))
       out.push(item);
     else if (/^\d+$/.test(String(item))) out.push(`m:${item}`);
   }
