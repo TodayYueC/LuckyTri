@@ -187,7 +187,7 @@ export class MemoryManager {
     profile,
     prompt,
     trace,
-    { force = false, simulated = false } = {},
+    { force = false, simulated = false, models = this.models } = {},
   ) {
     if (this.busy.has(session)) return;
     if (!force && Date.now() - (this.lastAttempt.get(session) || 0) < 60000)
@@ -213,7 +213,7 @@ export class MemoryManager {
       const block = rows.slice(0, 40),
         last = block.at(-1).seq;
       const names = speakerNames(db, [session]);
-      const value = await this.models.call(
+      const value = await models.call(
         profile,
         "memory",
         prompt,

@@ -1,13 +1,18 @@
 import { parseSessionKey } from "../channels/session-key.js";
 import { replyFocus } from "./conversation-cues.js";
 import { Repository } from "./repository.js";
-import { ModelManager } from "./model-manager.js";
+import { ModelManager, storedModels, withFallback } from "./model-manager.js";
 import { MemoryManager } from "./memory-manager.js";
 import { KnowledgeManager } from "../knowledge/manager.js";
 import { ConversationManager } from "./conversation-manager.js";
 import { persistIncoming, messageEnvelope } from "./message-manager.js";
 import { persona, replyPrompt, prompts } from "./persona-manager.js";
 import { buildContext } from "./context-builder.js";
+import {
+  ContextCompactor,
+  DEFAULT_CONTEXT_MESSAGES,
+  contextKeep,
+} from "./context-compactor.js";
 import {
   loadVisionImages,
   visionInputs,
@@ -21,10 +26,17 @@ import {
 } from "./vision-manager.js";
 import { decide } from "./speech-decision.js";
 import { generate } from "./response-generator.js";
-import { normalizeResponse, validateResponse } from "./response-validator.js";
+import {
+  normalizeResponse,
+  reviewContext,
+  validateResponse,
+} from "./response-validator.js";
 import { deliver } from "./message-scheduler.js";
 import { captureMemoryCandidate } from "../knowledge/candidates.js";
 import { TopicTracker } from "./topic-tracker.js";
+import { invalidateSpeakerNames } from "./speaker-names.js";
+
+const TRACE_PRUNE_INTERVAL_MS = 3600000;
 
 function defaultLocalDemo() {
   return {
@@ -33,6 +45,14 @@ function defaultLocalDemo() {
     reason: "模拟模式本地样例",
     emotion: "平静",
   };
+}
+
+function isPrivateSession(session) {
+  try {
+    return parseSessionKey(session).kind === "private";
+  } catch {
+    return session.startsWith("private:");
+  }
 }
 
 export class ChatSystem {
@@ -59,6 +79,7 @@ export class ChatSystem {
     this.models = models || new ModelManager(this.repo);
     this.memory = new MemoryManager(this.repo, this.models);
     this.knowledge = knowledge || new KnowledgeManager(this.repo, this.models);
+    this.compactor = new ContextCompactor(this.repo);
     this.topics = new TopicTracker(this.repo);
     this.send = send;
     this.random = random;
@@ -67,6 +88,7 @@ export class ChatSystem {
     this.fetchImage = fetchImage;
     this.loadVisionImages = loadImages;
     this.clearEpoch = new Map();
+    this.tracePruneDue = 0;
     this.queue = new ConversationManager((id, batch) =>
       this.process(id, batch),
     );
@@ -92,18 +114,51 @@ export class ChatSystem {
       "session:" + session,
       {},
     );
-    return {
+    const policy = {
       timeZone: this.repo.config("time", {}).timeZone || "Asia/Shanghai",
       aggregateMs: 1200,
       maxWaitMs: 4000,
-      contextMessages: 0,
+      contextMessages: DEFAULT_CONTEXT_MESSAGES,
       maxReply: 180,
       memory: true,
       deepCheck: true,
       comfortOnDistress: false,
       selectiveVision: false,
+      compaction: true,
       ...saved,
     };
+    // Older saves used 0 for "fill the whole model window".
+    policy.contextMessages = contextKeep(policy);
+    return policy;
+  }
+  // What a reply was generated against. Writes that do not change it (other
+  // sessions, memory review, background jobs) must not discard the reply.
+  sessionState(session) {
+    const settings = this.store.settings();
+    return JSON.stringify([
+      this.repo.config("session:" + session, null),
+      this.repo.config("persona", null),
+      this.repo.config("prompts", null),
+      storedModels(this.repo).map(({ apiKey: _apiKey, ...model }) => model),
+      [
+        settings.name,
+        settings.persona,
+        settings.aliases,
+        settings.enabled,
+        settings.demo,
+      ],
+      this.clearEpoch.get(session) || 0,
+    ]);
+  }
+  fallbackFor(policy, primary, trace) {
+    if (!policy.fallbackModelId) return null;
+    try {
+      const profile = this.models.profile(policy.fallbackModelId);
+      return profile && profile.id !== primary?.id ? profile : null;
+    } catch {
+      trace?.steps?.push("备用模型档案不存在，本轮不切换");
+      return null;
+    }
   }
   receive(m) {
     const event = persistIncoming(this.repo, m);
@@ -158,6 +213,7 @@ export class ChatSystem {
       messages: count("messages"),
       references: count("core_references"),
       stages: count("core_stages"),
+      summaries: count("core_context_summaries"),
       jobs: count("core_jobs"),
       outbox: count("core_outbox"),
     };
@@ -167,6 +223,7 @@ export class ChatSystem {
         "core_events",
         "core_references",
         "core_stages",
+        "core_context_summaries",
         "core_jobs",
         "core_outbox",
         "messages",
@@ -183,6 +240,8 @@ export class ChatSystem {
       this.repo.db.exec("ROLLBACK");
       throw error;
     }
+    this.compactor.clear(session);
+    invalidateSpeakerNames(this.repo.db, session);
     this.store.revision++;
     return removed;
   }
@@ -196,9 +255,10 @@ export class ChatSystem {
         replay ? "replay" : simulatedTurn ? "demo" : "live",
       ),
       policy = this.policy(session),
-      revision = this.store.revision,
+      state = this.sessionState(session),
       watermark = batch.at(-1).seq,
-      clearEpoch = this.clearEpoch.get(session) || 0;
+      clearEpoch = this.clearEpoch.get(session) || 0,
+      privateChat = isPrivateSession(session);
     if (!replay)
       for (const m of batch)
         this.repo.db
@@ -299,6 +359,10 @@ export class ChatSystem {
         }
         throw error;
       }
+      const models = withFallback(
+        this.models,
+        this.fallbackFor(policy, model, trace),
+      );
       // Replays exclude mutable memory to avoid leaking later corrections into the past.
       const memories =
         policy.memory && !replay
@@ -307,12 +371,23 @@ export class ChatSystem {
       const knowledge = replay
         ? this.knowledge.retrieve(session, batch, now)
         : await this.knowledge.retrieveWithEmbed(session, batch, now);
+      // A replay only sees summaries that end before the replayed batch.
+      const summaryView =
+        !simulatedTurn && policy.compaction !== false
+          ? this.compactor.forPrompt(session, {
+              before: replay ? batch[0].seq : Number.MAX_SAFE_INTEGER,
+              timeZone: policy.timeZone,
+            })
+          : { summaries: [], coverage: 0, start: 0 };
       const stages = policy.memory
         ? this.repo.db
             .prepare(
               "SELECT first_seq,last_seq,data FROM core_stages WHERE session_id=? AND last_seq<=? ORDER BY last_seq DESC LIMIT 5",
             )
-            .all(session, watermark)
+            .all(
+              session,
+              summaryView.summaries.length ? summaryView.start - 1 : watermark,
+            )
             .map((s) => ({
               first_seq: s.first_seq,
               last_seq: s.last_seq,
@@ -331,7 +406,14 @@ export class ChatSystem {
         memories,
         p,
         replay ? now : Date.now(),
-        { knowledge, stages, simulated: simulatedTurn },
+        {
+          knowledge,
+          stages,
+          simulated: simulatedTurn,
+          summaries: summaryView.summaries,
+          coverage: summaryView.coverage,
+          summaryStart: summaryView.start,
+        },
       );
       const visionModel = policy.visionModelId
         ? this.models.profile(policy.visionModelId)
@@ -398,7 +480,7 @@ export class ChatSystem {
         const isCurrent = () =>
           !this.queue.closed &&
           this.enabled(session, { simulated: true }) &&
-          this.store.revision === revision;
+          this.sessionState(session) === state;
         if (!isCurrent())
           return finish("stale", "生成期间语境已更新，旧稿未发送");
         trace.sent = await deliver(
@@ -416,7 +498,7 @@ export class ChatSystem {
       // first look does not wait on a second understanding call.
       if (describe.length) {
         try {
-          const observed = await this.models.call(
+          const observed = await models.call(
             visionModel,
             "vision",
             prompt.system + "\n" + prompt.vision,
@@ -478,7 +560,7 @@ export class ChatSystem {
             topic: "直接对话",
           }
         : await decide(
-            this.models,
+            models,
             model,
             prompt.system + "\n" + prompt.decision,
             snapshot,
@@ -506,17 +588,7 @@ export class ChatSystem {
             "SELECT COUNT(DISTINCT trace_id) n FROM core_outbox WHERE session_id=? AND time>? AND status IN ('confirmed','uncertain','sending')",
           )
           .get(session, Date.now() - 60000).n;
-        const roundLimit = (() => {
-          try {
-            return parseSessionKey(session).kind === "private";
-          } catch {
-            return session.startsWith("private:");
-          }
-        })()
-          ? 30
-          : direct
-            ? 20
-            : 6;
+        const roundLimit = privateChat ? 30 : direct ? 20 : 6;
         if (rounds >= roundLimit)
           return finish("silent", `每分钟发言轮数限速（${roundLimit}轮）`);
       }
@@ -582,6 +654,40 @@ export class ChatSystem {
       if (!replay) this.topics.record(session, trace.id, watermark, decision);
       if (decision.action === "SILENT")
         return finish("silent", decision.reason);
+      const targetUsers = new Set(
+        snapshot.messages
+          .filter((m) => decision.targetMessageIds.includes(m.id))
+          .map((m) => m.speaker),
+      );
+      const newerUserMessages = () =>
+        this.repo
+          .eventsAfter(session, watermark, { simulated: simulatedTurn })
+          .filter((m) => m.role === "user");
+      const hasRelevantUpdate = () =>
+        newerUserMessages().some(
+          (m) =>
+            privateChat ||
+            targetUsers.has(m.userId) ||
+            (m.replyId &&
+              snapshot.batch.some((b) => b.platformId === m.replyId)),
+        );
+      const isCurrent = () =>
+        !this.queue.closed &&
+        this.enabled(session, { simulated: simulatedTurn }) &&
+        this.sessionState(session) === state &&
+        !hasRelevantUpdate();
+      const staleExit = () => {
+        if (newerUserMessages().length)
+          trace.steps.push("新消息已进入下一批，取消旧稿");
+        if (
+          hasRelevantUpdate() &&
+          clearEpoch === (this.clearEpoch.get(session) || 0)
+        )
+          this.queue.retain(session, batch);
+        return finish("stale", "生成期间语境已更新，旧稿未发送");
+      };
+      // An outdated turn stops before paying for the next model call.
+      const outdated = () => !replay && !isCurrent();
       const generationPrompt = replyPrompt(p, prompt);
       const fallbackCandidates = ["嗯", "好", "行", "收到", "我先听着"];
       const fallbackText =
@@ -603,7 +709,7 @@ export class ChatSystem {
       const makeResponse = async (issues = []) => {
         try {
           const raw = await generate(
-            this.models,
+            models,
             model,
             generationPrompt,
             snapshot,
@@ -630,14 +736,12 @@ export class ChatSystem {
       };
       const runDeepCheck = async (response) => {
         try {
-          const validationContext = { ...trace.snapshot };
-          delete validationContext.persona;
-          const checked = await this.models.call(
+          const checked = await models.call(
             model,
             "validation",
             replyPrompt(p, prompt, "validation"),
             {
-              context: validationContext,
+              context: reviewContext(snapshot, decision),
               decision,
               response,
               replyFocus: replyFocus(snapshot, decision),
@@ -679,6 +783,7 @@ export class ChatSystem {
             (response.bubbles.join("").length > 60 ||
               decision.confidence < 0.8 ||
               snapshot.batch.some((m) => m.relation === "unresolved"))));
+      if (outdated()) return staleExit();
       let response = await makeResponse();
       let issues = validateResponse(
         response,
@@ -686,10 +791,13 @@ export class ChatSystem {
         decision,
         policy.maxReply,
       );
-      if (!issues.length && needsDeepCheck(response))
+      if (!issues.length && needsDeepCheck(response)) {
+        if (outdated()) return staleExit();
         issues = await runDeepCheck(response);
+      }
       if (issues.length) {
         trace.validation = issues;
+        if (outdated()) return staleExit();
         response = await makeResponse(issues);
         issues = validateResponse(
           response,
@@ -697,8 +805,10 @@ export class ChatSystem {
           decision,
           policy.maxReply,
         );
-        if (!issues.length && needsDeepCheck(response))
+        if (!issues.length && needsDeepCheck(response)) {
+          if (outdated()) return staleExit();
           issues = await runDeepCheck(response);
+        }
       }
       trace.response = response;
       if (issues.length) {
@@ -710,44 +820,7 @@ export class ChatSystem {
         trace.response = response;
       }
       if (replay) return finish("replayed", "隔离回放完成，未发送或写入记忆");
-      const targetUsers = new Set(
-        snapshot.messages
-          .filter((m) => decision.targetMessageIds.includes(m.id))
-          .map((m) => m.speaker),
-      );
-      const hasRelevantUpdate = () =>
-        this.repo
-          .events(session, Number.MAX_SAFE_INTEGER, {
-            simulated: simulatedTurn,
-          })
-          .some(
-            (m) =>
-              m.seq > watermark &&
-              m.role === "user" &&
-              (parseSessionKey(session).kind === "private" ||
-                targetUsers.has(m.userId) ||
-                (m.replyId &&
-                  snapshot.batch.some((b) => b.platformId === m.replyId))),
-          );
-      const isCurrent = () =>
-        !this.queue.closed &&
-        this.enabled(session, { simulated: simulatedTurn }) &&
-        this.store.revision === revision &&
-        !hasRelevantUpdate();
-      if (!isCurrent()) {
-        const latest = this.repo
-          .events(session, Number.MAX_SAFE_INTEGER, {
-            simulated: simulatedTurn,
-          })
-          .filter((m) => m.seq > watermark && m.role === "user");
-        if (latest.length) trace.steps.push("新消息已进入下一批，取消旧稿");
-        if (
-          hasRelevantUpdate() &&
-          clearEpoch === (this.clearEpoch.get(session) || 0)
-        )
-          this.queue.retain(session, batch);
-        return finish("stale", "生成期间语境已更新，旧稿未发送");
-      }
+      if (!isCurrent()) return staleExit();
       trace.sent = await deliver(
         this.repo,
         batch.at(-1),
@@ -763,42 +836,105 @@ export class ChatSystem {
     } finally {
       // A preview is disposable by design.  It may exercise the full reply
       // path, but it must never advance live memory cursors or create stages.
-      const pendingMemory =
-        !replay &&
-        !simulatedTurn &&
-        policy.memory &&
-        this.enabled(session, { simulated: false })
-          ? this.repo.db
-              .prepare(
-                "SELECT COUNT(*) n FROM core_events WHERE session_id=? AND role='user' AND seq>COALESCE((SELECT seq FROM core_cursors WHERE session_id=?),0) AND COALESCE(json_extract(payload,'$.simulated'),0)=0",
-              )
-              .get(session, session).n
-          : 0;
+      if (!replay && !simulatedTurn)
+        try {
+          this.backgroundWork(session, policy);
+        } catch {
+          // Background upkeep must never turn a finished reply into an error.
+        }
+    }
+  }
+  // Memory consolidation and context compaction after a live turn. Both run
+  // detached so they never hold the conversational lane.
+  backgroundWork(session, policy) {
+    if (!policy.memory && policy.compaction === false) return;
+    if (!this.enabled(session, { simulated: false })) return;
+    let profile;
+    try {
+      profile = this.models.profile(policy.modelId);
+    } catch {
+      return;
+    }
+    const models = withFallback(this.models, this.fallbackFor(policy, profile));
+    if (policy.memory) {
+      const pendingMemory = this.repo.db
+        .prepare(
+          "SELECT COUNT(*) n FROM core_events WHERE session_id=? AND role='user' AND seq>COALESCE((SELECT seq FROM core_cursors WHERE session_id=?),0) AND COALESCE(json_extract(payload,'$.simulated'),0)=0",
+        )
+        .get(session, session).n;
       if (
         pendingMemory >= 40 &&
         !this.memory.busy.has(session) &&
         Date.now() - (this.memory.lastAttempt.get(session) || 0) >= 60000
       ) {
         const t = this.repo.trace(session, "memory");
-        // Memory maintenance must never hold the conversational lane.
         this.memory
-          .consolidate(
-            session,
-            this.models.profile(policy.modelId),
-            prompts(this.repo).memory,
-            t,
-          )
-          .then(() => {
-            this.repo.finish(t, "complete");
+          .consolidate(session, profile, prompts(this.repo).memory, t, {
+            models,
           })
+          .then(() => this.finishQuietly(t, "complete"))
           .catch((e) => {
             t.error = e.message;
-            this.repo.finish(t, "error");
+            this.finishQuietly(t, "error");
           });
       }
+    }
+    if (policy.compaction !== false)
+      this.scheduleCompaction(session, policy, profile, models);
+  }
+  scheduleCompaction(session, policy, profile, models) {
+    const prompt = prompts(this.repo);
+    return this.compactor.schedule(session, {
+      models,
+      profile,
+      keep: contextKeep(policy),
+      timeZone: policy.timeZone,
+      self: persona(this.repo, session).name,
+      system: prompt.system + "\n" + prompt.summary,
+      mergeSystem: prompt.system + "\n" + prompt.summaryMerge,
+    });
+  }
+  // Runs on the server maintenance timer: finishes compaction that failed or
+  // was interrupted, and trims old traces hourly (every tick while a backlog
+  // remains).
+  maintain(now = Date.now()) {
+    if (this.queue.closed) return;
+    if (now >= this.tracePruneDue) {
+      const { more } = this.repo.pruneTraces(now);
+      this.tracePruneDue = more ? now : now + TRACE_PRUNE_INTERVAL_MS;
+    }
+    for (const { id } of this.repo.db
+      .prepare("SELECT id FROM sessions WHERE enabled=1 AND archived=0")
+      .all()) {
+      const policy = this.policy(id);
+      if (
+        policy.compaction === false ||
+        !this.enabled(id, { simulated: false })
+      )
+        continue;
+      let profile;
+      try {
+        profile = this.models.profile(policy.modelId);
+      } catch {
+        continue;
+      }
+      this.scheduleCompaction(
+        id,
+        policy,
+        profile,
+        withFallback(this.models, this.fallbackFor(policy, profile)),
+      );
+    }
+  }
+  finishQuietly(trace, status) {
+    try {
+      this.repo.finish(trace, status);
+    } catch {
+      // The database may already be closed during shutdown.
     }
   }
   close() {
     this.queue.close();
+    this.compactor.close();
   }
 }

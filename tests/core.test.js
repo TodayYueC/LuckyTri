@@ -16,6 +16,11 @@ import {
 import { normalize } from "../server/channels/onebot.js";
 import { persistIncoming } from "../server/core/message-manager.js";
 import { fitInput } from "../server/core/input-budget.js";
+import { MODEL_CATALOG } from "../server/model-presets.js";
+import {
+  invalidateSpeakerNames,
+  speakerNames,
+} from "../server/core/speaker-names.js";
 const setup = () => {
   const store = createStore(":memory:");
   store.save({ demo: false, probability: 1 });
@@ -36,6 +41,63 @@ const msg = (n, extra = {}) => ({
   mentions: [],
   attachments: [],
   ...extra,
+});
+
+test("会话决策列表使用会话时间索引", () => {
+  const { repo } = setup();
+  const indexes = repo.db
+    .prepare("PRAGMA index_list(core_traces)")
+    .all()
+    .map((index) => index.name);
+  assert.ok(indexes.includes("core_traces_session_time"));
+
+  const plan = repo.db
+    .prepare(
+      "EXPLAIN QUERY PLAN SELECT id,session_id,time,mode,status,json_extract(data,'$.reason') reason FROM core_traces WHERE session_id=? AND mode IN (?,'memory','replay') ORDER BY time DESC LIMIT 100",
+    )
+    .all("group:12345", "live")
+    .map((row) => row.detail)
+    .join(" ");
+  assert.match(plan, /core_traces_session_time/);
+});
+
+test("全局健康状态按最新插入记录读取，不排序整张决策日志", () => {
+  const { repo } = setup();
+  const plan = repo.db
+    .prepare(
+      "EXPLAIN QUERY PLAN SELECT time,status,json_extract(data,'$.error') error FROM core_traces WHERE mode='live' AND status!='running' AND json_array_length(data,'$.calls')>0 ORDER BY rowid DESC LIMIT 1",
+    )
+    .all()
+    .map((row) => row.detail)
+    .join(" ");
+  assert.doesNotMatch(plan, /TEMP B-TREE FOR ORDER BY/i);
+});
+
+test("群友昵称按会话增量更新，清空上下文后不会保留旧昵称", () => {
+  const { repo } = setup();
+  repo.append(msg(1));
+  assert.equal(speakerNames(repo.db, ["group:12345"]).get("10001"), "甲");
+
+  repo.append(msg(2, { name: "甲的新昵称" }));
+  assert.equal(
+    speakerNames(repo.db, ["group:12345"]).get("10001"),
+    "甲的新昵称",
+  );
+  repo.append(msg(3, { sessionId: "private:10001", name: "私聊昵称" }));
+  assert.equal(
+    speakerNames(repo.db, ["group:12345"]).get("10001"),
+    "甲的新昵称",
+  );
+  assert.equal(
+    speakerNames(repo.db, ["private:10001"]).get("10001"),
+    "私聊昵称",
+  );
+
+  repo.db
+    .prepare("DELETE FROM core_events WHERE session_id=?")
+    .run("group:12345");
+  invalidateSpeakerNames(repo.db, "group:12345");
+  assert.equal(speakerNames(repo.db, ["group:12345"]).has("10001"), false);
 });
 
 test("私聊和群内 @ 在概率为零时仍回复，不串行调用决策和复审模型", async () => {
@@ -595,52 +657,60 @@ test("A连续两条与B补充在同一窗口处理，不逐条生成", async () 
   );
   q.close();
 });
-test("长上下文配置超过16K字符，保护当前批次和引用", () => {
+test("原文窗口只带最近几十条并按块对齐，前缀稳定且保护当前批次和引用", () => {
   const { repo, store } = setup();
   for (let n = 1; n <= 250; n++)
     repo.append(msg(n, { text: "甲".repeat(100) }));
   const p = { name: "Lucky" },
     m = {
       ...defaultModel(store.settings()),
-      contextWindow: 200000,
-      maxInputTokens: 180000,
-      maxOutputTokens: 10000,
+      contextWindow: 1050000,
+      maxInputTokens: 922000,
+      maxOutputTokens: 128000,
     };
-  const c = buildContext(
-    repo,
-    "group:12345",
-    250,
-    m,
-    { contextMessages: 0 },
-    [250],
-    [],
-    p,
-  );
-  assert.equal(c.messages.length, 250);
-  assert(c.budget.estimatedContext > 16000);
-  const older = buildContext(
-    repo,
-    "group:12345",
-    249,
-    m,
-    { contextMessages: 0 },
-    [249],
-    [],
-    p,
-  );
-  const newer = buildContext(
-    repo,
-    "group:12345",
-    250,
-    m,
-    { contextMessages: 0 },
-    [250],
-    [],
-    p,
-  );
+  const build = (watermark, policy = { contextMessages: 40 }, extras = {}) =>
+    buildContext(
+      repo,
+      "group:12345",
+      watermark,
+      m,
+      policy,
+      [watermark],
+      [],
+      p,
+      Date.now(),
+      extras,
+    );
+  const c = build(250);
+  assert.equal(c.messages.length, 40);
+  assert.equal(c.historyStart, 211);
+  assert(c.budget.estimatedContext < 16000);
+  // Old saves stored 0 for "fill the model window"; that is now the default.
+  assert.equal(build(250, { contextMessages: 0 }).messages.length, 40);
+  const older = build(245);
+  const newer = build(246);
+  assert.equal(older.messages[0].id, 181);
+  assert.equal(newer.messages[0].id, 181);
   const olderJson = JSON.stringify(older.messages);
   const newerJson = JSON.stringify(newer.messages);
   assert.equal(newerJson.startsWith(olderJson.slice(0, -1) + ","), true);
+  const summarized = build(250, undefined, {
+    summaries: [{ level: 0, period: "09-24 08:00–09:00", summary: "在聊天气" }],
+    coverage: 200,
+    summaryStart: 1,
+  });
+  assert.equal(summarized.messages[0].id, 201);
+  assert.equal(summarized.messages.length, 50);
+  assert.equal(summarized.summaries.length, 1);
+  assert.equal(summarized.budget.summarizedThrough, 200);
+  repo.append(msg(251, { text: "还记得这个吗", replyId: "5" }));
+  const quoting = build(251);
+  assert.equal(quoting.messages[0].id, 5);
+  assert.ok(quoting.historyStart > 5);
+  assert.deepEqual(
+    quoting.messages.find((row) => row.id === 251).replyChain,
+    [5],
+  );
   store.db.close();
 });
 test("图片与对应消息ID一起提供，非信任媒体地址不进入模型", () => {
@@ -768,6 +838,298 @@ test("模型层不发送不支持的system/JSON参数，记录真实usage并隐�
   assert(!JSON.stringify(trace).includes("SECRET"));
   store.db.close();
 });
+test("模型请求遇到临时 fetch failed 会自动重试并继续回复", async () => {
+  const { repo, store } = setup();
+  let attempts = 0;
+  const models = new ModelManager(repo, {
+    fetcher: async () => {
+      attempts++;
+      if (attempts === 1)
+        throw new TypeError("fetch failed", {
+          cause: Object.assign(Error("socket reset"), { code: "ECONNRESET" }),
+        });
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: '{"ok":true}' } }],
+        }),
+      };
+    },
+  });
+  const trace = { calls: [] };
+  const result = await models.call(
+    { ...defaultModel(store.settings()), apiKey: "TEST_KEY", timeoutMs: 2000 },
+    "generation",
+    "输出 JSON",
+    { context: "测试" },
+    trace,
+  );
+  assert.deepEqual(result, { ok: true });
+  assert.equal(attempts, 2);
+  assert.equal(trace.calls[0].networkRetries, 1);
+  assert.equal(trace.calls[0].networkCause, "ECONNRESET");
+  assert.equal(trace.calls[0].retryReason, "临时网络连接中断，等待后重试");
+  store.db.close();
+});
+test("连续模型调用按服务地址限并发，避免请求洪峰卡住连接", async () => {
+  const { repo, store } = setup();
+  let active = 0;
+  let peak = 0;
+  const models = new ModelManager(repo, {
+    maxConcurrent: 1,
+    fetcher: async () => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      active--;
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: '{"ok":true}' } }],
+        }),
+      };
+    },
+  });
+  const profile = {
+    ...defaultModel(store.settings()),
+    apiKey: "TEST_KEY",
+    baseUrl: "https://models.example/v1",
+    model: "mock-model",
+    timeoutMs: 2000,
+  };
+  await Promise.all(
+    Array.from({ length: 5 }, (_, index) =>
+      models.call(
+        profile,
+        "generation",
+        "输出 JSON",
+        { context: `测试 ${index}` },
+        { calls: [] },
+      ),
+    ),
+  );
+  assert.equal(peak, 1);
+  assert.equal(models.requestLanes.size, 0);
+  store.db.close();
+});
+test("供应商限流时尊重 Retry-After 并继续请求", async () => {
+  const { repo, store } = setup();
+  let attempts = 0;
+  const models = new ModelManager(repo, {
+    fetcher: async () => {
+      attempts++;
+      if (attempts === 1)
+        return {
+          ok: false,
+          status: 429,
+          headers: { get: (name) => (name === "retry-after" ? "0.02" : null) },
+        };
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: '{"ok":true}' } }],
+        }),
+      };
+    },
+  });
+  const trace = { calls: [] };
+  const result = await models.call(
+    { ...defaultModel(store.settings()), apiKey: "TEST_KEY", timeoutMs: 2000 },
+    "generation",
+    "输出 JSON",
+    { context: "测试" },
+    trace,
+  );
+  assert.deepEqual(result, { ok: true });
+  assert.equal(attempts, 2);
+  assert.equal(trace.calls[0].networkRetries, 1);
+  assert.equal(
+    trace.calls[0].retryReason,
+    "模型服务暂时返回 HTTP 429，等待后重试",
+  );
+  store.db.close();
+});
+test("连接重置后遇到 429 仍保留后续重试机会", async () => {
+  const { repo, store } = setup();
+  let attempts = 0;
+  const models = new ModelManager(repo, {
+    fetcher: async () => {
+      attempts++;
+      if (attempts === 1)
+        throw new TypeError("fetch failed", {
+          cause: Object.assign(Error("socket reset"), {
+            code: "ECONNRESET",
+          }),
+        });
+      if (attempts === 2)
+        return {
+          ok: false,
+          status: 429,
+          headers: { get: (name) => (name === "retry-after" ? "0.01" : null) },
+        };
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: '{"ok":true}' } }],
+        }),
+      };
+    },
+  });
+  const trace = { calls: [] };
+  const result = await models.call(
+    { ...defaultModel(store.settings()), apiKey: "TEST_KEY", timeoutMs: 2000 },
+    "generation",
+    "输出 JSON",
+    { context: "测试" },
+    trace,
+  );
+  assert.deepEqual(result, { ok: true });
+  assert.equal(attempts, 3);
+  assert.equal(trace.calls[0].networkRetries, 2);
+  assert.deepEqual(
+    trace.calls[0].retryHistory.map(({ attempt, networkCause, status }) => ({
+      attempt,
+      networkCause,
+      status,
+    })),
+    [
+      { attempt: 1, networkCause: "ECONNRESET", status: null },
+      { attempt: 2, networkCause: undefined, status: 429 },
+    ],
+  );
+  assert.equal(trace.calls[0].retryHistory[0].detail, "socket reset");
+  assert.ok(trace.calls[0].retryHistory[1].waitMs >= 10);
+  store.db.close();
+});
+test("OpenRouter 使用其 OpenAI 兼容 Chat Completions 地址和 Bearer 密钥", async () => {
+  const { repo, store } = setup();
+  let request;
+  const models = new ModelManager(repo, {
+    fetcher: async (url, options) => {
+      request = { url, options, body: JSON.parse(options.body) };
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: '{"ok":true}' } }],
+        }),
+      };
+    },
+  });
+  const preset = MODEL_CATALOG.find((item) => item.id === "openrouter");
+  const result = await models.call(
+    {
+      ...preset,
+      id: "openrouter-test",
+      model: "anthropic/claude-test",
+      apiKey: "SECRET",
+    },
+    "test",
+    "规则",
+    { a: 1 },
+    { calls: [] },
+  );
+  assert.deepEqual(result, { ok: true });
+  assert.equal(request.url, "https://openrouter.ai/api/v1/chat/completions");
+  assert.equal(request.options.headers.Authorization, "Bearer SECRET");
+  assert.equal(request.body.model, "anthropic/claude-test");
+  assert.equal(request.body.max_tokens, preset.maxOutputTokens);
+  store.db.close();
+});
+test("OpenCode Responses 模型使用 Responses 接口、思考配置和脱敏图片", async () => {
+  const { repo, store } = setup();
+  let request;
+  const models = new ModelManager(repo, {
+    fetcher: async (url, options) => {
+      request = { url, options, body: JSON.parse(options.body) };
+      return {
+        ok: true,
+        json: async () => ({
+          output_text: '{"ok":true}',
+          usage: { input_tokens: 8, output_tokens: 2 },
+          status: "completed",
+        }),
+      };
+    },
+  });
+  const preset = MODEL_CATALOG.find(
+    (item) => item.id === "opencode-zen-gpt-6-sol",
+  );
+  const trace = { calls: [] };
+  const result = await models.call(
+    { ...preset, id: "zen-test", apiKey: "SECRET", reasoningEffort: "high" },
+    "test",
+    "规则",
+    { sessionId: "group:12345", a: 1 },
+    trace,
+    [{ messageId: 9, speaker: "甲", url: "https://private.example/image.png" }],
+  );
+  assert.deepEqual(result, { ok: true });
+  assert.equal(request.url, "https://opencode.ai/zen/v1/responses");
+  assert.equal(request.options.headers.Authorization, "Bearer SECRET");
+  assert.equal(request.body.model, "gpt-6-sol");
+  assert.equal(request.body.max_output_tokens, preset.maxOutputTokens);
+  assert.deepEqual(request.body.reasoning, { effort: "high" });
+  assert.equal(request.body.input[0].role, "developer");
+  assert.equal(request.body.input[1].content[2].type, "input_image");
+  assert.equal(
+    request.body.input[1].content[2].image_url,
+    "https://private.example/image.png",
+  );
+  assert(!JSON.stringify(trace).includes("private.example"));
+  assert(!JSON.stringify(trace).includes("SECRET"));
+  store.db.close();
+});
+test("OpenCode Messages 模型映射系统提示、图像、推理预算并解析文本块", async () => {
+  const { repo, store } = setup();
+  let request;
+  const models = new ModelManager(repo, {
+    fetcher: async (url, options) => {
+      request = { url, options, body: JSON.parse(options.body) };
+      return {
+        ok: true,
+        json: async () => ({
+          content: [{ type: "text", text: '{"ok":true}' }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 8, output_tokens: 2 },
+        }),
+      };
+    },
+  });
+  const preset = MODEL_CATALOG.find(
+    (item) => item.id === "opencode-go-minimax-m3",
+  );
+  const trace = { calls: [] };
+  const result = await models.call(
+    { ...preset, id: "go-test", apiKey: "SECRET", reasoningEffort: "high" },
+    "reply",
+    "规则",
+    { a: 1 },
+    trace,
+    [
+      {
+        messageId: 3,
+        speaker: "乙",
+        url: "data:image/png;base64,c2VjcmV0LWltYWdl",
+      },
+    ],
+  );
+  assert.deepEqual(result, { ok: true });
+  assert.equal(request.url, "https://opencode.ai/zen/go/v1/messages");
+  assert.equal(request.options.headers.Authorization, "Bearer SECRET");
+  assert.equal(request.options.headers["anthropic-version"], "2023-06-01");
+  assert.equal(request.options.headers["User-Agent"], "LuckyBot/0.6.0");
+  assert.match(request.options.headers["x-opencode-session"], /^[a-f0-9]{32}$/);
+  assert.equal(request.body.model, "minimax-m3");
+  assert.equal(request.body.messages[0].content[2].source.type, "base64");
+  assert.deepEqual(request.body.thinking, {
+    type: "enabled",
+    budget_tokens: 7168,
+  });
+  assert.equal(request.body.system.includes("Return a JSON object."), true);
+  assert(!JSON.stringify(trace).includes("c2VjcmV0LWltYWdl"));
+  assert(!JSON.stringify(trace).includes("SECRET"));
+  store.db.close();
+});
 test("MiMo 请求显式关闭或开启 thinking，并使用 max_completion_tokens", async () => {
   const { repo, store } = setup();
   const bodies = [];
@@ -812,6 +1174,50 @@ test("MiMo 请求显式关闭或开启 thinking，并使用 max_completion_token
   assert.equal(bodies[1].thinking.type, "enabled");
   assert.equal("reasoning_effort" in bodies[1], false);
   assert.deepEqual(bodies[2].thinking, { type: "disabled" });
+  store.db.close();
+});
+test("千问按档位发送 reasoning_effort，旧的开关式千问配置保持原样", async () => {
+  const { repo, store } = setup();
+  const bodies = [];
+  const models = new ModelManager(repo, {
+    fetcher: async (_url, options) => {
+      bodies.push(JSON.parse(options.body));
+      return {
+        ok: true,
+        json: async () => ({
+          usage: { prompt_tokens: 3, completion_tokens: 2 },
+          choices: [{ message: { content: '{"ok":true}' } }],
+        }),
+      };
+    },
+  });
+  const preset = (id) => ({
+    ...MODEL_CATALOG.find((item) => item.id === id),
+    id: "test-" + id,
+    apiKey: "SECRET",
+  });
+  const call = (profile) =>
+    models.call(profile, "test", "规则", { a: 1 }, { calls: [] });
+  await call(preset("qwen3.8-max"));
+  await call({ ...preset("qwen3.8-max"), reasoningEffort: "none" });
+  await call({
+    ...preset("qwen3.8-max"),
+    thinkingStyle: "qwen",
+    omitSampling: undefined,
+    reasoningEffort: "high",
+  });
+  const [qwen, qwenOff, legacyQwen] = bodies;
+  assert.equal(qwen.enable_thinking, true);
+  assert.equal(qwen.reasoning_effort, "xhigh");
+  assert.equal(qwen.max_completion_tokens, 131072);
+  assert.equal("max_tokens" in qwen, false);
+  assert.equal("temperature" in qwen, false);
+  assert.equal("top_p" in qwen, false);
+  assert.equal(qwenOff.enable_thinking, false);
+  assert.equal("reasoning_effort" in qwenOff, false);
+  assert.equal(legacyQwen.enable_thinking, true);
+  assert.equal("reasoning_effort" in legacyQwen, false);
+  assert.equal(legacyQwen.temperature, 0.6);
   store.db.close();
 });
 test("回放不发送、不写记忆、不读取截止之后的消息", async () => {

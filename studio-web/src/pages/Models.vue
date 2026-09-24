@@ -20,6 +20,7 @@ const effortLabels = computed(
 const modelList = ref(studio.core.models.map((m: any) => ({ ...m })));
 const index = ref(modelList.value.length ? 0 : -1);
 const busy = ref(false);
+const testingModel = ref(false);
 const picker = ref(false);
 const testResult = ref("");
 const draft = reactive(blank());
@@ -48,6 +49,32 @@ const vendorModels = computed(() =>
     (item: any) => item.vendor && item.vendor === draft.vendor,
   ),
 );
+const draftPreset = computed(
+  () =>
+    catalog.value.find((item: any) => item.id === draft.presetId) ||
+    catalog.value.find(
+      (item: any) =>
+        item.model &&
+        item.model === draft.model &&
+        item.baseUrl === draft.baseUrl,
+    ),
+);
+const contextOptions = computed(() => {
+  const windows = draftPreset.value?.contextWindows || [];
+  if (windows.length < 2) return [];
+  const current = Number(draft.contextWindow);
+  if (windows.some((item: any) => item.contextWindow === current))
+    return windows;
+  return [
+    ...windows,
+    {
+      label: "已保存 " + formatTokens(current),
+      contextWindow: current,
+      maxInputTokens: Number(draft.maxInputTokens),
+      maxOutputTokens: Number(draft.maxOutputTokens),
+    },
+  ];
+});
 const effortOptions = computed(() => {
   const list =
     Array.isArray(draft.reasoningEfforts) && draft.reasoningEfforts.length
@@ -57,9 +84,8 @@ const effortOptions = computed(() => {
     list.unshift(draft.reasoningEffort);
   return list;
 });
-const canTest = computed(
-  () =>
-    !!draft.isDefault && studio.core.models.some((m: any) => m.id === draft.id),
+const hasSavedProfile = computed(() =>
+  studio.core.models.some((m: any) => m.id === draft.id),
 );
 
 function blank() {
@@ -86,11 +112,22 @@ function blank() {
     reasoningEfforts: ["none", "low", "medium", "high"],
     thinkingStyle: "openai",
     tokenField: "max_tokens",
+    omitSampling: false,
     temperature: 0.85,
     topP: 1,
     timeoutMs: 90000,
     isDefault: false,
   };
+}
+
+function presetFields(preset: any) {
+  const { summary: _summary, contextWindows: _windows, ...fields } = preset;
+  return { ...fields, presetId: preset.id };
+}
+
+function withoutWindows(model: any) {
+  const { contextWindows: _windows, ...rest } = model;
+  return rest;
 }
 
 function fitBudget(profile: any) {
@@ -109,16 +146,51 @@ function fitBudget(profile: any) {
   };
 }
 
+function applyContextWindow(event: Event) {
+  const selected = Number((event.target as HTMLSelectElement).value);
+  const option = contextOptions.value.find(
+    (item: any) => item.contextWindow === selected,
+  );
+  if (!option) return;
+  draft.contextWindow = option.contextWindow;
+  draft.maxInputTokens = option.maxInputTokens;
+  draft.maxOutputTokens = option.maxOutputTokens;
+  studio.dirty = true;
+}
+
+// Vendors publish both decimal (128,000) and binary (131,072) ceilings and
+// call both "128K", so show whichever reading gives a whole number.
 function formatTokens(value: number) {
-  if (value >= 1000000) {
-    const scaled = value / 1000000;
-    const text = Number.isInteger(scaled)
-      ? String(scaled)
-      : scaled.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
-    return text + "M";
-  }
-  if (value >= 1000) return Math.round(value / 1000) + "K";
-  return String(value || 0);
+  const n = Number(value) || 0;
+  if (n >= 1000000)
+    return (
+      (n % 1048576 === 0 ? n / 1048576 : Number((n / 1000000).toFixed(2))) + "M"
+    );
+  if (n >= 1000)
+    return (
+      (n % 1000 === 0
+        ? n / 1000
+        : n % 1024 === 0
+          ? n / 1024
+          : Math.round(n / 1000)) + "K"
+    );
+  return String(n);
+}
+
+function capacity(item: any) {
+  if (item.id === "openrouter") return "按所选模型填写上下文和输出参数";
+  if (!item.model) return "填写模型 ID 和对应参数";
+  const windows = item.contextWindows || [];
+  const context = windows.length
+    ? windows.map((w: any) => w.label).join(" / ")
+    : formatTokens(item.contextWindow);
+  return `上下文 ${context} · 输出 ${formatTokens(item.maxOutputTokens)}`;
+}
+
+function effortName(value: string) {
+  if (["mimo", "qwen", "kimi-toggle"].includes(draft.thinkingStyle))
+    return value === "none" ? "关闭" : "开启";
+  return `${effortLabels.value[value] || value} / ${value}`;
 }
 
 function select(i: number) {
@@ -151,12 +223,10 @@ function openPicker() {
 }
 
 function choosePreset(preset: any) {
-  const { summary: _summary, ...fields } = preset;
   modelList.value = studio.core.models.map((m: any) => ({ ...m }));
   const row = {
     ...blank(),
-    ...fields,
-    presetId: preset.id,
+    ...presetFields(preset),
     id: "model-" + Date.now(),
     apiKey: "",
     hasApiKey: false,
@@ -174,9 +244,7 @@ function switchPreset(event: Event) {
   const id = (event.target as HTMLSelectElement).value;
   const preset = catalog.value.find((item: any) => item.id === id);
   if (!preset) return;
-  const { summary: _summary, ...fields } = preset;
-  Object.assign(draft, fields, {
-    presetId: preset.id,
+  Object.assign(draft, blank(), presetFields(preset), {
     id: draft.id,
     apiKey: draft.apiKey,
     hasApiKey: draft.hasApiKey,
@@ -197,16 +265,18 @@ async function save(e: Event) {
   e.preventDefault();
   const fitted = fitBudget(draft);
   const models = modelList.value.map((m: any, i: number) =>
-    i === index.value
-      ? {
-          ...draft,
-          ...fitted,
-          isDefault: !!draft.isDefault,
-          timeoutMs: Number(draft.timeoutMs),
-          temperature: Number(draft.temperature),
-          topP: Number(draft.topP),
-        }
-      : { ...m, isDefault: !!m.isDefault && m.id !== draft.id },
+    withoutWindows(
+      i === index.value
+        ? {
+            ...draft,
+            ...fitted,
+            isDefault: !!draft.isDefault,
+            timeoutMs: Number(draft.timeoutMs),
+            temperature: Number(draft.temperature),
+            topP: Number(draft.topP),
+          }
+        : { ...m, isDefault: !!m.isDefault && m.id !== draft.id },
+    ),
   );
   if (!models.some((m: any) => m.isDefault) && models.length)
     models[0].isDefault = true;
@@ -244,12 +314,16 @@ async function remove() {
 }
 
 async function testModel() {
-  testResult.value = "正在测试已保存的默认模型…";
+  if (!hasSavedProfile.value || studio.dirty || testingModel.value) return;
+  testingModel.value = true;
+  testResult.value = `正在测试「${draft.label || draft.model}」…`;
   try {
-    const r = await testSavedModel();
-    testResult.value = `✓ 连接成功 · ${r.model} · ${r.latency} ms`;
+    const r = await testSavedModel(draft.id);
+    testResult.value = `✓ ${draft.label || r.model} 连接成功 · ${r.latency} ms`;
   } catch (e) {
     testResult.value = (e as Error).message;
+  } finally {
+    testingModel.value = false;
   }
 }
 </script>
@@ -356,10 +430,24 @@ async function testModel() {
           <fieldset>
             <legend>02 / 容量与思考</legend>
             <p class="small">
-              上下文和输出上限已按该模型当前官方参数填好，仍可按聊天需要改小。思考强度只列出这个模型支持的档位。
+              官方按输入长度分档计价的模型可以在标准和百万之间切换；官方只有一个窗口的模型直接按官方上限填写。输出上限默认是官方最大值，思考强度只列出这个模型支持的档位。
             </p>
             <div class="grid">
-              <label
+              <label v-if="contextOptions.length"
+                >上下文容量<select
+                  name="contextWindow"
+                  :value="draft.contextWindow"
+                  @change="applyContextWindow"
+                >
+                  <option
+                    v-for="option in contextOptions"
+                    :key="option.contextWindow"
+                    :value="option.contextWindow"
+                  >
+                    {{ option.label }}
+                  </option>
+                </select></label
+              ><label v-else
                 >上下文容量<input
                   name="contextWindow"
                   type="number"
@@ -380,7 +468,7 @@ async function testModel() {
                   v-model="draft.reasoningEffort"
                 >
                   <option v-for="v in effortOptions" :value="v" :key="v">
-                    {{ effortLabels[v] || v }} / {{ v }}
+                    {{ effortName(v) }}
                   </option>
                 </select></label
               >
@@ -453,12 +541,19 @@ async function testModel() {
           >
             设为默认模型</button
           ><button
-            v-if="canTest"
+            v-if="hasSavedProfile"
             type="button"
             id="testModel"
+            :disabled="busy || testingModel || studio.dirty"
             @click="testModel"
           >
-            测试默认模型连接</button
+            {{
+              testingModel
+                ? "正在测试…"
+                : studio.dirty
+                  ? "保存后测试此模型"
+                  : "测试此模型连接"
+            }}</button
           ><button
             type="button"
             id="deleteModel"
@@ -475,8 +570,8 @@ async function testModel() {
         <span>✦</span>
         <h3>还没有模型</h3>
         <p>
-          选择厂商后会填好接口地址、模型名、上下文和思考强度，只需再填写 API
-          Key。
+          常见厂商会预填模型参数；OpenRouter 可选 GPT-6
+          预设，也可用自选模型手动填写模型 ID 和参数。
         </p>
         <button class="primary" @click="openPicker">＋ 新增模型</button>
       </div>
@@ -496,7 +591,8 @@ async function testModel() {
         </button>
       </div>
       <p class="small">
-        参数来自各厂商当前文档，包含上下文、输出上限和思考档位。保存前仍可修改。
+        常见厂商预设会填入对应参数。OpenRouter 提供 GPT-6
+        预设和自选模型；自选模型只预填 API 地址，其余按模型信息填写。
       </p>
       <div v-for="group in groups" :key="group.vendor" class="vendor-block">
         <h3>{{ group.vendor }}</h3>
@@ -510,11 +606,10 @@ async function testModel() {
             @click="choosePreset(item)"
           >
             <b>{{ item.label }}</b>
-            <small>{{ item.model }}</small>
-            <small
-              >上下文 {{ formatTokens(item.contextWindow) }} · 输出
-              {{ formatTokens(item.maxOutputTokens) }}</small
-            >
+            <small>{{
+              item.model || "填写你在 OpenRouter 选择的模型 ID"
+            }}</small>
+            <small>{{ capacity(item) }}</small>
             <small>{{ item.summary }}</small>
           </button>
         </div>

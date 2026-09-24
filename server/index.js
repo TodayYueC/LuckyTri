@@ -49,8 +49,16 @@ const server = app.listen(Number(process.env.PORT || 3210), host, () =>
   console.log(`LuckyBot 管理台 http://${host}:${process.env.PORT || 3210}`),
 );
 gateway.attach(server, chatSystem);
-store.maintenance();
-const maintenance = setInterval(() => store.maintenance(), 60000);
+function runMaintenance() {
+  store.maintenance();
+  try {
+    chatSystem.maintain();
+  } catch (error) {
+    console.error(`后台维护失败：${error.message}`);
+  }
+}
+runMaintenance();
+const maintenance = setInterval(runMaintenance, 60000);
 maintenance.unref();
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);

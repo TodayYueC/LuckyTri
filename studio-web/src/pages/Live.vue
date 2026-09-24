@@ -11,6 +11,7 @@ import {
   simulateTurn,
 } from "../plates/live";
 import { fetchState } from "../plates/workspace";
+import { subscribe } from "../sse";
 
 const sessionId = ref(sessionStorage.activeSession || "");
 const events = ref<any[]>([]);
@@ -33,6 +34,12 @@ const mentioned = ref(true);
 const inspector = ref("decisions");
 const feedbackPage = ref(0);
 const sending = ref(false);
+let streamAbort: AbortController | null = null;
+let timer: ReturnType<typeof setInterval>;
+let loadedKnowledgeTrace = "";
+let loadedMessageSeq = 0;
+let loadAgain = false;
+let forceReload = false;
 const replyDecisions = () => decisions().filter((d: any) => d.reply);
 let loadedSession = "";
 watch(sessionId, () => {
@@ -43,14 +50,20 @@ function sessions() {
   return (studio.core?.sessions || []).filter((s: any) => !s.archived);
 }
 
-async function load() {
-  if (!sessionId.value || busy.value) return;
+async function load(force = false) {
+  if (!sessionId.value) return;
+  if (busy.value) {
+    loadAgain = true;
+    forceReload ||= force;
+    return;
+  }
   const requestedSession = sessionId.value;
+  const fullReload = force || loadedSession !== requestedSession;
   busy.value = true;
   try {
     const [rows, list] = await Promise.all([
-      listEvents(requestedSession),
-      listTraces(requestedSession),
+      listEvents(requestedSession, fullReload ? undefined : loadedMessageSeq),
+      listTraces(requestedSession, { limit: 30, compact: true }),
     ]);
     if (sessionId.value !== requestedSession) return;
     const pane = document.getElementById("liveMessages");
@@ -58,7 +71,13 @@ async function load() {
       loadedSession !== requestedSession ||
       !pane ||
       pane.scrollHeight - pane.scrollTop - pane.clientHeight < 80;
-    events.value = rows.reverse();
+    if (fullReload) {
+      events.value = rows.reverse();
+      loadedMessageSeq = 0;
+    } else if (rows.length) events.value = [...events.value, ...rows];
+    for (const row of rows)
+      loadedMessageSeq = Math.max(loadedMessageSeq, Number(row.seq) || 0);
+    if (!fullReload && rows.length === 100) loadAgain = true;
     traces.value = list;
     loadedSession = requestedSession;
     await nextTick();
@@ -67,37 +86,81 @@ async function load() {
     const latest = list.find(
       (t: any) => t.status === "sent" || t.status === "silent",
     );
-    if (latest) {
+    if (latest && loadedKnowledgeTrace !== latest.id) {
+      loadedKnowledgeTrace = latest.id;
       try {
         const detail = await getTrace(latest.id);
         if (sessionId.value === requestedSession)
           knowledge.value = detail.data?.snapshot?.knowledge || [];
       } catch {
-        knowledge.value = [];
+        loadedKnowledgeTrace = "";
       }
-    } else knowledge.value = [];
+    } else if (!latest) {
+      loadedKnowledgeTrace = "";
+      knowledge.value = [];
+    }
   } catch (e) {
     status.value = "同步失败：" + (e as Error).message;
   } finally {
     busy.value = false;
-    if (sessionId.value !== requestedSession) void load();
+    if (sessionId.value !== requestedSession) {
+      loadAgain = false;
+      void load();
+    } else if (loadAgain) {
+      const reloadEverything = forceReload;
+      loadAgain = false;
+      forceReload = false;
+      void load(reloadEverything);
+    }
   }
 }
 
-watch(sessionId, (id) => {
-  sessionStorage.activeSession = id;
-  events.value = [];
-  traces.value = [];
-  knowledge.value = [];
-  load();
-});
-let timer: ReturnType<typeof setInterval>;
+watch(
+  sessionId,
+  (id) => {
+    streamAbort?.abort();
+    sessionStorage.activeSession = id;
+    events.value = [];
+    traces.value = [];
+    knowledge.value = [];
+    loadedSession = "";
+    loadedMessageSeq = 0;
+    loadedKnowledgeTrace = "";
+    loadAgain = false;
+    forceReload = false;
+    load();
+    if (!id) return;
+    const controller = new AbortController();
+    streamAbort = controller;
+    let previous = "";
+    void subscribe(
+      (value) => {
+        const messages = Number((value as { messages?: unknown })?.messages);
+        if (Number.isSafeInteger(messages) && messages < loadedMessageSeq) {
+          loadedSession = "";
+          loadedMessageSeq = 0;
+          events.value = [];
+          loadedKnowledgeTrace = "";
+        }
+        const next = JSON.stringify(value);
+        const changed = previous !== "" && next !== previous;
+        previous = next;
+        if (changed) void load();
+      },
+      { session: id, signal: controller.signal, reconnectMs: 1000 },
+    );
+  },
+  { immediate: true },
+);
 onMounted(() => {
   if (!sessionId.value && sessions()[0]) sessionId.value = sessions()[0].id;
-  load();
-  timer = setInterval(load, 2500);
+  // Keep a slow safety refresh for dropped events; normal updates use SSE.
+  timer = setInterval(() => load(true), 15000);
 });
-onUnmounted(() => clearInterval(timer));
+onUnmounted(() => {
+  clearInterval(timer);
+  streamAbort?.abort();
+});
 
 async function clearContext() {
   if (
@@ -106,7 +169,13 @@ async function clearContext() {
   )
     return;
   await clearSessionContext(sessionId.value);
-  await load();
+  events.value = [];
+  traces.value = [];
+  knowledge.value = [];
+  loadedSession = "";
+  loadedMessageSeq = 0;
+  loadedKnowledgeTrace = "";
+  await load(true);
 }
 
 async function simulate(e: Event) {
@@ -136,6 +205,16 @@ async function feedback(id: number, tag: string) {
   toast("反馈已保存");
   studio.health = await fetchState();
 }
+
+watch(inspector, async (value) => {
+  if (value === "feedback") {
+    try {
+      studio.health = await fetchState();
+    } catch {
+      /* keep the last loaded feedback list */
+    }
+  }
+});
 
 function decisions() {
   return (studio.health?.decisions || []).filter(

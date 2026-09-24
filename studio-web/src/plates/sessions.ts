@@ -22,6 +22,10 @@ export async function saveSession(id: string, policy: unknown) {
   return api("/core/sessions/" + encodeURIComponent(id), "PUT", policy);
 }
 
+export async function listSummaries(id: string) {
+  return api("/core/sessions/" + encodeURIComponent(id) + "/summaries");
+}
+
 export async function clearSessionContext(id: string) {
   return api(
     "/core/sessions/" + encodeURIComponent(id) + "/context",

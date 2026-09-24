@@ -197,6 +197,10 @@ try {
     .waitFor();
   await navigate("models");
   await p.locator("#addModel").click();
+  assert.equal(
+    await p.locator("[data-preset=deepseek-flash] b").innerText(),
+    "DeepSeek V4.1 Flash",
+  );
   await p.locator("[data-preset=deepseek-flash]").click();
   await p.locator("#modelForm [name=model]").fill("test-model");
   await p.locator("#modelForm .primary").click();
@@ -213,14 +217,79 @@ try {
   await p.locator(".entity-row").first().click();
   assert.equal(await p.locator(".entity-row").count(), 1);
   await p.locator("#addModel").click();
+  await p.locator("[data-preset=gpt-6-sol]").click();
+  assert.equal(await p.locator("[name=label]").inputValue(), "GPT-6 Sol");
+  assert.equal(await p.locator("[name=maxInputTokens]").inputValue(), "272000");
+  await p.locator("[name=contextWindow]").selectOption("1050000");
+  assert.equal(await p.locator("[name=maxInputTokens]").inputValue(), "922000");
+  assert.equal(
+    await p.locator("[name=maxOutputTokens]").inputValue(),
+    "128000",
+  );
+  await p.locator(".entity-row").first().click();
+  assert.equal(await p.locator(".entity-row").count(), 1);
+  await p.locator("#addModel").click();
   await p.locator('[data-preset="kimi-k2.6"]').click();
   await p.locator("[name=label]").fill("界面测试模型");
   await p.locator("#modelForm .primary").click();
   await p.waitForTimeout(300);
   assert.equal(await p.locator(".entity-row").count(), 2);
+  assert.equal(await p.locator("#testModel").isVisible(), true);
+  assert.equal(await p.locator("#testModel").innerText(), "测试此模型连接");
+  await p.locator("#testModel").click();
+  await p
+    .locator("#modelTestResult")
+    .filter({ hasText: "请先配置模型 API Key" })
+    .waitFor();
   await p.locator("#deleteModel").click();
   await p.waitForTimeout(300);
   assert.equal(await p.locator(".entity-row").count(), 1);
+  await p.locator("#addModel").click();
+  await p.locator('[data-preset="opencode-go-grok-4.7"]').waitFor();
+  await p.locator('[data-preset="opencode-zen-qwen3.8-flash"]').waitFor();
+  assert.equal(await p.locator('[data-preset^="opencode-go-"]').count(), 7);
+  assert.equal(await p.locator('[data-preset^="opencode-zen-"]').count(), 12);
+  await p.locator('[data-preset="opencode-zen-space-bunny-free"]').waitFor();
+  assert.equal(await p.locator('[data-preset*="muse-spark"]').count(), 0);
+  await p.locator('[data-preset="openrouter"]').click();
+  assert.equal(await p.locator('[name="provider"]').inputValue(), "openrouter");
+  assert.equal(
+    await p.locator('[name="baseUrl"]').inputValue(),
+    "https://openrouter.ai/api/v1",
+  );
+  assert.equal(await p.locator('[name="model"]').inputValue(), "");
+  await p.locator(".entity-row").first().click();
+  await p.locator("#addModel").click();
+  for (const id of [
+    "openrouter-gpt-6-astra",
+    "openrouter-gpt-6-sol",
+    "openrouter-gpt-6-luna",
+    "openrouter-glm-5.3-flash",
+  ])
+    await p.locator(`[data-preset="${id}"]`).waitFor();
+  await p.locator('[data-preset="openrouter-gpt-6-astra"]').click();
+  assert.equal(await p.locator('[name="provider"]').inputValue(), "openrouter");
+  assert.equal(
+    await p.locator('[name="model"]').inputValue(),
+    "openai/gpt-6-astra",
+  );
+  assert.equal(
+    await p.locator('[name="contextWindow"]').inputValue(),
+    "1050000",
+  );
+  await p.locator(".entity-row").first().click();
+  await p.locator("#addModel").click();
+  await p.locator('[data-preset="openrouter-glm-5.3-flash"]').click();
+  assert.equal(
+    await p.locator('[name="model"]').inputValue(),
+    "z-ai/glm-5.3-flash",
+  );
+  assert.equal(
+    await p.locator('[name="contextWindow"]').inputValue(),
+    "1310720",
+  );
+  assert.equal(await p.locator('[name="vision"]').isChecked(), true);
+  await p.locator(".entity-row").first().click();
   await p.locator("#testModel").click();
   await p.getByText("请先配置模型 API Key", { exact: true }).waitFor();
   const ws = new WebSocket(`ws://127.0.0.1:${port}/onebot/v11/ws`, {
@@ -453,7 +522,9 @@ try {
       .probability,
     0.35,
   );
-  await p.locator("[data-session='group:65432'] details summary").click();
+  await p
+    .locator("[data-session='group:65432'] details.advanced-policy summary")
+    .click();
   await p
     .locator("[data-session='group:65432'] [name=persona]")
     .fill("你叫 Lucky，说话自然一点，少用网络梗。");
@@ -491,10 +562,10 @@ try {
   assert.equal(await p.locator("[name=sarcasm]").inputValue(), "4");
   await navigate("models");
   await p.locator("[name=contextWindow]").waitFor();
-  await p.locator("[name=contextWindow]").fill("200000");
+  await p.locator("[name=contextWindow]").fill("600000");
   await p.locator("#modelForm button.primary").click();
   await p.waitForTimeout(300);
-  assert.equal(await p.locator("[name=contextWindow]").inputValue(), "200000");
+  assert.equal(await p.locator("[name=contextWindow]").inputValue(), "600000");
   await navigate("overview");
   assert.equal(
     await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
@@ -516,6 +587,9 @@ try {
   await p.goto(base + "/#live");
   await p.locator("#liveSession").selectOption("group:12345");
   await p.getByRole("button", { name: "反馈", exact: true }).click();
+  // Changing only the hash keeps the page, so the routed state arrives with
+  // the Live page's next poll rather than immediately.
+  await p.locator(".feedback-item").first().waitFor();
   for (const width of [1440, 820, 390]) {
     await p.setViewportSize({ width, height: 900 });
     await p.waitForTimeout(400);
