@@ -1,18 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { toast } from "../../api";
-import { mind, percent, when } from "../../plates/mind";
+import {
+  ORIGIN_LABELS as ORIGIN,
+  mind,
+  percent,
+  when,
+} from "../../plates/mind";
 
 defineProps<{ data: any }>();
 const emit = defineEmits<{ changed: [] }>();
 const self = ref<any>(null);
 const open = ref<Record<string, any[]>>({});
-const ORIGIN: Record<string, string> = {
-  solitude: "独处时",
-  daily: "写日记时",
-  memory: "从她说过的话里",
-  migration: "旧版本",
-};
 const STATUS: Record<string, string> = {
   active: "已经是她的一部分",
   emerging: "刚开始有这种感觉",
@@ -34,7 +33,7 @@ const groups = computed(() => {
       kind,
       label,
       threads: self.value.threads.filter(
-        (t: any) => t.kind === kind && t.status !== "closed",
+        (t: any) => t.kind === kind && t.status !== "closed" && !t.faded,
       ),
     }))
     .filter((g) => g.threads.length);
@@ -42,6 +41,16 @@ const groups = computed(() => {
 const closed = computed(
   () => self.value?.threads.filter((t: any) => t.status === "closed") || [],
 );
+const faded = computed(
+  () =>
+    self.value?.threads.filter((t: any) => t.faded && t.status !== "closed") ||
+    [],
+);
+function tag(t: any) {
+  if (t.core) return "她最核心的部分";
+  if (t.fading) return "慢慢淡出";
+  return STATUS[t.status] || t.status;
+}
 async function toggle(thread: string) {
   if (open.value[thread]) {
     const { [thread]: _drop, ...rest } = open.value;
@@ -80,11 +89,12 @@ onMounted(load);
         <h4>{{ g.label }} · {{ g.threads.length }}</h4>
         <article v-for="t in g.threads" :key="t.thread" class="thread">
           <header>
-            <span class="tag" :data-kind="t.status">{{
-              STATUS[t.status] || t.status
+            <span class="tag" :data-kind="t.fading ? 'glanced' : t.status">{{
+              tag(t)
             }}</span>
             <small
-              >{{ when(t.created) }} · {{ ORIGIN[t.origin] || t.origin }}</small
+              >最近一次被触及 {{ when(t.created) }} ·
+              {{ ORIGIN[t.origin] || t.origin }}</small
             >
           </header>
           <p>{{ t.content }}</p>
@@ -94,6 +104,13 @@ onMounted(load);
               <i :style="{ width: percent(t.strength) }"></i>
             </div>
             <em>{{ percent(t.strength) }}</em>
+          </div>
+          <div v-if="t.salience !== null" class="meter-row">
+            <span>此刻的分量</span>
+            <div class="meter">
+              <i :style="{ width: percent(t.salience) }"></i>
+            </div>
+            <em>{{ percent(t.salience) }}</em>
           </div>
           <footer>
             <span>{{ t.days.length }} 天的经历</span>
@@ -120,6 +137,32 @@ onMounted(load);
       <p>
         聊得多了、独处过、写过日记，她会慢慢发现自己喜欢什么、怎么看事情、想做什么。天性只是种子。
       </p>
+    </div>
+  </section>
+  <section v-if="self && faded.length" class="surface">
+    <div class="section-heading">
+      <div>
+        <span class="eyebrow">FADED / 很久没被触及</span>
+        <h3>慢慢淡出的 · {{ faded.length }}</h3>
+        <p class="small">
+          她过了很多有经历的日子都没再碰到这些，它们暂时不在她心上，但没有被删掉：有人再聊起相关的事，它们会被重新想起。
+        </p>
+      </div>
+    </div>
+    <div class="row-list">
+      <article v-for="t in faded" :key="t.thread" class="faded-thread">
+        <time>{{ when(t.created) }}</time>
+        <span class="tag" data-kind="glanced">{{
+          self.kinds[t.kind] || t.kind
+        }}</span>
+        <p>
+          {{ t.content
+          }}<small
+            >强度 {{ percent(t.strength) }} · 此刻的分量
+            {{ percent(t.salience) }}</small
+          >
+        </p>
+      </article>
     </div>
   </section>
   <section

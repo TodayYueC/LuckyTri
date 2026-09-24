@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { toast } from "../../api";
-import { mind, when } from "../../plates/mind";
+import {
+  ANTICIPATION_LABELS,
+  ANTICIPATION_STATES,
+  mind,
+  when,
+} from "../../plates/mind";
 
 defineProps<{ data: any }>();
 const emit = defineEmits<{ changed: [] }>();
@@ -9,6 +14,13 @@ const life = ref<any>(null);
 const query = ref("");
 const day = ref<any>(null);
 const versions = ref<Record<number, any[]>>({});
+const stories = ref<any[] | null>(null);
+const RUN_KIND: Record<string, string> = {
+  solitude: "独处",
+  daily: "日记",
+  night: "夜里整理",
+  weekly: "回顾",
+};
 const RUN: Record<string, string> = {
   written: "留下了东西",
   state: "心情变了",
@@ -36,6 +48,24 @@ async function toggleChapter(n: number) {
     return;
   }
   versions.value = { ...versions.value, [n]: await mind.chapter(n) };
+}
+async function toggleStory() {
+  stories.value = stories.value ? null : await mind.story();
+}
+async function revokeAhead(a: any) {
+  const reason = prompt(
+    `撤销「${a.content}」？她不再惦记这件事，之后整理记忆时也不会把它写回来。可以写下原因：`,
+    "",
+  );
+  if (reason === null) return;
+  try {
+    await mind.revoke("anticipation", a.id, reason);
+    toast("已撤销");
+    await load();
+    emit("changed");
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
 }
 async function update(t: any, value: unknown) {
   await mind.thought(t.id, value);
@@ -115,10 +145,29 @@ onMounted(load);
           <span class="eyebrow">AUTOBIOGRAPHY</span>
           <h3>她写的自己的故事</h3>
           <p class="small">
-            她会隔一段时间重写章节——重新理解过去，旧的版本都留着。
+            她在夜里回顾时，会改写正在经历的这一章，或者觉得日子换了样子、翻开新的一章。旧的版本都留着。
           </p>
         </div>
       </div>
+      <article v-if="life.story" class="chapter-card story-card">
+        <h4>我的来路 · 第 {{ life.dayOfLife }} 天</h4>
+        <p>{{ life.story.content }}</p>
+        <button
+          v-if="life.storyVersions > 1"
+          type="button"
+          class="text-button"
+          @click="toggleStory"
+        >
+          {{ stories ? "收起旧版本" : `重写过 ${life.storyVersions - 1} 次 ↗` }}
+        </button>
+        <div v-if="stories" class="thread-history">
+          <div v-for="v in stories.slice(1)" :key="v.id">
+            <time>{{ when(v.created) }}</time>
+            <b>旧版</b>
+            <span>{{ v.content }}</span>
+          </div>
+        </div>
+      </article>
       <article v-for="c in life.chapters" :key="c.id" class="chapter-card">
         <h4>第 {{ c.chapter }} 章 · {{ c.title }}</h4>
         <p>{{ c.content }}</p>
@@ -142,8 +191,87 @@ onMounted(load);
       </article>
       <div v-if="!life.chapters.length" class="gentle-empty">
         <b>自传还没开始写</b>
-        <p>有了几天的日记之后，她会写下第一章。</p>
+        <p>有了两篇日记之后，她会在夜里第一次回顾，写下第一章。</p>
       </div>
+    </section>
+
+    <section class="surface">
+      <div class="section-heading">
+        <div>
+          <span class="eyebrow">LOOKING BACK / 隔一段时间</span>
+          <h3>她的回顾 · {{ life.reviews.length }}</h3>
+          <p class="small">
+            每隔一段时间，她在夜里重新看看这段日子：留下了什么、自己怎样在变。
+          </p>
+        </div>
+      </div>
+      <article v-for="r in life.reviews" :key="r.id" class="diary-entry">
+        <div class="day">{{ when(r.created).slice(0, 5) }}</div>
+        <div>
+          <p>{{ r.content }}</p>
+          <blockquote v-if="r.compare">
+            和上次回顾比：{{ r.compare }}
+          </blockquote>
+        </div>
+      </article>
+      <div v-if="!life.reviews.length" class="gentle-empty">
+        <b>还没有回顾过</b>
+        <p>日记攒到两篇以后，她会在睡着的时候第一次回顾。</p>
+      </div>
+    </section>
+
+    <section class="surface" style="grid-column: 1 / -1">
+      <div class="section-heading">
+        <div>
+          <span class="eyebrow">AHEAD / 她在等的事</span>
+          <h3>约定与期待</h3>
+          <p class="small">
+            别人说起的安排、她答应的事、她想做的事和每年都会回来的日子。临近时她会记得，有了结果会放下；过了很久没有结果的，会悄悄算作错过。
+          </p>
+        </div>
+      </div>
+      <div v-if="life.anticipations.length" class="row-list">
+        <article
+          v-for="a in life.anticipations"
+          :key="a.id"
+          :class="{ muted: a.state !== 'pending' }"
+        >
+          <time>{{ when(a.occurrence) }}</time>
+          <span
+            class="tag"
+            :data-kind="
+              ['missed', 'lapsed', 'revoked'].includes(a.state)
+                ? 'decline'
+                : a.state === 'pending'
+                  ? 'emerging'
+                  : ''
+            "
+            >{{ ANTICIPATION_STATES[a.state] || a.state }}</span
+          >
+          <div>
+            <p>
+              {{ a.name ? `${a.name}：` : "" }}{{ a.content
+              }}<small
+                >{{ ANTICIPATION_LABELS[a.kind] || a.kind }} · {{ a.when
+                }}{{ a.recurrence === "yearly" ? " · 每年" : ""
+                }}{{ a.private ? " · 私下知道的" : ""
+                }}{{ a.closed_note ? ` · ${a.closed_note}` : "" }}</small
+              >
+            </p>
+            <button
+              v-if="a.status !== 'revoked'"
+              type="button"
+              class="text-button"
+              @click="revokeAhead(a)"
+            >
+              撤销
+            </button>
+          </div>
+        </article>
+      </div>
+      <p v-else class="gentle-empty">
+        还没有她在等的事。有人说起之后的安排、她答应了别人什么，整理记忆时会记下来。
+      </p>
     </section>
 
     <section class="surface" style="grid-column: 1 / -1">
@@ -201,6 +329,9 @@ onMounted(load);
             <time>{{ when(t.created) }}</time>
           </header>
           <p>{{ t.content }}</p>
+          <small v-if="t.status === 'resolved'" class="tag" data-kind="closed"
+            >放下了{{ t.resolution ? `：${t.resolution}` : "" }}</small
+          >
           <div v-if="t.outreach" class="outreach-draft">
             想主动说：{{ t.outreach }} ·
             {{
@@ -243,17 +374,15 @@ onMounted(load);
       <div class="section-heading">
         <div>
           <span class="eyebrow">WHEN NOBODY WAS TALKING</span>
-          <h3>独处与日记的记录</h3>
+          <h3>独处、日记与夜里的记录</h3>
         </div>
       </div>
       <div v-if="life.runs.length" class="run-list">
         <article v-for="r in life.runs" :key="r.id">
           <time>{{ when(r.started) }}</time>
           <span class="tag" :data-kind="r.status"
-            >{{
-              { solitude: "独处", daily: "日记" }[r.kind as string] || r.kind
-            }}
-            · {{ RUN[r.status] || r.status }}</span
+            >{{ RUN_KIND[r.kind] || r.kind }} ·
+            {{ RUN[r.status] || r.status }}</span
           >
           <div>
             <b>{{ r.reason }}</b>
@@ -265,7 +394,7 @@ onMounted(load);
         </article>
       </div>
       <p v-else class="gentle-empty">
-        安静本身不会留下记录；她真正独处或写日记时才会记下。
+        安静本身不会留下记录；她真正独处、写日记或在夜里整理时才会记下。
       </p>
     </section>
   </div>

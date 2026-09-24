@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { toast } from "../../api";
-import { CHOICE_LABELS, mind, percent, when } from "../../plates/mind";
+import {
+  ANTICIPATION_LABELS,
+  CHOICE_LABELS,
+  mind,
+  percent,
+  when,
+} from "../../plates/mind";
 
 const props = defineProps<{ data: any }>();
 const emit = defineEmits<{ changed: [] }>();
@@ -55,6 +61,8 @@ function share(id: string) {
         <div class="state-chips">
           <span>{{ data.affect.phaseLabel }}</span>
           <span>精力 · {{ data.affect.energyLabel }}</span>
+          <span v-if="data.affect.lately">{{ data.affect.lately }}</span>
+          <span>来到这里的第 {{ data.dayOfLife }} 天</span>
           <span>两小时内说了 {{ data.affect.talkedRecently }} 句</span>
           <span v-if="data.nature.rhythm.enabled"
             >作息 · {{ data.nature.rhythm.wake }} 醒 /
@@ -69,7 +77,11 @@ function share(id: string) {
       <dl>
         <div>
           <dt>自我线索</dt>
-          <dd>{{ data.counts.self }} 条</dd>
+          <dd>
+            {{ data.counts.self }} 条<small v-if="data.counts.faded">
+              · 淡出 {{ data.counts.faded }}</small
+            >
+          </dd>
         </div>
         <div>
           <dt>认识的人</dt>
@@ -80,8 +92,15 @@ function share(id: string) {
           <dd>{{ data.counts.thoughts }} 篇</dd>
         </div>
         <div>
-          <dt>日记 / 自传</dt>
-          <dd>{{ data.counts.diaries }} 天 / {{ data.counts.chapters }} 章</dd>
+          <dt>日记 / 回顾 / 自传</dt>
+          <dd>
+            {{ data.counts.diaries }} 天 / {{ data.counts.reviews }} 次 /
+            {{ data.counts.chapters }} 章
+          </dd>
+        </div>
+        <div>
+          <dt>在等的事</dt>
+          <dd>{{ data.counts.anticipations }} 件</dd>
         </div>
       </dl>
       <button
@@ -150,6 +169,23 @@ function share(id: string) {
         <b>还没有打开注意力的会话</b>
         <p>被叫到、聊到她在意的事、熟人说话或攒了不少消息时，她才会细看。</p>
       </div>
+      <div class="section-heading" style="margin-top: 24px">
+        <div>
+          <span class="eyebrow">AHEAD / 7 DAYS</span>
+          <h3>这几天她在等的事</h3>
+        </div>
+      </div>
+      <div v-if="data.expecting.length" class="row-list">
+        <article v-for="a in data.expecting" :key="a.id">
+          <time>{{ when(a.occurrence) }}</time>
+          <span class="tag" data-kind="emerging">{{ a.when }}</span>
+          <p>
+            {{ a.name ? `${a.name}：` : "" }}{{ a.content
+            }}<small>{{ ANTICIPATION_LABELS[a.kind] || a.kind }}</small>
+          </p>
+        </article>
+      </div>
+      <p v-else class="gentle-empty">这几天没有她特别在等的事。</p>
       <div class="section-heading" style="margin-top: 24px">
         <div>
           <span class="eyebrow">TOKEN LEDGER / 24H</span>

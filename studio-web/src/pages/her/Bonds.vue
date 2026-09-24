@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { toast } from "../../api";
-import { mind, percent, when } from "../../plates/mind";
+import { ORIGIN_LABELS, mind, percent, when } from "../../plates/mind";
+
+function knownFor(p: any) {
+  if (!p.firstMetAt) return "";
+  const days = Math.max(1, Math.round((Date.now() - p.firstMetAt) / 86400000));
+  return `认识 ${days} 天`;
+}
 
 defineProps<{ data: any }>();
 const emit = defineEmits<{ changed: [] }>();
@@ -96,8 +102,13 @@ onMounted(load);
       >
         <h4>{{ p.name }}</h4>
         <small
-          >{{ p.feel }} · 在 {{ p.sessions.length }} 个地方见过 ·
-          {{ when(p.lastSeen) }}</small
+          >{{ p.feel }} · 在 {{ p.sessions.length }} 个地方见过<template
+            v-if="knownFor(p)"
+          >
+            · {{ knownFor(p) }}</template
+          >
+          · 上次说上话 {{ when(p.lastTalkedAt) }} · 上次见到
+          {{ when(p.seenAt || p.lastSeen) }}</small
         >
         <div v-for="[key, label] in DIMENSIONS" :key="key" class="meter-row">
           <span>{{ label }}</span>
@@ -140,14 +151,8 @@ onMounted(load);
         <div>
           <p>{{ c.note || "没有写原因" }}</p>
           <small
-            >{{
-              c.origin === "turn"
-                ? "聊天时"
-                : c.origin === "solitude"
-                  ? "独处时"
-                  : "写日记时"
-            }}
-            · {{ c.sources.length }} 处来源
+            >{{ ORIGIN_LABELS[c.origin] || "写日记时" }} ·
+            {{ c.sources.length }} 处来源
             <button type="button" class="text-button" @click="revokeChange(c)">
               撤销
             </button></small
