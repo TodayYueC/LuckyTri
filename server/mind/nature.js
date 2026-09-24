@@ -124,6 +124,27 @@ const minutes = (clock) => {
 const within = (value, start, end) =>
   start < end ? value >= start && value < end : value >= start || value < end;
 
+// A day of her life starts when she wakes (04:00 without a rhythm), not at
+// midnight.
+function wakeMinutes(nature) {
+  const rhythm = nature?.rhythm;
+  return rhythm?.enabled && CLOCK.test(rhythm.wake || "")
+    ? minutes(rhythm.wake)
+    : 240;
+}
+export function lifeDayKey(nature, time, timeZone) {
+  return localClock(time - wakeMinutes(nature) * 60000, timeZone).local.slice(
+    0,
+    10,
+  );
+}
+export function lifeDayStart(nature, time, timeZone) {
+  const clock = localClock(time, timeZone);
+  const at = clock.hour * 60 + Number(clock.local.slice(14, 16));
+  const back = (at - wakeMinutes(nature) + 1440) % 1440;
+  return time - back * 60000 - (time % 60000);
+}
+
 // Where she is in her day. Energy is a baseline; the affect layer adds how
 // the day has actually gone.
 export function rhythmPhase(nature, now, timeZone) {

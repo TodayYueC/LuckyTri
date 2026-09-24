@@ -3,21 +3,45 @@ import {
   parseSessionKey,
   scopedSessionAliases,
 } from "../channels/session-key.js";
-import { ftsMatchQuery, lexicalTerms } from "../knowledge/retrieval.js";
+import { localClock } from "../core/conversation-cues.js";
+import { lexicalTerms } from "../knowledge/retrieval.js";
 import { indexMemory } from "../knowledge/schema.js";
 import {
   applySpeakerNames,
   readableName,
   speakerNames,
 } from "../core/speaker-names.js";
+import { agoLabel } from "./clock.js";
 import { hasCredential, secretRequest } from "./guard.js";
-import { clamp, similar, text } from "./util.js";
+import { MEMORY_IDLE_DAYS } from "./salience.js";
+import { DAY, clamp, similar, text } from "./util.js";
 
 const RECALL_CONFIDENCE = 0.5;
 const RECALL_LIMIT = 12;
+const RECALL_TERMS = 64;
+const FTS_CANDIDATES = 200;
 const BLOCK_USERS = 40;
 const SENSITIVE = /密码|验证码|密钥|身份证|银行卡|api.?key|token/i;
 const DISCRETIONS = new Set(["open", "private", "secret"]);
+
+// Words from the newest messages first, so a long batch still searches for
+// what was just said.
+function recallQuery(rows) {
+  const terms = [];
+  const seen = new Set();
+  for (const row of [...rows].reverse())
+    for (const term of lexicalTerms(row.text || ""))
+      if (!seen.has(term)) {
+        seen.add(term);
+        terms.push(term);
+      }
+  return terms
+    .slice(0, RECALL_TERMS)
+    .map((term) => `"${term.replace(/"/g, "")}"`)
+    .filter((term) => term.length > 2)
+    .join(" OR ");
+}
+const marks = (list) => list.map(() => "?").join(",");
 
 export function isPrivateSession(session) {
   const value = String(session || "");
@@ -65,29 +89,36 @@ export class MemoryManager {
     const present = new Set(people.map(String));
     const query = lexicalTerms(rows.map((r) => r.text || "").join(" "));
     const fts = new Set();
-    const match = ftsMatchQuery(rows.map((r) => r.text || "").join(" "));
+    const match = recallQuery(rows);
     if (match)
       try {
         for (const hit of db
           .prepare(
-            "SELECT memory_id FROM core_memory_fts WHERE tokens MATCH ? LIMIT 120",
+            "SELECT memory_id FROM core_memory_fts WHERE tokens MATCH ? ORDER BY rank LIMIT ?",
           )
-          .all(match))
+          .all(match, FTS_CANDIDATES))
           fts.add(hit.memory_id);
       } catch {
         /* MATCH syntax */
       }
-    const scored = [];
-    for (const m of db
+    // Only what could matter is read: words in common, people here, or what
+    // was locked to stay in mind.
+    const ids = [...fts];
+    const subjects = [...new Set([...speakers, ...present])].filter(Boolean);
+    const candidates = db
       .prepare(
-        "SELECT * FROM core_memories WHERE status='confirmed' AND created<=? AND (expires IS NULL OR expires>?) AND COALESCE(confidence,1)>=?",
+        `SELECT * FROM core_memories WHERE status='confirmed' AND created<=? AND (expires IS NULL OR expires>?) AND COALESCE(confidence,1)>=? AND (locked=1${ids.length ? ` OR id IN (${marks(ids)})` : ""}${subjects.length ? ` OR subject IN (${marks(subjects)})` : ""})`,
       )
-      .all(cutoff, cutoff, RECALL_CONFIDENCE)) {
+      .all(cutoff, cutoff, RECALL_CONFIDENCE, ...ids, ...subjects);
+    const lived = this.mind?.days.lived(cutoff);
+    const scored = [];
+    for (const m of candidates) {
       const local = here.has(m.session_id) || m.session_id === "__shared__";
       if (m.discretion === "secret" && !local) continue;
-      const relevance =
-        [...lexicalTerms(m.content)].filter((t) => query.has(t)).length +
-        (fts.has(m.id) ? 2 : 0);
+      const overlap = [...lexicalTerms(m.content)].filter((t) =>
+        query.has(t),
+      ).length;
+      const relevance = overlap + (fts.has(m.id) ? 2 : 0);
       const about = speakers.has(m.subject)
         ? 3
         : present.has(m.subject)
@@ -95,6 +126,15 @@ export class MemoryManager {
           : 0;
       if (!relevance && !about && !m.locked) continue;
       if (!local && !relevance && about < 3) continue;
+      // Something long untouched comes back only when it is really being
+      // talked about, or its person is speaking.
+      const idle = lived
+        ? lived.since(Math.max(m.created || 0, m.last_access || 0))
+        : 0;
+      const strong =
+        overlap >= 2 || speakers.has(String(m.subject)) || !!m.locked;
+      if (!strong && Number(m.importance || 0) < 0.6 && idle > MEMORY_IDLE_DAYS)
+        continue;
       scored.push({
         m,
         local,
@@ -104,7 +144,8 @@ export class MemoryManager {
           (local ? 1 : 0) +
           (m.locked ? 2 : 0) +
           Number(m.importance || 0) +
-          (Number(m.confidence ?? 1) - 0.5),
+          (Number(m.confidence ?? 1) - 0.5) +
+          0.5 * 0.5 ** (idle / 30),
         why: fts.has(m.id) ? "fts" : about ? "subject" : "related",
       });
     }
@@ -114,25 +155,30 @@ export class MemoryManager {
       const access = db.prepare(
         "UPDATE core_memories SET last_access=? WHERE id=?",
       );
-      for (const { m } of selected) access.run(Date.now(), m.id);
+      for (const { m } of selected) access.run(cutoff, m.id);
     }
-    return selected.map(({ m, local, why }) => ({
-      id: m.id,
-      subject: m.subject,
-      content: m.content,
-      type: m.type,
-      confidence: m.confidence,
-      importance: m.importance,
-      whySelected: why,
-      source: local
-        ? "这里"
-        : isPrivateSession(m.session_id)
-          ? "私聊里"
-          : "别的群里",
-      ...(m.discretion === "private" && !local
-        ? { discretion: "私下知道的，不要当众说出口，也不要说出从哪听来" }
-        : {}),
-    }));
+    return selected.map(({ m, local, why }) => {
+      const age = cutoff - Number(m.created || cutoff);
+      return {
+        id: m.id,
+        subject: m.subject,
+        content: m.content,
+        type: m.type,
+        confidence: m.confidence,
+        importance: m.importance,
+        whySelected: why,
+        source: local
+          ? "这里"
+          : isPrivateSession(m.session_id)
+            ? "私聊里"
+            : "别的群里",
+        // Old news may no longer be true; she should know how old it is.
+        ...(age >= 7 * DAY ? { when: `${agoLabel(age)}知道的` } : {}),
+        ...(m.discretion === "private" && !local
+          ? { discretion: "私下知道的，不要当众说出口，也不要说出从哪听来" }
+          : {}),
+      };
+    });
   }
   secretsOutside(session) {
     const here = new Set(this.scopes(session));
@@ -340,6 +386,7 @@ export class MemoryManager {
         : privateChat
           ? "private"
           : "open",
+      time: Number(message.time) || Date.now(),
     });
     if (id) this.repo.store.revision++;
     return id;
@@ -351,12 +398,105 @@ export class MemoryManager {
       )
       .get(session, session).n;
   }
+  // What she already remembers about the people in this stretch, so the
+  // same fact is not written twice and a changed one can replace the old.
+  known(session, block) {
+    const here = new Set(this.scopes(session));
+    const known = [];
+    const refs = new Map();
+    const read = this.repo.db.prepare(
+      "SELECT id,subject,content,session_id,discretion FROM core_memories WHERE subject=? AND status='confirmed' ORDER BY importance DESC, updated DESC LIMIT 5",
+    );
+    const subjects = new Set(
+      block.filter((m) => m.role === "user").map((m) => String(m.userId)),
+    );
+    for (const subject of subjects)
+      for (const k of read.all(subject)) {
+        if (known.length >= 20) return { known, refs };
+        if (k.discretion !== "open" && !here.has(k.session_id)) continue;
+        const ref = `k${known.length + 1}`;
+        refs.set(ref, k);
+        known.push({ ref, subject: k.subject, content: text(k.content, 80) });
+      }
+    return { known, refs };
+  }
+  // A newer fact replaces an older one; the old stays visible with its
+  // versions but is no longer recalled.
+  supersede(id, by) {
+    const old = this.repo.db
+      .prepare("SELECT * FROM core_memories WHERE id=?")
+      .get(id);
+    if (!old || old.locked || old.status !== "confirmed" || id === by)
+      return false;
+    this.update(id, { status: "superseded" });
+    this.repo.db
+      .prepare("UPDATE core_memories SET superseded_by=? WHERE id=?")
+      .run(by, id);
+    return true;
+  }
+  // Things said in this stretch that are still to come. Someone's plans and
+  // dates must come from their own words; a promise must be her own.
+  anticipate(list, { block, session, names, privateChat, now }) {
+    if (!this.mind?.anticipations) return 0;
+    let added = 0;
+    for (const a of (Array.isArray(list) ? list : []).slice(0, 8)) {
+      if (!a || typeof a.content !== "string" || !a.content.trim()) continue;
+      const kind = ["event", "promise", "date"].includes(a.kind)
+        ? a.kind
+        : null;
+      const cited = block.filter((m) =>
+        (Array.isArray(a.sources) ? a.sources : []).map(Number).includes(m.seq),
+      );
+      if (!kind || !cited.length) continue;
+      let subject = a.subject == null ? null : String(a.subject);
+      if (kind === "promise") {
+        if (!cited.every((m) => m.role === "assistant")) continue;
+        if (
+          subject &&
+          !block.some((m) => m.role === "user" && String(m.userId) === subject)
+        )
+          subject = null;
+      } else if (
+        !subject ||
+        !cited.some((m) => m.role === "user" && String(m.userId) === subject)
+      )
+        continue;
+      const first = Math.min(...cited.map((m) => m.seq));
+      const last = Math.max(...cited.map((m) => m.seq));
+      const secret = block.some(
+        (m) =>
+          m.role === "user" &&
+          m.seq <= last &&
+          m.seq >= first - 6 &&
+          secretRequest(m.text),
+      );
+      const result = this.mind.anticipations.add({
+        kind,
+        subject,
+        session,
+        content: applySpeakerNames(a.content.trim(), names),
+        due: a.due,
+        recurrence: a.recurrence,
+        discretion: secret ? "secret" : privateChat ? "private" : "open",
+        sources: cited.map((m) => m.seq),
+        origin: "memory",
+        time: now,
+      });
+      if (result.id) added++;
+    }
+    return added;
+  }
   async consolidate(
     session,
     profile,
     prompt,
     trace,
-    { force = false, simulated = false, models = this.models } = {},
+    {
+      force = false,
+      simulated = false,
+      models = this.models,
+      now = Date.now(),
+    } = {},
   ) {
     if (this.busy.has(session)) return;
     if (!force && Date.now() - (this.lastAttempt.get(session) || 0) < 60000)
@@ -380,6 +520,8 @@ export class MemoryManager {
       const last = block.at(-1).seq;
       const names = speakerNames(db, [session]);
       const self = this.mind?.nature.current().name || "self";
+      const zone = this.mind?.timeZone() || "Asia/Shanghai";
+      const { known, refs } = this.known(session, block);
       const value = await models.call(
         profile,
         "memory",
@@ -388,6 +530,7 @@ export class MemoryManager {
           sessionId: session,
           self,
           privateChat: isPrivateSession(session),
+          ...(known.length ? { known } : {}),
           messages: block.map((m) => ({
             id: m.seq,
             userId: m.role === "assistant" ? "self" : m.userId,
@@ -399,7 +542,8 @@ export class MemoryManager {
                   m.userId,
             role: m.role,
             text: String(m.text || "").slice(0, 600),
-            time: m.time,
+            // A readable local time lets "明天" become a date.
+            localTime: localClock(m.time, zone).local,
           })),
         },
         trace,
@@ -416,7 +560,7 @@ export class MemoryManager {
           session,
           block[0].seq,
           last,
-          Date.now(),
+          now,
           JSON.stringify({ summary, facts: value.facts.slice(0, 30) }),
         );
         const privateChat = isPrivateSession(session);
@@ -452,7 +596,7 @@ export class MemoryManager {
           const secret =
             f.discretion === "secret" ||
             around.some((m) => secretRequest(m.text));
-          this.insert({
+          const id = this.insert({
             session,
             subject: String(f.subject),
             content: applySpeakerNames(f.content.trim(), names),
@@ -474,8 +618,22 @@ export class MemoryManager {
               : privateChat || f.discretion === "private"
                 ? "private"
                 : "open",
+            time: now,
           });
+          if (id)
+            for (const ref of Array.isArray(f.supersedes) ? f.supersedes : []) {
+              const old = refs.get(String(ref));
+              if (old && String(old.subject) === String(f.subject))
+                this.supersede(old.id, id);
+            }
         }
+        this.anticipate(value.anticipations, {
+          block,
+          session,
+          names,
+          privateChat,
+          now,
+        });
         // What she herself said and meant becomes part of who she is.
         const valid = new Set(
           block.filter((m) => m.role === "assistant").map((m) => `m:${m.seq}`),
@@ -486,7 +644,7 @@ export class MemoryManager {
         ))
           this.mind?.self.propose(
             { ...note, action: "new", session },
-            { valid, origin: "memory" },
+            { valid, origin: "memory", time: now },
           );
         db.prepare(
           "INSERT INTO core_cursors VALUES (?,?) ON CONFLICT(session_id) DO UPDATE SET seq=excluded.seq",

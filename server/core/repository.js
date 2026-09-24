@@ -181,6 +181,18 @@ export class Repository {
       .all(...args, ...(bounded ? [limit] : []))
       .map(eventRow);
   }
+  // The last few events of a session, oldest first, without reading the rest.
+  recentEvents(session, limit = 20, { simulated = null, role = null } = {}) {
+    const args = [session];
+    if (simulated !== null) args.push(Number(!!simulated));
+    if (role) args.push(role);
+    return this.db
+      .prepare(
+        `SELECT * FROM (SELECT * FROM core_events WHERE session_id=?${simulatedFilter(simulated)}${role ? " AND role=?" : ""} ORDER BY seq DESC LIMIT ?) ORDER BY seq`,
+      )
+      .all(...args, limit)
+      .map(eventRow);
+  }
   latest(session) {
     return (
       this.db

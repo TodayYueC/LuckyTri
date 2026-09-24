@@ -32,6 +32,7 @@ const STAGE_OUTPUT = {
   rewrite: 4096,
   reflection: 4096,
   daily: 6144,
+  weekly: 6144,
   memory: 8192,
 };
 const EFFORT_HEADROOM = {

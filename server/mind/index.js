@@ -9,8 +9,43 @@ import { Thoughts } from "./thoughts.js";
 import { MemoryManager } from "./memory.js";
 import { Budget } from "./budget.js";
 import { Reading } from "./reading.js";
+import { Days } from "./days.js";
+import { Anticipations } from "./anticipations.js";
+import { Periods } from "./periods.js";
 import { innerView } from "./view.js";
 import { clamp, dayKey, parse, text } from "./util.js";
+
+// What changed in her between two saved days.
+export function diffSnapshots(before, after) {
+  if (!before || !after) return null;
+  const key = (t) => t.thread;
+  const old = new Map((before.self || []).map((t) => [key(t), t]));
+  const now = new Map((after.self || []).map((t) => [key(t), t]));
+  const person = (p) => p.closeness + p.trust - p.tension;
+  const known = new Map((before.people || []).map((p) => [p.userId, p]));
+  return {
+    appeared: [...now.values()].filter((t) => !old.has(key(t))),
+    faded: [...old.values()].filter((t) => !now.has(key(t))),
+    changed: [...now.values()]
+      .filter((t) => old.has(key(t)))
+      .map((t) => ({ ...t, before: old.get(key(t)) }))
+      .filter(
+        (t) =>
+          t.before.content !== t.content ||
+          Math.abs(t.before.strength - t.strength) >= 0.05 ||
+          t.before.status !== t.status,
+      ),
+    people: (after.people || [])
+      .map((p) => ({
+        ...p,
+        shift: known.has(p.userId)
+          ? Math.round((person(p) - person(known.get(p.userId))) * 100) / 100
+          : null,
+      }))
+      .filter((p) => p.shift === null || Math.abs(p.shift) >= 0.05),
+    mood: { before: before.affect?.mood, after: after.affect?.mood },
+  };
+}
 
 const TURN_CHANGES = new Set(
   Object.keys(BOND_CHANGES).filter(
@@ -38,6 +73,9 @@ export class Mind {
     this.memory = new MemoryManager(repo, models, this);
     this.budget = new Budget(repo);
     this.reading = new Reading(this);
+    this.days = new Days(this);
+    this.anticipations = new Anticipations(this);
+    this.periods = new Periods(this);
   }
   timeZone() {
     return this.repo.config("life", {})?.timeZone || "Asia/Shanghai";
@@ -220,6 +258,8 @@ export class Mind {
     } else if (kind === "thought") {
       this.thoughts.update(id, { hidden: true });
       tomb(this.thoughts.get(id)?.content || "");
+    } else if (kind === "anticipation") {
+      tomb(this.anticipations.revoke(id, note));
     } else throw Error("不能撤销这类内容");
     this.store.revision++;
   }

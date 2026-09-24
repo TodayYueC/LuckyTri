@@ -186,13 +186,18 @@ function scriptHer(w) {
       ? `比 ${data.yesterday.day} 更熟悉大家了`
       : "今天是开始",
     self: [],
-    chapter: data.chapterDue
-      ? {
-          number: 1,
-          title: "开始的几天",
-          content: "我认识了阿明、小红和老王。",
-        }
-      : null,
+  });
+  w.answers.weekly = (data) => ({
+    week: `${data.diaries.length} 天里，我认识了几个人。`,
+    compare: "这是第一次回顾",
+    self: [],
+    bonds: [],
+    chapter: {
+      action: "continue",
+      title: "开始的几天",
+      content: "我认识了阿明、小红和老王。",
+    },
+    story: "我在学习群和游戏群里开始认识大家。",
   });
   w.answers.summary = { summary: "聊天摘要", keyPoints: [] };
   return seen;
@@ -269,6 +274,12 @@ async function liveThreeDays() {
   log.push(["life", (await w.life.tick()).status]);
   w.at("2026-09-24T01:30:00+08:00");
   log.push(["life", (await w.life.tick()).status]);
+  // While she sleeps: quiet chats are sorted into memory, then she looks back.
+  w.at("2026-09-24T03:00:00+08:00");
+  for (let i = 0; i < 4; i++) {
+    log.push(["night", (await w.life.tick()).status]);
+    w.advance(MINUTE);
+  }
 
   // Day three: look back at the very first look of day one.
   w.at("2026-09-24T10:00:00+08:00");

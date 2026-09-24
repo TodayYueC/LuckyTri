@@ -6,6 +6,12 @@ const HALF_LIFE = 3 * HOUR;
 const BASELINE = { valence: 0.15, arousal: 0.35 };
 // A single experience can move her, but not overturn her.
 const MAX_SHIFT = 0.35;
+// How the last couple of weeks went moves where she settles back to, a
+// little: a good stretch lifts it, a hard one lowers it.
+const LATELY_DAYS = 14;
+const LATELY_HALF_LIFE = 7;
+const LATELY_MAX = 0.12;
+const LATELY_NOTE = 0.06;
 
 function moodLabel(valence, arousal) {
   if (valence > 0.45) return arousal > 0.5 ? "很开心" : "心情不错";
@@ -61,21 +67,58 @@ export class Affect {
       );
     return id;
   }
+  // Where her mood settles these days, from the finished days she lived. A
+  // lived day that stirred nothing counts as an ordinary one.
+  lately(now = Date.now()) {
+    const days = this.db
+      .prepare(
+        "SELECT valence FROM mind_days WHERE created<=? AND lived=1 ORDER BY day DESC LIMIT ?",
+      )
+      .all(now, LATELY_DAYS);
+    if (!days.length) return { drift: 0, label: "" };
+    let sum = 0;
+    let weight = 0;
+    days.forEach((day, i) => {
+      const w = 0.5 ** (i / LATELY_HALF_LIFE);
+      sum += (day.valence ?? BASELINE.valence) * w;
+      weight += w;
+    });
+    const settled = Math.min(1, days.length / 5);
+    const drift = clamp(
+      (sum / weight - BASELINE.valence) * 0.3 * settled,
+      -LATELY_MAX,
+      LATELY_MAX,
+    );
+    return {
+      drift: Math.round(drift * 100) / 100,
+      label:
+        drift >= LATELY_NOTE
+          ? "这阵子挺开心"
+          : drift <= -LATELY_NOTE
+            ? "这阵子有点低落"
+            : "",
+    };
+  }
   // Folded from events at or before `now`, so a replay never sees later moods.
   state(now = Date.now(), { nature = this.mind.nature.current(now) } = {}) {
     const timeZone = this.mind.timeZone();
+    const lately = this.lately(now);
+    const base = {
+      valence: BASELINE.valence + lately.drift,
+      arousal: BASELINE.arousal,
+    };
     const rows = this.db
       .prepare(
         "SELECT * FROM mind_affect WHERE created<=? AND created>? ORDER BY created",
       )
       .all(now, now - 2 * DAY);
-    let valence = BASELINE.valence;
-    let arousal = BASELINE.arousal;
+    let valence = base.valence;
+    let arousal = base.arousal;
     let at = now - 2 * DAY;
     let last = null;
     for (const row of rows) {
-      valence = relax(valence, BASELINE.valence, row.created - at, HALF_LIFE);
-      arousal = relax(arousal, BASELINE.arousal, row.created - at, HALF_LIFE);
+      valence = relax(valence, base.valence, row.created - at, HALF_LIFE);
+      arousal = relax(arousal, base.arousal, row.created - at, HALF_LIFE);
       valence = clamp(
         valence + clamp(row.valence * row.intensity, -MAX_SHIFT, MAX_SHIFT),
         -1,
@@ -89,8 +132,8 @@ export class Affect {
       at = row.created;
       last = row;
     }
-    valence = relax(valence, BASELINE.valence, now - at, HALF_LIFE);
-    arousal = relax(arousal, BASELINE.arousal, now - at, HALF_LIFE);
+    valence = relax(valence, base.valence, now - at, HALF_LIFE);
+    arousal = relax(arousal, base.arousal, now - at, HALF_LIFE);
     const residual = last
       ? Math.pow(0.5, (now - last.created) / HALF_LIFE) * last.intensity
       : 0;
@@ -120,6 +163,8 @@ export class Affect {
       clock: phase.clock,
       since: last?.created || null,
       talkedRecently: talked,
+      baseline: Math.round(base.valence * 100) / 100,
+      lately: lately.label,
     };
   }
   history({ before = Number.MAX_SAFE_INTEGER, limit = 60 } = {}) {

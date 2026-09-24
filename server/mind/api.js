@@ -1,29 +1,9 @@
 import { wrap } from "../http.js";
 import { localClock } from "../core/conversation-cues.js";
+import { diffSnapshots } from "./index.js";
 import { SELF_KINDS } from "./self.js";
 import { THOUGHT_KINDS } from "./thoughts.js";
 import { dayKey } from "./util.js";
-
-function diffSnapshots(before, after) {
-  if (!before || !after) return null;
-  const key = (t) => t.thread;
-  const old = new Map((before.self || []).map((t) => [key(t), t]));
-  const now = new Map((after.self || []).map((t) => [key(t), t]));
-  return {
-    appeared: [...now.values()].filter((t) => !old.has(key(t))),
-    faded: [...old.values()].filter((t) => !now.has(key(t))),
-    changed: [...now.values()]
-      .filter((t) => old.has(key(t)))
-      .map((t) => ({ ...t, before: old.get(key(t)) }))
-      .filter(
-        (t) =>
-          t.before.content !== t.content ||
-          Math.abs(t.before.strength - t.strength) >= 0.05 ||
-          t.before.status !== t.status,
-      ),
-    mood: { before: before.affect?.mood, after: after.affect?.mood },
-  };
-}
 
 export function mountMind(app, chat, life) {
   const { mind } = chat;
@@ -65,8 +45,20 @@ export function mountMind(app, chat, life) {
         budget: mind.budget.report(now),
         reason: life.eligible(now),
         busy: life.busy,
+        dayOfLife: mind.days.dayOfLife(now),
+        // The week ahead as she sees it, wherever each thing was said.
+        expecting: mind.anticipations
+          .list({ now, limit: 100 })
+          .filter(
+            (a) =>
+              a.state === "pending" &&
+              a.occurrence >= now - 86400000 &&
+              a.occurrence <= now + 7 * 86400000,
+          )
+          .slice(0, 8),
         counts: {
-          self: mind.self.active({ limit: 500 }).length,
+          self: mind.self.active({ before: now, now, limit: 500 }).length,
+          faded: mind.self.dormant({ before: now, now }).length,
           people: chat.repo.db
             .prepare("SELECT COUNT(*) n FROM mind_people")
             .get().n,
@@ -77,6 +69,14 @@ export function mountMind(app, chat, life) {
             .prepare("SELECT COUNT(DISTINCT day) n FROM mind_diary")
             .get().n,
           chapters: life.chapters().length,
+          reviews: chat.repo.db
+            .prepare("SELECT COUNT(*) n FROM mind_periods WHERE level='week'")
+            .get().n,
+          anticipations: chat.repo.db
+            .prepare(
+              "SELECT COUNT(*) n FROM mind_anticipations WHERE status='pending'",
+            )
+            .get().n,
         },
         kinds: { self: SELF_KINDS, thoughts: THOUGHT_KINDS },
       });
@@ -85,11 +85,30 @@ export function mountMind(app, chat, life) {
   app.get(
     "/api/mind/self",
     wrap((req, res) => {
-      const latest = mind.self.latest();
+      const now = life.now();
+      const weighed = new Map(
+        mind.self.annotated({ now }).map((t) => [t.thread, t]),
+      );
       res.json({
-        threads: latest
-          .sort((a, b) => b.strength - a.strength || b.created - a.created)
-          .map((t) => ({ ...t, versions: mind.self.history(t.thread).length })),
+        threads: mind.self
+          .latest()
+          .map((t) => {
+            const w = weighed.get(t.thread);
+            return {
+              ...t,
+              versions: mind.self.history(t.thread).length,
+              salience: w?.salience ?? null,
+              core: !!w?.core,
+              faded: !!w?.faded,
+              fading: !!w && !w.core && !w.faded && w.salience < 0.2,
+            };
+          })
+          .sort(
+            (a, b) =>
+              (b.salience ?? -1) - (a.salience ?? -1) ||
+              b.strength - a.strength ||
+              b.created - a.created,
+          ),
         revoked: mind.revocations().filter((r) => r.target_kind === "self"),
         kinds: SELF_KINDS,
       });
@@ -134,12 +153,18 @@ export function mountMind(app, chat, life) {
     wrap((req, res) => {
       const q = String(req.query.q || "").slice(0, 200);
       const before = Number(req.query.before) || Number.MAX_SAFE_INTEGER;
+      const now = life.now();
       res.json({
         diaries: life.diaries({ limit: 30 }),
         chapters: life.chapters().map((c) => ({
           ...c,
           versions: life.chapterVersions(c.chapter).length,
         })),
+        reviews: mind.periods.reviews({ limit: 12 }),
+        story: mind.periods.story(),
+        storyVersions: mind.periods.storyVersions().length,
+        anticipations: mind.anticipations.list({ now, limit: 60 }),
+        dayOfLife: mind.days.dayOfLife(now),
         snapshots: chat.repo.db
           .prepare(
             "SELECT day,created FROM mind_snapshots ORDER BY day DESC LIMIT 60",
@@ -151,6 +176,10 @@ export function mountMind(app, chat, life) {
         runs: life.runs(60),
       });
     }),
+  );
+  app.get(
+    "/api/mind/story",
+    wrap((req, res) => res.json(mind.periods.storyVersions())),
   );
   app.get(
     "/api/mind/chapters/:number",

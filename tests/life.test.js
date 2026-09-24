@@ -172,10 +172,11 @@ test("独处时她会读共享资料：按兴趣挑、一段段读下去，读�
   assert(!seen.some((r) => r?.title === "私人日记"), "私人资料不进入她的阅读");
 });
 
-test("独处时又有了新对话，这次的想法不作数", async (t) => {
+test("独处时又有了新对话：想好的仍然留下，只是不再打算在那里主动开口，心情也不因此改变", async (t) => {
   const w = world();
   t.after(w.close);
   w.open("group:1");
+  w.life.save({ proactive: true });
   const events = chat(
     w,
     "group:1",
@@ -186,15 +187,41 @@ test("独处时又有了新对话，这次的想法不作数", async (t) => {
     w.say("group:1", "10001", "其实我已经拿到 offer 了");
     return {
       thought: {
-        kind: "reflection",
-        content: "他大概没通过",
+        kind: "unfinished",
+        content: "他还在等面试结果",
         sources: [events[0].seq],
       },
+      mood: { feeling: "挂心", intensity: 0.4, valence: -0.2 },
+      outreach: { session: "group:1", text: "结果出来了吗", afterHours: 2 },
     };
   };
   const result = await w.life.tick();
-  assert.equal(result.status, "cancelled");
-  assert.equal(w.mind.thoughts.list().length, 0);
+  assert.equal(result.status, "written");
+  assert.match(result.reason, /新对话/);
+  const [thought] = w.mind.thoughts.list();
+  assert.equal(thought.content, "他还在等面试结果", "付出过的想法不白费");
+  assert.equal(thought.outreach, "", "那里已经有了新动静，不再打算主动开口");
+  assert.notEqual(w.mind.affect.state(w.now()).mood, "挂心");
+
+  // A new nature makes her a different seed: that one thought does not count.
+  chat(
+    w,
+    "group:1",
+    Array.from({ length: 6 }, (_, i) => ["10001", `又聊${i}`]),
+  );
+  w.advance(2 * HOUR);
+  w.answers.reflection = () => {
+    w.mind.nature.save({ ...w.mind.nature.current(), warmth: 90 });
+    return {
+      thought: {
+        kind: "reflection",
+        content: "换了天性之后的想法",
+        sources: [events[1].seq],
+      },
+    };
+  };
+  assert.equal((await w.life.tick()).status, "cancelled");
+  assert.equal(w.mind.thoughts.list().length, 1);
 });
 
 test("旧想法被新经历修正时追加保存；引用不存在的来源或旧手记的想法不保存", async (t) => {
@@ -259,17 +286,19 @@ test("旧想法被新经历修正时追加保存；引用不存在的来源或�
   assert.equal(w.mind.thoughts.list().length, 2);
 });
 
-test("睡前写日记，和昨天的自己对照；每天留一份快照；自传章节可以重写，旧版本还在", async (t) => {
+test("睡前写日记，和昨天的自己对照；每天留一份快照；夜里回顾时写自传，章节可以重写，旧版本还在", async (t) => {
   const w = world({ start: "2026-09-22T12:00:00+08:00", rhythm: true });
   t.after(w.close);
   w.open("group:1");
-  w.life.save({ chapterDays: 1, solitude: false });
+  w.life.save({ chapterDays: 2, solitude: false });
   const inputs = [];
+  const reviews = [];
   let chapter = null;
   const discoveries = [
     "我喜欢夏天的热闹",
     "我好像很馋火锅",
     "我期待周末和大家出去玩",
+    "我喜欢大家一起商量去哪玩",
   ];
   w.answers.daily = (data) => {
     inputs.push(data);
@@ -285,66 +314,125 @@ test("睡前写日记，和昨天的自己对照；每天留一份快照；自�
           sources: [data.today.experiences[0].messages[0].seq],
         },
       ],
-      chapter,
     };
   };
-  chat(w, "group:1", [
+  w.answers.weekly = (data) => {
+    reviews.push(data);
+    return {
+      week: `这几天（${data.diaries.map((d) => d.day).join("、")}）我慢慢熟起来了`,
+      compare: data.lastReview ? "比上次回顾时更放松" : "这是第一次回顾",
+      self: [
+        {
+          action: "new",
+          kind: "view",
+          content: "和大家待久了，我觉得慢慢熟起来是件好事",
+          sources: [data.diaries[0].ref],
+        },
+      ],
+      chapter,
+      story: "我是从这个群开始认识大家的。",
+    };
+  };
+  const day = async (date, lines) => {
+    w.at(`${date}T12:00:00+08:00`);
+    chat(w, "group:1", lines);
+    const next = new Date(Date.parse(`${date}T12:00:00+08:00`) + 86400000)
+      .toISOString()
+      .slice(0, 10);
+    w.at(`${next}T01:30:00+08:00`);
+    const diary = await w.life.tick();
+    w.at(`${next}T03:00:00+08:00`);
+    const nights = [];
+    for (let i = 0; i < 3; i++) {
+      nights.push(await w.life.tick());
+      w.advance(MINUTE);
+    }
+    return { diary, reviewed: nights.find((r) => /回顾/.test(r.reason || "")) };
+  };
+  w.answers.memory = { summary: "闲聊", facts: [], self: [] };
+
+  const one = await day("2026-09-22", [
     ["10001", "早"],
     ["10002", "今天好热"],
     ["bot", "是有点热"],
   ]);
-  w.at("2026-09-23T01:30:00+08:00");
-  const first = await w.life.tick();
-  assert.equal(first.status, "written");
+  assert.equal(one.diary.status, "written");
   assert.equal(inputs[0].date, "2026-09-22");
   assert.equal(inputs[0].yesterday, null);
-  assert.equal(inputs[0].chapterDue, false);
+  assert.equal(inputs[0].chapters, undefined, "日记不再带上所有章节");
+  assert.equal(inputs[0].story, undefined);
   assert.ok(w.mind.snapshotOf("2026-09-22"));
+  assert.equal(reviews.length, 0, "只有一篇日记时还不回顾");
+  w.at("2026-09-23T01:31:00+08:00");
   assert.notEqual((await w.life.tick())?.status, "written", "同一天不写两次");
 
-  w.at("2026-09-23T12:00:00+08:00");
-  chat(w, "group:1", [
+  chapter = {
+    action: "continue",
+    title: "刚来的时候",
+    content: "我刚认识大家的时候，还不太会接话。",
+  };
+  const two = await day("2026-09-23", [
     ["10001", "午饭吃啥"],
     ["10002", "火锅"],
     ["bot", "好耶"],
   ]);
-  chapter = {
-    number: 1,
-    title: "刚来的时候",
-    content: "我刚认识大家的时候，还不太会接话。",
-  };
-  w.at("2026-09-24T01:30:00+08:00");
-  assert.equal((await w.life.tick()).status, "written");
   assert.equal(inputs[1].yesterday.day, "2026-09-22");
-  assert.equal(inputs[1].chapterDue, true);
   assert.equal(w.life.diaries()[0].compare, "比昨天放松");
+  assert.equal(two.reviewed?.status, "written", "有了两篇日记，夜里回顾一次");
+  assert.deepEqual(
+    reviews[0].diaries.map((d) => d.ref),
+    ["d:2026-09-22", "d:2026-09-23"],
+  );
   assert.equal(w.life.chapters()[0].title, "刚来的时候");
+  assert.equal(w.mind.periods.lastReview().compare, "这是第一次回顾");
+  assert.equal(w.mind.periods.story().content, "我是从这个群开始认识大家的。");
+  assert.ok(
+    w.mind.self
+      .latest()
+      .find((s) => s.content.startsWith("和大家待久了"))
+      .days.includes("2026-09-22"),
+    "回顾里的变化以那天的日记为来源",
+  );
 
-  w.at("2026-09-24T12:00:00+08:00");
-  chat(w, "group:1", [
+  await day("2026-09-24", [
     ["10001", "周末出去玩吗"],
     ["10002", "好啊"],
     ["bot", "带我一个"],
   ]);
+  assert.equal(reviews.length, 1, "离上次回顾还不到间隔");
+  assert.equal(inputs[2].story, "我是从这个群开始认识大家的。");
+  assert.equal(inputs[2].chapter.title, "刚来的时候");
+
   chapter = {
-    number: 1,
+    action: "continue",
     title: "从不太会接话开始",
     content: "现在回头看，那时候其实是在慢慢熟起来。",
   };
-  w.at("2026-09-25T01:30:00+08:00");
-  await w.life.tick();
+  await day("2026-09-25", [
+    ["10001", "去哪玩"],
+    ["10002", "爬山吧"],
+    ["bot", "我投爬山"],
+  ]);
+  assert.equal(reviews.length, 2);
+  assert.equal(reviews[1].chapter.title, "刚来的时候");
+  assert.ok(reviews[1].lastReview);
   assert.equal(w.life.chapters().length, 1);
   assert.equal(w.life.chapters()[0].title, "从不太会接话开始");
   assert.equal(w.life.chapterVersions(1).length, 2, "重新理解过去，旧版本保留");
+  assert.equal(
+    w.mind.periods.storyVersions().length,
+    1,
+    "没有翻篇时不重写我的来路",
+  );
   const days = w.store.db
     .prepare("SELECT day FROM mind_snapshots ORDER BY day")
     .all();
   assert.deepEqual(
     days.map((d) => d.day),
-    ["2026-09-22", "2026-09-23", "2026-09-24"],
+    ["2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25"],
   );
   const before = w.mind.snapshotOf("2026-09-22").self.length;
-  const after = w.mind.snapshotOf("2026-09-24").self.length;
+  const after = w.mind.snapshotOf("2026-09-25").self.length;
   assert(after > before, "她在这几天里多了一些关于自己的东西");
 });
 

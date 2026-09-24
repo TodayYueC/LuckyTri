@@ -126,6 +126,7 @@ export function buildContext(
     type: m.type,
     confidence: m.confidence,
     ...(m.source && m.source !== "这里" ? { source: m.source } : {}),
+    ...(m.when ? { when: m.when } : {}),
     ...(m.discretion ? { discretion: m.discretion } : {}),
     whySelected: m.whySelected || "retrieved",
   }));

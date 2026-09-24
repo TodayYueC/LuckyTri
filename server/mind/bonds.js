@@ -1,7 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { HOUR, clamp, evidence, parse, relax, text } from "./util.js";
+import { DAY, HOUR, clamp, evidence, parse, relax, text } from "./util.js";
 
 const TENSION_HALF_LIFE = 12 * HOUR;
+// After two quiet weeks closeness drifts down to half of its best, and
+// familiarity more slowly to most of it; the first contact after a long
+// absence brings back half of what was lost.
+const ABSENCE_GRACE = 14 * DAY;
+const CLOSENESS_HALF_LIFE = 60 * DAY;
+const FAMILIARITY_HALF_LIFE = 120 * DAY;
+const REWARM = 0.5;
+export const LONG_ABSENCE_DAYS = 14;
 // Every change she can feel toward someone, with its bounded size.
 export const BOND_CHANGES = {
   interaction: { familiarity: 0.03 },
@@ -16,40 +24,90 @@ export const BOND_CHANGES = {
 };
 const START = { familiarity: 0, closeness: 0.15, trust: 0.5, tension: 0 };
 
-function fold(rows, now) {
-  const state = { ...START, interactions: 0, impression: "", why: "" };
+// Time apart: tension eases within a day or two; closeness and familiarity
+// only start to thin after weeks without contact.
+function drift(state, from, to) {
+  const gap = to - from;
+  state.tension = relax(state.tension, 0, gap, TENSION_HALF_LIFE);
+  const away = gap - ABSENCE_GRACE;
+  if (away <= 0) return;
+  state.closeness = relax(
+    state.closeness,
+    Math.max(START.closeness, state.peakCloseness * 0.5),
+    away,
+    CLOSENESS_HALF_LIFE,
+  );
+  state.familiarity = relax(
+    state.familiarity,
+    state.peakFamiliarity * 0.6,
+    away,
+    FAMILIARITY_HALF_LIFE,
+  );
+}
+
+// Everything that happened with someone, up to their last event.
+function foldEvents(rows) {
+  const state = {
+    ...START,
+    interactions: 0,
+    impression: "",
+    why: "",
+    peakCloseness: START.closeness,
+    peakFamiliarity: 0,
+    firstMetAt: rows[0]?.created ?? null,
+    lastTalkedAt: null,
+  };
   let at = null;
   for (const row of rows) {
-    if (at !== null)
-      state.tension = relax(
-        state.tension,
-        0,
-        row.created - at,
-        TENSION_HALF_LIFE,
-      );
+    if (at !== null) {
+      drift(state, at, row.created);
+      if (row.created - at > ABSENCE_GRACE) {
+        state.closeness += (state.peakCloseness - state.closeness) * REWARM;
+        state.familiarity +=
+          (state.peakFamiliarity - state.familiarity) * REWARM;
+      }
+    }
     at = row.created;
+    state.lastTalkedAt = row.created;
     if (row.change === "interaction") {
       state.interactions++;
       state.familiarity = clamp(
         state.familiarity + row.familiarity * (1 - state.familiarity),
       );
       state.closeness = clamp(state.closeness + row.closeness);
-      continue;
+    } else {
+      state.familiarity = clamp(state.familiarity + row.familiarity);
+      state.closeness = clamp(state.closeness + row.closeness);
+      state.trust = clamp(state.trust + row.trust);
+      state.tension = clamp(state.tension + row.tension);
+      if (row.change === "impression" && row.note) state.impression = row.note;
+      else if (row.note) state.why = row.note;
+      state.lastChange = row.change;
+      state.lastChangeAt = row.created;
     }
-    state.familiarity = clamp(state.familiarity + row.familiarity);
-    state.closeness = clamp(state.closeness + row.closeness);
-    state.trust = clamp(state.trust + row.trust);
-    state.tension = clamp(state.tension + row.tension);
-    if (row.change === "impression" && row.note) state.impression = row.note;
-    else if (row.note) state.why = row.note;
-    state.lastChange = row.change;
-    state.lastChangeAt = row.created;
+    state.peakCloseness = Math.max(state.peakCloseness, state.closeness);
+    state.peakFamiliarity = Math.max(state.peakFamiliarity, state.familiarity);
   }
-  if (at !== null)
-    state.tension = relax(state.tension, 0, now - at, TENSION_HALF_LIFE);
+  return state;
+}
+
+// How it feels at `now`: the folded history, carried forward to this moment.
+function settle(folded, now) {
+  const state = { ...folded };
+  if (state.lastTalkedAt !== null) drift(state, state.lastTalkedAt, now);
+  state.absentDays =
+    state.lastTalkedAt === null
+      ? null
+      : Math.max(0, Math.floor((now - state.lastTalkedAt) / DAY));
   for (const key of ["familiarity", "closeness", "trust", "tension"])
     state[key] = Math.round(state[key] * 100) / 100;
+  delete state.peakCloseness;
+  delete state.peakFamiliarity;
   return state;
+}
+
+function fold(rows, now) {
+  return settle(foldEvents(rows), now);
 }
 
 // How it feels to be in a place, rather than with one person.
@@ -64,6 +122,7 @@ export function describeGroup(state) {
   ];
   if (state.closeness >= 0.45) parts.push("有归属感");
   if (state.tension >= 0.15) parts.push("最近气氛有点紧");
+  if (state.absentDays >= LONG_ABSENCE_DAYS) parts.push("好久没在这里说话了");
   return parts.join("，");
 }
 
@@ -84,6 +143,10 @@ export function describeBond(state) {
   else if (state.trust <= 0.3) parts.push("有点防备");
   if (state.tension >= 0.15)
     parts.push(`现在有点别扭${state.why ? `（${state.why}）` : ""}`);
+  // Not seen at all is different from around but not talking with her.
+  if (state.awayDays >= LONG_ABSENCE_DAYS) parts.push("好久不见了");
+  else if (state.absentDays >= 2 * LONG_ABSENCE_DAYS)
+    parts.push("最近没怎么说上话");
   return parts.join("，");
 }
 
@@ -91,6 +154,7 @@ export class Bonds {
   constructor(mind) {
     this.mind = mind;
     this.db = mind.db;
+    this.folded = new Map();
   }
   // Names and where she has met each person; a person is the same QQ number
   // in every group and private chat.
@@ -159,13 +223,30 @@ export class Bonds {
       );
     return row;
   }
+  // The whole history is folded once and kept until something new happens
+  // with this person; looking back at an earlier moment always refolds.
   state(kind, id, now = Date.now()) {
+    const subject = String(id);
+    const meta = this.db
+      .prepare(
+        "SELECT COUNT(*) n, MAX(rowid) r, MAX(created) c, (SELECT COUNT(*) FROM mind_revocations WHERE target_kind='bond') revoked FROM mind_bond_events WHERE subject_kind=? AND subject_id=?",
+      )
+      .get(kind, subject);
+    if (!meta.n) return null;
+    const whole = meta.c <= now;
+    const key = `${kind}:${subject}`;
+    const signature = `${meta.n}:${meta.r}:${meta.revoked}`;
+    const cached = whole ? this.folded.get(key) : null;
+    if (cached?.signature === signature) return settle(cached.state, now);
     const rows = this.db
       .prepare(
         "SELECT * FROM mind_bond_events WHERE subject_kind=? AND subject_id=? AND created<=? AND id NOT IN (SELECT target_id FROM mind_revocations WHERE target_kind='bond') ORDER BY created",
       )
-      .all(kind, String(id), now);
-    return rows.length ? fold(rows, now) : null;
+      .all(kind, subject, now);
+    if (!rows.length) return null;
+    const state = foldEvents(rows);
+    if (whole) this.folded.set(key, { signature, state });
+    return settle(state, now);
   }
   person(userId, now = Date.now()) {
     const state = this.state("person", userId, now);
@@ -173,13 +254,25 @@ export class Bonds {
       .prepare("SELECT * FROM mind_people WHERE user_id=?")
       .get(String(userId));
     if (!state && !known) return null;
+    // When she last saw them at all: in a conversation she read or glanced
+    // at, or talking with her. A later sighting is unknowable when looking
+    // back, so it is ignored.
+    const seen = Math.max(
+      known?.last_seen && known.last_seen <= now ? known.last_seen : 0,
+      state?.lastTalkedAt || 0,
+    );
+    const merged = {
+      ...(state || { ...START, interactions: 0 }),
+      seenAt: seen || null,
+      awayDays: seen ? Math.max(0, Math.floor((now - seen) / DAY)) : null,
+    };
     return {
       userId: String(userId),
       name: known?.name || String(userId),
       sessions: parse(known?.sessions, []),
       lastSeen: known?.last_seen || null,
-      ...(state || { ...START, interactions: 0 }),
-      feel: describeBond(state || START),
+      ...merged,
+      feel: describeBond(merged),
     };
   }
   group(session, now = Date.now()) {
@@ -194,6 +287,18 @@ export class Bonds {
       .all(limit)
       .map((row) => this.person(row.user_id, now))
       .filter(Boolean);
+  }
+  // People she has grown close to and not heard from in a while.
+  missing({ now = Date.now(), limit = 3, days = 7, closeness = 0.35 } = {}) {
+    return this.db
+      .prepare(
+        "SELECT user_id FROM mind_people WHERE first_seen<=? ORDER BY last_seen DESC LIMIT 300",
+      )
+      .all(now)
+      .map((row) => this.person(row.user_id, now))
+      .filter((p) => p && p.closeness >= closeness && (p.awayDays ?? 0) >= days)
+      .sort((a, b) => b.closeness - a.closeness)
+      .slice(0, limit);
   }
   groups(now = Date.now()) {
     return this.db
