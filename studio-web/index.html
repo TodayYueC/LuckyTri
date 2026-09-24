@@ -1,13 +1,23 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-mood="calm">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>LuckyBot</title>
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <title>LuckyBot · TA 的小世界</title>
+    <script>
+      try {
+        var pinned = localStorage.getItem("luckyTheme");
+        if (pinned) document.documentElement.dataset.mood = pinned;
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="app"></div>
-    <div id="toast" role="status"></div>
+    <div id="toast" role="status" aria-live="polite"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

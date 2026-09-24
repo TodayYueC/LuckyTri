@@ -1,8 +1,9 @@
 import { createApp } from "vue";
 import App from "./App.vue";
 import { toast } from "./api";
-import "./styles.css";
-import "./pages/her/her.css";
+import "./styles/tokens.css";
+import "./styles/themes.css";
+import "./styles/base.css";
 
 const app = createApp(App);
 app.config.errorHandler = (error) => {
