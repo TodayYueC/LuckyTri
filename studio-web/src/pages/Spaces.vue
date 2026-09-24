@@ -43,14 +43,6 @@ function modelChoice(session: any) {
     models.find((model: any) => model.isDefault)?.id || models[0]?.id || ""
   );
 }
-function personaText(value: any) {
-  if (!value || typeof value !== "object") return "";
-  const keys = Object.keys(value);
-  return keys.length <= 1 && keys[0] === "base"
-    ? String(value.base || "")
-    : JSON.stringify(value, null, 2);
-}
-
 const LEVEL_LABELS = ["近期细摘要", "中期摘要", "较早摘要", "远期摘要"];
 const summaries = ref<any[]>([]);
 watch(
@@ -100,36 +92,10 @@ async function saveSession(e: Event, s: any) {
   const v: any = Object.fromEntries(new FormData(f));
   for (const k of ["aggregateMs", "maxWaitMs", "contextMessages", "maxReply"])
     v[k] = Number(v[k]);
-  v.probability = Number(v.probability);
-  v.cooldown = Number(v.cooldown);
-  v.memory = (f.elements.namedItem("memory") as HTMLInputElement).checked;
-  v.comfortOnDistress = (
-    f.elements.namedItem("comfortOnDistress") as HTMLInputElement
-  ).checked;
-  v.selectiveVision = (
-    f.elements.namedItem("selectiveVision") as HTMLInputElement
-  ).checked;
-  v.deepCheck = (f.elements.namedItem("deepCheck") as HTMLInputElement).checked;
-  v.compaction = (
-    f.elements.namedItem("compaction") as HTMLInputElement
-  ).checked;
+  for (const k of ["memory", "selectiveVision", "deepCheck", "compaction"])
+    v[k] = (f.elements.namedItem(k) as HTMLInputElement).checked;
   v.fallbackModelId = String(v.fallbackModelId || "");
-  const personaRaw = String(v.persona || "").trim();
-  delete v.persona;
-  if (personaRaw) {
-    try {
-      const parsed = JSON.parse(personaRaw);
-      v.persona =
-        parsed && typeof parsed === "object" && !Array.isArray(parsed)
-          ? parsed
-          : { base: personaRaw };
-    } catch {
-      v.persona = { base: personaRaw };
-    }
-  }
-  const probability = Number(v.probability);
-  const cooldown = Number(v.cooldown);
-  await putSession(s.id, { ...v, name: s.name, probability, cooldown });
+  await putSession(s.id, { ...v, name: s.name });
   studio.dirty = false;
   toast("会话配置已保存");
   await reload();
@@ -268,19 +234,10 @@ async function saveSession(e: Event, s: any) {
                   :checked="s.policy.selectiveVision"
                 />节能看图：只在被 @ 或明确要求时，看这一条和附近的图</label
               >
-              <label
-                >旁听后的参与概率 0–1<input
-                  name="probability"
-                  type="number"
-                  step="0.01"
-                  :value="s.probability ?? studio.health.settings.probability"
-              /></label>
-              <label
-                >冷却秒数<input
-                  name="cooldown"
-                  type="number"
-                  :value="s.cooldown ?? studio.health.settings.cooldown"
-              /></label>
+              <p class="small span-two">
+                在这里开不开口由她自己决定：没有参与概率和冷却。她在这个群是什么样子、对这里的人有什么感觉，在「她
+                → 关系」里看。
+              </p>
             </div>
             <details class="advanced-policy">
               <summary>高级策略</summary>
@@ -328,23 +285,11 @@ async function saveSession(e: Event, s: any) {
               >
               <label class="check"
                 ><input
-                  name="comfortOnDistress"
-                  type="checkbox"
-                  :checked="s.policy.comfortOnDistress"
-                />明显低落时主动简短安慰</label
-              >
-              <label class="check"
-                ><input
                   name="deepCheck"
                   type="checkbox"
                   :checked="s.policy.deepCheck"
-                />复杂回复模型复审</label
+                />倾诉、纠正和危机时额外复审一次回复</label
               >
-              <label
-                >仅在此会话使用的人设（留空沿用全局）<textarea name="persona">{{
-                  personaText(s.policy.persona)
-                }}</textarea>
-              </label>
             </details>
             <details class="summary-list">
               <summary>语境摘要 · {{ summaries.length }} 段</summary>

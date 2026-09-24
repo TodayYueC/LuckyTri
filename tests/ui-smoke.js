@@ -57,9 +57,8 @@ try {
     for (const page of [
       "overview",
       "live",
+      "her",
       "knowledge",
-      "time",
-      "character",
       "spaces",
       "models",
       "connect",
@@ -109,21 +108,22 @@ try {
   await navigate("spaces");
   await p.locator("#toggleSession").click();
   await p.getByRole("button", { name: "开启参与" }).waitFor();
-  await p.locator("[data-session='group:12345'] [name=probability]").fill("0");
-  await p.locator("[data-session='group:12345'] [name=cooldown]").fill("90");
+  assert.equal(
+    await p.locator("[data-session='group:12345'] [name=probability]").count(),
+    0,
+    "开不开口由她决定，会话里没有概率",
+  );
+  assert.equal(
+    await p.locator("[data-session='group:12345'] [name=cooldown]").count(),
+    0,
+  );
   await p.locator("[data-session='group:12345'] button.primary").click();
   await p.waitForTimeout(400);
-  assert.equal(
-    await p
-      .locator("[data-session='group:12345'] [name=probability]")
-      .inputValue(),
-    "0",
-  );
   await navigate("knowledge");
   await p.getByRole("button", { name: "文档知识库", exact: true }).click();
   await p.getByRole("heading", { name: "文档知识库", exact: true }).waitFor();
   assert.equal(await p.locator("#memoryList").isVisible(), false);
-  await p.getByRole("button", { name: "会话记忆", exact: true }).click();
+  await p.getByRole("button", { name: "她记得的事", exact: true }).click();
   await p.getByRole("button", { name: "＋ 手动记忆", exact: true }).click();
   await p.locator("#addMemory [name=subject]").fill("10001");
   await p.locator("#addMemory [name=content]").fill("喜欢拿铁");
@@ -133,7 +133,7 @@ try {
     .filter({ hasText: "喜欢拿铁" })
     .click();
   await p.locator("[data-content]").fill("喜欢温拿铁");
-  await p.getByRole("button", { name: "确认 / 保存" }).click();
+  await p.getByRole("button", { name: "保存修改" }).click();
   await p
     .locator("#memoryList summary")
     .filter({ hasText: "喜欢温拿铁" })
@@ -155,46 +155,22 @@ try {
     .locator("#memoryList summary")
     .filter({ hasText: "喜欢温拿铁" })
     .waitFor({ state: "detached" });
-  await navigate("character");
-  assert.equal(await p.locator("[name=slangLevel]").inputValue(), "0");
-  assert.equal(await p.locator("[name=adaptGroupStyle]").isChecked(), true);
-  await p.locator("[name=voicePreset][value=playful]").check();
-  await p.locator("[name=allowMildProfanity]").check();
-  await p.locator("[name=cooldown]").fill("60");
-  await p.locator("#personaForm .primary").click();
-  await p.waitForTimeout(300);
-  assert.equal(await p.locator("[name=cooldown]").inputValue(), "60");
+  await navigate("her");
+  await p.locator("[data-her=nature]").click();
+  await p.locator("#natureForm [name=base]").fill("尚未保存的天性草稿");
+  await p.locator("#previewForm [name=text]").fill("下班前又来活了");
+  await p.locator("#previewForm button.primary").click();
+  await p.locator("#previewMessages .preview-bubble.bot").waitFor();
+  assert.match(await p.locator(".preview-meta").textContent(), /本地样例/);
   assert.equal(
-    await p.locator("[name=voicePreset][value=playful]").isChecked(),
-    true,
+    await p.locator("#natureForm [name=base]").inputValue(),
+    "尚未保存的天性草稿",
   );
-  await p.locator("[name=persona]").fill("尚未保存的人设草稿");
-  await p.locator(".scenario-picker summary").click();
-  await p.locator('[data-voice-scene="0"]').click();
-  await p.locator("#voiceStyleSession").selectOption("group:12345");
-  await p.locator("#voicePreviewForm button.primary").click();
-  await p.locator("#voiceMessages .reply p").waitFor();
-  assert.equal(
-    await p.locator("[name=persona]").inputValue(),
-    "尚未保存的人设草稿",
-  );
-  assert.match(await p.locator("#voiceMeta").textContent(), /规则样例/);
   await p
-    .locator(".voice-preview")
+    .locator("#her-preview")
     .getByRole("button", { name: "清空", exact: true })
     .click();
-  assert.equal(await p.locator("#voiceMessages .reply").count(), 0);
-  assert.equal(
-    await p.locator("[name=persona]").inputValue(),
-    "尚未保存的人设草稿",
-  );
-  await p.locator("#voiceUseModel").check();
-  await p.locator("#voicePreviewForm [name=text]").fill("下班前又来活了");
-  await p.locator("#voicePreviewForm button.primary").click();
-  await p
-    .locator("#voiceMeta")
-    .getByText("请先配置模型 API Key", { exact: true })
-    .waitFor();
+  assert.equal(await p.locator("#previewMessages .preview-bubble").count(), 0);
   await navigate("models");
   await p.locator("#addModel").click();
   assert.equal(
@@ -340,24 +316,14 @@ try {
   );
   await p.waitForTimeout(500);
   await navigate("knowledge");
-  await p.getByRole("button", { name: /待审核/ }).click();
-  await p.locator("[data-review]").waitFor();
-  await p.locator("[data-review]").click();
-  assert.equal(
-    await p.locator('[role="dialog"] [name=scope]').inputValue(),
-    "group:12345",
-  );
-  await p.locator('[role="dialog"] [name=scope]').selectOption("shared");
-  await p.locator('[role="dialog"] .primary').click();
-  await p.locator("[data-review]").waitFor({ state: "detached" });
-  await p.getByRole("button", { name: "会话记忆", exact: true }).click();
+  await p.locator("#memoryScope").selectOption("group:12345");
   await p
     .locator("#memoryList summary")
-    .getByText("我喜欢看海", { exact: true })
+    .getByText("喜欢看海", { exact: true })
     .waitFor();
   ws.close();
   await p.setViewportSize({ width: 390, height: 844 });
-  for (const tab of ["spaces", "knowledge", "character", "models", "connect"]) {
+  for (const tab of ["spaces", "knowledge", "her", "models", "connect"]) {
     await navigate(tab);
     assert.equal(
       await p.evaluate(
@@ -396,7 +362,7 @@ try {
   await p.setViewportSize({ width: 1440, height: 1000 });
   await p.goto(base);
   await p.locator(".page-overview").waitFor();
-  for (const tab of ["models", "spaces", "character", "knowledge", "lab"]) {
+  for (const tab of ["models", "spaces", "her", "knowledge", "lab"]) {
     await navigate(tab);
     await p.waitForTimeout(150);
     assert.equal(
@@ -457,7 +423,7 @@ try {
     .waitFor({ timeout: 10000 });
   live.close();
   const headers = { Authorization: "Bearer admin-test" };
-  await p.request.post(base + "/api/sessions", {
+  await p.request.post(base + "/api/core/sessions", {
     headers,
     data: { id: "54321", kind: "group", name: "第二个测试群" },
   });
@@ -497,47 +463,21 @@ try {
   await p.locator("#addSession [name=name]").fill("手动添加群");
   await p.locator("#addSession button").click();
   await p.locator("[data-session='group:65432']").waitFor();
-  assert.equal(
-    await p
-      .locator("[data-session='group:65432'] [name=probability]")
-      .inputValue(),
-    "0.15",
-  );
-  await p
-    .locator("[data-session='group:65432'] [name=probability]")
-    .fill("0.35");
-  await p.locator("[data-session='group:65432'] button.primary").click();
-  await p.waitForTimeout(500);
-  assert.equal(
-    await p
-      .locator("[data-session='group:65432'] [name=probability]")
-      .inputValue(),
-    "0.35",
-  );
-  const savedSessionState = await (
-    await p.request.get(base + "/api/core/state", { headers })
-  ).json();
-  assert.equal(
-    savedSessionState.sessions.find((s) => s.id === "group:65432").policy
-      .probability,
-    0.35,
-  );
   await p
     .locator("[data-session='group:65432'] details.advanced-policy summary")
     .click();
-  await p
-    .locator("[data-session='group:65432'] [name=persona]")
-    .fill("你叫 Lucky，说话自然一点，少用网络梗。");
+  await p.locator("[data-session='group:65432'] [name=maxReply]").fill("120");
   await p.locator("[data-session='group:65432'] button.primary").click();
-  await p.waitForTimeout(400);
-  const personaSessionState = await (
+  await p.waitForTimeout(500);
+  const savedSessionState = await (
     await p.request.get(base + "/api/core/state", { headers })
   ).json();
-  assert.equal(
-    personaSessionState.sessions.find((s) => s.id === "group:65432").policy
-      .persona.base,
-    "你叫 Lucky，说话自然一点，少用网络梗。",
-  );
+  const savedPolicy = savedSessionState.sessions.find(
+    (s) => s.id === "group:65432",
+  ).policy;
+  assert.equal(savedPolicy.maxReply, 120);
+  assert.equal(savedPolicy.probability, undefined);
+  assert.equal(savedPolicy.persona, undefined);
   await p.locator("[data-archive='group:65432']").click();
   await p.waitForTimeout(300);
   await p.locator(".archive-list summary").click();
@@ -554,12 +494,13 @@ try {
       exact: true,
     })
     .waitFor();
-  await navigate("character");
-  await p.locator("[name=sarcasm]").waitFor();
-  await p.locator("[name=sarcasm]").fill("4");
-  await p.locator("#personaForm button.primary").click();
+  await navigate("her");
+  await p.locator("[data-her=nature]").click();
+  await p.locator("#natureForm [name=sarcasm]").waitFor();
+  await p.locator("#natureForm [name=sarcasm]").fill("4");
+  await p.locator("#natureForm button.primary").click();
   await p.waitForTimeout(300);
-  assert.equal(await p.locator("[name=sarcasm]").inputValue(), "4");
+  assert.equal(await p.locator("#natureForm [name=sarcasm]").inputValue(), "4");
   await navigate("models");
   await p.locator("[name=contextWindow]").waitFor();
   await p.locator("[name=contextWindow]").fill("600000");

@@ -12,10 +12,9 @@ import {
   listMemorySummary,
   listMemories,
   patchMemory,
-  reviewCandidate,
   searchKnowledge,
 } from "../plates/knowledge";
-import { fetchState } from "../plates/workspace";
+import { mind } from "../plates/mind";
 
 const sessionId = ref(sessionStorage.memorySession || "");
 const search = ref("");
@@ -23,11 +22,16 @@ const section = ref("memories");
 const adding = ref(false);
 const expandedSummary = ref(false);
 const memoryStatus: Record<string, string> = {
-  confirmed: "已确认",
-  candidate: "待确认",
+  confirmed: "她这样认为",
+  candidate: "旧版待确认",
   disputed: "有争议",
   expired: "已过期",
-  deleted: "已删除",
+  deleted: "已撤销",
+};
+const DISCRETION: Record<string, string> = {
+  open: "公开",
+  private: "私下知道",
+  secret: "要她保密",
 };
 const visibleCount = ref(20);
 watch([sessionId, search], () => {
@@ -49,18 +53,10 @@ const docTitle = ref("");
 const docText = ref("");
 const probe = ref("");
 const hits = ref<any[]>([]);
-const review = ref<any | null>(null);
-const reviewScope = ref("shared");
-const reviewContent = ref("");
 let timer: ReturnType<typeof setInterval>;
 
 function sessions() {
   return studio.core?.sessions || [];
-}
-function candidates() {
-  return (studio.health?.candidates || []).filter(
-    (c: any) => c.scope === sessionId.value,
-  );
 }
 
 async function loadMemories() {
@@ -120,12 +116,30 @@ async function addConfirmed(e: Event) {
 }
 
 async function changeMemory(m: any, action: string) {
+  if (action === "revoke") {
+    const reason = prompt(
+      `撤销「${m.content}」？她之后不会再这样认为，整理记忆时也不会把它写回来。可以写下原因：`,
+      "",
+    );
+    if (reason === null) return;
+    try {
+      await mind.revoke("memory", m.id, reason);
+    } catch (err) {
+      toast((err as Error).message, true);
+    }
+    await loadMemories();
+    return;
+  }
   const content = (
     document.querySelector(`[data-content="${m.id}"]`) as HTMLTextAreaElement
   )?.value;
   await patchMemory(
     m.id,
-    action === "lock" ? { locked: !m.locked } : { status: action, content },
+    action === "lock"
+      ? { locked: !m.locked }
+      : action.startsWith("discretion:")
+        ? { discretion: action.slice(11) }
+        : { status: "confirmed", content },
   );
   await loadMemories();
 }
@@ -146,27 +160,6 @@ async function ingest(e: Event) {
 async function searchHits(e: Event) {
   e.preventDefault();
   hits.value = await searchKnowledge(sessionId.value, probe.value);
-}
-
-async function acceptReview() {
-  try {
-    await reviewCandidate(review.value.id, {
-      action: "accept",
-      content: reviewContent.value,
-      scope: reviewScope.value,
-    });
-    review.value = null;
-    studio.health = await fetchState();
-    await loadMemories();
-  } catch (err) {
-    toast((err as Error).message);
-  }
-}
-
-function openReview(c: any) {
-  review.value = c;
-  reviewContent.value = c.content;
-  reviewScope.value = c.scope;
 }
 
 function isSelectableMemory(m: any) {
@@ -327,18 +320,13 @@ const filtered = () =>
           :aria-pressed="section === 'memories'"
           @click="section = 'memories'"
         >
-          会话记忆</button
+          她记得的事</button
         ><button
           :class="{ active: section === 'documents' }"
           :aria-pressed="section === 'documents'"
           @click="section = 'documents'"
         >
-          文档知识库</button
-        ><button
-          :class="{ active: section === 'review' }"
-          @click="section = 'review'"
-        >
-          待审核 {{ candidates().length || "" }}
+          文档知识库
         </button>
       </div>
       <div v-show="section === 'memories'" class="memory-main">
@@ -426,25 +414,44 @@ const filtered = () =>
               <summary>
                 <span>{{ m.content }}</span
                 ><small class="status-tag"
-                  >{{ memoryStatus[m.status] || m.status }}
+                  >{{ memoryStatus[m.status] || m.status }} ·
+                  {{ DISCRETION[m.discretion] || "公开" }}
                   {{ m.locked ? "· 已锁定" : "" }}</small
                 >
               </summary>
               <p class="small">
-                {{ m.subjectName || m.subject }} ·
-                {{ m.session_id === sessionId ? "本会话" : "共享 / 继承" }}
+                关于 {{ m.subjectName || m.subject }} ·
+                {{ m.session_id === sessionId ? "在这里知道的" : "别处知道的" }}
+                · 把握 {{ Math.round((m.confidence ?? 1) * 100) }}%
               </p>
               <textarea
                 :data-content="m.id"
                 :aria-label="'编辑记忆：' + (m.subjectName || m.subject)"
                 >{{ m.content }}</textarea>
               <div class="row">
-                <button @click="changeMemory(m, 'confirmed')">
-                  确认 / 保存</button
+                <button @click="changeMemory(m, 'confirmed')">保存修改</button
+                ><select
+                  :aria-label="'分寸：' + m.content"
+                  :value="m.discretion || 'open'"
+                  @change="
+                    changeMemory(
+                      m,
+                      'discretion:' +
+                        ($event.target as HTMLSelectElement).value,
+                    )
+                  "
+                >
+                  <option
+                    v-for="(label, key) in DISCRETION"
+                    :key="key"
+                    :value="key"
+                  >
+                    {{ label }}
+                  </option></select
                 ><button @click="changeMemory(m, 'lock')">
                   {{ m.locked ? "解锁" : "锁定" }}</button
-                ><button class="danger" @click="changeMemory(m, 'deleted')">
-                  删除
+                ><button class="danger" @click="changeMemory(m, 'revoke')">
+                  撤销
                 </button>
               </div>
             </details>
@@ -458,7 +465,9 @@ const filtered = () =>
           <div v-if="!filtered().length" class="empty-state">
             <span>◌</span>
             <h3>这里还有空白</h3>
-            <p>聊天中的重要信息，或手动添加的记忆会保存在这里。</p>
+            <p>
+              别人说「记住……」、聊天积累后的自动整理，或你手动添加的事会出现在这里。她对所有会话只有一份记忆，别处知道的事只在相关时想起，私下知道的不当众说，要她保密的不离开原处。
+            </p>
           </div>
         </div>
         <div class="pane-foot">
@@ -509,17 +518,6 @@ const filtered = () =>
           {{ h.title }}<br />{{ h.text }}
         </p>
       </div>
-      <div v-show="section === 'review'" class="scroll-pane review-main">
-        <article v-for="c in candidates()" :key="c.id" class="review-item">
-          <p>{{ c.content }}</p>
-          <button data-review @click="openReview(c)">审核 ↗</button>
-        </article>
-        <div v-if="!candidates().length" class="empty-state">
-          <span>✓</span>
-          <h3>没有待审核的明确记忆请求</h3>
-          <p>自动整理的候选记忆可在“会话记忆”里展开确认。</p>
-        </div>
-      </div>
     </section>
   </div>
   <div v-if="adding" class="modal-backdrop" @click.self="adding = false">
@@ -559,30 +557,6 @@ const filtered = () =>
         </datalist>
         <label>已确认的事实<input name="content" required /></label>
         ><button class="primary">新增人工记忆 ↗</button>
-      </form>
-    </section>
-  </div>
-  <div v-if="review" class="modal-backdrop" @click.self="review = null">
-    <section
-      class="modal"
-      role="dialog"
-      aria-modal="true"
-      aria-label="确认记忆"
-    >
-      <h2>确认这条记忆</h2>
-      <form @submit.prevent="acceptReview">
-        <label>内容<input v-model="reviewContent" name="content" /></label
-        ><label
-          >范围<select v-model="reviewScope" name="scope">
-            <option value="shared">共享</option>
-            <option :value="review.scope">当前会话</option>
-            <option value="private">仅私聊</option>
-          </select></label
-        >
-        <div class="row">
-          <button class="primary">保存</button
-          ><button type="button" @click="review = null">取消</button>
-        </div>
       </form>
     </section>
   </div>

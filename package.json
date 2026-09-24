@@ -21,7 +21,7 @@
     "dev:ui": "vite --config studio-web/vite.config.ts",
     "build:ui": "vite build --config studio-web/vite.config.ts",
     "test": "node --import ./tests/awake.mjs --test tests/*.test.js",
-    "test:ui": "node tests/ui-smoke.js",
+    "test:ui": "node tests/ui-smoke.js && node tests/her-ui.mjs",
     "setup": "node scripts/setup.js",
     "stop": "node --env-file-if-exists=.env scripts/stop.js",
     "backup": "node --env-file-if-exists=.env scripts/backup.js",

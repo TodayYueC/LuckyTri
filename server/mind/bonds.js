@@ -52,6 +52,21 @@ function fold(rows, now) {
   return state;
 }
 
+// How it feels to be in a place, rather than with one person.
+export function describeGroup(state) {
+  if (!state) return "";
+  const parts = [
+    state.familiarity >= 0.6
+      ? "已经很熟悉这里"
+      : state.familiarity >= 0.3
+        ? "在这里待了一阵"
+        : "刚来这里不久",
+  ];
+  if (state.closeness >= 0.45) parts.push("有归属感");
+  if (state.tension >= 0.15) parts.push("最近气氛有点紧");
+  return parts.join("，");
+}
+
 export function describeBond(state) {
   if (!state) return "";
   const parts = [
@@ -132,7 +147,7 @@ export class Bonds {
         String(id),
         change,
         delta.familiarity || 0,
-        change === "interaction" && origin === "direct"
+        change === "interaction" && (origin === "direct" || kind === "group")
           ? 0.005
           : delta.closeness || 0,
         delta.trust || 0,
@@ -169,7 +184,7 @@ export class Bonds {
   }
   group(session, now = Date.now()) {
     const state = this.state("group", session, now);
-    return state ? { session, ...state, feel: describeBond(state) } : null;
+    return state ? { session, ...state, feel: describeGroup(state) } : null;
   }
   people({ now = Date.now(), limit = 200 } = {}) {
     return this.db

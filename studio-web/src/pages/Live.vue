@@ -19,9 +19,12 @@ const traces = ref<any[]>([]);
 const knowledge = ref<any[]>([]);
 const status = ref("请选择会话");
 const statusNames: Record<string, string> = {
-  sent: "已回复",
-  silent: "在旁听",
-  running: "正在思考",
+  sent: "开口了",
+  silent: "没出声",
+  glanced: "扫了一眼",
+  deferred: "睡着了",
+  stale: "旧稿作废",
+  running: "正在想",
   error: "处理失败",
   cancelled: "已取消",
   complete: "已完成",

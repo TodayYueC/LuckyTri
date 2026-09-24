@@ -9,9 +9,10 @@ export function world({
   start = "2026-09-22T10:00:00+08:00",
   rhythm = false,
   online = true,
+  path = ":memory:",
 } = {}) {
   let now = Date.parse(start);
-  const store = createStore(":memory:");
+  const store = createStore(path);
   store.save({ demo: false, enabled: true });
   const calls = [];
   const sent = [];
@@ -27,7 +28,9 @@ export function world({
       });
       const answer = answers[stage];
       if (answer === undefined)
-        return stage === "validation" ? { ok: true, issues: [] } : { skip: true };
+        return stage === "validation"
+          ? { ok: true, issues: [] }
+          : { skip: true };
       return typeof answer === "function"
         ? answer(data, { now, calls })
         : structuredClone(answer);

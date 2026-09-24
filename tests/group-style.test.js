@@ -86,7 +86,10 @@ test("她在群里的样子吸收这个群的说话习惯，只是统计，不�
   const view = system.mind.view({ session: "group:12345", kind: "group" });
   assert.match(view.self.here, /群里的说话习惯：常见句长约/);
   assert(!rows.some((row) => view.self.here.includes(row.text)));
-  const privateView = system.mind.view({ session: "private:10001", kind: "private" });
+  const privateView = system.mind.view({
+    session: "private:10001",
+    kind: "private",
+  });
   assert.equal(privateView.self.here, undefined);
   system.close();
   store.db.close();

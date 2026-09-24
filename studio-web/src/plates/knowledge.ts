@@ -47,10 +47,3 @@ export async function ingestDocument(body: unknown) {
 export async function searchKnowledge(session: string, text: string) {
   return api("/core/knowledge/search", "POST", { session, text });
 }
-
-export async function reviewCandidate(
-  id: number,
-  body: { action: string; content: string; scope: string },
-) {
-  return api("/memory-candidates/" + id + "/review", "POST", body);
-}
