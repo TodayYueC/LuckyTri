@@ -1,7 +1,8 @@
-import { migrateTime } from "../time/context.js";
 import { randomUUID } from "node:crypto";
 import { parseSessionKey } from "../channels/session-key.js";
-import { indexMemory, migrateKnowledge } from "../knowledge/schema.js";
+import { migrateKnowledge } from "../knowledge/schema.js";
+import { migrateMind } from "../mind/schema.js";
+import { recordUsage } from "../mind/budget.js";
 
 export function migrateCore(store) {
   const db = store.db;
@@ -103,7 +104,7 @@ export function migrateCore(store) {
     "UPDATE core_traces SET status='interrupted' WHERE status='running'",
   ).run();
   migrateKnowledge(db);
-  migrateTime(db);
+  migrateMind(db, store);
 }
 
 const TOKEN_FIELDS = [
@@ -247,6 +248,8 @@ export class Repository {
           0,
         );
     }
+    // Previews spend real tokens too, so every mode is counted once.
+    recordUsage(this.db, trace);
     this.db
       .prepare("UPDATE core_traces SET status=?,data=? WHERE id=?")
       .run(status, JSON.stringify(trace), trace.id);

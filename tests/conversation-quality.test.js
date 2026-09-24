@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { cacheOrdered } from "../server/core/model-manager.js";
 import { validateResponse } from "../server/core/response-validator.js";
-import { decide } from "../server/core/speech-decision.js";
+import { normalizeTurn } from "../server/core/turn.js";
 
 test("history remains a common prefix despite new batch IDs and retrieval", () => {
   const old = {
@@ -55,35 +55,66 @@ test("allow natural short reactions but reject repeated hh decoration and low-sa
     }).length,
   );
 });
-test("comfort switch promotes only confident current-message distress", async () => {
+test("a real crisis overrides her choice to stay silent; history cannot become a target", () => {
   const snapshot = {
-    batchIds: [1],
-    messages: [{ id: 1, relation: "unknown" }],
+    batchIds: [2],
+    messages: [
+      { id: 1, relation: "unknown", role: "user", speaker: "10001" },
+      { id: 2, relation: "unknown", role: "user", speaker: "10002" },
+    ],
   };
-  const result = {
-    action: "SILENT",
-    confidence: 1,
-    reason: "旁听",
-    targetMessageIds: [],
-    evidenceIds: [1],
-    distress: { clear: true, confidence: 0.95, targetMessageIds: [1] },
-  };
-  const models = { call: async () => structuredClone(result) };
-  assert.equal(
-    (await decide(models, {}, "", snapshot, {}, {})).action,
-    "SILENT",
+  const trace = { steps: [] };
+  const calm = normalizeTurn(
+    { choice: "silent", reason: "在聊别的", targetMessageIds: [] },
+    snapshot,
+    trace,
   );
-  assert.equal(
-    (await decide(models, {}, "", snapshot, {}, { comfortOnDistress: true }))
-      .comfort,
-    true,
+  assert.equal(calm.choice, "silent");
+  const crisis = normalizeTurn(
+    {
+      choice: "silent",
+      reason: "有点累，不想说话",
+      targetMessageIds: [],
+      crisis: { clear: true, messageIds: [2] },
+    },
+    snapshot,
+    trace,
   );
-  result.distress.targetMessageIds = [99];
-  assert.equal(
-    (await decide(models, {}, "", snapshot, {}, { comfortOnDistress: true }))
-      .action,
-    "SILENT",
+  assert.equal(crisis.choice, "speak");
+  assert.deepEqual(crisis.targetMessageIds, [2]);
+  assert.deepEqual(crisis.targetUserIds, ["10002"]);
+  assert.match(trace.steps.join(), /底线/);
+  const stale = normalizeTurn(
+    { action: "REPLY", reason: "旧的", targetMessageIds: [1], bubbles: ["嗯"] },
+    snapshot,
+    trace,
   );
+  assert.equal(stale.choice, "speak");
+  assert.deepEqual(stale.targetMessageIds, [2]);
+  assert.throws(() => normalizeTurn({ reason: "?" }, snapshot, trace), SyntaxError);
+  const react = normalizeTurn(
+    { choice: "react", bubbles: ["hh", "多余的"] },
+    snapshot,
+    trace,
+  );
+  assert.deepEqual(react.bubbles, ["hh"]);
+  assert(
+    validateResponse({ bubbles: ["这也太好笑了吧真的"] }, { messages: [] }, react)
+      .length,
+  );
+});
+
+test("unchanged built-in prompts are sent once; custom ones are extra guidance", async () => {
+  const { replyPrompt, PROMPTS } = await import(
+    "../server/core/persona-manager.js"
+  );
+  const p = { name: "Lucky", base: "随和" };
+  const plain = replyPrompt(p, PROMPTS, "turn");
+  assert(!plain.includes("补充配置"));
+  assert.equal(plain.split(PROMPTS.system).length, 2);
+  const custom = replyPrompt(p, { ...PROMPTS, turn: "多用短句" }, "turn");
+  assert.match(custom, /补充配置[\s\S]*多用短句/);
+  assert(custom.indexOf("多用短句") < custom.lastIndexOf(PROMPTS.turn));
 });
 
 test("explicit intensity beats conflicting persona adjectives without erasing identity", async () => {
@@ -123,13 +154,13 @@ test("generation and rewrite share style contract; sarcasm permits situational b
     },
   };
   const snapshot = { persona: p, messages: [] };
-  await generate(models, {}, prompt, snapshot, { action: "REPLY" }, {}, []);
+  await generate(models, {}, prompt, snapshot, { choice: "speak" }, {}, []);
   await generate(
     models,
     {},
     prompt,
     snapshot,
-    { action: "REPLY" },
+    { choice: "speak" },
     {},
     [],
     ["太刻意"],

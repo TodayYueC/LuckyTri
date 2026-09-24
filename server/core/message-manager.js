@@ -58,7 +58,7 @@ export function persistIncoming(repo, m) {
     );
   return { ...env, seq, sessionId };
 }
-export function persistReply(repo, m, text, platformId) {
+export function persistReply(repo, m, text, platformId, time = Date.now()) {
   const msg = {
     sessionId: m.sessionId,
     kind: m.kind,
@@ -69,7 +69,7 @@ export function persistReply(repo, m, text, platformId) {
     eventId: randomUUID(),
     platformId: String(platformId || ""),
     accountId: m.accountId,
-    time: Date.now(),
+    time,
     mentions: [],
     attachments: [],
     simulated: !!m.simulated,

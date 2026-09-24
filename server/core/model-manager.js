@@ -27,8 +27,11 @@ const STAGE_OUTPUT = {
   validation: 2048,
   vision: 3072,
   summary: 3072,
+  turn: 3072,
   generation: 4096,
   rewrite: 4096,
+  reflection: 4096,
+  daily: 6144,
   memory: 8192,
 };
 const EFFORT_HEADROOM = {
@@ -454,6 +457,7 @@ export function estimateTokens(value) {
 const STABLE_KEYS = [
   "context",
   "persona",
+  "self",
   "sessionId",
   "summaryInstruction",
   "summaries",
@@ -470,22 +474,27 @@ const VOLATILE_KEYS = [
   "batchIds",
   "budget",
   "conversation",
+  "inner",
   "topics",
   "vision",
   "unavailableImages",
+  "occasion",
+  "pressure",
   "decision",
   "issues",
   "imageGuide",
   "replyFocus",
-  "comfort",
+  "guidance",
   "maxBubbles",
   "imageEvidence",
   "response",
 ];
-// Everything before the transcript rows that changes only with configuration
-// or compaction; in the per-row layout it becomes its own leading message.
+// Everything before the transcript rows that changes only with configuration,
+// compaction or her slower self; in the per-row layout it becomes its own
+// leading message.
 const HEAD_KEYS = [
   "persona",
+  "self",
   "sessionId",
   "summaryInstruction",
   "summaries",
@@ -1039,11 +1048,7 @@ export class ModelManager {
       entry.tokens = normalizeUsage(raw.usage, request.protocol);
       entry.raw = responseText(raw, request.protocol);
       entry.finishReason = responseFinishReason(raw, request.protocol);
-      if (
-        !entry.raw.trim() &&
-        attempt === 0 &&
-        stage !== "reflection"
-      ) {
+      if (!entry.raw.trim() && attempt === 0 && stage !== "reflection") {
         entry.error = "服务返回空正文，重试一次";
         return await this.call(
           profile,

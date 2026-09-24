@@ -1,9 +1,6 @@
-import { callModel } from "../core/llm.js";
 import { defaultModel, pickModel } from "../core/model-manager.js";
-import { generateReply, demoReply } from "../voice.js";
 import { recordModelCheck } from "../readiness.js";
 import { FEEDBACK_LABELS } from "../feedback.js";
-import { isGroupSession } from "../channels/session-key.js";
 
 function connectionSettings(store, modelId = "") {
   const row = store.db
@@ -77,102 +74,6 @@ export function mountManagement(app, store, chatSystem) {
       ).run(decision.id, tag, Date.now());
     store.revision++;
     res.json({ ok: true });
-  });
-  let previewing = false;
-  app.post("/api/voice/preview", async (req, res) => {
-    const {
-      text,
-      history = [],
-      useModel = false,
-      styleSession = "",
-      persona,
-    } = req.body;
-    if (
-      typeof text !== "string" ||
-      !text.trim() ||
-      text.length > 1000 ||
-      typeof useModel !== "boolean" ||
-      (persona !== undefined &&
-        (typeof persona !== "string" || persona.length > 4000)) ||
-      typeof styleSession !== "string" ||
-      (styleSession !== "" && !isGroupSession(styleSession)) ||
-      !Array.isArray(history) ||
-      history.length > 12 ||
-      history.some(
-        (x) =>
-          !x ||
-          !["user", "assistant"].includes(x.role) ||
-          typeof x.text !== "string" ||
-          x.text.length > 1000,
-      )
-    )
-      return res.status(400).json({ error: "请输入 1–1000 字的试聊内容" });
-    if (
-      styleSession &&
-      !db.prepare("SELECT id FROM sessions WHERE id=?").get(styleSession)
-    )
-      return res.status(404).json({ error: "语气参考群不存在" });
-    if (previewing) return res.status(429).json({ error: "正在试聊，请稍等" });
-    previewing = true;
-    const started = Date.now(),
-      settings = {
-        ...store.settings(),
-        ...(persona !== undefined ? { persona } : {}),
-      },
-      revision = store.revision;
-    const input = {
-      message: {
-        text: text.trim(),
-        kind: "group",
-        userId: "preview",
-        name: "试聊用户",
-      },
-      direct: true,
-      memories: [],
-      groupStyle:
-        settings.adaptGroupStyle && styleSession
-          ? store.groupStyle(styleSession, Number(settings.demo))
-          : null,
-      context: [
-        ...history.map((x) => ({
-          speaker: x.role === "assistant" ? "bot" : "preview",
-          name: x.role === "assistant" ? settings.name : "试聊用户",
-          text: x.text,
-          role: x.role,
-        })),
-        {
-          speaker: "preview",
-          name: "试聊用户",
-          text: text.trim(),
-          role: "user",
-        },
-      ],
-    };
-    try {
-      const result = useModel
-        ? await generateReply(settings, input, callModel)
-        : demoReply(settings, input);
-      if (revision !== store.revision)
-        return res
-          .status(409)
-          .json({ error: "口吻设置已修改，请用新设置重新试聊" });
-      res.json({
-        ...result,
-        mode: useModel ? "model" : "sample",
-        latency: Date.now() - started,
-        groupStyle: input.groupStyle,
-      });
-    } catch (error) {
-      res.status(502).json({
-        error: /timeout|abort/i.test(error.name)
-          ? "试聊超时，请稍后再试"
-          : error instanceof TypeError
-            ? "无法连接模型服务"
-            : error.message,
-      });
-    } finally {
-      previewing = false;
-    }
   });
   let testing = false;
   app.post("/api/model/test", async (req, res) => {

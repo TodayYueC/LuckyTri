@@ -568,7 +568,7 @@ test("会话设置的备用模型会在主模型服务失败时接替回复", as
               status: 503,
             },
           );
-        return { bubbles: ["我在"], reason: "备用模型回复" };
+        return { choice: "speak", bubbles: ["我在"], reason: "备用模型回复" };
       },
     },
   });
@@ -581,7 +581,7 @@ test("会话设置的备用模型会在主模型服务失败时接替回复", as
   );
   const trace = await system.process(session, system.repo.events(session));
   assert.equal(trace.status, "sent");
-  assert.deepEqual(used, ["generation:main", "generation:backup"]);
+  assert.deepEqual(used, ["turn:main", "turn:backup"]);
   assert.match(trace.steps.join(" "), /备用模型/);
   system.close();
   store.db.close();
@@ -620,38 +620,44 @@ test("别的会话或后台写入不会作废回复，本会话配置变化才�
   store.db.close();
 });
 
-test("决策期间目标用户又补充了消息，就不再为旧批次生成回复", async () => {
+test("她在想的时候对方又补充了消息，就不再为旧批次发送回复", async () => {
   const { store } = setup();
   const session = "group:12345";
   store.db
     .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
     .run(session, "测试", "group");
   const stages = [];
+  const sent = [];
   let system;
-  system = new ChatSystem(store, async () => ({ message_id: 1 }), {
-    models: {
-      profile: () => defaultModel(store.settings()),
-      call: async (_profile, stage) => {
-        stages.push(stage);
-        if (stage === "decision") {
-          system.repo.append(msg(2, { text: "补充一下，是第三题" }));
-          return {
-            action: "REPLY",
-            confidence: 1,
-            reason: "明确问题",
-            targetMessageIds: [1],
-            targetUserIds: ["10001"],
-            evidenceIds: [1],
-          };
-        }
-        return { bubbles: ["不该生成"] };
+  system = new ChatSystem(
+    store,
+    async (_m, text) => (sent.push(text), { message_id: 1 }),
+    {
+      models: {
+        profile: () => defaultModel(store.settings()),
+        call: async (_profile, stage) => {
+          stages.push(stage);
+          if (stage === "turn") {
+            system.repo.append(msg(2, { text: "补充一下，是第三题" }));
+            return {
+              choice: "speak",
+              reason: "明确问题",
+              targetMessageIds: [1],
+              bubbles: ["不该发出"],
+            };
+          }
+          return { bubbles: ["不该生成"] };
+        },
       },
     },
-  });
-  system.repo.append(msg(1, { text: "有人知道这题怎么办吗？" }));
+  );
+  system.repo.append(
+    msg(1, { text: "LuckyBot，有人知道这题怎么办吗？" }),
+  );
   const trace = await system.process(session, system.repo.events(session));
   assert.equal(trace.status, "stale");
-  assert.deepEqual(stages, ["decision"]);
+  assert.deepEqual(stages, ["turn"]);
+  assert.deepEqual(sent, []);
   system.close();
   store.db.close();
 });

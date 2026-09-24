@@ -6,7 +6,7 @@ import { ConversationManager } from "../server/core/conversation-manager.js";
 import { resolveTargets } from "../server/core/reply-target-resolver.js";
 import { buildContext } from "../server/core/context-builder.js";
 import { defaultModel, ModelManager } from "../server/core/model-manager.js";
-import { MemoryManager } from "../server/core/memory-manager.js";
+import { MemoryManager } from "../server/mind/memory.js";
 import { deliver } from "../server/core/message-scheduler.js";
 import { ChatSystem } from "../server/core/orchestrator.js";
 import {
@@ -23,7 +23,7 @@ import {
 } from "../server/core/speaker-names.js";
 const setup = () => {
   const store = createStore(":memory:");
-  store.save({ demo: false, probability: 1 });
+  store.save({ demo: false });
   const repo = new Repository(store);
   return { store, repo };
 };
@@ -100,20 +100,32 @@ test("群友昵称按会话增量更新，清空上下文后不会保留旧昵�
   assert.equal(speakerNames(repo.db, ["group:12345"]).has("10001"), false);
 });
 
-test("私聊和群内 @ 在概率为零时仍回复，不串行调用决策和复审模型", async () => {
+const turnModel = (store, answer, stages = []) => ({
+  profile: () => defaultModel(store.settings()),
+  call: async (_p, stage, _prompt, data) => {
+    stages.push(stage);
+    if (stage === "turn")
+      return typeof answer === "function" ? answer(data) : answer;
+    return { ok: true, issues: [] };
+  },
+});
+const openSession = (store, session, kind = session.split(":")[0]) =>
+  store.db
+    .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
+    .run(session, "测试", kind);
+
+test("私聊和群内 @ 每批只调用一次回合模型：理解、感受和话一次完成", async () => {
   for (const kind of ["private", "group"]) {
     const { store } = setup();
-    store.save({ enabled: true, probability: 0 });
+    store.save({ enabled: true });
     const session = kind + ":12345",
       stages = [],
       sent = [];
-    store.db
-      .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
-      .run(session, "测试", kind);
+    openSession(store, session, kind);
     let system;
     const models = {
       profile: () => defaultModel(store.settings()),
-      call: async (p, stage) => {
+      call: async (_p, stage, _prompt, data) => {
         stages.push(stage);
         // A different group member speaking must not cancel a direct reply.
         if (kind === "group")
@@ -124,7 +136,13 @@ test("私聊和群内 @ 在概率为零时仍回复，不串行调用决策和�
               text: "我先吃饭去了",
             }),
           );
-        return { bubbles: ["嗯，我在"], reason: "直接回复" };
+        return {
+          appraisal: "有人找我",
+          choice: "speak",
+          reason: "在叫我",
+          targetMessageIds: data.context.batchIds,
+          bubbles: ["嗯，我在"],
+        };
       },
     };
     system = new ChatSystem(
@@ -140,188 +158,131 @@ test("私聊和群内 @ 在概率为零时仍回复，不串行调用决策和�
     );
     const t = await system.process(session, system.repo.events(session));
     assert.equal(t.status, "sent");
-    assert.deepEqual(stages, ["generation"]);
+    assert.deepEqual(stages, ["turn"]);
     assert.deepEqual(sent, ["嗯，我在"]);
     system.close();
     store.db.close();
   }
 });
 
-test("值得插话时绕过概率，先判断再抽样", async () => {
+test("被叫到也可以不回答：她的选择和理由被记下，心境和关系照样变化", async () => {
   const { store } = setup();
-  store.save({ enabled: true, probability: 0 });
-  const session = "group:12345";
-  store.db
-    .prepare(
-      "INSERT INTO sessions(id,name,kind,enabled,probability) VALUES (?,?,?,?,?)",
-    )
-    .run(session, "测试", "group", 1, 0);
-  const stages = [],
-    sent = [];
-  const models = {
-    profile: () => defaultModel(store.settings()),
-    call: async (_p, stage) => {
-      stages.push(stage);
-      if (stage === "decision")
-        return {
-          action: "REPLY",
-          confidence: 1,
-          reason: "明确问题，值得回应",
-          targetMessageIds: [1],
-          targetUserIds: ["10001"],
-          evidenceIds: [1],
-        };
-      if (stage === "generation") return { bubbles: ["我看看"] };
-      return { ok: true, issues: [] };
-    },
-  };
+  const session = "private:12345";
+  openSession(store, session);
+  const sent = [];
   const system = new ChatSystem(
     store,
-    async (_message, text) => {
-      sent.push(text);
-      return { message_id: 1 };
+    async (_m, text) => (sent.push(text), { message_id: 1 }),
+    {
+      models: turnModel(store, (data) => ({
+        appraisal: "他又在催我帮他写作业，有点烦",
+        feelings: [
+          {
+            feeling: "有点烦",
+            intensity: 0.6,
+            valence: -0.5,
+            cause: data.context.batchIds,
+          },
+        ],
+        bonds: [
+          {
+            userId: "10001",
+            change: "friction",
+            why: "一直催",
+            evidence: data.context.batchIds,
+          },
+        ],
+        choice: "silent",
+        reason: "现在不想理",
+        targetMessageIds: [],
+      })),
     },
-    { models, random: () => 0.99 },
   );
-  const event = {
-    ...msg(1),
-    sessionId: session,
-    text: "有人知道这题怎么办吗？",
-  };
-  event.seq = system.repo.append(event);
-  const trace = await system.process(session, [event]);
-  assert.equal(trace.status, "sent");
-  assert.equal(trace.sample.skipped, "semantic_reply");
-  assert.deepEqual(sent, ["我看看"]);
-  assert.deepEqual(stages, ["decision", "generation"]);
+  system.repo.append(
+    msg(1, { sessionId: session, kind: "private", text: "快帮我写作业" }),
+  );
+  const t = await system.process(session, system.repo.events(session));
+  assert.equal(t.status, "silent");
+  assert.deepEqual(sent, []);
+  const [choice] = system.mind.choices({ session });
+  assert.equal(choice.choice, "silent");
+  assert.equal(choice.reason, "现在不想理");
+  assert.equal(system.mind.affect.state().mood, "有点烦");
+  assert(system.mind.bonds.person("10001").tension > 0.2);
   system.close();
   store.db.close();
 });
 
-test("语义判断旁听但参与抽样通过时强制回复", async () => {
+test("普通群聊由注意力决定细看还是扫一眼：扫一眼不花 token，未读在下次细看时一起读到", async () => {
   const { store } = setup();
-  store.save({ enabled: true, probability: 0.3 });
   const session = "group:12345";
-  store.db
-    .prepare(
-      "INSERT INTO sessions(id,name,kind,enabled,probability) VALUES (?,?,?,?,?)",
-    )
-    .run(session, "测试", "group", 1, 0.3);
-  const stages = [],
-    sent = [];
-  const models = {
-    profile: () => defaultModel(store.settings()),
-    call: async (_p, stage) => {
-      stages.push(stage);
-      if (stage === "decision")
-        return {
-          action: "SILENT",
-          confidence: 1,
-          reason: "群友之间闲聊，先听",
-          targetMessageIds: [],
-          targetUserIds: [],
-          evidenceIds: [1],
-        };
-      if (stage === "generation") return { bubbles: ["嗯，确实"] };
-      return { ok: true, issues: [] };
-    },
-  };
-  const system = new ChatSystem(
-    store,
-    async (_message, text) => {
-      sent.push(text);
-      return { message_id: 1 };
-    },
-    { models, random: () => 0.1 },
-  );
-  const event = { ...msg(1), sessionId: session, text: "今天风还挺大的" };
-  event.seq = system.repo.append(event);
-  const trace = await system.process(session, [event]);
-  assert.equal(trace.status, "sent");
-  assert.equal(trace.sample.passed, true);
-  assert.equal(trace.decision.sampled, true);
-  assert.deepEqual(sent, ["嗯，确实"]);
-  assert.deepEqual(stages, ["decision", "generation"]);
-  system.close();
-  store.db.close();
-});
-
-test("参与抽样未通过时保持安静", async () => {
-  const { store } = setup();
-  store.save({ enabled: true, probability: 0.3 });
-  const session = "group:12345";
-  store.db
-    .prepare(
-      "INSERT INTO sessions(id,name,kind,enabled,probability) VALUES (?,?,?,?,?)",
-    )
-    .run(session, "测试", "group", 1, 0.3);
+  openSession(store, session);
   const stages = [];
-  const models = {
-    profile: () => defaultModel(store.settings()),
-    call: async (_p, stage) => {
-      stages.push(stage);
-      return stage === "decision"
-        ? {
-            action: "SILENT",
-            confidence: 1,
-            reason: "不相关",
-            targetMessageIds: [],
-            targetUserIds: [],
-            evidenceIds: [1],
-          }
-        : { bubbles: ["不应发送"] };
-    },
-  };
   const system = new ChatSystem(store, async () => ({ message_id: 1 }), {
-    models,
-    random: () => 0.9,
+    models: turnModel(
+      store,
+      (data) => ({
+        choice: "speak",
+        reason: "聊到了我喜欢的",
+        targetMessageIds: [data.context.batchIds.at(-1)],
+        bubbles: ["我也想看"],
+      }),
+      stages,
+    ),
   });
-  const event = { ...msg(1), sessionId: session, text: "路过" };
-  event.seq = system.repo.append(event);
-  const trace = await system.process(session, [event]);
-  assert.equal(trace.status, "silent");
-  assert.equal(trace.sample.passed, false);
-  assert.deepEqual(stages, ["decision"]);
+  const first = { ...msg(1), sessionId: session, text: "今天风还挺大的" };
+  first.seq = system.repo.append(first);
+  const glance = await system.process(session, [first]);
+  assert.equal(glance.status, "glanced");
+  assert.match(glance.reason, /扫了一眼/);
+  assert.deepEqual(stages, []);
+  assert.equal(glance.calls.length, 0);
+  system.mind.nature.save({
+    ...system.mind.nature.current(),
+    interests: ["天文"],
+  });
+  const second = {
+    ...msg(2),
+    sessionId: session,
+    userId: "20002",
+    text: "今晚有没有人一起看天文直播？",
+  };
+  second.seq = system.repo.append(second);
+  const look = await system.process(session, [second]);
+  assert.equal(look.status, "sent");
+  assert.deepEqual(stages, ["turn"]);
+  assert.deepEqual(look.snapshot.batchIds, [first.seq, second.seq]);
+  assert.match(look.attention.reason, /在意/);
+  assert.equal(system.mind.unread(session).length, 0);
   system.close();
   store.db.close();
 });
 
 test("回复可以自然拆成两个气泡，字段轻微漂移也会被规范化", async () => {
   const { store } = setup();
-  store.save({ enabled: true, probability: 0 });
-  const session = "group:12345";
-  store.db
-    .prepare(
-      "INSERT INTO sessions(id,name,kind,enabled,probability) VALUES (?,?,?,?,?)",
-    )
-    .run(session, "测试", "group", 1, 0);
-  const sent = [],
-    models = {
-      profile: () => defaultModel(store.settings()),
-      call: async (_p, stage) => {
-        if (stage === "decision")
-          return {
-            action: "REPLY",
-            confidence: 1,
-            reason: "接住话题",
-            targetMessageIds: [1],
-            targetUserIds: ["10001"],
-            evidenceIds: [1],
-          };
-        if (stage === "generation")
-          return { bubbles: ["我懂", "这事确实有点突然"] };
-        return { ok: true, issues: [] };
-      },
-    };
+  store.save({ enabled: true });
+  const session = "private:12345";
+  openSession(store, session);
+  const sent = [];
   const system = new ChatSystem(
     store,
     async (_message, text) => {
       sent.push(text);
       return { message_id: sent.length };
     },
-    { models },
+    {
+      models: turnModel(store, {
+        action: "MULTI_MESSAGE",
+        bubbles: ["我懂", " 这事确实有点突然 ", ""],
+      }),
+    },
   );
-  const event = { ...msg(1), sessionId: session, text: "这事也太突然了" };
+  const event = {
+    ...msg(1),
+    sessionId: session,
+    kind: "private",
+    text: "这事也太突然了",
+  };
   event.seq = system.repo.append(event);
   const trace = await system.process(session, [event]);
   assert.equal(trace.status, "sent");
@@ -333,43 +294,38 @@ test("回复可以自然拆成两个气泡，字段轻微漂移也会被规范�
 
 test("模型返回非 JSON 回复时使用短句兜底，不暴露格式校验失败", async () => {
   const { store } = setup();
-  store.save({ enabled: true, probability: 0 });
+  store.save({ enabled: true });
   const session = "group:12345";
-  store.db
-    .prepare(
-      "INSERT INTO sessions(id,name,kind,enabled,probability) VALUES (?,?,?,?,?)",
-    )
-    .run(session, "测试", "group", 1, 0);
+  openSession(store, session);
   const sent = [],
-    models = {
-      profile: () => defaultModel(store.settings()),
-      call: async (_p, stage) => {
-        if (stage === "decision")
-          return {
-            action: "REPLY",
-            confidence: 1,
-            reason: "接住话题",
-            targetMessageIds: [1],
-            targetUserIds: ["10001"],
-            evidenceIds: [1],
-          };
-        if (stage === "generation") throw new SyntaxError("Unexpected token");
-        return { ok: true, issues: [] };
-      },
-    };
+    stages = [];
   const system = new ChatSystem(
     store,
     async (_message, text) => {
       sent.push(text);
       return { message_id: 1 };
     },
-    { models },
+    {
+      models: {
+        profile: () => defaultModel(store.settings()),
+        call: async (_p, stage) => {
+          stages.push(stage);
+          throw new SyntaxError("Unexpected token");
+        },
+      },
+    },
   );
-  const event = { ...msg(1), sessionId: session, text: "你还在吗" };
+  const event = {
+    ...msg(1),
+    sessionId: session,
+    text: "你还在吗",
+    mentions: ["99999"],
+  };
   event.seq = system.repo.append(event);
   const trace = await system.process(session, [event]);
   assert.equal(trace.status, "sent");
   assert.deepEqual(sent, ["嗯"]);
+  assert.deepEqual(stages, ["turn", "generation"]);
   assert.match(trace.steps.join(" "), /格式异常/);
   system.close();
   store.db.close();
@@ -470,7 +426,11 @@ test("记忆整理在后台，不阻塞当前回复返回", async () => {
   const system = new ChatSystem(store, async () => ({ message_id: 999 }), {
     models: {
       profile: () => defaultModel(store.settings()),
-      call: async () => ({ bubbles: ["在呢"], reason: "直接回应" }),
+      call: async () => ({
+        choice: "speak",
+        bubbles: ["在呢"],
+        reason: "直接回应",
+      }),
     },
   });
   for (let i = 1; i <= 40; i++)
@@ -598,7 +558,6 @@ test("语境更新时保留未答的直接消息进入下一批，不丢掉原 @
 test("归档超过200条仍保留；重复迁移不会复制旧记录", () => {
   const { repo, store } = setup();
   for (let n = 1; n <= 260; n++) persistIncoming(repo, msg(n));
-  store.trimContext("group:12345", 0);
   assert.equal(store.context("group:12345", 1000).length, 260);
   assert.equal(repo.events("group:12345").length, 260);
   new Repository(store);
@@ -732,7 +691,7 @@ test("图片与对应消息ID一起提供，非信任媒体地址不进入模型
   assert.equal(v.images[0].messageId, 1);
   assert.equal(v.unavailable.length, 1);
 });
-test("连续阶段摘要追加，旧记忆保留，猜测不自动成为事实；范围隔离", async () => {
+test("连续阶段摘要追加，推测只以有限把握进入记忆；同一个人在别的群也被记得", async () => {
   const { repo, store } = setup();
   const model = {
     call: async (p, stage, pr, data) => ({
@@ -747,6 +706,15 @@ test("连续阶段摘要追加，旧记忆保留，猜测不自动成为事实�
           sources: [data.messages[0].id],
           certainty: "inferred",
         },
+        {
+          subject: "10001",
+          content: "开玩笑说自己是外星人",
+          type: "event",
+          confidence: 0.9,
+          importance: 0.2,
+          sources: [data.messages[1].id],
+          certainty: "joke",
+        },
       ],
     }),
   };
@@ -759,15 +727,22 @@ test("连续阶段摘要追加，旧记忆保留，猜测不自动成为事实�
     2,
   );
   const facts = repo.db.prepare("SELECT * FROM core_memories").all();
-  assert.equal(facts.length, 2);
-  assert(facts.every((f) => f.status === "candidate"));
-  mm.update(facts[0].id, { status: "confirmed" });
-  assert.equal(mm.retrieve("group:12345", [msg(1)]).length, 1);
-  assert.equal(mm.retrieve("group:54321", [msg(1)]).length, 0);
+  assert.equal(facts.length, 2, "玩笑不会成为事实");
+  assert(facts.every((f) => f.status === "confirmed" && f.confidence <= 0.6));
+  const here = mm.retrieve("group:12345", [msg(1, { text: "喝茶吗" })]);
+  assert.equal(here[0].source, "这里");
+  const elsewhere = mm.retrieve("group:54321", [msg(1, { text: "喝茶吗" })]);
+  assert.equal(elsewhere[0].source, "别的群里");
+  assert.equal(
+    mm.retrieve("group:54321", [msg(1, { userId: "20002", text: "天气" })])
+      .length,
+    0,
+    "别处的记忆只在相关时才会想起",
+  );
   mm.update(facts[0].id, { content: "喜欢咖啡", locked: true });
   assert.equal(
     repo.db.prepare("SELECT COUNT(*) n FROM core_memory_versions").get().n,
-    2,
+    1,
   );
   store.db.close();
 });
@@ -1227,16 +1202,16 @@ test("回放不发送、不写记忆、不读取截止之后的消息", async ()
     profile: () => defaultModel(store.settings()),
     call: async (p, stage, pr, data) => {
       seen.push({ stage, data });
-      if (stage === "decision")
+      if (stage === "turn")
         return {
-          action: "REPLY",
-          confidence: 1,
+          appraisal: "被叫到",
+          feelings: [{ feeling: "开心", intensity: 1, valence: 1 }],
+          choice: "speak",
           reason: "直接回应",
           targetMessageIds: [1],
-          evidenceIds: [1],
+          bubbles: ["嗯，好"],
         };
-      if (stage === "validation") return { ok: true, issues: [] };
-      return { bubbles: ["嗯，好"], reason: "一句" };
+      return { ok: true, issues: [] };
     },
   };
   const system = new ChatSystem(store, () => assert.fail("回放不应发送"), {
@@ -1244,14 +1219,23 @@ test("回放不发送、不写记忆、不读取截止之后的消息", async ()
   });
   system.repo.append(msg(1, { mentioned: true }));
   system.repo.append(msg(2, { text: "未来秘密" }));
-  await system.process("group:12345", system.repo.events("group:12345", 1), {
-    replay: true,
-  });
+  const trace = await system.process(
+    "group:12345",
+    system.repo.events("group:12345", 1),
+    { replay: true },
+  );
+  assert.equal(trace.status, "replayed");
   assert(!JSON.stringify(seen).includes("未来秘密"));
   assert.equal(
     system.repo.db.prepare("SELECT COUNT(*) n FROM core_outbox").get().n,
     0,
   );
+  for (const table of ["mind_affect", "mind_choices", "mind_bond_events"])
+    assert.equal(
+      system.repo.db.prepare(`SELECT COUNT(*) n FROM ${table}`).get().n,
+      0,
+      `回放不写 ${table}`,
+    );
   system.close();
   store.db.close();
 });
@@ -1280,6 +1264,7 @@ test("直接倾诉也按语义复审并最多重写一次，回放使用消息�
               : { ok: false, issues: ["不要复述再加感叹"] };
           }
           return {
+            choice: "speak",
             bubbles: [stage === "rewrite" ? "这调休真不合理" : "听着都累"],
           };
         },
@@ -1299,12 +1284,7 @@ test("直接倾诉也按语义复审并最多重写一次，回放使用消息�
     { replay: true },
   );
   assert.equal(trace.status, "replayed");
-  assert.deepEqual(stages, [
-    "generation",
-    "validation",
-    "rewrite",
-    "validation",
-  ]);
+  assert.deepEqual(stages, ["turn", "validation", "rewrite", "validation"]);
   assert.deepEqual(trace.response.bubbles, ["这调休真不合理"]);
   system.close();
   store.db.close();
@@ -1460,7 +1440,7 @@ test("开启图片理解后，回复拿到的是画面而不是图片占位符",
       profile: () => profile,
       call: async (_profile, stage, _prompt, data, _trace, images) => {
         seen.push({ stage, images, guide: data.imageGuide });
-        return { bubbles: ["这是一只猫"], reason: "看见画面" };
+        return { choice: "speak", bubbles: ["这是一只猫"], reason: "看见画面" };
       },
     },
     loadVisionImages: async (images) => ({
@@ -1489,7 +1469,7 @@ test("开启图片理解后，回复拿到的是画面而不是图片占位符",
   assert.equal(trace.status, "sent");
   assert.deepEqual(
     seen.map((item) => item.stage),
-    ["generation"],
+    ["turn"],
   );
   assert.equal(
     seen[0].images[0].url.startsWith("data:image/png;base64,"),
@@ -1527,7 +1507,7 @@ test("主模型不能看图时，视觉模型的观察进入回复且不附带�
         });
         if (stage === "vision")
           return { observations: [{ messageId: 1, description: "一只猫" }] };
-        return { bubbles: ["是一只猫"], reason: "根据观察" };
+        return { choice: "speak", bubbles: ["是一只猫"], reason: "根据观察" };
       },
     },
     loadVisionImages: async (images) => ({
@@ -1555,7 +1535,7 @@ test("主模型不能看图时，视觉模型的观察进入回复且不附带�
   assert.equal(trace.status, "sent");
   assert.deepEqual(
     seen.map((item) => item.stage),
-    ["vision", "generation"],
+    ["vision", "turn"],
   );
   assert.equal(seen[0].id, "vision");
   assert.equal(seen[0].images[0].url.startsWith("data:image/"), true);
@@ -1580,7 +1560,6 @@ test("同一张图只理解一次，引用和相同内容不再提交画面", as
     apiKey: "k",
   };
   const system = new ChatSystem(store, async () => ({ message_id: 1 }), {
-    random: () => 0,
     models: {
       profile: () => profile,
       call: async (_profile, stage, _prompt, data, _trace, images = []) => {
@@ -1597,17 +1576,13 @@ test("同一张图只理解一次，引用和相同内容不再提交画面", as
               description: "土拍公告，地块编号可见",
             })),
           };
-        if (stage === "decision")
-          return {
-            action: "REPLY",
-            confidence: 0.9,
-            reason: "在看这张图",
-            targetMessageIds: [data.batchIds.at(-1)],
-            targetUserIds: ["10001"],
-            evidenceIds: [data.batchIds.at(-1)],
-            topic: "土拍",
-          };
-        return { bubbles: ["看到了"], reason: "根据观察" };
+        return {
+          choice: "speak",
+          reason: "在看这张图",
+          targetMessageIds: [data.context.batchIds.at(-1)],
+          topic: "土拍",
+          bubbles: ["看到了"],
+        };
       },
     },
     loadVisionImages: async (images) => {
@@ -1627,17 +1602,23 @@ test("同一张图只理解一次，引用和相同内容不再提交画面", as
     url: "https://gchat.qpic.cn/auction.png",
   };
   system.repo.saveConfig("session:" + session, { selectiveVision: true });
+  // She was just talking here, so she keeps reading without being called.
+  system.repo.append(
+    msg(100, { role: "assistant", userId: "bot", text: "发来看看" }),
+  );
   system.repo.append(
     msg(1, { text: "[图片]看看这张土拍", attachments: [image] }),
   );
-  const first = await system.process(session, system.repo.events(session));
+  const first = await system.process(session, [
+    system.repo.events(session).at(-1),
+  ]);
   assert.equal(first.status, "sent");
   assert.deepEqual(
     seen.map((item) => item.stage),
-    ["vision", "decision", "generation"],
+    ["vision", "turn"],
   );
-  assert.equal(seen[2].images.length, 0);
-  assert.match(seen[2].guide, /观察/);
+  assert.equal(seen[1].images.length, 0);
+  assert.match(seen[1].guide, /观察/);
   system.repo.append(
     msg(2, { text: "那这块地呢", replyId: "1", mentions: ["99999"] }),
   );
@@ -1650,7 +1631,7 @@ test("同一张图只理解一次，引用和相同内容不再提交画面", as
   system.repo.append(msg(9, { text: "[图片]", attachments: [image] }));
   const plain = system.repo.events(session).at(-1);
   const ignored = await system.process(session, [plain]);
-  assert.equal(ignored.status, "sent");
+  assert.equal(ignored.status, "glanced", "单独刷图只扫一眼");
   assert.equal(loads, 1);
   assert.equal(seen.filter((item) => item.stage === "vision").length, 1);
   system.repo.append(

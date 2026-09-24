@@ -5,7 +5,6 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createStore } from "../server/store.js";
-import { boundedContext } from "../server/engine.js";
 test("v0.1 数据库升级保留记忆，迁移模拟上下文、去重与冷却；重复启动安全", () => {
   const path = join(mkdtempSync(join(tmpdir(), "lucky-migrate-")), "legacy.db");
   let db = new DatabaseSync(path);
@@ -78,18 +77,11 @@ test("v0.1 数据库升级保留记忆，迁移模拟上下文、去重与冷却
   );
   reopened.db.close();
 });
-test("模型上下文优先保留最近消息并限制文本字符总量", () => {
-  const rows = Array.from({ length: 10 }, (_, i) => ({
-    text: String(i).repeat(4000),
-    name: "群友",
-    role: "user",
-    user_id: "1",
-  }));
-  const result = boundedContext(rows);
-  assert.equal(result.length, 4);
-  assert.equal(result.at(-1).text, "9".repeat(4000));
-  assert.equal(
-    result.reduce((n, r) => n + Array.from(r.text).length, 0),
-    16000,
-  );
+test("升级时旧设置里的概率、冷却和口吻字段不再出现在默认值里", () => {
+  const store = createStore(":memory:");
+  const settings = store.settings();
+  for (const key of ["probability", "cooldown", "voicePreset", "slangLevel"])
+    assert.equal(settings[key], undefined, key);
+  assert.equal(settings.memoryEnabled, true);
+  store.db.close();
 });

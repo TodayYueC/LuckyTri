@@ -66,20 +66,11 @@ export function createStore(path = process.env.DB_PATH || "data/friend.db") {
       "可爱、乐观、情绪稳定，偶尔对事情轻轻吐槽，不挖苦群友。像熟悉的群友一样说话，先接住情绪，不急着给建议。",
     enabled: true,
     demo: true,
-    cooldown: 45,
-    probability: 0.15,
-    contextLimit: 30,
-    maxReply: 100,
     baseUrl: "https://api.deepseek.com/v1",
     model: "deepseek-chat",
     apiKey: "",
     memoryEnabled: true,
     memoryCandidates: true,
-    voicePreset: "chill",
-    slangLevel: 0,
-    adaptGroupStyle: true,
-    allowMildProfanity: false,
-    qualityRewrite: true,
     napcatRoot: "",
     onebotToken: "",
     providerPreset: "custom",
@@ -162,17 +153,6 @@ export function createStore(path = process.env.DB_PATH || "data/friend.db") {
       );
       this.revision++;
     },
-    sessionSettings(id) {
-      const s = this.settings();
-      const overrides = db
-        .prepare("SELECT cooldown,probability FROM sessions WHERE id=?")
-        .get(id);
-      return {
-        ...s,
-        cooldown: overrides?.cooldown ?? s.cooldown,
-        probability: overrides?.probability ?? s.probability,
-      };
-    },
     context(id, limit = 30, demo = null) {
       return db
         .prepare(
@@ -183,16 +163,6 @@ export function createStore(path = process.env.DB_PATH || "data/friend.db") {
     groupStyle(id, demo = 0) {
       if (!isGroupSession(id)) return null;
       return summarizeGroupStyle(this.context(id, 200, demo));
-    },
-    feedback(id, demo = 0) {
-      return db
-        .prepare(
-          "SELECT f.tag FROM reply_feedback f JOIN decisions d ON d.id=f.decision_id WHERE d.session_id=? AND d.is_demo=? ORDER BY f.time DESC LIMIT 20",
-        )
-        .all(id, demo);
-    },
-    trimContext(id, demo) {
-      // Working context is a bounded query, never a deletion of history.
     },
     maintenance(now = Date.now()) {
       db.prepare("DELETE FROM seen_events WHERE time<?").run(

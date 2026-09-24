@@ -1,19 +1,5 @@
 export { KnowledgeManager } from "./manager.js";
-export { captureMemoryCandidate } from "./candidates.js";
-export {
-  deleteReviewedMemory,
-  insertReviewedMemory,
-  memoryValid,
-  reviewCandidate,
-  updateReviewedMemory,
-} from "./reviewed.js";
-export {
-  deleteLegacyMemory,
-  indexChunk,
-  indexMemory,
-  migrateKnowledge,
-  upsertLegacyMemory,
-} from "./schema.js";
+export { indexChunk, indexMemory, migrateKnowledge } from "./schema.js";
 export {
   asPlainDocument,
   chunkText,

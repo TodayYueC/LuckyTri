@@ -5,12 +5,12 @@ import {
   storedModels,
   validateModel,
 } from "./model-manager.js";
-import { persona, prompts, PROMPTS } from "./persona-manager.js";
+import { prompts, PROMPTS } from "./persona-manager.js";
 import { publicSession, parseSessionKey } from "../channels/session-key.js";
 import { wrap } from "../http.js";
 import {
-  applySessionRhythm,
   parseNewSession,
+  renameSession,
   setSessionEnabled,
   upsertSession,
 } from "./sessions.js";
@@ -36,7 +36,7 @@ export function mountCore(app, system) {
   app.get("/api/core/state", (req, res) =>
     res.json({
       models: normalizeModels(storedModels(repo)).map(publicModel),
-      persona: persona(repo, ""),
+      persona: system.mind.nature.current(),
       prompts: prompts(repo),
       sessions: repo.db
         .prepare("SELECT * FROM sessions")
@@ -112,9 +112,24 @@ export function mountCore(app, system) {
             "DELETE FROM reply_feedback WHERE decision_id IN (SELECT id FROM decisions WHERE session_id=?)",
           )
           .run(id);
+        // What she lived through only in this conversation leaves with it;
+        // thoughts that also belong to other places stay.
+        repo.db
+          .prepare(
+            "DELETE FROM mind_thoughts WHERE sessions=? OR outreach_session=?",
+          )
+          .run(JSON.stringify([id]), id);
+        repo.db
+          .prepare(
+            "DELETE FROM mind_bond_events WHERE session_id=? OR (subject_kind='group' AND subject_id=?)",
+          )
+          .run(id, id);
         for (const table of [
-          "time_notes",
-          "time_runs",
+          "mind_attention",
+          "mind_choices",
+          "mind_faces",
+          "mind_affect",
+          "mind_self",
           "core_topics",
           "core_memories",
           "core_stages",
@@ -240,25 +255,16 @@ export function mountCore(app, system) {
       });
     }),
   );
+  // Kept for scripts written against the old persona API: it records a new
+  // version of her nature.
   app.put(
     "/api/core/persona",
     wrap((req, res) => {
-      const p = { ...(req.body || {}) };
-      if (typeof p.persona === "string") p.persona = { base: p.persona };
-      if (
-        typeof p.base !== "string" ||
-        p.base.length > 30000 ||
-        typeof p.name !== "string" ||
-        !p.name.trim()
-      )
-        throw Error("人格名称和正文无效");
-      for (const k of ["interests", "forbidden"])
-        if (!Array.isArray(p[k]) || p[k].some((v) => typeof v !== "string"))
-          throw Error("兴趣与禁用表达必须是文本列表");
-      for (const k of ["humor", "sarcasm", "warmth", "activity", "initiative"])
-        if (!Number.isFinite(p[k]) || p[k] < 0 || p[k] > 100)
-          throw Error("人格强度应在 0–100");
-      repo.saveConfig("persona", p);
+      const { version: _version, mood: _mood, ...p } = req.body || {};
+      system.mind.nature.save(
+        { ...system.mind.nature.current(), ...p },
+        "通过人格接口修改",
+      );
       res.json({ ok: true });
     }),
   );
@@ -326,11 +332,16 @@ export function mountCore(app, system) {
         throw Error("上下文压缩开关无效");
       if (p.maxWaitMs < p.aggregateMs)
         throw Error("最大聚合时间不能小于基础窗口");
-      if (
-        p.comfortOnDistress !== undefined &&
-        typeof p.comfortOnDistress !== "boolean"
-      )
-        throw Error("主动安慰开关无效");
+      for (const retired of [
+        "probability",
+        "cooldown",
+        "comfortOnDistress",
+        "persona",
+      ])
+        if (p[retired] !== undefined)
+          throw Error(
+            "开不开口由她自己决定，会话里不再设置概率、冷却、主动安慰或群人格；她在各群的样子见「她 → 关系」",
+          );
       if (
         p.selectiveVision !== undefined &&
         typeof p.selectiveVision !== "boolean"
@@ -352,23 +363,7 @@ export function mountCore(app, system) {
         if (system.models.profile(p.fallbackModelId).id === primary.id)
           throw Error("备用模型不能和主模型相同");
       } else delete p.fallbackModelId;
-      if (
-        p.persona &&
-        (typeof p.persona !== "object" || Array.isArray(p.persona))
-      )
-        throw Error("群人格覆盖格式无效");
-      if (
-        p.persona?.forbidden &&
-        (!Array.isArray(p.persona.forbidden) ||
-          p.persona.forbidden.some((x) => typeof x !== "string"))
-      )
-        throw Error("禁用表达应为文本列表");
-      if (
-        p.name !== undefined ||
-        p.cooldown !== undefined ||
-        p.probability !== undefined
-      )
-        applySessionRhythm(repo.db, req.params.id, p);
+      if (p.name !== undefined) renameSession(repo.db, req.params.id, p.name);
       const {
         topicBoost: _deprecatedTopicBoost,
         name: _name,
@@ -514,57 +509,10 @@ export function mountCore(app, system) {
       speak: Array.isArray(trace.sent) && trace.sent.length > 0,
       reply: Array.isArray(trace.sent) ? trace.sent.join("\n") : "",
       reason: trace.reason || "",
+      choice: trace.decision?.choice || "silent",
       emotion: trace.decision?.topic || "模拟",
       status: trace.status,
     });
-  });
-  app.post("/api/sessions", (req, res) => {
-    try {
-      const parsed = parseNewSession(req.body || {});
-      upsertSession(repo.db, parsed);
-      repo.store.revision++;
-      res.json({ ok: true, sessionId: parsed.sessionId });
-    } catch (error) {
-      res.status(400).json({ error: error.message });
-    }
-  });
-  app.patch("/api/sessions/:id", (req, res) => {
-    try {
-      setSessionEnabled(repo.db, req.params.id, req.body.enabled);
-      repo.store.revision++;
-      res.json({ ok: true });
-    } catch (error) {
-      res
-        .status(error.message === "会话不存在" ? 404 : 400)
-        .json({ error: error.message });
-    }
-  });
-  app.patch("/api/sessions/:id/policy", (req, res) => {
-    try {
-      applySessionRhythm(repo.db, req.params.id, req.body || {});
-      repo.store.revision++;
-      res.json({ ok: true });
-    } catch (error) {
-      res
-        .status(error.message === "会话不存在" ? 404 : 400)
-        .json({ error: error.message });
-    }
-  });
-  app.get("/api/sessions/:id/messages", (req, res) =>
-    res.json(
-      repo.store.context(
-        req.params.id,
-        100,
-        Number(repo.store.settings().demo),
-      ),
-    ),
-  );
-  app.delete("/api/sessions/:id/messages", (req, res) => {
-    repo.db
-      .prepare("DELETE FROM messages WHERE session_id=?")
-      .run(req.params.id);
-    repo.store.revision++;
-    res.json({ ok: true });
   });
 }
 

@@ -1,4 +1,8 @@
 import { replyFocus } from "./conversation-cues.js";
+import { wordingNotes } from "./turn.js";
+
+// Puts an already chosen answer into words again: used when the turn came
+// back without words or the first draft failed a check.
 export async function generate(
   models,
   profile,
@@ -10,8 +14,7 @@ export async function generate(
   issues = [],
 ) {
   const { sourceRows, batch, ...context } = snapshot;
-  // The compiled persona already leads the system prompt. Keeping a second copy
-  // in the user payload only spends tokens and shortens the cached prefix.
+  // The compiled nature already leads the system prompt.
   delete context.persona;
   const unavailable = snapshot.unavailableImages || [];
   const imageGuide = images.length
@@ -27,15 +30,18 @@ export async function generate(
     prompt,
     {
       context,
-      decision,
+      decision: {
+        choice: decision.choice || "speak",
+        reason: decision.reason,
+        appraisal: decision.appraisal,
+        targetMessageIds: decision.targetMessageIds,
+        ...(decision.bubbles?.length ? { draft: decision.bubbles } : {}),
+      },
       issues,
       imageGuide,
       replyFocus: replyFocus(snapshot, decision),
-      comfort: decision.comfort
-        ? "只针对眼前这件事轻轻接一句；不心理分析、不劝想开、不邀请长篇倾诉。"
-        : undefined,
-      // 默认仍是一条；如果模型判断两句更像自然聊天，REPLY 也允许最多两条。
-      maxBubbles: decision.action === "MULTI_MESSAGE" ? 3 : 2,
+      guidance: wordingNotes(decision, snapshot),
+      maxBubbles: decision.maxBubbles ?? 2,
     },
     trace,
     images,

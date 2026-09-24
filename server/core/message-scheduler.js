@@ -8,7 +8,7 @@ export async function deliver(
   trace,
   send,
   isCurrent,
-  { wait = sleep, random = Math.random } = {},
+  { wait = sleep, random = Math.random, now = Date.now } = {},
 ) {
   const ids = bubbles.map((text, i) => {
     const id = randomUUID();
@@ -16,13 +16,14 @@ export async function deliver(
       .prepare(
         "INSERT INTO core_outbox(id,trace_id,session_id,position,text,status,time) VALUES (?,?,?,?,?,?,?)",
       )
-      .run(id, trace.id, message.sessionId, i, text, "pending", Date.now());
+      .run(id, trace.id, message.sessionId, i, text, "pending", now());
     return id;
   });
   const sent = [];
   trace.sent = sent;
   try {
     for (let i = 0; i < bubbles.length; i++) {
+      // Typing pace between bubbles; physical, not a decision.
       if (i)
         await wait(
           Math.min(1200, 300 + bubbles[i].length * 15 + random() * 350),
@@ -41,7 +42,7 @@ export async function deliver(
             "UPDATE core_outbox SET status='confirmed',platform_id=? WHERE id=?",
           )
           .run(String(result?.message_id || ""), ids[i]);
-        persistReply(repo, message, bubbles[i], result?.message_id);
+        persistReply(repo, message, bubbles[i], result?.message_id, now());
         sent.push(bubbles[i]);
       } catch (e) {
         repo.db

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createStore } from "../server/store.js";
 import { Repository } from "../server/core/repository.js";
 import { ModelManager, defaultModel } from "../server/core/model-manager.js";
-import { MemoryManager } from "../server/core/memory-manager.js";
+import { MemoryManager } from "../server/mind/memory.js";
 import { KnowledgeManager } from "../server/knowledge/manager.js";
 import { buildContext } from "../server/core/context-builder.js";
 import {
@@ -11,7 +11,6 @@ import {
   chunkText,
   unpackVector,
 } from "../server/knowledge/retrieval.js";
-import { upsertLegacyMemory } from "../server/knowledge/schema.js";
 import { ChatSystem } from "../server/core/orchestrator.js";
 import {
   applySpeakerNames,
@@ -20,7 +19,7 @@ import {
 
 const setup = () => {
   const store = createStore(":memory:");
-  store.save({ demo: false, probability: 1 });
+  store.save({ demo: false });
   const repo = new Repository(store);
   return { store, repo };
 };
@@ -88,16 +87,13 @@ test("混合检索命中共享知识，私聊集合不进群，回放遵守水�
 });
 
 test("FTS 与旧记忆合并后可按词项召回", () => {
-  const { store, repo } = setup();
-  const inserted = store.db
+  const store = createStore(":memory:");
+  store.db
     .prepare(
       "INSERT INTO memories(user_id,name,content,scope,source,time) VALUES (?,?,?,?,?,?)",
     )
     .run("10001", "甲", "喜欢冰拿铁", "group:12345", "测试", Date.now());
-  const row = store.db
-    .prepare("SELECT * FROM memories WHERE id=?")
-    .get(inserted.lastInsertRowid);
-  upsertLegacyMemory(store.db, row);
+  const repo = new Repository(store);
   const mm = new MemoryManager(repo, new ModelManager(repo));
   const found = mm.retrieve("group:12345", [
     { text: "还喝冰拿铁吗", userId: "10001" },
@@ -199,7 +195,7 @@ test("模拟路径由 ChatSystem 发言，无 Key 时走本地样例", async () 
   const store = createStore(":memory:");
   const prev = process.env.LLM_API_KEY;
   delete process.env.LLM_API_KEY;
-  store.save({ demo: true, enabled: true, apiKey: "", probability: 1 });
+  store.save({ demo: true, enabled: true, apiKey: "" });
   store.db
     .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
     .run("group:12345", "测试", "group");
@@ -281,9 +277,9 @@ test("未添加模型时模拟模式仍可使用本地样例", async () => {
   }
 });
 
-test("模拟消息与真实上下文、长期记忆严格隔离", async () => {
+test("模拟消息与真实上下文、长期记忆和她的心智严格隔离", async () => {
   const store = createStore(":memory:");
-  store.save({ demo: true, enabled: true, apiKey: "", probability: 1 });
+  store.save({ demo: true, enabled: true, apiKey: "" });
   const session = "group:12345";
   store.db
     .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
@@ -306,17 +302,15 @@ test("模拟消息与真实上下文、长期记忆严格隔离", async () => {
         }),
         call: async (_profile, stage, _prompt, data) => {
           calls.push({ stage, data });
-          if (stage === "decision")
+          if (stage === "turn")
             return {
-              action: "REPLY",
-              confidence: 1,
-              comfort: true,
+              appraisal: "甲在说话",
+              feelings: [{ feeling: "好奇", intensity: 0.4, valence: 0.2 }],
+              choice: "speak",
               reason: "真实消息值得回应",
               targetMessageIds: [realSeq],
-              targetUserIds: ["10001"],
-              evidenceIds: [realSeq],
+              bubbles: ["真实回复"],
             };
-          if (stage === "generation") return { bubbles: ["真实回复"] };
           return { ok: true, issues: [] };
         },
       },
@@ -334,6 +328,12 @@ test("模拟消息与真实上下文、长期记忆严格隔离", async () => {
     });
     assert.equal(simulated.status, "sent");
     assert.equal(simulated.mode, "demo");
+    assert.equal(
+      system.repo.db.prepare("SELECT COUNT(*) n FROM mind_affect").get().n +
+        system.repo.db.prepare("SELECT COUNT(*) n FROM mind_choices").get().n,
+      0,
+      "模拟不写入她的心境和选择",
+    );
     assert.ok(
       system.repo
         .events(session, Number.MAX_SAFE_INTEGER, { simulated: true })
@@ -361,11 +361,17 @@ test("模拟消息与真实上下文、长期记忆严格隔离", async () => {
       attachments: [],
       time: Date.now(),
     };
-    realSeq = system.repo.append(real);
-    const trace = await system.process(session, [{ ...real, seq: realSeq }]);
+    realSeq = system.repo.append({ ...real, mentions: ["bot"] });
+    const trace = await system.process(session, [
+      { ...real, mentions: ["bot"], seq: realSeq },
+    ]);
     assert.equal(trace.status, "sent");
     assert.equal(trace.mode, "live");
-    const decision = calls.find((call) => call.stage === "decision");
+    assert.equal(
+      system.repo.db.prepare("SELECT COUNT(*) n FROM mind_choices").get().n,
+      1,
+    );
+    const decision = calls.find((call) => call.stage === "turn");
     assert.ok(decision);
     assert.equal(
       JSON.stringify(decision.data).includes("SIMULATED_ONLY"),

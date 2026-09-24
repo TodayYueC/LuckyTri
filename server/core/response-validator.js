@@ -14,6 +14,8 @@ export function reviewContext(snapshot, decision = {}) {
     recalled: _recalled,
     budget: _budget,
     historyStart: _historyStart,
+    self: _self,
+    inner: _inner,
     ...rest
   } = snapshot;
   const messages = snapshot.messages || [];
@@ -30,8 +32,10 @@ export function reviewContext(snapshot, decision = {}) {
     messages: messages.filter((m) => focus.has(m.id) || recent.has(m.id)),
   };
 }
+const bubbleLimit = (decision) =>
+  decision.maxBubbles ?? (decision.action === "MULTI_MESSAGE" ? 3 : 2);
 export function normalizeResponse(result, decision, fallback = "嗯") {
-  const maxBubbles = decision.action === "MULTI_MESSAGE" ? 3 : 2;
+  const maxBubbles = bubbleLimit(decision);
   let bubbles = [];
   if (Array.isArray(result?.bubbles)) bubbles = result.bubbles;
   else if (typeof result?.bubbles === "string") bubbles = [result.bubbles];
@@ -58,7 +62,7 @@ export function normalizeResponse(result, decision, fallback = "嗯") {
 }
 export function validateResponse(result, snapshot, decision, maxChars = 180) {
   const issues = [];
-  const maxBubbles = decision.action === "MULTI_MESSAGE" ? 3 : 2;
+  const maxBubbles = bubbleLimit(decision);
   if (
     !Array.isArray(result.bubbles) ||
     result.bubbles.length < 1 ||
@@ -68,12 +72,14 @@ export function validateResponse(result, snapshot, decision, maxChars = 180) {
     return ["气泡格式无效"];
   if (result.bubbles.reduce((n, s) => n + Array.from(s).length, 0) > maxChars)
     issues.push("回复超过当前会话总字数");
+  if (decision.choice === "react" && Array.from(result.bubbles[0]).length > 8)
+    issues.push("选择了简短反应，只写一个极短的反应");
   const recent = snapshot.messages
     .filter((m) => m.role === "assistant")
     .slice(-12)
     .map((m) => m.text);
   for (const text of result.bubbles) {
-    if ((snapshot.persona.forbidden || []).some((w) => w && text.includes(w)))
+    if ((snapshot.persona?.forbidden || []).some((w) => w && text.includes(w)))
       issues.push("使用人格禁用表达");
     if (
       /[hH]{2,}[。！!～~]*$/.test(text) &&

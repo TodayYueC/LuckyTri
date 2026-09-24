@@ -1,0 +1,178 @@
+import { randomUUID } from "node:crypto";
+import {
+  clamp,
+  dayKey,
+  evidence,
+  hasCredential,
+  messageSeqs,
+  parse,
+  similar,
+  text,
+} from "./util.js";
+
+export const SELF_KINDS = {
+  interest: "喜欢",
+  view: "看法",
+  trait: "特质",
+  habit: "习惯",
+  intention: "想做的事",
+  care: "放在心上",
+  curiosity: "好奇",
+};
+const STEP = 0.15;
+const NEW_CAP = 0.35;
+const TRAIT_CAP = 0.25;
+// Things she can come to like or wonder about on her own; everything else
+// must point at something that actually happened.
+const SELF_ORIGINATED = new Set(["interest", "curiosity"]);
+
+export class Self {
+  constructor(mind) {
+    this.mind = mind;
+    this.db = mind.db;
+  }
+  revokedThreads() {
+    return new Set(
+      this.db
+        .prepare(
+          "SELECT target_id FROM mind_revocations WHERE target_kind='self'",
+        )
+        .all()
+        .map((row) => row.target_id),
+    );
+  }
+  revokedContents() {
+    return this.db
+      .prepare("SELECT content FROM mind_revocations WHERE target_kind='self'")
+      .all()
+      .map((row) => row.content)
+      .filter(Boolean);
+  }
+  latest(before = Number.MAX_SAFE_INTEGER) {
+    const revoked = this.revokedThreads();
+    return this.db
+      .prepare(
+        `SELECT s.* FROM mind_self s WHERE s.rowid=(
+           SELECT t.rowid FROM mind_self t WHERE t.thread=s.thread AND t.created<=?
+           ORDER BY t.created DESC, t.rowid DESC LIMIT 1)`,
+      )
+      .all(before)
+      .filter((row) => !revoked.has(row.thread))
+      .map((row) => ({
+        ...row,
+        sources: parse(row.sources, []),
+        days: parse(row.days, []),
+      }));
+  }
+  active({ before, limit = 40 } = {}) {
+    return this.latest(before)
+      .filter((row) => row.status !== "closed")
+      .sort((a, b) => b.strength - a.strength || b.created - a.created)
+      .slice(0, limit);
+  }
+  history(thread) {
+    return this.db
+      .prepare("SELECT * FROM mind_self WHERE thread=? ORDER BY created")
+      .all(thread)
+      .map((row) => ({
+        ...row,
+        sources: parse(row.sources, []),
+        days: parse(row.days, []),
+      }));
+  }
+  days(sources, time) {
+    const timeZone = this.mind.timeZone();
+    const seqs = messageSeqs(sources);
+    const found = seqs.length
+      ? this.db
+          .prepare(
+            `SELECT time FROM core_events WHERE seq IN (${seqs.map(() => "?").join(",")})`,
+          )
+          .all(...seqs)
+          .map((row) => dayKey(row.time, timeZone))
+      : [];
+    return [...new Set(found.length ? found : [dayKey(time, timeZone)])];
+  }
+  propose(
+    input,
+    { valid = null, origin = "solitude", time = Date.now() } = {},
+  ) {
+    const kind = SELF_KINDS[input?.kind] ? input.kind : null;
+    const content = text(input?.content, 160);
+    let action = ["new", "revise", "close"].includes(input?.action)
+      ? input.action
+      : input?.thread
+        ? "revise"
+        : "new";
+    if (!content && action !== "close") return { rejected: "空内容" };
+    if (hasCredential(content)) return { rejected: "疑似凭据" };
+    const cited = evidence(input?.sources);
+    const sources = valid ? cited.filter((s) => valid.has(s)) : cited;
+    if (cited.length && !sources.length)
+      return { rejected: "来源不在本次经历中" };
+    if (
+      content &&
+      this.revokedContents().some((old) => similar(old, content, 0.7))
+    )
+      return { rejected: "与撤销过的内容相同" };
+    const current = this.active({ before: time, limit: 200 });
+    let prior = null;
+    if (action === "new") {
+      if (!kind) return { rejected: "类型无效" };
+      prior = current.find(
+        (row) => row.kind === kind && similar(row.content, content, 0.75),
+      );
+      if (prior) action = "revise";
+      else if (!sources.length && !SELF_ORIGINATED.has(kind))
+        return { rejected: "缺少来源" };
+    } else {
+      prior = this.latest(time).find((row) => row.thread === input.thread);
+      if (!prior) return { rejected: "线索不存在或已撤销" };
+    }
+    const days = [
+      ...new Set([...(prior?.days || []), ...this.days(sources, time)]),
+    ].slice(-60);
+    let strength;
+    let status;
+    if (action === "close") {
+      strength = prior.strength;
+      status = "closed";
+    } else if (prior) {
+      const wanted = Number.isFinite(Number(input?.strength))
+        ? clamp(input.strength)
+        : prior.strength + (sources.length ? 0.05 : 0);
+      strength = clamp(
+        prior.strength + clamp(wanted - prior.strength, -STEP, STEP),
+      );
+      status =
+        prior.kind === "trait" && (days.length < 2 || strength < 0.35)
+          ? "emerging"
+          : "active";
+    } else {
+      strength = Math.min(
+        kind === "trait" ? TRAIT_CAP : NEW_CAP,
+        clamp(input?.strength ?? 0.25),
+      );
+      status = kind === "trait" ? "emerging" : "active";
+    }
+    const id = randomUUID();
+    this.db
+      .prepare(
+        "INSERT INTO mind_self(id,thread,created,kind,content,strength,status,sources,days,origin,session_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+      )
+      .run(
+        id,
+        prior?.thread || id,
+        time,
+        prior?.kind || kind,
+        content || prior.content,
+        Math.round(strength * 100) / 100,
+        status,
+        JSON.stringify(sources),
+        JSON.stringify(days),
+        origin,
+        input?.session || null,
+      );
+    return { id, thread: prior?.thread || id, action };
+  }
+}

@@ -20,7 +20,7 @@
     "start": "node --env-file-if-exists=.env scripts/start-server.js",
     "dev:ui": "vite --config studio-web/vite.config.ts",
     "build:ui": "vite build --config studio-web/vite.config.ts",
-    "test": "node --test tests/*.test.js",
+    "test": "node --import ./tests/awake.mjs --test tests/*.test.js",
     "test:ui": "node tests/ui-smoke.js",
     "setup": "node scripts/setup.js",
     "stop": "node --env-file-if-exists=.env scripts/stop.js",

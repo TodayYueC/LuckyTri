@@ -1,5 +1,3 @@
-import { TimeManager } from "./time/manager.js";
-import { mountTime } from "./time/api.js";
 import express from "express";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -10,8 +8,10 @@ import { mountManagement } from "./studio/management.js";
 import { mountCore } from "./core/api.js";
 import { mountKnowledge } from "./knowledge/api.js";
 import { mountEvents } from "./core/events.js";
+import { mountMind } from "./mind/api.js";
+import { Life } from "./mind/life.js";
 
-export function createApp({ store, chatSystem, runtime, time }) {
+export function createApp({ store, chatSystem, runtime, life }) {
   const app = express();
   app.use("/api", (req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
@@ -33,7 +33,7 @@ export function createApp({ store, chatSystem, runtime, time }) {
   app.use(express.json({ limit: "4mb" }));
   app.use("/api", (req, res, next) => {
     if (
-      ["POST", "PATCH"].includes(req.method) &&
+      ["POST", "PATCH", "PUT"].includes(req.method) &&
       (!req.body || typeof req.body !== "object" || Array.isArray(req.body))
     )
       return res.status(400).json({ error: "请提交 JSON 对象" });
@@ -43,7 +43,7 @@ export function createApp({ store, chatSystem, runtime, time }) {
   mountQqSetup(app, store);
   mountManagement(app, store, chatSystem);
   mountCore(app, chatSystem);
-  mountTime(app, time || new TimeManager(chatSystem));
+  mountMind(app, chatSystem, life || new Life(chatSystem));
   mountKnowledge(app, chatSystem);
   mountEvents(app, chatSystem);
   app.use("/app", express.static(join(process.cwd(), "public", "app")));
