@@ -51,7 +51,11 @@ test("同一个 QQ 号在所有群和私聊里是同一个人；别扭会慢慢�
   const w = world();
   t.after(w.close);
   w.mind.bonds.meet([{ userId: "10001", name: "阿明" }], "group:1", w.now());
-  w.mind.bonds.meet([{ userId: "10001", name: "阿明" }], "private:10001", w.now());
+  w.mind.bonds.meet(
+    [{ userId: "10001", name: "阿明" }],
+    "private:10001",
+    w.now(),
+  );
   w.mind.bonds.record({
     id: "10001",
     change: "friction",
@@ -88,14 +92,24 @@ test("自我渐进生长：强度每次只变一点，新特质要跨天的经�
   w.open("group:1");
   const a = w.say("group:1", "bot", "我其实挺喜欢下雨天的");
   const created = w.mind.self.propose(
-    { kind: "trait", content: "我好像是个慢热的人", strength: 0.9, sources: [a.seq] },
+    {
+      kind: "trait",
+      content: "我好像是个慢热的人",
+      strength: 0.9,
+      sources: [a.seq],
+    },
     { time: w.now() },
   );
   let thread = w.mind.self.history(created.thread).at(-1);
   assert.equal(thread.status, "emerging");
   assert(thread.strength <= 0.25);
   w.mind.self.propose(
-    { thread: created.thread, content: "我好像是个慢热的人", strength: 1, sources: [a.seq] },
+    {
+      thread: created.thread,
+      content: "我好像是个慢热的人",
+      strength: 1,
+      sources: [a.seq],
+    },
     { time: w.now() + 1000 },
   );
   thread = w.mind.self.history(created.thread).at(-1);
@@ -104,13 +118,22 @@ test("自我渐进生长：强度每次只变一点，新特质要跨天的经�
   w.advance(26 * HOUR);
   const b = w.say("group:1", "bot", "熟了以后我话就多了");
   w.mind.self.propose(
-    { thread: created.thread, content: "我是个慢热的人，熟了话会多", strength: 1, sources: [b.seq] },
+    {
+      thread: created.thread,
+      content: "我是个慢热的人，熟了话会多",
+      strength: 1,
+      sources: [b.seq],
+    },
     { time: w.now() },
   );
   thread = w.mind.self.history(created.thread).at(-1);
   assert.equal(thread.status, "active");
   assert.equal(thread.days.length, 2);
-  assert.equal(w.mind.self.history(created.thread).length, 3, "修正追加，不覆盖");
+  assert.equal(
+    w.mind.self.history(created.thread).length,
+    3,
+    "修正追加，不覆盖",
+  );
   assert.equal(
     w.mind.self.propose({ kind: "view", content: "没有来源的看法" }).rejected,
     "缺少来源",
@@ -129,7 +152,11 @@ test("自我渐进生长：强度每次只变一点，新特质要跨天的经�
   );
   assert.equal(
     w.mind.self.propose(
-      { kind: "trait", content: "我是个慢热的人，熟了话会多", sources: [b.seq] },
+      {
+        kind: "trait",
+        content: "我是个慢热的人，熟了话会多",
+        sources: [b.seq],
+      },
       { time: w.now() + 5000 },
     ).rejected,
     "与撤销过的内容相同",
@@ -146,7 +173,12 @@ test("她在各群的样子要有经历支持；撤销一版后回到上一版",
     "缺少来源",
   );
   const first = w.mind.faces.propose(
-    { session: "group:1", role: "爱接梗的那个", tone: "随意", sources: [m.seq] },
+    {
+      session: "group:1",
+      role: "爱接梗的那个",
+      tone: "随意",
+      sources: [m.seq],
+    },
     { time: w.now() },
   );
   const second = w.mind.faces.propose(
@@ -164,9 +196,24 @@ test("记忆是一个人的记忆：公开的事在别处相关时想起，私�
   t.after(w.close);
   for (const s of ["group:1", "group:2", "private:10001"]) w.open(s);
   const memory = w.mind.memory;
-  memory.insert({ session: "group:1", subject: "10001", content: "喜欢猫", discretion: "open" });
-  memory.insert({ session: "private:10001", subject: "10001", content: "最近在准备考研", discretion: "private" });
-  memory.insert({ session: "group:1", subject: "10001", content: "下个月要辞职跳槽去上海", discretion: "secret" });
+  memory.insert({
+    session: "group:1",
+    subject: "10001",
+    content: "喜欢猫",
+    discretion: "open",
+  });
+  memory.insert({
+    session: "private:10001",
+    subject: "10001",
+    content: "最近在准备考研",
+    discretion: "private",
+  });
+  memory.insert({
+    session: "group:1",
+    subject: "10001",
+    content: "下个月要辞职跳槽去上海",
+    discretion: "secret",
+  });
   const rows = [{ userId: "10001", text: "猫 考研 辞职 上海" }];
   const elsewhere = memory.retrieve("group:2", rows, Date.now() + 1000);
   const by = (c) => elsewhere.find((m) => m.content === c);
@@ -206,7 +253,10 @@ test("就算模型写出了别处的秘密，发出去之前也会被拦下重�
     w.say("group:2", "10002", "LuckyBot，阿明最近怎么样"),
   );
   assert.equal(trace.status, "sent");
-  assert.deepEqual(w.sent.map((s) => s.text), ["这个我不太清楚诶"]);
+  assert.deepEqual(
+    w.sent.map((s) => s.text),
+    ["这个我不太清楚诶"],
+  );
   assert.match(trace.validation.join(), /保密/);
 });
 
@@ -240,7 +290,9 @@ test("被要求保密的话，整理记忆时也会记成秘密", async (t) => {
     { force: true, models: w.system.models },
   );
   const row = w.store.db
-    .prepare("SELECT discretion FROM core_memories WHERE content='下个月要辞职'")
+    .prepare(
+      "SELECT discretion FROM core_memories WHERE content='下个月要辞职'",
+    )
     .get();
   assert.equal(row.discretion, "secret");
   assert.ok(first.seq < second.seq);
@@ -256,33 +308,63 @@ test("整理记忆时，她自己说过的看法和承诺成为她的一部分�
     summary: "聊到早起",
     facts: [],
     self: [
-      { kind: "view", content: "我觉得早起挺好", strength: 0.3, sources: [mine.seq] },
+      {
+        kind: "view",
+        content: "我觉得早起挺好",
+        strength: 0.3,
+        sources: [mine.seq],
+      },
       { kind: "intention", content: "明天提醒他早起", sources: [mine.seq] },
       { kind: "view", content: "我讨厌早起", sources: [user.seq] },
     ],
   };
-  await w.mind.memory.consolidate("group:1", {}, "", { calls: [] }, { force: true, models: w.system.models });
+  await w.mind.memory.consolidate(
+    "group:1",
+    {},
+    "",
+    { calls: [] },
+    { force: true, models: w.system.models },
+  );
   const threads = w.mind.self.active().map((t) => t.content);
   assert.deepEqual(threads.sort(), ["我觉得早起挺好", "明天提醒他早起"].sort());
 });
 
 test("注意力没有骰子：同样的情况永远得到同样的注意力", () => {
   const now = Date.parse("2026-09-22T12:00:00+08:00");
-  const batch = [{ userId: "1", text: "今晚的流星雨有人看吗？", relation: "unknown", mentions: [] }];
+  const batch = [
+    {
+      userId: "1",
+      text: "今晚的流星雨有人看吗？",
+      relation: "unknown",
+      mentions: [],
+    },
+  ];
   const input = { batch, now, interests: new Set(["流星"]), lastSpokeAt: null };
   const first = attend(input);
   for (let i = 0; i < 50; i++) assert.deepEqual(attend(input), first);
   assert.equal(first.look, true);
   assert.equal(attend({ ...input, interests: new Set() }).look, false);
-  const asleep = attend({ ...input, phase: "asleep", batch: [{ ...batch[0], relation: "direct" }] });
+  const asleep = attend({
+    ...input,
+    phase: "asleep",
+    batch: [{ ...batch[0], relation: "direct" }],
+  });
   assert.equal(asleep.look, false);
   assert.equal(asleep.defer, true);
-  const crisis = attend({ ...input, phase: "asleep", batch: [{ userId: "1", text: "我真的不想活了", relation: "unknown" }] });
+  const crisis = attend({
+    ...input,
+    phase: "asleep",
+    batch: [{ userId: "1", text: "我真的不想活了", relation: "unknown" }],
+  });
   assert.equal(crisis.look, true);
   assert.equal(crisis.crisis, true);
   assert.equal(attend({ ...input, pressure: 1 }).look, false, "预算用完只听");
   assert.equal(
-    attend({ ...input, pressure: 1, batch: [{ ...batch[0], relation: "direct" }] }).look,
+    attend({
+      ...input,
+      pressure: 1,
+      batch: [{ ...batch[0], relation: "direct" }],
+    }).look,
     true,
     "被叫到仍然会看",
   );
@@ -295,7 +377,11 @@ test("Token 账本记下每次调用；预算用完时后台独处停下", async
   const w = world();
   t.after(w.close);
   w.open("private:10001");
-  w.answers.turn = (data) => ({ choice: "speak", targetMessageIds: data.context.batchIds, bubbles: ["在"] });
+  w.answers.turn = (data) => ({
+    choice: "speak",
+    targetMessageIds: data.context.batchIds,
+    bubbles: ["在"],
+  });
   await w.hear("private:10001", w.say("private:10001", "10001", "在吗"));
   const usage = w.mind.budget.usage(w.now());
   assert.equal(usage.stages.turn.calls, 1);
@@ -305,19 +391,37 @@ test("Token 账本记下每次调用；预算用完时后台独处停下", async
   assert.equal(w.mind.budget.pressure("conversation", w.now()), 1.32);
   w.advance(HOUR);
   assert.match(w.life.eligible(w.now()), /预算/);
-  assert.throws(() => w.mind.budget.save({ innerShare: 0.9, upkeepShare: 0.2 }));
+  assert.throws(() =>
+    w.mind.budget.save({ innerShare: 0.9, upkeepShare: 0.2 }),
+  );
 });
 
 test("每分钟发言轮数的物理限制仍然有效", async (t) => {
   const w = world();
   t.after(w.close);
   w.open("group:1");
-  w.answers.turn = (data) => ({ choice: "speak", targetMessageIds: data.context.batchIds, bubbles: ["嗯"] });
+  w.answers.turn = (data) => ({
+    choice: "speak",
+    targetMessageIds: data.context.batchIds,
+    bubbles: ["嗯"],
+  });
   const insert = w.store.db.prepare(
     "INSERT INTO core_outbox(id,trace_id,session_id,position,text,status,time) VALUES (?,?,?,?,?,?,?)",
   );
-  for (let i = 0; i < 20; i++) insert.run(`o${i}`, `t${i}`, "group:1", 0, "嗯", "confirmed", w.now() - 1000);
-  const trace = await w.hear("group:1", w.say("group:1", "10001", "LuckyBot 在吗"));
+  for (let i = 0; i < 20; i++)
+    insert.run(
+      `o${i}`,
+      `t${i}`,
+      "group:1",
+      0,
+      "嗯",
+      "confirmed",
+      w.now() - 1000,
+    );
+  const trace = await w.hear(
+    "group:1",
+    w.say("group:1", "10001", "LuckyBot 在吗"),
+  );
   assert.equal(trace.status, "silent");
   assert.match(trace.reason, /每分钟发言轮数限速（20轮）/);
   assert.deepEqual(w.stages(), [], "限速在花 token 之前生效");
@@ -333,14 +437,20 @@ test("睡着时被私聊，会等醒来再看；醒来后读到并自己决定�
     targetMessageIds: data.context.batchIds,
     bubbles: ["早，刚看到"],
   });
-  const night = await w.hear("private:10001", w.say("private:10001", "10001", "睡了吗"));
+  const night = await w.hear(
+    "private:10001",
+    w.say("private:10001", "10001", "睡了吗"),
+  );
   assert.equal(night.status, "deferred");
   assert.deepEqual(w.stages(), []);
   w.at("2026-09-22T09:10:00+08:00");
   const woke = await w.life.tick();
   assert.equal(woke.status, "sent");
   assert.equal(w.calls[0].data.occasion.type, "wake");
-  assert.deepEqual(w.sent.map((s) => s.text), ["早，刚看到"]);
+  assert.deepEqual(
+    w.sent.map((s) => s.text),
+    ["早，刚看到"],
+  );
   assert.equal((await w.life.tick()).status === "sent", false, "不会重复回应");
 });
 
@@ -348,7 +458,12 @@ test("危机信号会叫醒她，不论她的心情如何都要认真回应", as
   const w = world({ start: "2026-09-22T03:00:00+08:00", rhythm: true });
   t.after(w.close);
   w.open("group:1");
-  w.mind.affect.feel({ feeling: "很烦", intensity: 1, valence: -1, time: w.now() });
+  w.mind.affect.feel({
+    feeling: "很烦",
+    intensity: 1,
+    valence: -1,
+    time: w.now(),
+  });
   w.answers.turn = () => ({
     appraisal: "我今天很烦",
     choice: "silent",
@@ -357,11 +472,20 @@ test("危机信号会叫醒她，不论她的心情如何都要认真回应", as
   w.answers.generation = {
     bubbles: ["你现在还好吗？身边有人能陪着你吗？"],
   };
-  const trace = await w.hear("group:1", w.say("group:1", "10002", "我真的不想活了"));
+  const trace = await w.hear(
+    "group:1",
+    w.say("group:1", "10002", "我真的不想活了"),
+  );
   assert.equal(trace.status, "sent");
   assert.equal(trace.decision.choice, "speak");
-  assert.deepEqual(w.sent.map((s) => s.text), ["你现在还好吗？身边有人能陪着你吗？"]);
-  assert.match(JSON.stringify(w.calls.find((c) => c.stage === "generation").data.guidance), /安全/);
+  assert.deepEqual(
+    w.sent.map((s) => s.text),
+    ["你现在还好吗？身边有人能陪着你吗？"],
+  );
+  assert.match(
+    JSON.stringify(w.calls.find((c) => c.stage === "generation").data.guidance),
+    /安全/,
+  );
 });
 
 test("从旧版本升级：人设成为天性第一版，群人格覆盖成为她在那个群的第一个面貌，手记、状态和候选记忆都保留", () => {
@@ -372,12 +496,48 @@ test("从旧版本升级：人设成为天性第一版，群人格覆盖成为�
     CREATE TABLE time_notes (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created INTEGER NOT NULL, watermark INTEGER NOT NULL, kind TEXT NOT NULL, content TEXT NOT NULL, sources TEXT NOT NULL, parent_id TEXT, confidence REAL, importance REAL, revisit_at INTEGER, status TEXT DEFAULT 'open', hidden INTEGER DEFAULT 0, outreach TEXT DEFAULT '', outreach_status TEXT DEFAULT 'pending');
     CREATE TABLE time_states (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created INTEGER NOT NULL, watermark INTEGER NOT NULL, phase TEXT, mood TEXT, energy TEXT, social_pull TEXT, attention TEXT, narrative TEXT, source_note_id TEXT, factors TEXT DEFAULT '{}');`);
   const put = db.prepare("INSERT INTO core_config(id,value) VALUES (?,?)");
-  put.run("persona", JSON.stringify({ name: "小满", base: "喜欢看星星", interests: ["天文"], sarcasm: 10, warmth: 80, humor: 30, activity: 40, initiative: 30, mood: "平静" }));
-  put.run("session:group:1", JSON.stringify({ persona: { base: "在这个群更活泼" }, comfortOnDistress: true, maxReply: 120 }));
-  db.prepare("INSERT INTO time_notes(id,session_id,created,watermark,kind,content,sources) VALUES (?,?,?,?,?,?,?)").run("n1", "group:1", 1000, 5, "unfinished", "他的面试还没结果", "[5]");
-  db.prepare("INSERT INTO time_states(id,session_id,created,watermark,phase,mood,energy) VALUES (?,?,?,?,?,?,?)").run("s1", "group:1", 2000, 5, "quiet", "有点挂心", "steady");
-  db.prepare("INSERT INTO memory_candidates(user_id,name,content,scope,source_text,event_id,time) VALUES (?,?,?,?,?,?,?)").run("10001", "甲", "喜欢冰拿铁", "group:1", "记住，我喜欢冰拿铁", "e1", 3000);
-  db.prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES ('group:1','一群','group',1)").run();
+  put.run(
+    "persona",
+    JSON.stringify({
+      name: "小满",
+      base: "喜欢看星星",
+      interests: ["天文"],
+      sarcasm: 10,
+      warmth: 80,
+      humor: 30,
+      activity: 40,
+      initiative: 30,
+      mood: "平静",
+    }),
+  );
+  put.run(
+    "session:group:1",
+    JSON.stringify({
+      persona: { base: "在这个群更活泼" },
+      comfortOnDistress: true,
+      maxReply: 120,
+    }),
+  );
+  db.prepare(
+    "INSERT INTO time_notes(id,session_id,created,watermark,kind,content,sources) VALUES (?,?,?,?,?,?,?)",
+  ).run("n1", "group:1", 1000, 5, "unfinished", "他的面试还没结果", "[5]");
+  db.prepare(
+    "INSERT INTO time_states(id,session_id,created,watermark,phase,mood,energy) VALUES (?,?,?,?,?,?,?)",
+  ).run("s1", "group:1", 2000, 5, "quiet", "有点挂心", "steady");
+  db.prepare(
+    "INSERT INTO memory_candidates(user_id,name,content,scope,source_text,event_id,time) VALUES (?,?,?,?,?,?,?)",
+  ).run(
+    "10001",
+    "甲",
+    "喜欢冰拿铁",
+    "group:1",
+    "记住，我喜欢冰拿铁",
+    "e1",
+    3000,
+  );
+  db.prepare(
+    "INSERT INTO sessions(id,name,kind,enabled) VALUES ('group:1','一群','group',1)",
+  ).run();
   const system = new ChatSystem(store, async () => ({}));
   const nature = system.mind.nature.current();
   assert.equal(nature.name, "小满");
@@ -393,7 +553,9 @@ test("从旧版本升级：人设成为天性第一版，群人格覆盖成为�
   assert.deepEqual(system.mind.thoughts.get("n1").sources, ["m:5"]);
   assert.equal(system.mind.affect.history()[0].feeling, "有点挂心");
   assert.equal(
-    store.db.prepare("SELECT status FROM core_memories WHERE content='喜欢冰拿铁'").get().status,
+    store.db
+      .prepare("SELECT status FROM core_memories WHERE content='喜欢冰拿铁'")
+      .get().status,
     "confirmed",
   );
   system.close();

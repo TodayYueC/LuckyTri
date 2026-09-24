@@ -369,6 +369,14 @@ onMounted(load);
         ></label
       >
       <label class="setting-toggle"
+        ><input type="checkbox" v-model="settings.life.reading" /><span
+          ><b>独处时读资料</b
+          ><small
+            >从共享知识库里按自己的兴趣挑着读，一段一段读下去；读过的内容聊天时可以自然提起。</small
+          ></span
+        ></label
+      >
+      <label class="setting-toggle"
         ><input type="checkbox" v-model="settings.life.diary" /><span
           ><b>睡前写日记</b
           ><small

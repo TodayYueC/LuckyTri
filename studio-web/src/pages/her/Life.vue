@@ -149,6 +149,32 @@ onMounted(load);
     <section class="surface" style="grid-column: 1 / -1">
       <div class="section-heading">
         <div>
+          <span class="eyebrow">READING / 读过才能说读过</span>
+          <h3>她读过的</h3>
+          <p class="small">
+            独处时，她会从共享知识库里挑自己感兴趣的读，一段一段地读下去，读后的想法可以改变她。还有
+            {{ life.unread }} 段没读。
+          </p>
+        </div>
+      </div>
+      <div v-if="life.readings.length" class="row-list">
+        <article v-for="r in life.readings" :key="r.id">
+          <time>{{ when(r.created) }}</time>
+          <span class="tag">第 {{ r.ordinal + 1 }} / {{ r.total }} 段</span>
+          <p>
+            《{{ r.title }}》<small>{{ r.note || "读完没说什么" }}</small>
+          </p>
+        </article>
+      </div>
+      <p v-else class="gentle-empty">
+        还没读过什么。把文章放进「记忆 →
+        文档知识库」的共享集合，她独处时会去读。
+      </p>
+    </section>
+
+    <section class="surface" style="grid-column: 1 / -1">
+      <div class="section-heading">
+        <div>
           <span class="eyebrow">JOURNAL / 后来想到的</span>
           <h3>手记</h3>
         </div>

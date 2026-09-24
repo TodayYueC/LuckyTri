@@ -1,18 +1,21 @@
 # LuckyBot
 
-LuckyBot is a local-first QQ companion. It receives group and private messages on your machine, decides whether to speak, then writes a reply from the current batch, quote chain, persona, memories, and knowledge base.
+LuckyBot is an AI companion that started in QQ group chats. She follows multi-person conversations on your machine, decides for herself when to join in and when to stay quiet, remembers people and events through long-term memory and a life of her own, and revisits what she used to think.
 
 The current connector is OneBot 11. QQ login and delivery are handled by [NapCat](https://napneko.github.io/). LuckyBot does not store a QQ password. Models use a Chat Completions-compatible API.
 
 **Language:** [English](README.en.md) · [简体中文](README.md)
 
-## What it does
+## One of her
 
-- Private chats, mentions, name calls, and quotes of its own messages are answered directly. Ordinary group messages are judged in context, then sampled with a participation probability.
-- Messages that arrive close together are handled as one batch.
-- Long-term memories stay scoped to a session, a private chat, or a shared pool. An explicit “remember …” request becomes a candidate and is used only after review.
-- Documents can be stored in a knowledge collection. Retrieved passages enter the context as data and do not skip the speech decision.
-- LuckyBot shows the live conversation and edits sessions, persona, models, and the QQ connection. Historical replay does not send QQ messages or write production memory.
+There is one of her across every group and private chat. You write her nature; her sense of self, who she is in each group and how she feels about each person grow from experience. Every change cites what caused it; you can inspect and revoke, but not rewrite. See the [design and usage guide (Chinese)](docs/她的一生.md).
+
+- **She decides to speak.** No participation probability, no cooldown. When she reads a conversation she first appraises what it means to her, then chooses to speak, react briefly, say she'd rather not, or stay silent — and records why. Silence still moves her mood and her feelings about people.
+- **Attention.** Being addressed, a private chat, or a possible crisis always gets read. Ordinary group chatter is read only when something draws her; otherwise she glances without spending tokens, and unread messages are read together next time.
+- **A person is one person.** The same QQ number is the same person in every group. There is one memory: things learned elsewhere come up only when relevant, things told privately are not repeated in public, and secrets never leave where they were told.
+- **Her days.** She sleeps (direct messages wait until she wakes, except a crisis), reflects when things are quiet, writes a diary before bed comparing herself with yesterday, rewrites chapters of her autobiography, and may reach out to someone she has been thinking about — whether to say it is her own call.
+- **Tokens are accounted for.** One call does appraisal, feelings and words together; every call is recorded as conversation, inner life or upkeep; an optional daily cap with background shares makes her read only direct messages when it runs low.
+- Messages close together are handled as one batch; documents can go into a knowledge base; replay never sends, never writes her mind, and only sees who she was at that moment.
 
 ## Requirements
 
@@ -70,10 +73,10 @@ Use OneBot 11, array message format, and `ONEBOT_TOKEN`. The port is `PORT` from
 | --- | --- | --- |
 | Today | `#overview` | Connection, active sessions, recent decisions, global switch, simulation |
 | Conversation | `#live` | Live messages, decisions, cited knowledge, simulated chat |
-| Conversation | `#spaces` | Add, pause, archive, and delete sessions; model, probability, cooldown, aggregation |
+| Conversation | `#spaces` | Add, pause, archive, and delete sessions; model, vision, aggregation, context, reply length |
 | Conversation | `#lab` | Isolated replay by message sequence |
-| Memory | `#knowledge` | Session memories, review candidates, documents, retrieval test |
-| Persona | `#character` | Persona, voice, prompts, and isolated preview |
+| Her | `#her` | Now, self, bonds, life, nature; a preview chat through the real pipeline |
+| Memory | `#knowledge` | What she remembers (source, discretion, revoke), documents, retrieval test |
 | System | `#models` | Model profiles, budgets, vision, embeddings, connection test |
 | System | `#connect` | NapCat install, configuration, launch, and readiness |
 
@@ -98,8 +101,9 @@ Binding a non-local address requires `ADMIN_TOKEN`. See [SECURITY.md](SECURITY.m
 ```bash
 npm run dev:ui       # UI dev server; API proxied to port 3210
 npm run build:ui     # Build into public/app for npm start
-npm test
-npm run test:ui
+npm test             # includes a deterministic three-day life simulation
+npm run test:ui      # studio smoke test and the 「她」 workbench in a browser
+node scripts/evaluate-life.js   # a few days with your real model, report for reading (spends tokens)
 npm run format:check
 npm run docs:build   # Rebuild the web guide from docs/使用教程.md
 ```
@@ -109,8 +113,9 @@ Tests use temporary databases. They do not need a real key and do not send QQ me
 ```text
 server/index.js      Process startup, auth, and wiring
 server/channels/     Session identity, OneBot adapter, WebSocket
-server/core/         Context, speech decision, generation, delivery
-server/knowledge/    Memories, documents, retrieval
+server/core/         Perception, context, one turn call, checks, delivery
+server/mind/         Her mind: nature, affect, bonds, self, faces, memory, attention, bottom lines, token ledger, life
+server/knowledge/    Documents and retrieval
 server/studio/       HTTP for settings, NapCat, and model checks
 studio-web/          Vue 3 UI
 public/app/          Built UI
@@ -121,13 +126,10 @@ vendor/napcat/       Verified NapCat Windows packages
 
 ## Documentation
 
+- [Her life: design and usage (Chinese)](docs/她的一生.md)
 - [Chinese guide](docs/使用教程.md)
 - [Security](SECURITY.md)
 
 ## License
 
 Project code is released under the [MIT License](LICENSE). NapCat packages in `vendor/napcat/` keep their upstream licenses.
-
-## Time and continuity
-
-The Time workspace adds elapsed-time awareness, decaying topics, low-frequency reflection, and session-scoped journal entries with sources and revision links. Background reflection and proactive messages are opt-in, with quiet hours, persistent call/token budgets, and no repeated outreach without a user response. See the [time system guide (Chinese)](docs/时间系统.md).

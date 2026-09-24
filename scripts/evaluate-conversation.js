@@ -12,6 +12,16 @@ const settings = JSON.parse(
   source.prepare("SELECT value FROM settings WHERE id=1").get().value,
 );
 const configs = source.prepare("SELECT id,value FROM core_config").all();
+const nature = (() => {
+  try {
+    const row = source
+      .prepare("SELECT value FROM mind_nature ORDER BY version DESC LIMIT 1")
+      .get();
+    return row ? JSON.parse(row.value) : null;
+  } catch {
+    return null;
+  }
+})();
 const originalSession = source
   .prepare(
     "SELECT session_id FROM core_events WHERE role='assistant' ORDER BY seq DESC LIMIT 1",
@@ -29,10 +39,9 @@ async function scenario(label, history, turns, overrides = {}) {
   const system = new ChatSystem(store, async () => {
     throw Error("评测禁止发送QQ消息");
   });
-  for (const c of configs.filter((c) =>
-    ["models", "persona", "prompts"].includes(c.id),
-  ))
+  for (const c of configs.filter((c) => ["models", "prompts"].includes(c.id)))
     system.repo.saveConfig(c.id, JSON.parse(c.value));
+  if (nature) system.mind.nature.save(nature, "评测副本");
   const session = "group:evaluation";
   const originalPolicy = configs.find(
     (c) => c.id === "session:" + originalSession,
@@ -81,7 +90,8 @@ async function scenario(label, history, turns, overrides = {}) {
         input: batchTurns.map((x) => x.text),
         clock: t.snapshot?.conversation?.clock,
         status: t.status,
-        decision: t.decision?.action,
+        decision: t.decision?.choice,
+        appraisal: t.decision?.appraisal,
         output: t.response?.bubbles || [],
         validation: t.validation || [],
         fallback: t.steps.some((x) => /本地.*(?:短句|兜底)/.test(x)),

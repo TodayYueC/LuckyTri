@@ -74,9 +74,11 @@ try {
       rows.filter((m) => m.role === "user"),
       { replay: true },
     );
+    const choice = trace.decision?.choice;
     const result = {
       name: c.name,
       expected: c.expected,
+      matched: (c.expected === "SILENT") === (!choice || choice === "silent"),
       status: trace.status,
       decision: trace.decision,
       response: trace.response,
