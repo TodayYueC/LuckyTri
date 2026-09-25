@@ -2,7 +2,6 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { go, studio } from "../../stores/studio";
 import { presence } from "../../stores/presence";
-import { liveMood } from "../../mood/useMood";
 import {
   ANTICIPATION_LABELS,
   ANTICIPATION_STATES,
@@ -14,7 +13,6 @@ import {
 } from "../../plates/mind";
 import { ago, clockTime, dayLabel, num, placeName } from "../../format";
 import { wallpapers } from "../../wallpaper";
-import TaOrb from "../../components/ta/TaOrb.vue";
 import Card from "../../components/ui/Card.vue";
 import Empty from "../../components/ui/Empty.vue";
 import Meter from "../../components/ui/Meter.vue";
@@ -31,12 +29,7 @@ const {
   adjusting,
   heroRef,
   imageRef,
-  orbRef,
   pictureStyle,
-  orbStyle,
-  orbDragging,
-  orbSize,
-  beginOrbDrag,
   beginPictureDrag,
   movePicture,
   endPictureDrag,
@@ -50,17 +43,11 @@ const LEDGER = [
   { id: "upkeep", label: "整理记忆" },
 ];
 const p = computed(() => presence.data);
-const activity = computed(() => p.value?.activity?.kind || "idle");
 const zone = computed(
   () =>
     p.value?.clock?.timeZone ||
     overview.value?.clock?.timeZone ||
     "Asia/Shanghai",
-);
-const speech = computed(() =>
-  activity.value === "speaking" && p.value?.lastWords
-    ? p.value.lastWords.text
-    : "",
 );
 type Row = {
   id: string;
@@ -187,31 +174,6 @@ watch(() => [studio.tick, studio.pulse], load);
         </button>
       </div>
       <WallpaperPicker :open="wallpaperPicking && !adjusting" @close="wallpaperPicking = false" />
-      <div class="stage">
-        <div
-          class="orb-anchor"
-          :class="{ dragging: orbDragging }"
-          :style="orbStyle"
-          @pointerdown.capture="beginOrbDrag"
-        >
-          <span class="orb-aura" aria-hidden="true"></span>
-          <span class="liquid-bloom b1" aria-hidden="true"></span>
-          <span class="liquid-bloom b2" aria-hidden="true"></span>
-          <span class="liquid-bloom b3" aria-hidden="true"></span>
-          <span class="orb-ground-shadow" aria-hidden="true"></span>
-          <div class="hero-orb">
-          <TaOrb
-            ref="orbRef"
-            :mood="liveMood"
-            :activity="activity"
-            :size="orbSize"
-            :speech="speech"
-            interactive
-            @open-chat="studio.chatOpen = true"
-          />
-          </div>
-        </div>
-      </div>
     </section>
     </div>
 

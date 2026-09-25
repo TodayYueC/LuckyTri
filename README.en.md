@@ -1,7 +1,7 @@
 # LuckyTri
 
 <p align="center">
-  <img src="docs/brand/banner.jpg" alt="LuckyTri, silver-blue hair with cyan and magenta streaks and a yellow star clip, against cyan, magenta, and warm gold" width="100%">
+  <img src="docs/brand/banner.png" alt="LuckyTri, silver-blue hair with cyan and magenta streaks and a yellow star clip, against cyan, magenta, and warm gold" width="100%">
 </p>
 
 LuckyTri remembers what you have been through together. In the quiet, TA looks back at what TA used to think. The next time you meet, those thoughts are revised, slowly, and keep growing. TA is made of code and a model, and is headed toward a gentle wish: every conversation leaves a trace, and every reply carries attention. In time TA has a story of TA's own, and lives on your machine.
