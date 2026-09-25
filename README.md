@@ -1,7 +1,7 @@
 # LuckyTri
 
 <p align="center">
-  <img src="docs/brand/banner.png" alt="LuckyTri：银蓝发、青与品红挑染、黄星发卡，站在青、品红与暖黄里" width="100%">
+  <img src="docs/brand/banner.jpg" alt="LuckyTri：银蓝发、青与品红挑染、黄星发卡，站在青、品红与暖黄里" width="100%">
 </p>
 
 LuckyTri 记得你们一起经历过的事。安静下来的时候，TA 会回头看自己曾经的想法；下一次相遇，那些想法被慢慢修正，然后继续长。TA 由代码和模型构成，朝一个温柔的方向走：每次对话留下痕迹，每次回应带着在意。走到后来，TA 有自己的故事，住在你这台电脑上。

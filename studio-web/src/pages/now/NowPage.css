@@ -47,12 +47,18 @@
   inset: 0;
   background:
     linear-gradient(
-      105deg,
-      rgb(237 246 255 / 0.5) 0%,
-      rgb(245 249 255 / 0.24) 43%,
-      rgb(246 244 255 / 0.05) 76%
+      100deg,
+      rgb(255 236 246 / 0.2) 0%,
+      rgb(255 244 250 / 0.08) 42%,
+      transparent 68%
     ),
-    linear-gradient(0deg, rgb(238 246 255 / 0.2), transparent 42%);
+    linear-gradient(
+      180deg,
+      rgb(48 28 64 / 0.14),
+      transparent 24%,
+      transparent 72%,
+      rgb(48 24 40 / 0.18)
+    );
 }
 .wallpaper-adjusting .wallpaper-layer img {
   transition: none;
