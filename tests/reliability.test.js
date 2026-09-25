@@ -143,7 +143,7 @@ test("GPT 模型逐条发送原文、本轮数据放在尾部，前缀可复用�
   assert.match(first.body.prompt_cache_key, /^luckybot-[a-f0-9]{20}-decision$/);
   assert.equal(second.body.prompt_cache_key, first.body.prompt_cache_key);
   assert.match(rewrite.body.prompt_cache_key, /-generation$/);
-  assert.equal(first.headers["User-Agent"], "LuckyTri/0.8.0");
+  assert.equal(first.headers["User-Agent"], "LuckyTri/0.8.1");
   assert.match(first.headers["x-opencode-session"], /^[a-f0-9]{32}$/);
   assert.equal(first.body.max_output_tokens, 2048 + 8192);
   assert.deepEqual(trace.calls[0].tokens, {
