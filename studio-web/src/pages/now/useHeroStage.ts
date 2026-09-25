@@ -2,8 +2,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { toast } from "../../api";
 import { useMedia } from "../../media";
 
-const WALLPAPER_KEY = "luckytri-home-wallpaper-position-v2";
-const ORB_KEY = "luckytri-home-orb-position-v1";
+const WALLPAPER_KEY = "luckytri-home-wallpaper-position-v3";
+const ORB_KEY = "luckytri-home-orb-position-v2";
 
 function readPoint(
   key: string,
@@ -40,8 +40,8 @@ export function useHeroStage() {
   const heroRef = ref<HTMLElement | null>(null);
   const imageRef = ref<HTMLImageElement | null>(null);
   const orbRef = ref<{ cancel: () => void } | null>(null);
-  const picture = ref({ x: 50, y: 30 });
-  const orb = ref({ x: 76, y: 50 });
+  const picture = ref({ x: 50, y: 50 });
+  const orb = ref({ x: 16, y: 84 });
   const orbDragging = ref(false);
   const pictureStyle = computed(() => ({
     objectPosition: `${picture.value.x}% ${picture.value.y}%`,
@@ -178,7 +178,7 @@ export function useHeroStage() {
   }
 
   function resetPicture() {
-    picture.value = { x: 50, y: 30 };
+    picture.value = { x: 50, y: 50 };
   }
 
   function finishPicture() {
