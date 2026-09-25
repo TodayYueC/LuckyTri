@@ -28,8 +28,10 @@ defineProps<{ items: T[]; label: string }>();
 }
 .timeline li {
   display: grid;
-  grid-template-columns: 22px 1fr;
-  gap: 10px;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 12px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 84px;
 }
 .stem {
   position: relative;
@@ -41,8 +43,14 @@ defineProps<{ items: T[]; label: string }>();
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 2px;
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(
+    var(--glow-a),
+    rgb(255 255 255 / 0.85),
+    var(--glow-b)
+  );
+  box-shadow: 0 0 10px color-mix(in srgb, var(--glow-a) 55%, transparent);
 }
 .timeline li:first-child .stem::before {
   top: 12px;
@@ -52,12 +60,15 @@ defineProps<{ items: T[]; label: string }>();
 }
 .stem i {
   position: relative;
-  width: 11px;
-  height: 11px;
-  margin-top: 8px;
+  width: 13px;
+  height: 13px;
+  margin-top: 18px;
   border-radius: 50%;
-  background: var(--surface-strong);
-  border: 2.5px solid var(--accent);
+  background: linear-gradient(145deg, white, var(--glow-a));
+  border: 2px solid white;
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent) 33%, transparent),
+    0 0 13px var(--glow-a);
 }
 li[data-tone="warm"] .stem i {
   border-color: var(--cheek);
@@ -75,6 +86,19 @@ li[data-tone="night"] .stem i {
 }
 .entry {
   min-width: 0;
-  padding: 4px 0 14px;
+  margin-bottom: 10px;
+  padding: 11px 15px;
+  border: 1px solid rgb(255 255 255 / 0.76);
+  border-radius: 18px;
+  background:
+    linear-gradient(125deg, rgb(255 255 255 / 0.66), rgb(255 255 255 / 0.2)),
+    var(--glass-fill);
+  box-shadow:
+    inset 0 1px 0 white,
+    0 8px 21px -18px var(--accent);
+  transition: transform 480ms var(--jelly);
+}
+.timeline li:hover .entry {
+  transform: translateX(4px) scale(1.01);
 }
 </style>

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { tokenEqual } from "../http.js";
 import { effectiveOneBotToken } from "../qq-setup.js";
 import { onebot, normalize } from "./onebot.js";
+import { applyDirectoryNames } from "../core/sessions.js";
 
 export function createOneBotGateway(store) {
   const pending = new Map();
@@ -13,6 +14,46 @@ export function createOneBotGateway(store) {
   let lastDisconnectAt = null;
   let heartbeat = null;
   let wss = null;
+  let directoryAt = 0;
+
+  function asList(data) {
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.data)) return data.data;
+    if (Array.isArray(data?.groups)) return data.groups;
+    return [];
+  }
+
+  async function refreshDirectory() {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return 0;
+    if (Date.now() - directoryAt < 15000) return 0;
+    directoryAt = Date.now();
+    const listed = async (action, params = {}) => {
+      try {
+        return asList(await rpc(action, params, 8000));
+      } catch (error) {
+        console.error(`读取 QQ ${action} 失败：${error.message}`);
+        return [];
+      }
+    };
+    const groups = await listed("get_group_list");
+    const friends = await listed("get_friend_list");
+    const known = store.db.prepare("SELECT id,kind FROM sessions").all();
+    for (const row of known) {
+      const native = String(row.id).split(":").pop();
+      const isGroup = row.kind === "group" || String(row.id).includes(":group:");
+      if (!isGroup || !/^\d+$/.test(native)) continue;
+      if (groups.some((group) => String(group.group_id) === native)) continue;
+      try {
+        const info = await rpc("get_group_info", { group_id: Number(native) }, 8000);
+        if (info && typeof info === "object") groups.push(info);
+      } catch (error) {
+        console.error(`读取群 ${native} 的名字失败：${error.message}`);
+      }
+    }
+    const changed = applyDirectoryNames(store.db, { groups, friends });
+    if (changed) store.revision++;
+    return changed;
+  }
 
   const rpc = (action, params, timeoutMs) => {
     if (!socket || socket.readyState !== WebSocket.OPEN)
@@ -80,6 +121,17 @@ export function createOneBotGateway(store) {
     wss.on("connection", (ws) => {
       socket = ws;
       connectedAt = Date.now();
+      directoryAt = 0;
+      const pullNames = (attempt = 0) => {
+        directoryAt = 0;
+        refreshDirectory()
+          .then((changed) => {
+            if (changed || attempt >= 4) return;
+            setTimeout(() => pullNames(attempt + 1), 4000).unref?.();
+          })
+          .catch(() => {});
+      };
+      pullNames();
       ws.isAlive = true;
       ws.on("pong", () => (ws.isAlive = true));
       ws.on("message", async (raw) => {
@@ -91,9 +143,18 @@ export function createOneBotGateway(store) {
             const p = pending.get(event.echo);
             clearTimeout(p.timer);
             pending.delete(event.echo);
-            event.status === "ok" && event.retcode === 0
-              ? p.resolve(event.data || {})
-              : p.reject(new Error("QQ 拒绝发送消息"));
+            Number(event.retcode) === 0 ||
+            event.status === "ok" ||
+            event.status === "success"
+              ? p.resolve(event.data ?? {})
+              : p.reject(
+                  new Error(
+                    event.message ||
+                      event.wording ||
+                      event.msg ||
+                      "QQ 没有完成这个请求",
+                  ),
+                );
             return;
           }
           const m = normalize(event, { botMessageIds });
@@ -149,5 +210,5 @@ export function createOneBotGateway(store) {
     };
   }
 
-  return { send, fetchQuoted, fetchImage, attach, close, status };
+  return { send, fetchQuoted, fetchImage, refreshDirectory, attach, close, status };
 }

@@ -604,7 +604,7 @@ export const MODEL_CATALOG = [
     ],
     reasoningEffort: "low",
     summary:
-      "OpenCode Zen · 当前限时免费 · Chat Completions 接口。参考 OpenRouter Space Bunny Alpha 规格：1M 上下文、最高 524K 输出，支持图像/视频、推理、工具和 JSON；其匿名第三方提供方可能保留提示和回答。LuckyBot 默认输入 128K、输出 8K、低推理；当前图片链路可用，视频链路未支持。Zen 路由能力与数据政策可能不同。",
+      "OpenCode Zen · 当前限时免费 · Chat Completions 接口。参考 OpenRouter Space Bunny Alpha 规格：1M 上下文、最高 524K 输出，支持图像/视频、推理、工具和 JSON；其匿名第三方提供方可能保留提示和回答。LuckyTri 默认输入 128K、输出 8K、低推理；当前图片链路可用，视频链路未支持。Zen 路由能力与数据政策可能不同。",
   }),
   {
     id: "custom",

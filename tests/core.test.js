@@ -1092,7 +1092,7 @@ test("OpenCode Messages 模型映射系统提示、图像、推理预算并解�
   assert.equal(request.url, "https://opencode.ai/zen/go/v1/messages");
   assert.equal(request.options.headers.Authorization, "Bearer SECRET");
   assert.equal(request.options.headers["anthropic-version"], "2023-06-01");
-  assert.equal(request.options.headers["User-Agent"], "LuckyBot/0.8.0");
+  assert.equal(request.options.headers["User-Agent"], "LuckyTri/0.8.0");
   assert.match(request.options.headers["x-opencode-session"], /^[a-f0-9]{32}$/);
   assert.equal(request.body.model, "minimax-m3");
   assert.equal(request.body.messages[0].content[2].source.type, "base64");
@@ -1519,8 +1519,11 @@ test("主模型不能看图时，视觉模型的观察进入回复且不附带�
       unavailable: [],
     }),
   });
+  system.repo.saveConfig("models", [
+    { ...textModel, isDefault: true, enabled: true },
+    { ...visionModel, isDefault: false, enabled: true },
+  ]);
   system.repo.saveConfig("session:" + session, {
-    visionModelId: "vision",
     selectiveVision: true,
   });
   system.repo.append(

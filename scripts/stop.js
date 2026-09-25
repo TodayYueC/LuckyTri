@@ -19,11 +19,11 @@ try {
     throw new Error("无法验证服务身份，请检查端口与管理令牌；未停止任何进程");
   const info = await response.json();
   if (
-    !["luckybot", "lucky", "xiaoman"].includes(info.app) ||
+    !["luckytri", "luckybot", "lucky", "xiaoman"].includes(info.app) ||
     typeof info.workspace !== "string" ||
     normalize(info.workspace) !== normalize(realpathSync(process.cwd()))
   )
-    throw new Error("该端口不是当前项目的 LuckyBot；未停止任何进程");
+    throw new Error("该端口不是当前项目的 LuckyTri；未停止任何进程");
   const stopped = await fetch(base + "/api/service/stop", {
     method: "POST",
     headers,
@@ -31,10 +31,10 @@ try {
     signal: AbortSignal.timeout(5000),
   });
   if (!stopped.ok) throw new Error("服务拒绝停止请求");
-  console.log("已请求停止 LuckyBot。稍等数秒后可运行 npm start。");
+  console.log("已请求停止 LuckyTri。稍等数秒后可运行 npm start。");
 } catch (error) {
   console.error(
-    error instanceof TypeError ? "未连接到 LuckyBot，可能已经停止" : error.message,
+    error instanceof TypeError ? "未连接到 LuckyTri，可能已经停止" : error.message,
   );
   process.exitCode = 1;
 }

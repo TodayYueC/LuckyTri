@@ -3,27 +3,27 @@
 @property --sky-top {
   syntax: "<color>";
   inherits: true;
-  initial-value: #eaf8f2;
+  initial-value: #c8f3e4;
 }
 @property --sky-mid {
   syntax: "<color>";
   inherits: true;
-  initial-value: #dcf1ec;
+  initial-value: #e7f7f1;
 }
 @property --sky-bottom {
   syntax: "<color>";
   inherits: true;
-  initial-value: #d2e8f4;
+  initial-value: #f6efe2;
 }
 @property --glow-a {
   syntax: "<color>";
   inherits: true;
-  initial-value: #bdf2da;
+  initial-value: #5ddec0;
 }
 @property --glow-b {
   syntax: "<color>";
   inherits: true;
-  initial-value: #c7e4ff;
+  initial-value: #8eb6ff;
 }
 @property --accent {
   syntax: "<color>";
@@ -48,12 +48,12 @@
 @property --surface {
   syntax: "<color>";
   inherits: true;
-  initial-value: rgb(255 255 255 / 0.72);
+  initial-value: rgb(255 255 255 / 0.58);
 }
 @property --surface-strong {
   syntax: "<color>";
   inherits: true;
-  initial-value: #ffffff;
+  initial-value: rgb(255 255 255 / 0.9);
 }
 @property --line {
   syntax: "<color>";
@@ -83,20 +83,31 @@
   --font-display:
     "Segoe UI Variable Display", "Segoe UI", "SF Pro Rounded",
     "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif;
+  --font-editorial:
+    "Palatino Linotype", "Noto Serif SC", "Songti SC", "SimSun", serif;
   --font-mono:
     ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
   --r-xs: 8px;
   --r-s: 12px;
   --r-m: 18px;
-  --r-l: 24px;
-  --r-xl: 34px;
-  --gap: 18px;
-  --dock-w: 236px;
+  --r-l: 27px;
+  --r-xl: 40px;
+  --gap: 22px;
+  --dock-w: 224px;
   --topbar-h: 76px;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --spring: cubic-bezier(0.22, 1.45, 0.42, 1);
+  --jelly: cubic-bezier(0.34, 1.56, 0.5, 1);
   --tempo: 1;
   --intensity: 0.5;
-  --shadow: 0 22px 60px -28px rgb(15 25 45 / 0.38);
-  --shadow-soft: 0 10px 28px -16px rgb(15 25 45 / 0.3);
+  --glass-blur: 12px;
+  --glass-saturate: 1.35;
+  --glass-fill: rgb(255 255 255 / 0.72);
+  --glass-highlight: rgb(255 255 255 / 0.88);
+  --glass-shadow: 0 24px 54px -28px rgb(52 82 149 / 0.27);
+  --shadow: 0 28px 70px -36px color-mix(in srgb, var(--ink) 32%, transparent);
+  --shadow-soft: 0 12px 32px -20px
+    color-mix(in srgb, var(--ink) 24%, transparent);
+  --glass-edge: color-mix(in srgb, white 62%, var(--line));
+  --glass-sheen: inset 0 1px 0 color-mix(in srgb, white 74%, transparent);
 }

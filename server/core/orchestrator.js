@@ -2,7 +2,12 @@ import { randomUUID } from "node:crypto";
 import { parseSessionKey } from "../channels/session-key.js";
 import { replyFocus } from "./conversation-cues.js";
 import { Repository } from "./repository.js";
-import { ModelManager, storedModels, withFallback } from "./model-manager.js";
+import {
+  ModelManager,
+  backupModels,
+  storedModels,
+  withFallback,
+} from "./model-manager.js";
 import { KnowledgeManager } from "../knowledge/manager.js";
 import { ConversationManager } from "./conversation-manager.js";
 import { persistIncoming, messageEnvelope } from "./message-manager.js";
@@ -144,15 +149,17 @@ export class ChatSystem {
       this.clearEpoch.get(session) || 0,
     ]);
   }
-  fallbackFor(policy, primary, trace) {
-    if (!policy.fallbackModelId) return null;
-    try {
-      const profile = this.models.profile(policy.fallbackModelId);
-      return profile && profile.id !== primary?.id ? profile : null;
-    } catch {
-      trace?.steps?.push("备用模型档案不存在，本轮不切换");
-      return null;
+  fallbackFor(_policy, primary, trace) {
+    const chain = [];
+    for (const model of backupModels(storedModels(this.repo), primary?.id)) {
+      try {
+        const profile = this.models.profile(model.id);
+        if (profile && profile.id !== primary?.id) chain.push(profile);
+      } catch {
+        trace?.steps?.push("有一个备用模型档案不存在，已跳过");
+      }
     }
+    return chain;
   }
   receive(m) {
     const event = persistIncoming(this.repo, m);
@@ -422,7 +429,7 @@ export class ChatSystem {
       const hasKey = this.store.settings().apiKey || process.env.LLM_API_KEY;
       let model;
       try {
-        model = this.models.profile(policy.modelId);
+        model = this.models.profile();
       } catch (error) {
         // A fresh installation has no model yet; the offline sample keeps the
         // simulator usable. A live turn surfaces the configuration error.
@@ -516,9 +523,9 @@ export class ChatSystem {
           resolved,
         },
       );
-      const visionModel = policy.visionModelId
-        ? this.models.profile(policy.visionModelId)
-        : model;
+      const visionModel = model.vision
+        ? model
+        : this.fallbackFor(null, model).find((item) => item.vision) || model;
       const direct = snapshot.batch.some((m) => m.relation === "direct");
       const media = visionInputs(snapshot, visionModel, {
         selective: !!policy.selectiveVision,
@@ -1004,7 +1011,7 @@ export class ChatSystem {
     if (!this.mind.budget.allows("upkeep")) return;
     let profile;
     try {
-      profile = this.models.profile(policy.modelId);
+      profile = this.models.profile();
     } catch {
       return;
     }
@@ -1060,7 +1067,7 @@ export class ChatSystem {
       const policy = this.policy(id);
       if (policy.compaction !== false && this.mind.budget.allows("upkeep")) {
         try {
-          const profile = this.models.profile(policy.modelId);
+          const profile = this.models.profile();
           this.scheduleCompaction(
             id,
             policy,

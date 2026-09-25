@@ -44,7 +44,7 @@ const app = createApp({
   },
 });
 const server = app.listen(Number(process.env.PORT || 3210), host, () =>
-  console.log(`LuckyBot 管理台 http://${host}:${process.env.PORT || 3210}`),
+  console.log(`LuckyTri 管理台 http://${host}:${process.env.PORT || 3210}`),
 );
 gateway.attach(server, chatSystem);
 function runMaintenance() {
@@ -54,6 +54,7 @@ function runMaintenance() {
   } catch (error) {
     console.error(`后台维护失败：${error.message}`);
   }
+  gateway.refreshDirectory().catch(() => {});
 }
 runMaintenance();
 const maintenance = setInterval(runMaintenance, 60000);

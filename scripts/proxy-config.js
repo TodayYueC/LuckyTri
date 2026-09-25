@@ -127,7 +127,7 @@ export async function resolveProxyEnvironment(env = process.env) {
   let source = enabled ? "windows-system" : "none";
 
   // Some proxy clients leave the Windows system-proxy toggle off while their
-  // local HTTP proxy remains active. Honor that live endpoint for LuckyBot.
+  // local HTTP proxy remains active. Honor that live endpoint for LuckyTri.
   if (
     !enabled &&
     routes.https &&

@@ -162,7 +162,7 @@ await scenario(
     [
       { text: "小李今天又迟到了", speaker: "A", direct: false },
       { text: "他是地铁停了，别误会", speaker: "B", direct: false },
-      { text: "LuckyBot，你说这能怪他吗", speaker: "C" },
+      { text: "LuckyTri，你说这能怪他吗", speaker: "C" },
     ],
   ],
 );

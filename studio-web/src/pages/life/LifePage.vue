@@ -56,6 +56,14 @@ onMounted(load);
 
 <template>
   <div class="page life">
+    <header class="life-intro">
+      <div>
+        <span class="eyebrow">LIFE · 一生</span>
+        <h1>日子经过，<em>留下自己的形状。</em></h1>
+        <p>写下今天，回望从前，也给明天留一点期待。</p>
+      </div>
+      <div class="life-mark" aria-hidden="true"><span></span></div>
+    </header>
     <div class="life-bar">
       <Tabs
         v-model="view"
@@ -89,7 +97,7 @@ onMounted(load);
       <section v-else-if="view === 'reviews'" class="card reviews">
         <div class="card-head">
           <div>
-            <span class="eyebrow">LOOKING BACK</span>
+            <span class="eyebrow">回顾</span>
             <h2>TA 的回顾</h2>
             <p>
               每隔一段时间，TA
@@ -207,7 +215,7 @@ onMounted(load);
 
       <details class="card runs">
         <summary>
-          <span class="eyebrow">WHEN NOBODY WAS TALKING</span>
+          <span class="eyebrow">独处的时候</span>
           <b>独处、日记与夜里的记录 · {{ life.runs.length }}</b>
         </summary>
         <ul v-if="life.runs.length" class="list run-list">
@@ -240,148 +248,4 @@ onMounted(load);
   </div>
 </template>
 
-<style scoped>
-.life {
-  display: grid;
-  gap: var(--gap);
-}
-.life-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-.review-text {
-  margin-top: 4px;
-  font-size: 14.5px;
-  line-height: 1.8;
-}
-blockquote {
-  margin: 8px 0 0;
-  padding: 8px 14px;
-  border-left: 3px solid var(--accent);
-  border-radius: 0 12px 12px 0;
-  background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
-  font-size: 13.5px;
-}
-.story {
-  display: grid;
-  gap: var(--gap);
-  max-width: 820px;
-}
-.chapter {
-  display: grid;
-  gap: 10px;
-  padding: 28px 32px;
-  border-radius: 6px 20px 20px 6px;
-  background: var(--paper);
-  box-shadow:
-    var(--shadow-soft),
-    inset 8px 0 14px -12px rgb(0 0 0 / 0.25);
-}
-.chapter h2 {
-  font-size: 21px;
-}
-.chapter p {
-  font-size: 15px;
-  line-height: 1.95;
-  white-space: pre-wrap;
-}
-.chapter .text-button {
-  justify-self: start;
-}
-.preface {
-  background:
-    radial-gradient(
-      circle at 100% 0,
-      color-mix(in srgb, var(--glow-a) 60%, transparent),
-      transparent 55%
-    ),
-    var(--paper);
-}
-.versions {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.versions li {
-  display: grid;
-  gap: 2px;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
-  font-size: 13px;
-}
-.versions time {
-  color: var(--ink-soft);
-  font-size: 12px;
-}
-.shelf {
-  display: grid;
-  gap: 14px;
-}
-.shelf-note {
-  font-size: 13px;
-}
-.books {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: var(--gap);
-}
-.book-card {
-  display: flex;
-  gap: 14px;
-  padding: 16px;
-  border-radius: 16px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-soft);
-}
-.spine {
-  position: relative;
-  flex: none;
-  width: 16px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--ink) 10%, transparent);
-  overflow: hidden;
-}
-.spine::after {
-  content: "";
-  position: absolute;
-  inset: auto 0 0;
-  height: calc(var(--p) * 100%);
-  background: linear-gradient(var(--orb-b), var(--accent));
-}
-.book-card h3 {
-  font-size: 15px;
-}
-.book-card p {
-  margin-top: 6px;
-  font-size: 13.5px;
-}
-.runs summary {
-  display: grid;
-  gap: 2px;
-}
-.runs[open] summary {
-  margin-bottom: 12px;
-}
-.run-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 12px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--surface-strong) 70%, transparent);
-  border: 1px solid var(--line);
-  font-size: 13px;
-}
-.grow {
-  flex: 1 1 200px;
-  min-width: 0;
-}
-</style>
+<style scoped src="./LifePage.css"></style>

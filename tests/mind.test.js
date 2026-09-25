@@ -488,11 +488,12 @@ test("危机信号会叫醒她，不论她的心情如何都要认真回应", as
   );
 });
 
-test("从旧版本升级：人设成为天性第一版，群人格覆盖成为她在那个群的第一个面貌，手记、状态和候选记忆都保留", () => {
+test("从旧版本升级：迁移天性、群面貌、手记、状态、记忆和历史人物目录", () => {
   const path = join(mkdtempSync(join(tmpdir(), "lucky-mind-")), "old.db");
   const store = createStore(path);
   const db = store.db;
   db.exec(`CREATE TABLE core_config (id TEXT PRIMARY KEY, value TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1);
+    CREATE TABLE core_memories (id TEXT PRIMARY KEY, session_id TEXT, subject TEXT, content TEXT, type TEXT, confidence REAL, importance REAL, status TEXT, locked INTEGER DEFAULT 0, sources TEXT, created INTEGER, updated INTEGER, last_access INTEGER, expires INTEGER, version INTEGER DEFAULT 1);
     CREATE TABLE time_notes (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created INTEGER NOT NULL, watermark INTEGER NOT NULL, kind TEXT NOT NULL, content TEXT NOT NULL, sources TEXT NOT NULL, parent_id TEXT, confidence REAL, importance REAL, revisit_at INTEGER, status TEXT DEFAULT 'open', hidden INTEGER DEFAULT 0, outreach TEXT DEFAULT '', outreach_status TEXT DEFAULT 'pending');
     CREATE TABLE time_states (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created INTEGER NOT NULL, watermark INTEGER NOT NULL, phase TEXT, mood TEXT, energy TEXT, social_pull TEXT, attention TEXT, narrative TEXT, source_note_id TEXT, factors TEXT DEFAULT '{}');`);
   const put = db.prepare("INSERT INTO core_config(id,value) VALUES (?,?)");
@@ -535,6 +536,109 @@ test("从旧版本升级：人设成为天性第一版，群人格覆盖成为�
     "e1",
     3000,
   );
+  const firstSeen = Date.now() - 10000;
+  const addMessage = db.prepare(
+    "INSERT INTO messages(event_id,session_id,user_id,name,text,time,role,is_demo) VALUES (?,?,?,?,?,?,?,?)",
+  );
+  addMessage.run(
+    "old-group-message",
+    "group:1",
+    "10001",
+    "甲",
+    "旧群消息",
+    firstSeen,
+    "user",
+    0,
+  );
+  addMessage.run(
+    "old-private-message",
+    "private:10001",
+    "10001",
+    "甲甲",
+    "旧私聊消息",
+    firstSeen + 5000,
+    "user",
+    0,
+  );
+  addMessage.run(
+    "old-demo-message",
+    "group:2",
+    "90001",
+    "模拟用户",
+    "模拟消息不算真实经历",
+    firstSeen + 6000,
+    "user",
+    1,
+  );
+  const oldGroupMessage = db
+    .prepare("SELECT id FROM messages WHERE event_id='old-group-message'")
+    .get();
+  const oldPrivateMessage = db
+    .prepare("SELECT id FROM messages WHERE event_id='old-private-message'")
+    .get();
+  const migrationMemory = db.prepare(
+    "INSERT INTO core_memories(id,session_id,subject,content,type,confidence,importance,status,locked,sources,created,updated) VALUES (?,?,?,?,?,?,?,'candidate',0,?,?,?)",
+  );
+  migrationMemory.run(
+    "grounded-memory",
+    "group:1",
+    "10001",
+    "旧群里确实说过的事",
+    "event",
+    0.9,
+    0.7,
+    JSON.stringify([
+      {
+        id: oldGroupMessage.id,
+        text: "旧群消息",
+        speaker: "10001",
+        time: firstSeen,
+        certainty: "self_report",
+      },
+    ]),
+    firstSeen,
+    firstSeen,
+  );
+  migrationMemory.run(
+    "wrong-session-memory",
+    "group:1",
+    "10001",
+    "只在私聊里说过的事",
+    "event",
+    0.9,
+    0.7,
+    JSON.stringify([
+      {
+        id: oldPrivateMessage.id,
+        text: "旧私聊消息",
+        speaker: "10001",
+        time: firstSeen + 5000,
+        certainty: "self_report",
+      },
+    ]),
+    firstSeen,
+    firstSeen,
+  );
+  migrationMemory.run(
+    "untraceable-memory",
+    "group:1",
+    "10001",
+    "找不到原话的记忆",
+    "event",
+    0.95,
+    0.8,
+    JSON.stringify([
+      {
+        id: 999999,
+        text: "找不到这句话",
+        speaker: "10001",
+        time: firstSeen,
+        certainty: "self_report",
+      },
+    ]),
+    firstSeen,
+    firstSeen,
+  );
   db.prepare(
     "INSERT INTO sessions(id,name,kind,enabled) VALUES ('group:1','一群','group',1)",
   ).run();
@@ -552,15 +656,84 @@ test("从旧版本升级：人设成为天性第一版，群人格覆盖成为�
   assert.equal(system.mind.thoughts.get("n1").content, "他的面试还没结果");
   assert.deepEqual(system.mind.thoughts.get("n1").sources, ["m:5"]);
   assert.equal(system.mind.affect.history()[0].feeling, "有点挂心");
+  const person = system.mind.bonds.person("10001", Date.now());
+  assert.equal(person.name, "甲甲");
+  assert.equal(person.lastSeen, firstSeen + 5000);
+  assert.deepEqual(person.sessions.sort(), ["group:1", "private:10001"]);
+  assert.equal(person.familiarity, 0, "不从旧消息数量捏造亲近感");
+  assert.equal(
+    store.db
+      .prepare(
+        "SELECT COUNT(*) n FROM mind_bond_events WHERE subject_id='10001'",
+      )
+      .get().n,
+    0,
+  );
+  assert.equal(
+    store.db.prepare("SELECT 1 FROM mind_people WHERE user_id='90001'").get(),
+    undefined,
+    "模拟消息不迁入真实人物目录",
+  );
   assert.equal(
     store.db
       .prepare("SELECT status FROM core_memories WHERE content='喜欢冰拿铁'")
       .get().status,
     "confirmed",
   );
+  assert.equal(
+    db
+      .prepare("SELECT status FROM core_memories WHERE id='grounded-memory'")
+      .get().status,
+    "confirmed",
+    "同一会话、说话人、原文和时间都能核对的证据可以迁移",
+  );
+  for (const id of ["wrong-session-memory", "untraceable-memory"])
+    assert.equal(
+      db.prepare("SELECT status FROM core_memories WHERE id=?").get(id).status,
+      "candidate",
+      "跨会话或无法核实的内容不能自动成为事实",
+    );
+
+  const migratedAt = JSON.parse(
+    db
+      .prepare("SELECT value FROM core_config WHERE id='mind-migration-v1'")
+      .get().value,
+  ).time;
+  migrationMemory.run(
+    "previous-build-unverified",
+    "group:1",
+    "10001",
+    "旧版本错误提升的记忆",
+    "event",
+    0.9,
+    0.7,
+    JSON.stringify([
+      {
+        id: 888888,
+        text: "这句原话不存在",
+        speaker: "10001",
+        time: firstSeen,
+        certainty: "self_report",
+      },
+    ]),
+    migratedAt - 1000,
+    migratedAt - 1000,
+  );
+  db.prepare(
+    "DELETE FROM core_config WHERE id='mind-memory-provenance-v1'",
+  ).run();
   system.close();
   const reopened = new ChatSystem(store, async () => ({}));
   assert.equal(reopened.mind.nature.versions().length, 1, "重复启动不重复迁移");
+  assert.equal(
+    db
+      .prepare(
+        "SELECT status FROM core_memories WHERE id='previous-build-unverified'",
+      )
+      .get().status,
+    "candidate",
+    "旧版本已经错误提升的记忆会在一次性修正迁移中退回候选",
+  );
   reopened.close();
   store.db.close();
   new DatabaseSync(path).close();

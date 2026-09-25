@@ -107,6 +107,14 @@ export class Thoughts {
       .filter((t) => t.salience >= THOUGHT_FADED)
       .slice(0, limit);
   }
+  // The studio card shows the newest note still in view. Salience still
+  // decides which thoughts a conversation carries.
+  latest(now = Date.now()) {
+    return (
+      this.open({ now, limit: 40 }).sort((a, b) => b.created - a.created)[0] ||
+      null
+    );
+  }
   // Faded thoughts from this place that the conversation brings back.
   reminded({ now = Date.now(), cue, session = "", limit = 1 } = {}) {
     if (!cue?.size) return [];

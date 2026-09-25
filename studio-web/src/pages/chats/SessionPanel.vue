@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import { studio } from "../../stores/studio";
 import { clockTime } from "../../format";
 import Tabs from "../../components/ui/Tabs.vue";
+import Select from "../../components/ui/Select.vue";
 import Empty from "../../components/ui/Empty.vue";
 
 const props = defineProps<{
@@ -30,19 +31,19 @@ const replies = computed(() =>
 const pages = computed(() =>
   Math.max(1, Math.ceil(replies.value.length / PAGE)),
 );
-const models = computed(() => studio.core.models || []);
-
+const faceOpen = ref(false);
 watch(
   () => props.session?.id,
-  () => (page.value = 0),
+  () => {
+    page.value = 0;
+    faceOpen.value = false;
+  },
 );
 
-function modelChoice(session: any) {
-  const id = session.policy?.modelId;
-  if (id && models.value.some((m: any) => m.id === id)) return id;
-  return (
-    models.value.find((m: any) => m.isDefault)?.id || models.value[0]?.id || ""
-  );
+function faceText(group: any) {
+  const face = group?.face;
+  if (!face) return "";
+  return [face.role, face.tone, face.content].filter(Boolean).join("\n\n");
 }
 
 function submit(event: Event) {
@@ -52,7 +53,6 @@ function submit(event: Event) {
     value[key] = Number(value[key]);
   for (const key of ["memory", "selectiveVision", "deepCheck", "compaction"])
     value[key] = (form.elements.namedItem(key) as HTMLInputElement).checked;
-  value.fallbackModelId = String(value.fallbackModelId || "");
   emit("save", value);
 }
 </script>
@@ -77,15 +77,19 @@ function submit(event: Event) {
         <div class="facts">
           <div>
             <span class="eyebrow">TA 在这里的样子</span>
-            <p v-if="group?.face">
-              {{
-                [group.face.role, group.face.tone]
-                  .filter(Boolean)
-                  .join(" · ") ||
-                group.face.content ||
-                "还在慢慢形成"
-              }}
-            </p>
+            <template v-if="faceText(group)">
+              <p class="face-body" :class="faceOpen ? 'open' : 'clamp'">
+                {{ faceText(group) }}
+              </p>
+              <button
+                v-if="faceText(group).length > 96"
+                type="button"
+                class="text-button"
+                @click="faceOpen = !faceOpen"
+              >
+                {{ faceOpen ? "收起" : "展开完整内容" }}
+              </button>
+            </template>
             <p v-else class="muted">还没有形成在这里的样子。</p>
             <small v-if="group?.face?.aspiration" class="faint"
               >想成为：{{ group.face.aspiration }}</small
@@ -137,49 +141,9 @@ function submit(event: Event) {
             @submit.prevent="submit"
             @input="studio.dirty = true"
           >
-            <label>
-              模型
-              <select name="modelId" :value="modelChoice(session)">
-                <option v-if="!models.length" value="">尚未添加模型</option>
-                <option v-for="m in models" :key="m.id" :value="m.id">
-                  {{ m.label || m.model }}{{ m.isDefault ? " · 默认" : "" }}
-                </option>
-              </select>
-            </label>
-            <label>
-              视觉兼容模型
-              <select
-                name="visionModelId"
-                :value="session.policy.visionModelId || ''"
-              >
-                <option value="">跟随主模型</option>
-                <option
-                  v-for="m in models.filter((x: any) => x.vision)"
-                  :key="m.id"
-                  :value="m.id"
-                >
-                  {{ m.label || m.model }}
-                </option>
-              </select>
-            </label>
-            <label>
-              备用模型（主模型连不上时接替）
-              <select
-                name="fallbackModelId"
-                :value="session.policy.fallbackModelId || ''"
-              >
-                <option value="">不使用</option>
-                <option
-                  v-for="m in models.filter(
-                    (x: any) => x.id !== modelChoice(session),
-                  )"
-                  :key="m.id"
-                  :value="m.id"
-                >
-                  {{ m.label || m.model }}
-                </option>
-              </select>
-            </label>
+            <p class="faint">
+              所有会话和独处都用模型库里的默认模型；其余已启用的模型按列表顺序做备用。她在这个聊天窗里用什么样子，由她自己从经历里决定。
+            </p>
             <label class="check">
               <input
                 name="selectiveVision"
@@ -239,8 +203,12 @@ function submit(event: Event) {
                 >
               </div>
             </details>
-            <button class="primary" type="submit">保存会话设置</button>
-            <small class="faint">保存后下一轮生效</small>
+            <div class="save-bar">
+              <button class="primary" type="submit">保存会话设置</button>
+              <small class="faint">{{
+                studio.dirty ? "有未保存的修改" : "保存后下一轮生效"
+              }}</small>
+            </div>
           </form>
         </details>
 
@@ -281,26 +249,18 @@ function submit(event: Event) {
           <p class="reply-excerpt">{{ d.reply }}</p>
           <label>
             这句回复怎么样？
-            <select
+            <Select
               :data-feedback="d.id"
-              :value="d.feedback || ''"
-              @change="
-                emit(
-                  'feedback',
-                  d.id,
-                  ($event.target as HTMLSelectElement).value,
-                )
-              "
-            >
-              <option value="">选择评价</option>
-              <option
-                v-for="(label, tagKey) in studio.health.feedbackLabels"
-                :key="tagKey"
-                :value="tagKey"
-              >
-                {{ label }}
-              </option>
-            </select>
+              :model-value="d.feedback || ''"
+              aria-label="这句回复怎么样？"
+              :options="[
+                { value: '', label: '选择评价' },
+                ...Object.entries(studio.health.feedbackLabels || {}).map(
+                  ([tagKey, label]) => ({ value: tagKey, label: String(label) }),
+                ),
+              ]"
+              @update:model-value="emit('feedback', d.id, $event)"
+            />
           </label>
         </article>
         <p v-if="!replies.length" class="muted">还没有可以评价的回复。</p>
@@ -320,7 +280,7 @@ function submit(event: Event) {
 .panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   min-height: 0;
   height: 100%;
 }
@@ -338,28 +298,71 @@ function submit(event: Event) {
 .facts {
   display: grid;
   gap: 12px;
-  padding: 14px;
-  border-radius: 18px;
+  padding: 17px;
+  border-radius: 22px;
   background: linear-gradient(
     150deg,
-    color-mix(in srgb, var(--orb-a) 45%, var(--surface-strong)),
-    color-mix(in srgb, var(--surface-strong) 80%, transparent)
+    rgb(255 255 255 / 0.85),
+    color-mix(in srgb, var(--orb-a) 35%, rgb(255 255 255 / 0.35))
   );
-  border: 1px solid var(--line);
+  border: 1px solid rgb(255 255 255 / 0.87);
+  box-shadow:
+    inset 0 1px 0 white,
+    0 11px 25px -22px var(--accent);
+  backdrop-filter: blur(18px) saturate(1.6);
+}
+.facts > div + div {
+  padding-top: 11px;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 12%, white);
 }
 .facts p {
   margin-top: 2px;
   font-size: 14px;
   font-weight: 600;
 }
+.face-body {
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.face-body.clamp {
+  max-height: calc(1.7em * 4);
+  overflow: hidden;
+}
+.face-body.open {
+  max-height: min(32vh, 240px);
+  margin-top: 8px;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid rgb(255 255 255 / 0.78);
+  border-radius: 16px;
+  background: rgb(255 255 255 / 0.42);
+}
 .actions button {
   flex: 1 1 auto;
 }
 .fold {
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--surface-strong) 70%, transparent);
-  border: 1px solid var(--line);
+  padding: 14px 16px;
+  border-radius: 19px;
+  background:
+    linear-gradient(140deg, rgb(255 255 255 / 0.71), rgb(255 255 255 / 0.36)),
+    var(--surface);
+  border: 1px solid rgb(255 255 255 / 0.78);
+  box-shadow:
+    inset 0 1px 0 white,
+    0 9px 24px -23px var(--accent);
+  backdrop-filter: blur(16px) saturate(1.55);
+  transition:
+    transform 0.33s var(--spring),
+    box-shadow 0.25s;
+}
+.fold:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 0 white,
+    0 15px 25px -21px var(--accent);
 }
 .fold > summary {
   font-weight: 700;
@@ -420,10 +423,12 @@ function submit(event: Event) {
 .feedback-item {
   display: grid;
   gap: 6px;
-  padding: 12px;
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--surface-strong) 75%, transparent);
-  border: 1px solid var(--line);
+  padding: 15px;
+  border-radius: 18px;
+  background: rgb(255 255 255 / 0.58);
+  border: 1px solid rgb(255 255 255 / 0.83);
+  box-shadow: inset 0 1px 0 white;
+  backdrop-filter: blur(14px);
 }
 .reply-excerpt {
   display: -webkit-box;

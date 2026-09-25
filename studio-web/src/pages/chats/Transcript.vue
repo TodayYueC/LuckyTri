@@ -4,10 +4,10 @@ import { getTrace } from "../../plates/live";
 import { clockTime, hueOf, initials } from "../../format";
 import { studio } from "../../stores/studio";
 import Empty from "../../components/ui/Empty.vue";
+import Select from "../../components/ui/Select.vue";
 
 const props = defineProps<{
   session: any;
-  sessions: any[];
   sessionId: string;
   events: any[];
   traces: any[];
@@ -18,7 +18,6 @@ const props = defineProps<{
   sending: boolean;
 }>();
 const emit = defineEmits<{
-  "update:sessionId": [id: string];
   simulate: [body: { userId: string; text: string; mentioned: boolean }];
   feedback: [id: number, tag: string];
   openList: [];
@@ -179,21 +178,6 @@ defineExpose({ focusComposer });
         <h2>{{ session?.name || "选择一段对话" }}</h2>
         <span id="liveStatus" class="faint">{{ status }}</span>
       </div>
-      <label class="session-pick">
-        <span class="sr-only">当前会话</span>
-        <select
-          id="liveSession"
-          :value="sessionId"
-          @change="
-            emit('update:sessionId', ($event.target as HTMLSelectElement).value)
-          "
-        >
-          <option value="" disabled>选择群聊或私聊</option>
-          <option v-for="s in sessions" :key="s.id" :value="s.id">
-            {{ s.name }}
-          </option>
-        </select>
-      </label>
       <div class="t-tools">
         <button
           class="small sim-button"
@@ -298,25 +282,19 @@ defineExpose({ focusComposer });
                   </p>
                   <label v-if="decisionFor(item.event)" class="fb">
                     这句怎么样？
-                    <select
-                      :value="decisionFor(item.event).feedback || ''"
-                      @change="
-                        emit(
-                          'feedback',
-                          decisionFor(item.event).id,
-                          ($event.target as HTMLSelectElement).value,
-                        )
+                    <Select
+                      :model-value="decisionFor(item.event).feedback || ''"
+                      aria-label="这句怎么样？"
+                      :options="[
+                        { value: '', label: '选择评价' },
+                        ...Object.entries(studio.health.feedbackLabels || {}).map(
+                          ([tag, label]) => ({ value: tag, label: String(label) }),
+                        ),
+                      ]"
+                      @update:model-value="
+                        emit('feedback', decisionFor(item.event).id, $event)
                       "
-                    >
-                      <option value="">选择评价</option>
-                      <option
-                        v-for="(label, tag) in studio.health.feedbackLabels"
-                        :key="tag"
-                        :value="tag"
-                      >
-                        {{ label }}
-                      </option>
-                    </select>
+                    />
                   </label>
                 </template>
               </div>
@@ -383,13 +361,14 @@ defineExpose({ focusComposer });
   flex-direction: column;
   min-height: 0;
   height: 100%;
+  isolation: isolate;
 }
 .t-head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  padding-bottom: 12px;
+  padding-bottom: 15px;
   border-bottom: 1px solid var(--line);
 }
 .badge {
@@ -410,16 +389,9 @@ defineExpose({ focusComposer });
 }
 .t-title h2 {
   overflow: hidden;
-  font-size: 17px;
+  font-size: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.session-pick select {
-  width: auto;
-  max-width: 180px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 12.5px;
 }
 .t-tools {
   display: flex;
@@ -435,7 +407,22 @@ defineExpose({ focusComposer });
   flex-direction: column;
   gap: 12px;
   min-height: 0;
-  padding: 16px 4px;
+  padding: 20px 14px;
+  border: 1px solid rgb(255 255 255 / 0.65);
+  border-radius: 24px;
+  background:
+    radial-gradient(
+      circle at 12% 12%,
+      color-mix(in srgb, var(--glow-a) 22%, transparent),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 90% 68%,
+      color-mix(in srgb, var(--glow-b) 19%, transparent),
+      transparent 42%
+    ),
+    rgb(255 255 255 / 0.24);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.86);
 }
 .day-label {
   display: flex;
@@ -463,7 +450,9 @@ defineExpose({ focusComposer });
 .divider span {
   padding: 3px 12px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  background: rgb(255 255 255 / 0.52);
+  border: 1px solid rgb(255 255 255 / 0.8);
+  box-shadow: inset 0 1px 0 white;
   color: var(--ink-soft);
   font-size: 11.5px;
   font-weight: 600;
@@ -478,7 +467,7 @@ defineExpose({ focusComposer });
   align-items: flex-end;
   gap: 8px;
   max-width: 82%;
-  animation: msg-in 0.35s var(--spring);
+  animation: msg-in 0.5s var(--jelly);
 }
 .message.bot {
   align-self: flex-end;
@@ -491,10 +480,13 @@ defineExpose({ focusComposer });
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: hsl(var(--hue) 75% 86%);
+  background: linear-gradient(135deg, white, hsl(var(--hue) 75% 86%));
   color: hsl(var(--hue) 45% 25%);
   font-size: 11px;
   font-weight: 700;
+  box-shadow:
+    inset 0 1px 0 white,
+    0 6px 12px -10px hsl(var(--hue) 48% 35%);
 }
 .body {
   display: grid;
@@ -517,8 +509,12 @@ defineExpose({ focusComposer });
 .text {
   padding: 9px 14px;
   border-radius: 18px 18px 18px 6px;
-  background: var(--surface-strong);
-  border: 1px solid var(--line);
+  background: rgb(255 255 255 / 0.75);
+  border: 1px solid rgb(255 255 255 / 0.85);
+  box-shadow:
+    inset 0 1px 0 white,
+    0 10px 26px -24px var(--ink);
+  backdrop-filter: blur(16px) saturate(1.5);
   font-size: 14px;
   line-height: 1.6;
   overflow-wrap: anywhere;
@@ -526,12 +522,16 @@ defineExpose({ focusComposer });
 }
 .bot .text {
   border-radius: 18px 18px 6px 18px;
-  border-color: transparent;
+  border-color: rgb(255 255 255 / 0.72);
   background: linear-gradient(
     135deg,
-    color-mix(in srgb, var(--orb-a) 85%, var(--surface-strong)),
-    color-mix(in srgb, var(--orb-b) 60%, var(--surface-strong))
+    rgb(255 255 255 / 0.91),
+    color-mix(in srgb, var(--orb-a) 48%, rgb(255 255 255 / 0.8)) 52%,
+    color-mix(in srgb, var(--orb-b) 26%, rgb(255 255 255 / 0.8))
   );
+  box-shadow:
+    inset 0 1px 0 white,
+    0 12px 26px -18px color-mix(in srgb, var(--orb-c) 48%, transparent);
 }
 [data-mood="night"] .bot .text {
   background: color-mix(in srgb, var(--orb-b) 42%, var(--surface-strong));
@@ -548,8 +548,10 @@ defineExpose({ focusComposer });
   max-width: 420px;
   padding: 10px 12px;
   border-radius: 14px;
-  background: color-mix(in srgb, var(--surface-strong) 85%, transparent);
-  border: 1px solid var(--line);
+  background: rgb(255 255 255 / 0.63);
+  border: 1px solid rgb(255 255 255 / 0.83);
+  box-shadow: inset 0 1px 0 white;
+  backdrop-filter: blur(18px);
   font-size: 12.5px;
   text-align: left;
 }
@@ -610,17 +612,21 @@ defineExpose({ focusComposer });
   font-size: 12.5px;
 }
 @keyframes msg-in {
-  from {
+  0% {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(14px) scale(0.9, 0.82);
+  }
+  62% {
+    opacity: 1;
+    transform: translateY(-4px) scale(1.03, 0.98);
+  }
+  100% {
+    transform: none;
   }
 }
 @media (max-width: 760px) {
   .message {
     max-width: 94%;
-  }
-  .session-pick select {
-    max-width: 130px;
   }
 }
 </style>

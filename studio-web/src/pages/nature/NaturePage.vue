@@ -9,6 +9,7 @@ import TaOrb from "../../components/ta/TaOrb.vue";
 import TaChat from "../../components/ta/TaChat.vue";
 import Card from "../../components/ui/Card.vue";
 import RhythmClock from "./RhythmClock.vue";
+import Select from "../../components/ui/Select.vue";
 
 const TRAITS = [
   {
@@ -42,7 +43,20 @@ const settings = reactive<any>({ life: null, budget: null });
 const prompts = reactive({ ...studio.core.prompts });
 const promptKey = ref("turn");
 const busy = ref(false);
+const pending = reactive({ nature: false, days: false, prompts: false });
+function saved(section: keyof typeof pending) {
+  pending[section] = false;
+  studio.dirty = Object.values(pending).some(Boolean);
+}
 const useDraft = ref(true);
+const natureEdits = computed(() => {
+  const latest = versions.value.reduce(
+    (max, item) => Math.max(max, Number(item.version) || 0),
+    0,
+  );
+  const used = latest <= 1 ? 0 : latest - 1;
+  return { used, left: Math.max(0, 2 - used), locked: used >= 2 };
+});
 
 const traits = computed(() =>
   draft.value
@@ -93,7 +107,8 @@ async function load() {
   settings.budget = { ...overview.budget.settings };
 }
 
-function dirty() {
+function dirty(section: keyof typeof pending = "nature") {
+  pending[section] = true;
   studio.dirty = true;
 }
 
@@ -104,9 +119,10 @@ async function saveNature() {
     await mind.saveNature(natureValue());
     if (aliases.value !== studio.health.settings.aliases)
       await patchSettings({ aliases: aliases.value });
-    studio.dirty = false;
+    saved("nature");
     await reload();
-    await load();
+    const current = await mind.nature();
+    versions.value = current.versions;
     toast("天性已保存，下一次开口时生效");
   } catch (error) {
     toast((error as Error).message, true);
@@ -127,7 +143,7 @@ async function saveSettings() {
     });
     settings.life = { ...result.life };
     settings.budget = { ...result.budget };
-    studio.dirty = false;
+    saved("days");
     toast("TA 的日子已按新设置安排");
   } catch (error) {
     toast((error as Error).message, true);
@@ -137,7 +153,7 @@ async function saveSettings() {
 async function savePrompts() {
   try {
     await mind.savePrompts({ ...prompts });
-    studio.dirty = false;
+    saved("prompts");
     await reload();
     toast("指令已保存，下一轮生效");
   } catch (error) {
@@ -150,9 +166,33 @@ onMounted(load);
 
 <template>
   <div v-if="draft" class="page nature">
+    <section class="nature-intro" aria-label="天性预览">
+      <div class="nature-intro-copy">
+        <span class="eyebrow">THE WAY SHE GROWS · 天性</span>
+        <h1>她的底色，<br /><em>慢慢长成她自己。</em></h1>
+        <p>一些与生俱来的倾向，会在每一次相遇里长出新的模样。</p>
+        <span class="nature-preview-note"><i></i> 调节刻度，看看此刻的她</span>
+      </div>
+      <div class="nature-intro-orb">
+        <TaOrb
+          class="preview-orb"
+          :mood="liveMood"
+          :traits="traits"
+          :size="170"
+          interactive
+        />
+      </div>
+    </section>
     <div class="greenhouse">
       <section class="card editor">
-        <form id="natureForm" @submit.prevent="saveNature" @input="dirty">
+        <form id="natureForm" @submit.prevent="saveNature" @input="dirty()">
+          <p class="faint" role="status">
+            {{
+              natureEdits.locked
+                ? "两次更改已经用完。之后的性格、兴趣和样子，由 TA 自己从经历里生长。"
+                : `天性还可以改 ${natureEdits.left} 次，包括性格刻度。用完后由她自己生长。`
+            }}
+          </p>
           <header class="editor-head">
             <span class="eyebrow">塑造 TA</span>
             <h2>TA 生来是什么样的？</h2>
@@ -162,6 +202,7 @@ onMounted(load);
             </p>
           </header>
 
+          <fieldset class="nature-fields" :disabled="natureEdits.locked">
           <div class="form-grid">
             <label
               >名字<input
@@ -238,8 +279,8 @@ onMounted(load);
                 v-model:sleep="draft.rhythm.sleep"
                 v-model:wake="draft.rhythm.wake"
                 :disabled="!draft.rhythm.enabled"
-                @update:sleep="dirty"
-                @update:wake="dirty"
+                @update:sleep="dirty()"
+                @update:wake="dirty()"
               />
               <div class="stack tight times">
                 <label
@@ -293,6 +334,7 @@ onMounted(load);
               >
             </div>
           </fieldset>
+          </fieldset>
 
           <details class="versions">
             <summary>天性的版本 · {{ versions.length }}</summary>
@@ -308,24 +350,30 @@ onMounted(load);
           </details>
 
           <div class="save-bar">
-            <button class="primary" :disabled="busy">
-              {{ busy ? "保存中…" : "保存天性" }}
+            <button class="primary" :disabled="busy || natureEdits.locked">
+              {{
+                natureEdits.locked
+                  ? "已交给 TA"
+                  : busy
+                    ? "保存中…"
+                    : "保存天性"
+              }}
             </button>
-            <span class="faint">保存为新的一版，旧版本保留</span>
+            <span class="faint" role="status">{{
+              natureEdits.locked
+                ? "更改次数已用完"
+                : pending.nature
+                  ? "天性有未保存的修改"
+                  : `还可以改 ${natureEdits.left} 次`
+            }}</span>
           </div>
         </form>
       </section>
 
       <aside class="side">
         <div class="card orb-card">
-          <span class="eyebrow">拖动刻度，看看 TA</span>
-          <TaOrb
-            class="preview-orb"
-            :mood="liveMood"
-            :traits="traits"
-            :size="170"
-            interactive
-          />
+          <span class="eyebrow">调色盘 · 即时反馈</span>
+          <h3>微小的倾向，也会改变表达</h3>
           <ul class="effects">
             <li v-for="t in TRAITS" :key="t.key">
               <b>{{ t.label }} {{ draft[t.key] }}</b>
@@ -357,8 +405,8 @@ onMounted(load);
       v-if="settings.life"
       class="days"
       @submit.prevent="saveSettings"
-      @input="dirty"
-      @change="dirty"
+      @input="dirty('days')"
+      @change="dirty('days')"
     >
       <section class="card">
         <div class="card-head">
@@ -442,15 +490,9 @@ onMounted(load);
               type="number"
               min="1"
           /></label>
-          <label>
-            独处用的模型
-            <select v-model="settings.life.modelId">
-              <option value="">默认模型</option>
-              <option v-for="m in studio.core.models" :key="m.id" :value="m.id">
-                {{ m.label || m.model }}
-              </option>
-            </select>
-          </label>
+          <p class="faint wide">
+            独处、日记和夜里整理也使用模型库里的默认模型，不再单独指定。
+          </p>
           <label
             >时区<input
               v-model="settings.life.timeZone"
@@ -500,7 +542,10 @@ onMounted(load);
           细看时一次调用同时完成理解、心情和回复。私聊和 @ 永远优先。
         </p>
         <div class="save-bar">
-          <button class="primary" type="submit">保存 TA 的日子</button>
+          <button class="primary" type="submit">保存 TA 的日子</button
+          ><span class="faint" role="status">{{
+            pending.days ? "日常安排有未保存的修改" : "日常安排已保存"
+          }}</span>
         </div>
       </section>
     </form>
@@ -511,15 +556,20 @@ onMounted(load);
         id="promptsForm"
         class="stack tight"
         @submit.prevent="savePrompts"
-        @input="dirty"
+        @input="dirty('prompts')"
       >
         <label>
           要编辑的指令
-          <select v-model="promptKey">
-            <option v-for="(_, key) in prompts" :key="key" :value="key">
-              {{ PROMPT_NAMES[key] || key }}
-            </option>
-          </select>
+          <Select
+            v-model="promptKey"
+            aria-label="要编辑的指令"
+            :options="
+              Object.keys(prompts).map((key) => ({
+                value: key,
+                label: PROMPT_NAMES[key] || key,
+              }))
+            "
+          />
         </label>
         <label
           >指令正文<textarea
@@ -528,7 +578,12 @@ onMounted(load);
             class="mono"
           ></textarea>
         </label>
-        <div class="save-bar"><button class="primary">保存指令</button></div>
+        <div class="save-bar">
+          <button class="primary">保存指令</button
+          ><span class="faint" role="status">{{
+            pending.prompts ? "指令有未保存的修改" : "指令已保存"
+          }}</span>
+        </div>
       </form>
     </details>
   </div>
@@ -539,17 +594,180 @@ onMounted(load);
   display: grid;
   gap: var(--gap);
 }
+.nature-intro {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.7fr);
+  align-items: center;
+  gap: 16px;
+  min-height: 256px;
+  padding: 34px clamp(30px, 5vw, 72px);
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.88);
+  border-radius: 36px;
+  background:
+    radial-gradient(
+      ellipse at 77% 37%,
+      color-mix(in srgb, var(--orb-a) 76%, transparent),
+      transparent 47%
+    ),
+    radial-gradient(
+      ellipse at 13% 96%,
+      color-mix(in srgb, var(--glow-b) 33%, transparent),
+      transparent 48%
+    ),
+    linear-gradient(
+      120deg,
+      rgb(255 255 255 / 0.82),
+      rgb(255 255 255 / 0.34) 62%,
+      rgb(255 255 255 / 0.58)
+    );
+  box-shadow:
+    inset 0 2px 0 white,
+    inset 0 -1px 0 rgb(255 255 255 / 0.62),
+    0 25px 60px -37px color-mix(in srgb, var(--accent) 44%, transparent);
+  backdrop-filter: blur(26px) saturate(1.85);
+}
+.nature-intro::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -45% -15% auto 43%;
+  height: 165%;
+  border-radius: 46% 54% 64% 36%;
+  background: conic-gradient(
+    from 45deg,
+    rgb(255 255 255 / 0.56),
+    color-mix(in srgb, var(--glow-b) 42%, transparent),
+    rgb(255 255 255 / 0.2),
+    color-mix(in srgb, var(--orb-a) 45%, transparent),
+    rgb(255 255 255 / 0.56)
+  );
+  filter: blur(22px);
+  animation: nature-drift 10s ease-in-out infinite alternate;
+}
+.nature-intro-copy {
+  position: relative;
+  z-index: 1;
+}
+.nature-intro h1 {
+  margin: 12px 0 8px;
+  font-size: clamp(29px, 3.8vw, 49px);
+  line-height: 1.13;
+  letter-spacing: -0.065em;
+}
+.nature-intro h1 em {
+  font-style: normal;
+  background: linear-gradient(
+    100deg,
+    var(--accent),
+    var(--orb-c) 58%,
+    color-mix(in srgb, var(--glow-b) 54%, var(--accent))
+  );
+  color: transparent;
+  background-clip: text;
+}
+.nature-intro-copy > p {
+  max-width: 410px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+.nature-preview-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 22px;
+  padding: 8px 13px;
+  border: 1px solid rgb(255 255 255 / 0.85);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.42);
+  box-shadow: inset 0 1px 0 white;
+  color: var(--ink-soft);
+  font-size: 12px;
+  backdrop-filter: blur(12px);
+}
+.nature-preview-note i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--orb-b);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--orb-b) 22%, transparent);
+  animation: pulse-soft 2.8s ease-in-out infinite;
+}
+.nature-intro-orb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  width: 225px;
+  height: 225px;
+  border-radius: 50%;
+  background:
+    radial-gradient(
+      circle at 31% 25%,
+      rgb(255 255 255 / 0.68),
+      transparent 28%
+    ),
+    radial-gradient(
+      circle,
+      rgb(255 255 255 / 0.26) 38%,
+      color-mix(in srgb, var(--orb-b) 20%, transparent) 56%,
+      transparent 69%
+    );
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.63),
+    0 18px 52px -28px color-mix(in srgb, var(--orb-c) 74%, transparent);
+  animation: nature-breathe 5s ease-in-out infinite;
+}
+.nature-intro-orb::before,
+.nature-intro-orb::after {
+  content: "";
+  position: absolute;
+  inset: -14px;
+  border: 1px solid rgb(255 255 255 / 0.54);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.nature-intro-orb::after {
+  inset: -30px;
+  border-color: color-mix(in srgb, var(--glow-b) 28%, transparent);
+}
+.nature-intro-orb :deep(.preview-orb) {
+  filter: drop-shadow(
+    0 13px 16px color-mix(in srgb, var(--orb-c) 27%, transparent)
+  );
+}
+@keyframes nature-drift {
+  to {
+    transform: translate(-5%, 4%) rotate(16deg) scale(1.07);
+  }
+}
+@keyframes nature-breathe {
+  50% {
+    transform: translateY(-8px) scale(1.025);
+  }
+}
 .greenhouse {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr);
   gap: var(--gap);
   align-items: start;
 }
+.greenhouse > *,
+.days > *,
+.side,
+fieldset {
+  min-width: 0;
+}
+.save-bar {
+  max-width: 100%;
+}
 .editor {
   background:
     radial-gradient(
       circle at 100% 0,
-      color-mix(in srgb, var(--glow-a) 55%, transparent),
+      color-mix(in srgb, var(--glow-a) 24%, transparent),
       transparent 45%
     ),
     var(--surface);
@@ -569,10 +787,16 @@ fieldset {
   display: grid;
   gap: 12px;
   margin: 0;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--surface-strong) 55%, transparent);
+  padding: 18px;
+  border: 1px solid rgb(255 255 255 / 0.78);
+  border-radius: 24px;
+  background:
+    linear-gradient(150deg, rgb(255 255 255 / 0.64), rgb(255 255 255 / 0.24)),
+    color-mix(in srgb, var(--surface) 70%, transparent);
+  box-shadow:
+    inset 0 1px 0 white,
+    0 11px 28px -24px var(--accent);
+  backdrop-filter: blur(20px) saturate(1.55);
 }
 legend {
   padding: 0 8px;
@@ -584,6 +808,15 @@ legend {
   grid-template-columns: minmax(130px, 0.9fr) minmax(0, 1.6fr) 64px;
   align-items: center;
   gap: 12px;
+  padding: 9px 10px;
+  border-radius: 15px;
+  transition:
+    transform 0.32s var(--spring),
+    background-color 0.25s;
+}
+.trait:hover {
+  transform: translateX(3px);
+  background: rgb(255 255 255 / 0.47);
 }
 .trait-head {
   display: grid;
@@ -595,6 +828,41 @@ legend {
 .trait-number {
   padding: 6px 8px;
   text-align: center;
+  border-radius: 999px;
+}
+.trait input[type="range"] {
+  appearance: none;
+  height: 11px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--glow-b) 43%, white),
+    color-mix(in srgb, var(--orb-b) 58%, white)
+  );
+  box-shadow:
+    inset 0 1px 3px color-mix(in srgb, var(--accent) 14%, transparent),
+    0 1px 0 white;
+}
+.trait input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border: 3px solid white;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 3px 10px -3px var(--accent);
+  transition: transform 0.25s var(--spring);
+}
+.trait input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+.trait input[type="range"]::-moz-range-thumb {
+  width: 17px;
+  height: 17px;
+  border: 3px solid white;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 3px 10px -3px var(--accent);
 }
 .rhythm-row {
   display: flex;
@@ -632,8 +900,8 @@ legend {
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface-strong) 88%, transparent);
+  border-radius: 14px;
+  background: var(--surface-strong);
   border: 1px solid var(--line);
   box-shadow: var(--shadow-soft);
   backdrop-filter: blur(10px);
@@ -646,7 +914,7 @@ legend {
 }
 .orb-card {
   display: grid;
-  justify-items: center;
+  justify-items: start;
   gap: 10px;
   background:
     radial-gradient(
@@ -656,9 +924,12 @@ legend {
     ),
     var(--surface);
 }
+.orb-card h3 {
+  font-size: 18px;
+}
 .effects {
   display: grid;
-  gap: 4px;
+  gap: 8px;
   width: 100%;
   margin: 0;
   padding: 0;
@@ -666,9 +937,14 @@ legend {
   font-size: 12.5px;
 }
 .effects li {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(74px, auto) minmax(0, 1fr);
   gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid rgb(255 255 255 / 0.74);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 0.4);
+  box-shadow: inset 0 1px 0 white;
 }
 .effects span {
   color: var(--ink-soft);
@@ -686,6 +962,20 @@ legend {
   display: grid;
   gap: 12px;
   margin-bottom: 16px;
+}
+.toggles .switch {
+  padding: 13px 14px;
+  border: 1px solid rgb(255 255 255 / 0.78);
+  border-radius: 18px;
+  background: rgb(255 255 255 / 0.42);
+  box-shadow: inset 0 1px 0 white;
+  transition:
+    transform 0.33s var(--spring),
+    background-color 0.2s;
+}
+.toggles .switch:hover {
+  transform: translateX(4px);
+  background: rgb(255 255 255 / 0.67);
 }
 .toggles .switch {
   align-items: flex-start;
@@ -720,6 +1010,18 @@ legend {
   }
   .side {
     position: static;
+  }
+}
+@media (max-width: 760px) {
+  .nature-intro {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    padding: 26px;
+    text-align: center;
+  }
+  .nature-intro-orb {
+    width: 176px;
+    height: 176px;
   }
 }
 @media (max-width: 760px) {

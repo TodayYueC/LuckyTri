@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createStore } from "../server/store.js";
 import { Repository } from "../server/core/repository.js";
 import { persistIncoming } from "../server/core/message-manager.js";
+import { applyDirectoryNames } from "../server/core/sessions.js";
 import { normalize, onebot } from "../server/channels/onebot.js";
 import {
   bindSessionId,
@@ -158,4 +159,37 @@ test("频道适配器把 get_msg 结果收成内部引用信封", () => {
     ),
     null,
   );
+});
+
+test("群列表和好友列表会补上还没有名字的会话", () => {
+  const store = createStore(":memory:");
+  store.db
+    .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
+    .run("group:100200300", "群聊 100200300", "group");
+  store.db
+    .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
+    .run("group:999", "春日聊天室", "group");
+  store.db
+    .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
+    .run("private:10001", "未命名的人", "private");
+  const changed = applyDirectoryNames(store.db, {
+    groups: [{ group_id: 100200300, group_name: "后端划水群" }],
+    friends: [{ user_id: 10001, nickname: "10001", remark: "阿明" }],
+  });
+  assert.equal(changed, 2);
+  assert.equal(
+    store.db.prepare("SELECT name FROM sessions WHERE id=?").get("group:100200300")
+      .name,
+    "后端划水群",
+  );
+  assert.equal(
+    store.db.prepare("SELECT name FROM sessions WHERE id=?").get("group:999").name,
+    "春日聊天室",
+  );
+  assert.equal(
+    store.db.prepare("SELECT name FROM sessions WHERE id=?").get("private:10001")
+      .name,
+    "阿明",
+  );
+  store.db.close();
 });

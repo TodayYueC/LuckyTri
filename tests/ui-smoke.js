@@ -156,7 +156,7 @@ try {
   await p.waitForTimeout(400);
   await navigate("knowledge");
   await p.getByRole("tab", { name: "资料书架", exact: true }).click();
-  await p.getByRole("heading", { name: "资料书架", exact: true }).waitFor();
+  await p.locator(".shelf-head h2").waitFor();
   assert.equal(await p.locator("#memoryList").isVisible(), false);
   await p.getByRole("tab", { name: "TA 记得的事", exact: true }).click();
   await p.getByRole("button", { name: "＋ 手动记忆", exact: true }).click();
@@ -392,7 +392,7 @@ try {
   await p
     .getByRole("heading", {
       level: 1,
-      name: "LuckyBot · 从零上手教程",
+      name: "LuckyTri · 从零上手教程",
     })
     .waitFor();
   assert.equal(await p.locator("article h2").count(), 9);
@@ -415,11 +415,28 @@ try {
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
       true,
-      `studio overflow: ${tab}`,
+      `studio overflow: ${tab} ` +
+        JSON.stringify(
+          await p.evaluate(() => ({
+            scrollWidth: document.documentElement.scrollWidth,
+            innerWidth,
+            bodyWidth: document.body.scrollWidth,
+            widest: [...document.body.querySelectorAll("*")]
+              .map((e) => ({
+                tag: e.tagName,
+                class: e.className,
+                right: e.getBoundingClientRect().right,
+                width: e.getBoundingClientRect().width,
+              }))
+              .filter((x) => x.right > innerWidth + 1)
+              .sort((a, b) => b.right - a.right)
+              .slice(0, 10),
+          })),
+        ),
     );
   }
   await navigate("live");
-  await p.locator("#liveSession").selectOption("group:12345");
+  await p.locator("[data-pick='group:12345']").click();
   await p.getByRole("button", { name: "回到那一刻" }).click();
   await p.locator("#loadMessages").click();
   await p.locator("#events table").waitFor();
@@ -445,7 +462,7 @@ try {
     .getByText("新面板实时消息验证", { exact: true })
     .waitFor({ timeout: 10000 });
   await navigate("live");
-  await p.locator("#liveSession").selectOption("group:12345");
+  await p.locator("[data-pick='group:12345']").click();
   await p
     .locator("#liveMessages")
     .getByText("新面板实时消息验证", { exact: true })
@@ -513,15 +530,25 @@ try {
     .locator("[data-session='group:65432'] details.advanced-policy summary")
     .click();
   await p.locator("[data-session='group:65432'] [name=maxReply]").fill("120");
+  const savedResponse = p.waitForResponse(
+    (response) =>
+      response.url().includes("/api/core/sessions/group%3A65432") &&
+      response.request().method() === "PUT",
+  );
   await p.locator("[data-session='group:65432'] button.primary").click();
-  await p.waitForTimeout(500);
+  const savedPut = await savedResponse;
+  assert.equal(savedPut.status(), 200);
   const savedSessionState = await (
     await p.request.get(base + "/api/core/state", { headers })
   ).json();
   const savedPolicy = savedSessionState.sessions.find(
     (s) => s.id === "group:65432",
   ).policy;
-  assert.equal(savedPolicy.maxReply, 120);
+  assert.equal(
+    savedPolicy.maxReply,
+    120,
+    `saved ${savedPut.request().postData()} but loaded ${JSON.stringify(savedPolicy)}`,
+  );
   assert.equal(savedPolicy.probability, undefined);
   assert.equal(savedPolicy.persona, undefined);
   await p.locator("[data-archive='group:65432']").click();
@@ -535,7 +562,7 @@ try {
   await p.waitForTimeout(300);
   await p.locator("[data-session='group:65432']").waitFor();
   await p.goto(base + "/#live");
-  await p.locator("#liveSession").selectOption("group:65432");
+  await p.locator("[data-pick='group:65432']").click();
   await p.locator("#clearLiveContext").click();
   await confirmDialog();
   await p
@@ -575,7 +602,7 @@ try {
     await route.fulfill({ response, json: snapshot });
   });
   await p.goto(base + "/#live");
-  await p.locator("#liveSession").selectOption("group:12345");
+  await p.locator("[data-pick='group:12345']").click();
   // Opening the feedback tab fetches the (routed) state again.
   await p.getByRole("tab", { name: "反馈", exact: true }).click();
   await p.locator(".feedback-item").first().waitFor();

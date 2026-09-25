@@ -47,6 +47,41 @@ export function tokens(value: number) {
   return String(value);
 }
 
+const NUMERIC_ID = /^\d{4,20}$/;
+
+function nativeId(id: string) {
+  const parts = String(id || "").split(":");
+  return parts[parts.length - 1] || "";
+}
+
+/** A place or person label safe to show in menus. Numeric QQ/group ids stay out. */
+export function placeName(input: {
+  id?: string;
+  name?: string;
+  kind?: string;
+}) {
+  const native = nativeId(input.id || "");
+  const raw = String(input.name || "").trim();
+  const stripped = raw.replace(/^(群聊|私聊)\s+/, "");
+  const kind = input.kind || (String(input.id || "").startsWith("private:") ? "private" : "group");
+  if (!raw || stripped === native || NUMERIC_ID.test(stripped))
+    return kind === "private" ? "未命名的人" : "未命名的群";
+  return raw;
+}
+
+export function sessionChoices(
+  sessions: { id: string; name?: string; kind?: string }[],
+  blank = "",
+) {
+  const items = sessions.map((session) => ({
+    value: session.id,
+    label: placeName(session),
+  }));
+  return blank
+    ? [{ value: "", label: blank, disabled: true }, ...items]
+    : items;
+}
+
 export function initials(name: string) {
   const text = String(name || "?").trim();
   return /^[\x00-\x7f]/.test(text)

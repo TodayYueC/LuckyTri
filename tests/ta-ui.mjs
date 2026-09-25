@@ -5,6 +5,21 @@ import "./awake.mjs";
 import { livedWorld, serve } from "./helpers/ta-world.mjs";
 
 const w = await livedWorld();
+// Dense real-world layouts: many people and a migrated multi-page persona.
+for (let i = 0; i < 39; i++) {
+  w.store.db
+    .prepare(
+      "INSERT INTO mind_people(user_id,name,first_seen,last_seen,sessions) VALUES (?,?,?,?,?)",
+    )
+    .run(`layout-${i}`, `测试群友 ${i}`, w.now(), w.now(), '["group:12345"]');
+}
+w.store.db
+  .prepare("UPDATE mind_faces SET content=? WHERE session_id='group:12345'")
+  .run(
+    "这是一段很长的旧版人格，要保留完整内容，但不能把卡片拉成细长的一列。".repeat(
+      100,
+    ),
+  );
 
 // `node tests/ta-ui.mjs --serve` keeps the lived-in world open for a look.
 if (process.argv.includes("--serve")) {
@@ -64,6 +79,11 @@ async function run() {
 
     await page.goto(`${base}/app/#now`);
     await page.locator(".page-now .mood-word").waitFor();
+    assert.equal(
+      await page.locator(".page-now .ready").count(),
+      0,
+      "首页不再出现接入检查清单",
+    );
     assert.match(await page.locator(".page-now .lede").innerText(), /醒着/);
     await page.locator(".today .timeline li").first().waitFor();
     assert.ok(
@@ -125,6 +145,12 @@ async function run() {
 
     await open("#heart");
     await page.locator(".companion-talk").click();
+    const orb = await page.locator(".drawer-head .ta-orb").boundingBox();
+    const title = await page.locator(".drawer-title").boundingBox();
+    assert.ok(
+      orb.width <= 43 && orb.x + orb.width <= title.x,
+      "试聊头像不拉伸也不遮挡标题",
+    );
     await page.locator(".ta-drawer input[name=text]").fill("今天好累啊");
     await page.locator(".ta-drawer button.primary").click();
     await page.locator(".ta-drawer .preview-bubble.bot").waitFor();
@@ -158,6 +184,27 @@ async function run() {
     await page.locator(".note-card.muted").first().waitFor();
 
     await open("#people");
+    const peopleBoxes = await page.locator(".person-node").evaluateAll((nodes) =>
+      nodes.map((n) => {
+        const r = n.getBoundingClientRect();
+        return { id: n.dataset.person, x: r.x, y: r.y, w: r.width, h: r.height };
+      }),
+    );
+    assert.ok(peopleBoxes.length > 0 && peopleBoxes.length <= 24);
+    assert.ok(peopleBoxes.some((n) => n.id === "10001"));
+    for (let i = 0; i < peopleBoxes.length; i++) {
+      for (let j = i + 1; j < peopleBoxes.length; j++) {
+        const a = peopleBoxes[i];
+        const b = peopleBoxes[j];
+        const overlap =
+          a.x < b.x + b.w - 1 &&
+          a.x + a.w - 1 > b.x &&
+          a.y < b.y + b.h - 1 &&
+          a.y + a.h - 1 > b.y;
+        assert.equal(overlap, false, `${a.id} 和 ${b.id} 叠在一起`);
+      }
+    }
+    assert.match(await page.locator(".galaxy").innerText(), /越熟悉离 TA 越近/);
     await page.locator(".person-node[data-person='10001']").click();
     await page
       .locator(".person-sheet")
@@ -180,6 +227,20 @@ async function run() {
       await page.locator(".face-card").first().innerText(),
       /偶尔接话的那个/,
     );
+    assert.ok(
+      (await page.locator(".face-card").first().boundingBox()).height < 480,
+      "长人格不会撑坏卡片",
+    );
+    await page
+      .locator(".face-card")
+      .first()
+      .getByRole("button", { name: /查看完整面貌/ })
+      .click();
+    assert.ok(
+      (await page.locator(".face-full").innerText()).length > 2000,
+      "详情保留完整长文本",
+    );
+    await page.locator(".sheet-close").click();
 
     await open("#life");
     await page.locator(".diary-page").waitFor();
@@ -262,7 +323,7 @@ async function run() {
     }
     await page.setViewportSize({ width: 1440, height: 1000 });
 
-    // At night the studio falls asleep with TA.
+    // At night the studio keeps the soft glass palette while TA falls asleep.
     const nature = w.mind.nature.current();
     w.mind.nature.save(
       { ...nature, rhythm: { enabled: true, sleep: "02:00", wake: "08:00" } },
@@ -279,7 +340,7 @@ async function run() {
       await page.evaluate(
         () => getComputedStyle(document.documentElement).colorScheme,
       ),
-      "dark",
+      "light",
     );
 
     assert.deepEqual(errors, []);

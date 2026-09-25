@@ -80,19 +80,34 @@ function cancel() {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: color-mix(in srgb, var(--ink) 28%, transparent);
-  backdrop-filter: blur(4px);
+  background: color-mix(in srgb, var(--sky-top) 44%, rgb(60 81 137 / 0.24));
+  backdrop-filter: blur(13px) saturate(1.25);
 }
 .dialog {
   position: relative;
   display: grid;
-  gap: 14px;
+  gap: 17px;
   width: min(420px, 100%);
-  padding: 34px 26px 22px;
-  border-radius: var(--r-l);
-  background: var(--surface-strong);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow);
+  padding: 42px 30px 26px;
+  border-radius: 34px;
+  background:
+    radial-gradient(
+      ellipse at 9% -10%,
+      rgb(255 255 255 / 0.98),
+      transparent 53%
+    ),
+    linear-gradient(
+      148deg,
+      rgb(255 255 255 / 0.76),
+      rgb(229 239 255 / 0.44) 64%,
+      rgb(248 231 251 / 0.55)
+    ),
+    var(--glass-fill);
+  border: 1.5px solid rgb(255 255 255 / 0.89);
+  box-shadow:
+    inset 0 2px 1px white,
+    0 30px 72px -28px rgb(52 82 149 / 0.43);
+  backdrop-filter: blur(32px) saturate(1.7);
 }
 .dialog h2 {
   font-size: 18px;
@@ -105,31 +120,40 @@ function cancel() {
 }
 .dialog-orb {
   position: absolute;
-  top: -22px;
-  left: 26px;
-  width: 44px;
-  height: 40px;
-  border-radius: 50% 50% 46% 46%;
+  top: -24px;
+  left: 30px;
+  width: 52px;
+  height: 50px;
+  border: 2px solid rgb(255 255 255 / 0.89);
+  border-radius: 44% 56% 57% 43% / 50% 43% 57% 50%;
   background: radial-gradient(
     circle at 38% 30%,
     var(--orb-a),
     var(--orb-b) 60%,
     var(--orb-c)
   );
-  box-shadow: 0 8px 18px -8px var(--orb-c);
+  box-shadow:
+    inset 0 3px 3px rgb(255 255 255 / 0.88),
+    0 13px 24px -9px var(--orb-c);
+  animation: dialog-orb-breathe 4s ease-in-out infinite alternate;
 }
 .dialog-enter-active,
 .dialog-leave-active {
   transition: opacity 0.2s var(--ease);
 }
 .dialog-enter-active .dialog {
-  transition: transform 0.35s var(--spring);
+  transition: transform 0.52s var(--spring);
 }
 .dialog-enter-from,
 .dialog-leave-to {
   opacity: 0;
 }
 .dialog-enter-from .dialog {
-  transform: translateY(12px) scale(0.96);
+  transform: translateY(22px) scale(0.9);
+}
+@keyframes dialog-orb-breathe {
+  to {
+    transform: translateY(-5px) rotate(8deg) scale(1.07);
+  }
 }
 </style>

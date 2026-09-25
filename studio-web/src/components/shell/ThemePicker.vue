@@ -13,7 +13,12 @@ function choose(key: MoodKey | null) {
 }
 
 function outside(event: PointerEvent) {
-  if (open.value && root.value && !root.value.contains(event.target as Node))
+  if (
+    open.value &&
+    root.value &&
+    !root.value.contains(event.target as Node) &&
+    !(event.target as Element).closest(".theme-menu")
+  )
     open.value = false;
 }
 
@@ -54,47 +59,50 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", outside));
         }}
       </span>
     </button>
-    <Transition name="pop">
-      <div
-        v-if="open || inline"
-        class="theme-menu"
-        role="radiogroup"
-        aria-label="界面主题"
-      >
-        <button
-          type="button"
-          role="radio"
-          data-theme-choice="auto"
-          :aria-checked="!theme.pinned"
-          @click="choose(null)"
+    <Teleport to="body" :disabled="inline"
+      ><Transition name="pop">
+        <div
+          v-if="open || inline"
+          class="theme-menu"
+          :class="{ 'inline-menu': inline }"
+          role="radiogroup"
+          aria-label="界面主题"
         >
-          <span
-            class="swatch auto"
-            :data-mood="liveMood"
-            aria-hidden="true"
-          ></span>
-          <span
-            ><b>跟随 TA 的心情</b
-            ><small>现在是「{{ MOODS[liveMood].label }}」</small></span
+          <button
+            type="button"
+            role="radio"
+            data-theme-choice="auto"
+            :aria-checked="!theme.pinned"
+            @click="choose(null)"
           >
-        </button>
-        <button
-          v-for="key in MOOD_KEYS"
-          :key="key"
-          type="button"
-          role="radio"
-          :data-theme-choice="key"
-          :aria-checked="theme.pinned === key"
-          @click="choose(key)"
-        >
-          <span class="swatch" :data-mood="key" aria-hidden="true"></span>
-          <span
-            ><b>{{ MOODS[key].label }}</b
-            ><small>{{ MOODS[key].feel }}</small></span
+            <span
+              class="swatch auto"
+              :data-mood="liveMood"
+              aria-hidden="true"
+            ></span>
+            <span
+              ><b>跟随 TA 的心情</b
+              ><small>现在是「{{ MOODS[liveMood].label }}」</small></span
+            >
+          </button>
+          <button
+            v-for="key in MOOD_KEYS"
+            :key="key"
+            type="button"
+            role="radio"
+            :data-theme-choice="key"
+            :aria-checked="theme.pinned === key"
+            @click="choose(key)"
           >
-        </button>
-      </div>
-    </Transition>
+            <span class="swatch" :data-mood="key" aria-hidden="true"></span>
+            <span
+              ><b>{{ MOODS[key].label }}</b
+              ><small>{{ MOODS[key].feel }}</small></span
+            >
+          </button>
+        </div>
+      </Transition></Teleport
+    >
   </div>
 </template>
 
@@ -148,23 +156,36 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", outside));
   );
 }
 .theme-menu {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
-  z-index: 30;
+  position: fixed;
+  top: 96px;
+  right: 28px;
+  z-index: 80;
   display: grid;
   gap: 2px;
   width: 250px;
+  max-height: calc(100dvh - 64px);
+  overflow: auto;
   padding: 8px;
-  border-radius: 20px;
-  background: var(--surface-strong);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow);
+  border-radius: 28px;
+  background:
+    radial-gradient(ellipse at 0% 0%, rgb(255 255 255 / 0.93), transparent 52%),
+    linear-gradient(145deg, rgb(255 255 255 / 0.72), rgb(237 243 255 / 0.37)),
+    var(--glass-fill);
+  border: 1.5px solid rgb(255 255 255 / 0.85);
+  box-shadow:
+    inset 0 2px 1px white,
+    0 24px 58px -27px rgb(52 82 149 / 0.4);
+  backdrop-filter: blur(30px) saturate(1.8);
 }
-.inline .theme-menu {
+.theme-menu.inline-menu {
   position: static;
   width: 100%;
   box-shadow: none;
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .theme-menu {
+    right: 20px;
+  }
 }
 .theme-menu button {
   display: flex;
@@ -183,7 +204,14 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", outside));
   box-shadow: none;
 }
 .theme-menu button[aria-checked="true"] {
-  background: var(--accent-soft);
+  background: linear-gradient(
+    120deg,
+    rgb(255 255 255 / 0.87),
+    color-mix(in srgb, var(--glow-a) 40%, white)
+  );
+  box-shadow:
+    inset 0 1px 0 white,
+    0 8px 18px -13px var(--accent);
 }
 .theme-menu button > span:last-child {
   display: grid;

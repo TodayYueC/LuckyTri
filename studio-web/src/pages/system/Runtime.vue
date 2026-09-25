@@ -51,7 +51,12 @@ async function save() {
           >
         </Toggle>
       </div>
-      <button class="primary" type="submit">保存运行状态</button>
+      <div class="save-bar">
+        <button class="primary" type="submit">保存运行状态</button>
+        <small class="faint">{{
+          studio.dirty ? "有未保存的修改" : "已保存，立刻生效"
+        }}</small>
+      </div>
     </form>
     <section class="card numbers">
       <button @click="go('chats')">
@@ -73,17 +78,46 @@ async function save() {
 <style scoped>
 .runtime-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(260px, 1fr);
+  grid-template-columns: minmax(0, 1.55fr) minmax(260px, 0.8fr);
   gap: var(--gap);
   align-items: start;
 }
+.runtime-grid > .card {
+  background:
+    radial-gradient(
+      ellipse at 90% 0,
+      color-mix(in srgb, var(--glow-a) 20%, transparent),
+      transparent 55%
+    ),
+    var(--surface);
+}
+.runtime-grid .card-head h2 {
+  margin-top: 5px;
+  font-size: 23px;
+  letter-spacing: -0.035em;
+}
 .switches {
   display: grid;
-  gap: 16px;
-  margin-bottom: 18px;
+  gap: 12px;
+  margin-bottom: 20px;
 }
 .switches :deep(.switch) {
   align-items: flex-start;
+  padding: 18px;
+  border: 1px solid rgb(255 255 255 / 0.78);
+  border-radius: 22px;
+  background: rgb(255 255 255 / 0.41);
+  box-shadow:
+    inset 0 1px 0 white,
+    0 10px 22px -23px var(--accent);
+  backdrop-filter: blur(18px) saturate(1.5);
+  transition:
+    transform 0.35s var(--spring),
+    background-color 0.2s;
+}
+.switches :deep(.switch:hover) {
+  transform: translateY(-3px) scale(1.008);
+  background: rgb(255 255 255 / 0.64);
 }
 .switches :deep(.switch > span) {
   display: grid;
@@ -96,17 +130,39 @@ async function save() {
 }
 .numbers {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 .numbers button {
   display: grid;
   justify-items: start;
-  padding: 14px 16px;
-  border-radius: 18px;
+  gap: 2px;
+  padding: 20px 21px;
+  border: 1px solid rgb(255 255 255 / 0.83);
+  border-radius: 22px;
+  background:
+    radial-gradient(
+      ellipse at 100% 0,
+      color-mix(in srgb, var(--glow-b) 24%, transparent),
+      transparent 63%
+    ),
+    rgb(255 255 255 / 0.44);
+  box-shadow:
+    inset 0 1px 0 white,
+    0 12px 26px -24px var(--accent);
   text-align: left;
+  backdrop-filter: blur(18px) saturate(1.55);
+  transition:
+    transform 0.38s var(--spring),
+    box-shadow 0.23s;
+}
+.numbers button:hover:not(:disabled) {
+  transform: translateX(5px) scale(1.018);
+  box-shadow:
+    inset 0 1px 0 white,
+    0 18px 28px -22px var(--accent);
 }
 .numbers b {
-  font: 700 24px var(--font-display);
+  font: 750 29px var(--font-display);
   color: var(--accent);
 }
 .numbers span {

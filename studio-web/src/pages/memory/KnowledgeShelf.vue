@@ -9,6 +9,7 @@ import {
 } from "../../plates/knowledge";
 import { hueOf } from "../../format";
 import Empty from "../../components/ui/Empty.vue";
+import Select from "../../components/ui/Select.vue";
 
 const props = defineProps<{ sessionId: string }>();
 const collections = ref<any[]>([]);
@@ -70,7 +71,7 @@ onMounted(load);
     <div class="card shelf-head">
       <div>
         <span class="eyebrow">资料书架</span>
-        <h2>资料书架</h2>
+        <h2>给 TA 留一点可以读的东西</h2>
         <p class="muted">
           存放可供聊天参考的资料，和自动记录的会话记忆分开管理。共享集合里的文章，TA
           独处时也会挑着读。
@@ -78,15 +79,15 @@ onMounted(load);
       </div>
       <label class="collection">
         文档集合
-        <select v-model="collectionId">
-          <option v-for="c in collections" :key="c.id" :value="c.id">
-            {{ c.name }}
-          </option>
-        </select>
+        <Select
+          v-model="collectionId"
+          aria-label="文档集合"
+          :options="collections.map((c) => ({ value: c.id, label: c.name }))"
+        />
       </label>
     </div>
 
-    <div class="books">
+    <div class="books" :aria-label="`资料书架，${documents.length} 份资料`">
       <article
         v-for="d in documents"
         :key="d.id"
@@ -112,7 +113,10 @@ onMounted(load);
           <label
             >粘贴正文<textarea v-model="text" rows="8" required></textarea>
           </label>
-          <button class="primary" :disabled="saving">保存到书架</button>
+          <div class="save-bar">
+            <button class="primary" :disabled="saving">保存到书架</button>
+            <small class="faint">保存之后，TA 才能在聊天和独处时读到</small>
+          </div>
         </form>
       </details>
       <form class="card probe" @submit.prevent="search">
@@ -133,92 +137,4 @@ onMounted(load);
   </section>
 </template>
 
-<style scoped>
-.shelf {
-  display: grid;
-  gap: var(--gap);
-}
-.shelf-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 14px;
-}
-.shelf-head h2 {
-  font-size: 19px;
-}
-.shelf-head p {
-  max-width: 620px;
-  margin-top: 4px;
-  font-size: 13px;
-}
-.collection select {
-  min-width: 200px;
-}
-.books {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 14px;
-  padding: 18px;
-  border-radius: var(--r-l);
-  background:
-    repeating-linear-gradient(
-      transparent 0 150px,
-      color-mix(in srgb, var(--ink) 12%, transparent) 150px 156px
-    ),
-    var(--surface);
-  border: 1px solid var(--line);
-}
-.books > .empty {
-  grid-column: 1 / -1;
-}
-.book {
-  position: relative;
-  display: grid;
-  align-content: space-between;
-  gap: 10px;
-  min-height: 130px;
-  padding: 14px 12px 12px 22px;
-  border-radius: 6px 14px 14px 6px;
-  background: linear-gradient(
-    160deg,
-    hsl(var(--hue) 70% 88%),
-    hsl(var(--hue) 55% 76%)
-  );
-  color: hsl(var(--hue) 45% 20%);
-  box-shadow: var(--shadow-soft);
-  transition: transform 0.3s var(--spring);
-}
-.book:hover {
-  transform: translateY(-4px) rotate(-1deg);
-}
-.spine {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 10px;
-  border-radius: 6px 0 0 6px;
-  background: hsl(var(--hue) 45% 45%);
-}
-.book b {
-  font-size: 14px;
-  line-height: 1.4;
-}
-.book .chip {
-  justify-self: start;
-}
-.add-doc summary {
-  font-weight: 700;
-}
-.add-doc[open] summary {
-  margin-bottom: 12px;
-}
-.probe .row input {
-  flex: 1;
-}
-.probe .notice {
-  margin-top: 10px;
-}
-</style>
+<style scoped src="./KnowledgeShelf.css"></style>

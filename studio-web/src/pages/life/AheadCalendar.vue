@@ -97,10 +97,13 @@ function tone(a: any) {
 <template>
   <section class="ahead">
     <div class="ahead-head">
-      <p class="muted">
-        别人说起的安排、TA 答应的事、TA 想做的事和每年都会回来的日子。临近时 TA
-        会记得，有了结果会放下；过了很久没有结果的，会悄悄算作错过。
-      </p>
+      <div>
+        <span class="eyebrow">AHEAD · 向前看</span>
+        <h2>让未来有值得期待的事。</h2>
+        <p class="muted">
+          约定、想做的事与每年都会回来的日子，都安静地留在这里。
+        </p>
+      </div>
       <Tabs
         v-model="view"
         label="约定的视图"
@@ -177,7 +180,7 @@ function tone(a: any) {
               >
             </div>
             <button
-              v-if="a.status !== 'revoked'"
+              v-if="a.state !== 'revoked'"
               class="text-button"
               @click="revoke(a)"
             >
@@ -214,7 +217,7 @@ function tone(a: any) {
             </small>
           </div>
           <button
-            v-if="a.status !== 'revoked'"
+            v-if="a.state !== 'revoked'"
             class="text-button"
             @click="revoke(a)"
           >
@@ -231,118 +234,4 @@ function tone(a: any) {
   </section>
 </template>
 
-<style scoped>
-.ahead {
-  display: grid;
-  gap: 16px;
-}
-.ahead-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px 20px;
-}
-.ahead-head p {
-  flex: 1 1 420px;
-  font-size: 13px;
-}
-.calendar-wrap {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 1fr);
-  gap: var(--gap);
-  align-items: start;
-}
-.calendar header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-.grid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 6px;
-}
-.wd {
-  padding-bottom: 4px;
-  text-align: center;
-  color: var(--ink-soft);
-  font-size: 12px;
-}
-.cell {
-  position: relative;
-  display: grid;
-  place-items: center;
-  aspect-ratio: 1;
-  padding: 0;
-  border-radius: 14px;
-  background: transparent;
-  border-color: transparent;
-  font-weight: 600;
-}
-.cell.has {
-  background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
-}
-.cell.today {
-  border-color: var(--accent);
-}
-.cell.picked {
-  background: var(--accent);
-  color: var(--accent-ink);
-}
-.dots {
-  position: absolute;
-  bottom: 5px;
-  display: flex;
-  gap: 3px;
-}
-.dots em {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--cheek);
-}
-.dots em[data-state="done"] {
-  background: var(--ok);
-}
-.dots em[data-state="missed"],
-.dots em[data-state="lapsed"] {
-  background: var(--ink-faint);
-}
-.picked h3 {
-  margin-bottom: 12px;
-  font-size: 16px;
-}
-.ahead-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--surface-strong) 75%, transparent);
-  border: 1px solid var(--line);
-}
-.ahead-item p {
-  font-size: 14px;
-}
-.ahead-item.closed {
-  opacity: 0.62;
-}
-.when {
-  flex: none;
-  width: 44px;
-  color: var(--accent);
-  font-weight: 700;
-  font-size: 13px;
-}
-.grow {
-  flex: 1;
-  min-width: 0;
-}
-@media (max-width: 900px) {
-  .calendar-wrap {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-</style>
+<style scoped src="./AheadCalendar.css"></style>

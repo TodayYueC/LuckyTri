@@ -6,7 +6,11 @@ import { tmpdir } from "node:os";
 import { createStore } from "../server/store.js";
 import { initializeEnvironment } from "../scripts/setup.js";
 import { backupDatabase } from "../scripts/backup.js";
-import { recordModelCheck, readiness } from "../server/readiness.js";
+import {
+  recordModelCheck,
+  readiness,
+  savedConnectionSettings,
+} from "../server/readiness.js";
 import { ChatSystem } from "../server/core/orchestrator.js";
 
 test("生成两枚不同随机令牌且不覆盖已有配置", () => {
@@ -56,6 +60,44 @@ test("模型检查绑定地址、模型和有效密钥，其他人设设置不�
   assert.equal(readiness(store).modelTest.ok, false);
   assert.match(JSON.stringify(readiness(store)), /模型错误/);
   assert(!JSON.stringify(readiness(store)).includes("signature"));
+  store.db.close();
+});
+test("连通性检查使用默认模型档案，兼容旧测试预算且不会认可其他模型", () => {
+  const store = createStore(":memory:");
+  new ChatSystem(store, async () => ({}));
+  const models = [
+    {
+      id: "primary",
+      isDefault: true,
+      enabled: true,
+      provider: "openai",
+      baseUrl: "https://example.test/v1",
+      model: "saved-model",
+      apiKey: "test-only",
+      maxOutputTokens: 8192,
+    },
+  ];
+  const save = () =>
+    store.db
+      .prepare(
+        "INSERT INTO core_config(id,value) VALUES ('models',?) ON CONFLICT(id) DO UPDATE SET value=excluded.value",
+      )
+      .run(JSON.stringify(models));
+  save();
+  const actual = savedConnectionSettings(store).settings;
+  recordModelCheck(store, { ...actual, maxTokens: 256 }, true, 15);
+  assert.equal(
+    readiness(store).modelTest.ok,
+    true,
+    "旧版缩短预算的成功测试仍有效",
+  );
+  recordModelCheck(store, actual, true, 15);
+  assert.equal(readiness(store).modelTest.ok, true);
+  store.save({ model: "stale-global-model", persona: "变化的人设" });
+  assert.equal(readiness(store).modelTest.ok, true);
+  models[0].model = "untested-model";
+  save();
+  assert.equal(readiness(store).modelTest.current, false);
   store.db.close();
 });
 test("反馈是她在那个会话里听到的话，不跨会话或模式，也不改写天性", () => {

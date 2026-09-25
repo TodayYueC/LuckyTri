@@ -244,7 +244,7 @@ const bubble = computed(() => said.value || props.speech);
 const ariaLabel = computed(
   () =>
     props.label ||
-    (props.interactive ? "TA：戳一下，按住摸摸头，双击和 TA 聊聊" : "TA"),
+    (props.interactive ? "TA：轻触互动，按住摸摸头，双击和 TA 聊聊" : "TA"),
 );
 const weather = computed(() => {
   if (small.value) return "";
@@ -418,7 +418,7 @@ onBeforeUnmount(() => {
   clearTimeout(pressTimer);
 });
 
-defineExpose({ poke, pet });
+defineExpose({ poke, pet, cancel });
 </script>
 
 <template>

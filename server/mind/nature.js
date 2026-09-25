@@ -3,7 +3,7 @@ import { localClock } from "../core/conversation-cues.js";
 // Nature is the seed she is born with. It is the only part of her the owner
 // writes; everything else grows from experience.
 export const NATURE_DEFAULTS = {
-  name: "LuckyBot",
+  name: "LuckyTri",
   base: "可爱、乐观、情绪稳定，偶尔对事情轻轻吐槽，不挖苦群友。像熟悉的群友一样说话，先接住情绪，不急着给建议。",
   interests: [],
   forbidden: [],
@@ -84,6 +84,12 @@ export class Nature {
   current(before) {
     const row = this.row(before) || this.row();
     const value = row ? JSON.parse(row.value) : {};
+    if (
+      row?.version === 1 &&
+      value.name === "LuckyBot" &&
+      value.base === NATURE_DEFAULTS.base
+    )
+      value.name = "LuckyTri";
     return { ...NATURE_DEFAULTS, ...value, version: row?.version || 0 };
   }
   version() {
@@ -96,7 +102,13 @@ export class Nature {
       )
       .all(limit);
   }
+  editsUsed() {
+    const version = this.version();
+    return version <= 1 ? 0 : version - 1;
+  }
   save(input, note = "") {
+    if (this.editsUsed() >= 2)
+      throw Error("天性只能改两次。用完之后，由 TA 自己从经历里生长。");
     const value = validateNature(input);
     const version = this.version() + 1;
     this.db

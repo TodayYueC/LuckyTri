@@ -7,12 +7,12 @@ export function backupDatabase(
   source = process.env.DB_PATH || "data/friend.db",
   directory = "data/backups",
 ) {
-  if (!existsSync(source)) throw new Error("数据库不存在，请先启动一次 LuckyBot");
+  if (!existsSync(source)) throw new Error("数据库不存在，请先启动一次 LuckyTri");
   mkdirSync(directory, { recursive: true });
   const target = resolve(
     join(
       directory,
-      `luckybot-${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}.db`,
+      `luckytri-${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}.db`,
     ),
   );
   const db = new DatabaseSync(source);

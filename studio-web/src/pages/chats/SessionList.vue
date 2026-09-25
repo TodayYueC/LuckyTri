@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { hueOf } from "../../format";
+import { hueOf, placeName } from "../../format";
 
 const props = defineProps<{
   sessions: any[];
@@ -49,6 +49,7 @@ const archived = computed(() => props.sessions.filter((s) => s.archived));
       >
         <button
           class="row-main"
+          :data-pick="s.id"
           :aria-current="s.id === selected ? 'true' : undefined"
           @click="emit('select', s.id)"
         >
@@ -56,7 +57,7 @@ const archived = computed(() => props.sessions.filter((s) => s.archived));
             s.kind === "private" ? "私" : "群"
           }}</span>
           <span class="who">
-            <b>{{ s.name }}</b>
+            <b>{{ placeName(s) }}</b>
             <small>{{ s.enabled ? "参与中" : "已暂停" }}</small>
           </span>
           <span
@@ -70,7 +71,7 @@ const archived = computed(() => props.sessions.filter((s) => s.archived));
           <input
             type="checkbox"
             :checked="s.enabled"
-            :aria-label="`参与：${s.name}`"
+            :aria-label="`参与：${placeName(s)}`"
             @change="emit('toggle', s)"
           />
         </label>
@@ -79,7 +80,7 @@ const archived = computed(() => props.sessions.filter((s) => s.archived));
       <details v-if="archived.length" class="archive-list">
         <summary>已归档 · {{ archived.length }}</summary>
         <article v-for="s in archived" :key="s.id">
-          <b>{{ s.name }}</b>
+          <b>{{ placeName(s) }}</b>
           <div class="row">
             <button
               class="small"
@@ -106,7 +107,7 @@ const archived = computed(() => props.sessions.filter((s) => s.archived));
 .session-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
   min-height: 0;
   height: 100%;
 }
@@ -117,7 +118,8 @@ const archived = computed(() => props.sessions.filter((s) => s.archived));
   gap: 8px;
 }
 .list-head h2 {
-  font-size: 16px;
+  font-size: 19px;
+  letter-spacing: -0.04em;
 }
 .list-head small {
   color: var(--ink-soft);
@@ -132,7 +134,7 @@ const archived = computed(() => props.sessions.filter((s) => s.archived));
   flex: 1;
   display: grid;
   align-content: start;
-  gap: 4px;
+  gap: 8px;
   min-height: 0;
   margin: 0 -6px;
   padding: 0 6px;
@@ -142,14 +144,33 @@ const archived = computed(() => props.sessions.filter((s) => s.archived));
   align-items: center;
   gap: 6px;
   padding-right: 8px;
-  border-radius: 16px;
-  transition: background-color 0.2s;
+  border: 1px solid rgb(255 255 255 / 0.62);
+  border-radius: 19px;
+  background: rgb(255 255 255 / 0.35);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.82);
+  backdrop-filter: blur(16px) saturate(1.55);
+  transition:
+    transform 0.35s var(--spring),
+    background-color 0.2s,
+    box-shadow 0.25s,
+    border-color 0.25s;
 }
 .session-row:hover {
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  transform: translateX(4px) scale(1.015);
+  background: rgb(255 255 255 / 0.66);
+  box-shadow: 0 12px 24px -20px
+    color-mix(in srgb, var(--accent) 52%, transparent);
 }
 .session-row.selected {
-  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 25%, white);
+  background: linear-gradient(
+    115deg,
+    rgb(255 255 255 / 0.84),
+    color-mix(in srgb, var(--accent-soft) 58%, transparent)
+  );
+  box-shadow:
+    inset 0 1px 0 white,
+    0 11px 24px -18px var(--accent);
 }
 .row-main {
   flex: 1;
@@ -172,10 +193,17 @@ const archived = computed(() => props.sessions.filter((s) => s.archived));
   flex: none;
   width: 38px;
   height: 38px;
-  border-radius: 14px;
-  background: hsl(var(--hue) 70% 88%);
+  border-radius: 16px;
+  background: linear-gradient(
+    145deg,
+    rgb(255 255 255 / 0.85),
+    hsl(var(--hue) 72% 87%)
+  );
   color: hsl(var(--hue) 45% 25%);
   font-weight: 700;
+  box-shadow:
+    inset 0 1px 0 white,
+    0 6px 16px -10px hsl(var(--hue) 55% 45%);
 }
 .who {
   display: grid;

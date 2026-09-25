@@ -281,7 +281,7 @@ export class ContextCompactor {
       system,
       {
         sessionId: session,
-        self: self || "LuckyBot",
+        self: self || "LuckyTri",
         ...(previous
           ? {
               previous: {
@@ -316,7 +316,7 @@ export class ContextCompactor {
       mergeSystem,
       {
         sessionId: session,
-        self: self || "LuckyBot",
+        self: self || "LuckyTri",
         children: children.map((row) => ({
           level: row.level,
           period: summaryPeriod(row.first_time, row.last_time, timeZone),
