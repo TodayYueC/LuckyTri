@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>LuckyBot v0.8.0 · 使用教程</title>
+    <title>LuckyTri v0.8.0 · 使用教程</title>
     <style>
       * {
         box-sizing: border-box;
@@ -257,7 +257,7 @@
   <body>
     <header>
       <div>
-        <b>LuckyBot · 上手手册</b><small>YOUR CHAT COMPANION / v0.8.0</small>
+        <b>LuckyTri · 上手手册</b><small>YOUR CHAT COMPANION / v0.8.0</small>
       </div>
       <nav>
         <a href="/#setup">返回管理台</a
@@ -276,9 +276,9 @@
         ><a href="#step-8">8. 备份与停止</a><a href="#step-9">9. 常见问题</a>
       </nav>
       <article>
-        <h1>LuckyBot · 从零上手教程</h1>
+        <h1>LuckyTri · 从零上手教程</h1>
         <p>
-          LuckyBot 在本机思考和回复。NapCat 负责 QQ 登录与收发。模型 API
+          LuckyTri 在本机思考和回复。NapCat 负责 QQ 登录与收发。模型 API
           是单独的外部服务。QQ 扫码和安全确认在 QQ 或 NapCat 窗口完成。
         </p>
         <h2 id="step-1">1. 启动</h2>
@@ -290,17 +290,17 @@ npm start
         <p>
           打开
           <a href="http://127.0.0.1:3210">http://127.0.0.1:3210</a>。终端里的
-          SQLite 实验性提示不表示启动失败，以能否打开 LuckyBot 为准。
+          SQLite 实验性提示不表示启动失败，以能否打开 LuckyTri 为准。
         </p>
         <p>
           Windows 日常使用可以双击
-          <code>启动LuckyBot.cmd</code>。服务已在运行时，它只打开
-          LuckyBot。关闭浏览器不会停止服务；停止时双击
-          <code>停止LuckyBot.cmd</code>，或在项目目录执行
+          <code>启动LuckyTri.cmd</code>。服务已在运行时，它只打开
+          LuckyTri。关闭浏览器不会停止服务；停止时双击
+          <code>停止LuckyTri.cmd</code>，或在项目目录执行
           <code>npm run stop</code>。这条命令只停止当前项目，不会结束其他 Node
           进程。前台运行时也可以在该终端按 <code>Ctrl+C</code>。
         </p>
-        <p>LuckyBot 是「TA 的小世界」，左侧导航分三组、八个入口：</p>
+        <p>LuckyTri 是「TA 的小世界」，左侧导航分三组、八个入口：</p>
         <table>
           <thead>
             <tr>
@@ -393,7 +393,7 @@ LLM_API_KEY=
           <tbody>
             <tr>
               <td>ADMIN_TOKEN</td>
-              <td>打开 LuckyBot 和调用 HTTP API；停止命令也会使用</td>
+              <td>打开 LuckyTri 和调用 HTTP API；停止命令也会使用</td>
             </tr>
             <tr>
               <td>ONEBOT_TOKEN</td>
@@ -401,7 +401,7 @@ LLM_API_KEY=
             </tr>
             <tr>
               <td>LLM_API_KEY</td>
-              <td>可选；非空时优先于 LuckyBot 里保存的模型密钥</td>
+              <td>可选；非空时优先于 LuckyTri 里保存的模型密钥</td>
             </tr>
             <tr>
               <td>HOST / PORT</td>
@@ -475,7 +475,7 @@ LLM_API_KEY=
           </li>
         </ol>
         <p>
-          小号需要已经在目标群里。LuckyBot 不保存 QQ
+          小号需要已经在目标群里。LuckyTri 不保存 QQ
           密码。右侧「还差哪一步」列出接入检查，每一项的「去处理」会直接带你到对应的位置。
         </p>
         <p>
@@ -513,7 +513,7 @@ LLM_API_KEY=
           </tbody>
         </table>
         <p>
-          这里的 <code>3210</code> 是 LuckyBot 的端口。NapCat 和 LuckyBot
+          这里的 <code>3210</code> 是 LuckyTri 的端口。NapCat 和 LuckyTri
           不在同一台机器或放在容器里时，<code>127.0.0.1</code>
           指向各自环境，需要另行改地址，并先配置 <code>ADMIN_TOKEN</code>。
         </p>
@@ -649,7 +649,7 @@ npm start
             </tr>
             <tr>
               <td>模型 401 / 403</td>
-              <td>密钥和权限；环境变量密钥可能覆盖 LuckyBot 里保存的密钥</td>
+              <td>密钥和权限；环境变量密钥可能覆盖 LuckyTri 里保存的密钥</td>
             </tr>
             <tr>
               <td>模型 404</td>
@@ -680,7 +680,7 @@ npm start
       </article>
     </div>
     <footer>
-      LuckyBot · 从本机试聊，到慢慢熟悉一个群。教程与 v0.8.0 界面同步。
+      LuckyTri · 从本机试聊，到慢慢熟悉一个群。教程与 v0.8.0 界面同步。
     </footer>
   </body>
 </html>

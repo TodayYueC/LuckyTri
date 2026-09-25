@@ -1,8 +1,8 @@
-# LuckyBot
+# LuckyTri
 
 一个从 QQ 群聊起步的 AI 伙伴。她在本机理解多人对话，自己决定什么时候接话、什么时候安静，通过长期记忆和自己的日子记住人与事，也会重新审视过去的想法。
 
-当前接入是 OneBot 11。QQ 登录和收发由 [NapCat](https://napneko.github.io/) 完成，LuckyBot 不保存 QQ 密码。模型使用兼容 Chat Completions 的接口。
+当前接入是 OneBot 11。QQ 登录和收发由 [NapCat](https://napneko.github.io/) 完成，LuckyTri 不保存 QQ 密码。模型使用兼容 Chat Completions 的接口。
 
 **语言：** [简体中文](README.md) · [English](README.en.md)
 
@@ -29,14 +29,14 @@
 ## 启动
 
 ```bash
-git clone https://github.com/TodayYueC/LuckyBot.git
-cd LuckyBot
+git clone https://github.com/TodayYueC/LuckyBot.git LuckyTri
+cd LuckyTri
 npm install
 npm run setup
 npm start
 ```
 
-打开 <http://127.0.0.1:3210>。Windows 也可以双击 `启动LuckyBot.cmd` 启动并打开 LuckyBot，双击 `停止LuckyBot.cmd` 停止本项目服务。
+打开 <http://127.0.0.1:3210>。Windows 也可以双击 `启动LuckyTri.cmd` 启动并打开 LuckyTri，双击 `停止LuckyTri.cmd` 停止本项目服务。
 
 `npm run setup` 会在没有 `.env` 时生成管理令牌和 OneBot 令牌。文件已存在时不会覆盖。
 
@@ -48,7 +48,7 @@ ONEBOT_TOKEN=
 LLM_API_KEY=
 ```
 
-`ADMIN_TOKEN` 保护 LuckyBot 和 HTTP API。`ONEBOT_TOKEN` 保护 `/onebot/v11/ws`。`LLM_API_KEY` 可选，非空时优先于 LuckyBot 里保存的密钥。修改 `.env` 后需要重启。不要把真实密钥写入仓库、Issue 或截图。
+`ADMIN_TOKEN` 保护 LuckyTri 和 HTTP API。`ONEBOT_TOKEN` 保护 `/onebot/v11/ws`。`LLM_API_KEY` 可选，非空时优先于 LuckyTri 里保存的密钥。修改 `.env` 后需要重启。不要把真实密钥写入仓库、Issue 或截图。
 
 默认是模拟模式。先在「对话」点「＋ 添加会话」填写群号或 QQ 号，再在聊天里点「模拟消息」发一句。模拟消息不发到 QQ；没有 API Key 时使用本地样例，不调用模型。
 

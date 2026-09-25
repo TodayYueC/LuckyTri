@@ -19,15 +19,15 @@ interface Colors {
 }
 
 const BASE: Record<ParticleKind, number> = {
-  mote: 34,
-  sparkle: 26,
-  bubble: 22,
-  rain: 70,
-  fluff: 16,
-  dust: 46,
-  star: 90,
+  mote: 16,
+  sparkle: 12,
+  bubble: 10,
+  rain: 28,
+  fluff: 8,
+  dust: 18,
+  star: 24,
 };
-const MAX = 120;
+const MAX = 36;
 
 export class ParticleField {
   private ctx: CanvasRenderingContext2D;
@@ -48,7 +48,7 @@ export class ParticleField {
   private nextShot = 0;
 
   constructor(private canvas: HTMLCanvasElement) {
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { alpha: true, desynchronized: true });
     if (!ctx) throw Error("canvas unavailable");
     this.ctx = ctx;
   }
@@ -77,7 +77,7 @@ export class ParticleField {
 
   resize() {
     const rect = this.canvas.getBoundingClientRect();
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = 1;
     this.w = rect.width;
     this.h = rect.height;
     this.canvas.width = Math.round(rect.width * dpr);
@@ -94,7 +94,7 @@ export class ParticleField {
       if (!this.running) return;
       this.raf = requestAnimationFrame(tick);
       const elapsed = now - this.last;
-      if (elapsed < 30) return;
+      if (elapsed < 50) return;
       this.last = now;
       this.step(Math.min(0.05, elapsed / 1000), now / 1000);
     };

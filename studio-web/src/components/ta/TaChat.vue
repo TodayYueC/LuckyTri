@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { nextTick, ref } from "vue";
 import { mind, CHOICE_LABELS } from "../../plates/mind";
+import { sessionChoices } from "../../format";
 import Empty from "../ui/Empty.vue";
+import Select from "../ui/Select.vue";
 
 // A preview conversation: the real pipeline reads TA's mind and memories,
 // but nothing is written and nothing goes to QQ.
@@ -127,12 +129,15 @@ function clear() {
       <div class="ta-chat-options">
         <label class="where">
           <span>想象在这里</span>
-          <select v-model="viewSession" name="viewSession">
-            <option value="">一段新的私聊</option>
-            <option v-for="s in sessions" :key="s.id" :value="s.id">
-              {{ s.name }}
-            </option>
-          </select>
+          <Select
+            v-model="viewSession"
+            name="viewSession"
+            aria-label="想象在这里"
+            :options="[
+              { value: '', label: '一段新的私聊' },
+              ...sessionChoices(sessions),
+            ]"
+          />
         </label>
         <slot name="options" />
         <button
@@ -178,7 +183,7 @@ function clear() {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  min-height: 160px;
+  min-height: 64px;
   padding: 4px 2px;
 }
 .preview-bubble {
@@ -253,6 +258,7 @@ function clear() {
   animation-delay: 0.3s;
 }
 .ta-chat-form {
+  flex-shrink: 0;
   display: grid;
   gap: 8px;
 }
@@ -268,6 +274,10 @@ function clear() {
   gap: 8px;
   flex: 1;
   min-width: 180px;
+}
+.where :deep(.menu-select) {
+  flex: 1;
+  min-width: 0;
 }
 .where span {
   white-space: nowrap;

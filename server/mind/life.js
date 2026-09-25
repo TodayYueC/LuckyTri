@@ -70,8 +70,7 @@ export class Life {
     ])
       if (!Number.isInteger(next[key]) || next[key] < min || next[key] > max)
         throw Error(`${key} 超出范围`);
-    if (typeof next.modelId !== "string") throw Error("模型无效");
-    if (next.modelId) this.chat.models.profile(next.modelId);
+    next.modelId = "";
     this.repo.saveConfig(
       "life",
       Object.fromEntries(Object.keys(LIFE_DEFAULTS).map((k) => [k, next[k]])),
@@ -111,10 +110,7 @@ export class Life {
       );
   }
   profile() {
-    const selected = this.chat.models.profile(
-      this.settings().modelId || undefined,
-    );
-    return selected;
+    return this.chat.models.profile();
   }
   run(kind, reason, watermark = null) {
     const id = randomUUID();
@@ -1040,13 +1036,10 @@ export class Life {
     let status = "empty";
     let reason = "没有需要整理的";
     try {
-      const policy = this.chat.policy(session);
-      const profile = this.settings().modelId
-        ? this.profile()
-        : this.chat.models.profile(policy.modelId);
+      const profile = this.profile();
       const models = withFallback(
         this.chat.models,
-        this.chat.fallbackFor(policy, profile, trace),
+        this.chat.fallbackFor(null, profile, trace),
       );
       const before = this.mind.memory.pending(session);
       await this.mind.memory.consolidate(

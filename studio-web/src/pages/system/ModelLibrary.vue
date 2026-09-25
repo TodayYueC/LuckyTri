@@ -7,6 +7,7 @@ import { deleteModel, saveModels, testSavedModel } from "../../plates/models";
 import { hueOf } from "../../format";
 import Sheet from "../../components/ui/Sheet.vue";
 import Empty from "../../components/ui/Empty.vue";
+import Select from "../../components/ui/Select.vue";
 
 const catalog = computed(() => studio.health?.modelCatalog || []);
 const effortLabels = computed(
@@ -121,6 +122,7 @@ function blank() {
     topP: 1,
     timeoutMs: 90000,
     isDefault: false,
+    enabled: true,
   };
 }
 
@@ -286,6 +288,7 @@ async function save() {
             ...draft,
             ...fitted,
             isDefault: !!draft.isDefault,
+            enabled: draft.isDefault ? true : draft.enabled !== false,
             timeoutMs: Number(draft.timeoutMs),
             temperature: Number(draft.temperature),
             topP: Number(draft.topP),
@@ -342,6 +345,7 @@ async function testModel() {
   try {
     const r = await testSavedModel(draft.id);
     testResult.value = `✓ ${draft.label || r.model} 连接成功 · ${r.latency} ms`;
+    await reload();
   } catch (error) {
     testResult.value = (error as Error).message;
   } finally {
@@ -361,7 +365,9 @@ async function testModel() {
           ＋ 新增模型
         </button>
       </div>
-      <p class="faint">每个会话都可以选择自己的模型。未添加时不会预置连接。</p>
+      <p class="faint">
+        群聊、私聊和独处都使用默认模型。其余已启用的模型按这里的顺序作为备用。关掉的模型不会被调用。
+      </p>
       <div class="rows">
         <p v-if="!modelList.length" class="muted">还没有模型。</p>
         <button
@@ -384,7 +390,13 @@ async function testModel() {
             <b>{{ m.label || m.model }}</b>
             <small
               >{{ m.provider || "自定义供应商"
-              }}{{ m.isDefault ? " · 默认" : "" }}</small
+              }}{{
+                m.enabled === false
+                  ? " · 已关闭"
+                  : m.isDefault
+                    ? " · 默认"
+                    : " · 备用"
+              }}</small
             >
           </span>
         </button>
@@ -413,15 +425,17 @@ async function testModel() {
           <div class="form-grid">
             <label v-if="vendorModels.length > 1">
               同厂商模型
-              <select :value="draft.presetId" @change="switchPreset">
-                <option
-                  v-for="item in vendorModels"
-                  :key="item.id"
-                  :value="item.id"
-                >
-                  {{ item.label }}
-                </option>
-              </select>
+              <Select
+                :model-value="draft.presetId"
+                aria-label="同厂商模型"
+                :options="
+                  vendorModels.map((item: any) => ({
+                    value: item.id,
+                    label: item.label,
+                  }))
+                "
+                @change="switchPreset"
+              />
             </label>
             <label
               >显示名称<input v-model="draft.label" name="label" required
@@ -466,19 +480,17 @@ async function testModel() {
           <div class="form-grid">
             <label v-if="contextOptions.length">
               上下文容量
-              <select
+              <Select
                 name="contextWindow"
-                :value="draft.contextWindow"
+                :model-value="draft.contextWindow"
+                :options="
+                  contextOptions.map((option: any) => ({
+                    value: option.contextWindow,
+                    label: option.label,
+                  }))
+                "
                 @change="applyContextWindow"
-              >
-                <option
-                  v-for="option in contextOptions"
-                  :key="option.contextWindow"
-                  :value="option.contextWindow"
-                >
-                  {{ option.label }}
-                </option>
-              </select>
+              />
             </label>
             <label v-else
               >上下文容量<input
@@ -500,11 +512,17 @@ async function testModel() {
             /></label>
             <label>
               思考强度
-              <select v-model="draft.reasoningEffort" name="reasoningEffort">
-                <option v-for="v in effortOptions" :key="v" :value="v">
-                  {{ effortName(v) }}
-                </option>
-              </select>
+              <Select
+                v-model="draft.reasoningEffort"
+                name="reasoningEffort"
+                aria-label="思考强度"
+                :options="
+                  effortOptions.map((v: string) => ({
+                    value: v,
+                    label: effortName(v),
+                  }))
+                "
+              />
             </label>
           </div>
         </fieldset>
@@ -571,6 +589,19 @@ async function testModel() {
           <button class="primary" :disabled="busy">
             {{ busy ? "正在保存…" : "保存模型" }}
           </button>
+          <small class="faint">{{
+            studio.dirty ? "有未保存的修改" : "已保存的模型才会用来测试和回复"
+          }}</small>
+          <label v-if="!draft.isDefault" class="check">
+            <input
+              type="checkbox"
+              :checked="draft.enabled !== false"
+              @change="
+                draft.enabled = ($event.target as HTMLInputElement).checked;
+                studio.dirty = true;
+              "
+            />启用这个备用模型
+          </label>
           <button
             v-if="!draft.isDefault"
             id="setDefaultModel"
@@ -664,13 +695,31 @@ async function testModel() {
 <style scoped>
 .library {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-columns: minmax(260px, 0.32fr) minmax(0, 1fr);
   gap: var(--gap);
   align-items: start;
 }
 .shelf {
+  position: sticky;
+  top: 14px;
   display: grid;
-  gap: 10px;
+  gap: 15px;
+  background:
+    radial-gradient(
+      ellipse at 0 0,
+      color-mix(in srgb, var(--glow-a) 23%, transparent),
+      transparent 56%
+    ),
+    var(--surface);
+}
+.detail {
+  background:
+    radial-gradient(
+      ellipse at 100% 0,
+      color-mix(in srgb, var(--glow-b) 16%, transparent),
+      transparent 47%
+    ),
+    var(--surface);
 }
 .shelf-head {
   display: flex;
@@ -679,7 +728,8 @@ async function testModel() {
   gap: 8px;
 }
 .shelf-head h2 {
-  font-size: 16px;
+  font-size: 21px;
+  letter-spacing: -0.04em;
 }
 .shelf-head small {
   color: var(--ink-soft);
@@ -687,7 +737,7 @@ async function testModel() {
 }
 .rows {
   display: grid;
-  gap: 4px;
+  gap: 8px;
   max-height: 520px;
   overflow: auto;
 }
@@ -695,19 +745,33 @@ async function testModel() {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
-  border: none;
-  border-radius: 14px;
-  background: transparent;
+  padding: 11px 12px;
+  border: 1px solid rgb(255 255 255 / 0.75);
+  border-radius: 18px;
+  background: rgb(255 255 255 / 0.36);
+  box-shadow: inset 0 1px 0 white;
   text-align: left;
+  backdrop-filter: blur(16px) saturate(1.5);
+  transition:
+    transform 0.32s var(--spring),
+    background-color 0.2s,
+    box-shadow 0.25s;
 }
 .entity-row:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
-  transform: none;
-  box-shadow: none;
+  background: rgb(255 255 255 / 0.66);
+  transform: translateX(4px) scale(1.01);
+  box-shadow: 0 12px 22px -19px var(--accent);
 }
 .entity-row.selected {
-  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 22%, white);
+  background: linear-gradient(
+    115deg,
+    white,
+    color-mix(in srgb, var(--accent-soft) 60%, white)
+  );
+  box-shadow:
+    inset 0 1px 0 white,
+    0 13px 23px -20px var(--accent);
 }
 .badge {
   display: grid;
@@ -715,10 +779,13 @@ async function testModel() {
   flex: none;
   width: 36px;
   height: 36px;
-  border-radius: 12px;
-  background: hsl(var(--hue) 70% 88%);
+  border-radius: 14px;
+  background: linear-gradient(145deg, white, hsl(var(--hue) 70% 88%));
   color: hsl(var(--hue) 45% 25%);
   font-weight: 700;
+  box-shadow:
+    inset 0 1px 0 white,
+    0 5px 13px -10px hsl(var(--hue) 45% 32%);
 }
 .who {
   display: grid;
@@ -740,9 +807,16 @@ fieldset {
   display: grid;
   gap: 10px;
   margin: 0;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
+  padding: 20px;
+  border: 1px solid rgb(255 255 255 / 0.81);
+  border-radius: 24px;
+  background:
+    linear-gradient(142deg, rgb(255 255 255 / 0.63), rgb(255 255 255 / 0.28)),
+    var(--surface);
+  box-shadow:
+    inset 0 1px 0 white,
+    0 14px 30px -27px var(--accent);
+  backdrop-filter: blur(20px) saturate(1.6);
 }
 legend {
   padding: 0 8px;
@@ -750,8 +824,20 @@ legend {
   font-size: 13px;
 }
 .advanced summary {
+  padding: 12px 15px;
+  border: 1px solid rgb(255 255 255 / 0.8);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 0.42);
+  box-shadow: inset 0 1px 0 white;
   color: var(--accent);
   font-weight: 600;
+  transition:
+    transform 0.3s var(--spring),
+    background-color 0.2s;
+}
+.advanced summary:hover {
+  transform: translateX(3px);
+  background: rgb(255 255 255 / 0.65);
 }
 .advanced[open] summary {
   margin-bottom: 12px;
@@ -787,10 +873,31 @@ legend {
   display: grid;
   justify-items: start;
   gap: 3px;
-  padding: 12px 14px;
-  border-radius: 16px;
+  padding: 17px;
+  border: 1px solid rgb(255 255 255 / 0.82);
+  border-radius: 21px;
+  background:
+    radial-gradient(
+      ellipse at 100% 0,
+      color-mix(in srgb, var(--glow-a) 22%, transparent),
+      transparent 55%
+    ),
+    rgb(255 255 255 / 0.5);
+  box-shadow:
+    inset 0 1px 0 white,
+    0 12px 22px -20px var(--accent);
   text-align: left;
   font-weight: 500;
+  backdrop-filter: blur(16px) saturate(1.5);
+  transition:
+    transform 0.42s var(--spring),
+    box-shadow 0.25s;
+}
+.preset-card:hover:not(:disabled) {
+  transform: translateY(-6px) rotate(-0.5deg) scale(1.025);
+  box-shadow:
+    inset 0 1px 0 white,
+    0 22px 33px -22px var(--accent);
 }
 .preset-card small {
   color: var(--ink-soft);
@@ -799,6 +906,9 @@ legend {
 @media (max-width: 900px) {
   .library {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .shelf {
+    position: static;
   }
 }
 </style>

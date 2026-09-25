@@ -15,8 +15,9 @@ import {
   when,
 } from "../../plates/mind";
 import { patchMemory } from "../../plates/knowledge";
-import { ago, hueOf, initials } from "../../format";
+import { ago, hueOf, initials, placeName } from "../../format";
 import Sheet from "../../components/ui/Sheet.vue";
+import Select from "../../components/ui/Select.vue";
 import Ring from "../../components/ui/Ring.vue";
 
 const props = defineProps<{ id: string | null; now?: number }>();
@@ -141,6 +142,7 @@ watch(
         >
         <div>
           <p class="feel">{{ person.feel }}</p>
+          <small class="qq">QQ {{ person.userId }}</small>
           <small class="muted">
             {{
               [
@@ -232,27 +234,22 @@ watch(
             <p>{{ m.content }}</p>
             <small class="faint">
               {{ MEMORY_STATUS[m.status] || m.status }} · 在「{{
-                m.sessionName
+                placeName({ name: m.sessionName, id: m.session_id || m.sessionId })
               }}」知道的 · {{ m.when }}
             </small>
-            <div v-if="m.status === 'confirmed'" class="row">
-              <select
+            <div v-if="m.status === 'confirmed'" class="instant">
+              <span class="faint">改完即生效</span>
+              <Select
                 :aria-label="'分寸：' + m.content"
-                :value="m.discretion || 'open'"
-                @change="
-                  patch(m, {
-                    discretion: ($event.target as HTMLSelectElement).value,
-                  })
+                :model-value="m.discretion || 'open'"
+                :options="
+                  Object.entries(DISCRETION).map(([key, label]) => ({
+                    value: key,
+                    label,
+                  }))
                 "
-              >
-                <option
-                  v-for="(label, key) in DISCRETION"
-                  :key="key"
-                  :value="key"
-                >
-                  {{ label }}
-                </option>
-              </select>
+                @update:model-value="patch(m, { discretion: $event })"
+              />
               <button class="small" @click="patch(m, { locked: !m.locked })">
                 {{ m.locked ? "解锁" : "锁定" }}
               </button>
@@ -363,6 +360,16 @@ watch(
   flex: 1;
   min-width: 0;
 }
+.instant {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.instant select {
+  width: auto;
+  min-width: 128px;
+}
 .memory-item {
   display: grid;
   gap: 6px;
@@ -386,5 +393,89 @@ watch(
 .memory-item.superseded p {
   text-decoration: line-through;
   text-decoration-color: var(--ink-faint);
+}
+.person-sheet {
+  gap: 17px;
+}
+.who {
+  position: relative;
+  overflow: hidden;
+  padding: 18px;
+  border-radius: 25px;
+  border: 1px solid #fff;
+  background: linear-gradient(125deg, #ffffffc9, #dfeeff85 65%, #f5e5f58c);
+  box-shadow:
+    inset 0 2px 0 #fff,
+    0 17px 26px -24px #5473a6;
+}
+.who::after {
+  content: "";
+  position: absolute;
+  width: 170px;
+  height: 170px;
+  right: -90px;
+  top: -100px;
+  border-radius: 50%;
+  background: #d3dcff9a;
+  filter: blur(25px);
+}
+.who .avatar {
+  position: relative;
+  z-index: 1;
+  border: 1px solid #fff;
+  box-shadow:
+    inset 3px 3px 4px #fff,
+    inset -4px -4px 8px #acc5e77a,
+    0 9px 17px -10px #5376ab;
+}
+.who > div {
+  min-width: 0;
+  position: relative;
+  z-index: 1;
+}
+.feel {
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+.rings {
+  gap: 8px;
+  padding: 13px;
+  border: 1px solid #fff;
+  border-radius: 24px;
+  background: linear-gradient(145deg, #ffffffba, #ffffff68);
+  box-shadow: inset 0 1px 0 #fff;
+}
+.impression {
+  padding: 14px 17px;
+  border: 1px solid #fff;
+  border-left: 3px solid var(--accent);
+  border-radius: 17px;
+  background: #ffffff9e;
+  box-shadow: inset 0 1px 0 #fff;
+  line-height: 1.75;
+}
+.sheet-title {
+  margin-bottom: 11px;
+  font-size: 15px;
+}
+.change,
+.memory-item {
+  border: 1px solid #ffffffe3;
+  border-radius: 19px;
+  background: linear-gradient(135deg, #ffffffc5, #ffffff76);
+  box-shadow: inset 0 1px 0 #fff;
+  transition:
+    transform 0.4s var(--spring),
+    box-shadow 0.24s;
+}
+.change:hover,
+.memory-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 21px -18px #597aad;
+}
+@media (max-width: 510px) {
+  .rings {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 </style>

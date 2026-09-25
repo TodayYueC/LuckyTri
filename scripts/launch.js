@@ -41,10 +41,10 @@ async function running() {
   try {
     info = await response.json();
   } catch {
-    throw new Error("此端口运行的不是 LuckyBot。");
+    throw new Error("此端口运行的不是 LuckyTri。");
   }
   if (
-    !["luckybot", "lucky", "xiaoman"].includes(info.app) ||
+    !["luckytri", "luckybot", "lucky", "xiaoman"].includes(info.app) ||
     typeof info.workspace !== "string" ||
     normalize(info.workspace) !== normalize(realpathSync(process.cwd()))
   )
@@ -93,10 +93,10 @@ try {
     if (!ready) throw new Error("启动未完成，请查看 data/launcher.log。");
     console.log(
       proxy.enabled
-        ? "LuckyBot 已在后台启动，外部 API 走系统代理。"
-        : "LuckyBot 已在后台启动。",
+        ? "LuckyTri 已在后台启动，外部 API 走系统代理。"
+        : "LuckyTri 已在后台启动。",
     );
-  } else console.log("LuckyBot 已经运行，直接打开管理台。");
+  } else console.log("LuckyTri 已经运行，直接打开管理台。");
   console.log(base);
   if (!process.argv.includes("--no-browser")) {
     const browser = spawn(

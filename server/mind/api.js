@@ -82,7 +82,7 @@ export function mountMind(app, chat, life) {
             time: said.time,
           }
         : null;
-      const thought = mind.thoughts.open({ now, limit: 1 })[0];
+      const thought = mind.thoughts.latest(now);
       res.json({
         name: nature.name,
         now,
@@ -103,7 +103,7 @@ export function mountMind(app, chat, life) {
         lastWords: words,
         thought: thought
           ? {
-              content: text(thought.content, 140),
+              content: thought.content,
               when: elapsedLabel(thought.created, now, mind.timeZone()),
             }
           : null,

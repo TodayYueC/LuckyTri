@@ -60,8 +60,8 @@ export function createStore(path = process.env.DB_PATH || "data/friend.db") {
       COMMIT;`);
   }
   const defaults = {
-    name: "LuckyBot",
-    aliases: "LuckyBot,Lucky",
+    name: "LuckyTri",
+    aliases: "LuckyTri,LuckyBot,Lucky",
     persona:
       "可爱、乐观、情绪稳定，偶尔对事情轻轻吐槽，不挖苦群友。像熟悉的群友一样说话，先接住情绪，不急着给建议。",
     enabled: true,
@@ -95,18 +95,20 @@ export function createStore(path = process.env.DB_PATH || "data/friend.db") {
     )
       migrated = {
         ...migrated,
-        name: "LuckyBot",
-        aliases: "LuckyBot,Lucky,Unlucky,UnLucky,小满,满满",
+        name: "LuckyTri",
+        aliases: "LuckyTri,LuckyBot,Lucky,Unlucky,UnLucky,小满,满满",
       };
     else if (
       existing.name === "Lucky" ||
       existing.name === "LuckyBot" ||
+      existing.name === "LuckyTri" ||
       !existing.name
     )
       migrated = {
         ...migrated,
-        name: "LuckyBot",
+        name: "LuckyTri",
         aliases: [
+          "LuckyTri",
           "LuckyBot",
           "Lucky",
           ...String(existing.aliases || "").split(","),
@@ -118,7 +120,7 @@ export function createStore(path = process.env.DB_PATH || "data/friend.db") {
       };
     const renamedPersona = String(migrated.persona || "").replace(
       /\bLucky\b/g,
-      "LuckyBot",
+      "LuckyTri",
     );
     if (renamedPersona !== migrated.persona)
       migrated = { ...migrated, persona: renamedPersona };

@@ -10,7 +10,7 @@ import {
   withTransientRequestRetry,
 } from "./network.js";
 
-const USER_AGENT = "LuckyBot/0.8.0";
+const USER_AGENT = "LuckyTri/0.8.0";
 const GPT_MODEL = /(?:^|[/.])gpt-/i;
 const CACHE_KEY_PROVIDERS = new Set([
   "openai",
@@ -104,6 +104,13 @@ export function pickModel(models, id) {
   if (!list.length) return null;
   if (id && id !== "default") return list.find((m) => m.id === id) || null;
   return list.find((m) => m.isDefault) || list[0];
+}
+// Every turn uses the default model. The other enabled profiles, in library
+// order, are the backup list when that model cannot answer.
+export function backupModels(models, primaryId = "") {
+  return normalizeModels(models).filter(
+    (model) => model.enabled !== false && model.id !== primaryId,
+  );
 }
 export function isMimoProfile(profile) {
   return (
@@ -759,6 +766,9 @@ export function shouldFallback(error) {
 // Wraps any object with a `call` method; formatting problems stay with the
 // primary model because the existing reply fallbacks already handle them.
 export function withFallback(models, fallback) {
+  const chain = (Array.isArray(fallback) ? fallback : [fallback]).filter(
+    Boolean,
+  );
   return {
     profile: (...args) => models.profile(...args),
     async call(profile, stage, system, data, trace, images = [], ...rest) {
@@ -773,30 +783,38 @@ export function withFallback(models, fallback) {
           ...rest,
         );
       } catch (error) {
-        if (
-          !fallback ||
-          fallback.id === profile?.id ||
-          stage === "test" ||
-          !shouldFallback(error) ||
-          (images?.length && !fallback.vision)
-        )
-          throw error;
-        trace?.steps?.push(
-          `主模型 ${profile?.label || profile?.model} 请求失败（${String(error.message || "").slice(0, 120)}），这一步改用备用模型 ${fallback.label || fallback.model}`,
-        );
-        const before = trace?.calls?.length ?? 0;
-        const result = await models.call(
-          fallback,
-          stage,
-          system,
-          data,
-          trace,
-          images,
-          ...rest,
-        );
-        for (const entry of trace?.calls?.slice(before) || [])
-          entry.fallbackFrom = profile?.id;
-        return result;
+        let last = error;
+        for (const next of chain) {
+          if (
+            !next ||
+            next.id === profile?.id ||
+            stage === "test" ||
+            !shouldFallback(last) ||
+            (images?.length && !next.vision)
+          )
+            continue;
+          trace?.steps?.push(
+            `主模型 ${profile?.label || profile?.model} 请求失败（${String(last.message || "").slice(0, 120)}），这一步改用备用模型 ${next.label || next.model}`,
+          );
+          const before = trace?.calls?.length ?? 0;
+          try {
+            const result = await models.call(
+              next,
+              stage,
+              system,
+              data,
+              trace,
+              images,
+              ...rest,
+            );
+            for (const entry of trace?.calls?.slice(before) || [])
+              entry.fallbackFrom = profile?.id;
+            return result;
+          } catch (nextError) {
+            last = nextError;
+          }
+        }
+        throw last;
       }
     },
   };

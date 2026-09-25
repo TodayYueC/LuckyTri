@@ -6,12 +6,14 @@ import { AREAS, MOBILE_MORE, MOBILE_TABS, NAV, type Page } from "./router";
 import { subscribe } from "./sse";
 import { toast } from "./api";
 import { applyTheme, liveMood, setQuiet, theme } from "./mood/useMood";
+import { loadWallpapers } from "./wallpaper";
 import { MOODS } from "./mood/themes";
 import { ACTIVITY_LABELS } from "./mood/presence";
 import MoodSky from "./components/sky/MoodSky.vue";
 import TaOrb from "./components/ta/TaOrb.vue";
 import TaCompanion from "./components/ta/TaCompanion.vue";
 import ThemePicker from "./components/shell/ThemePicker.vue";
+import NowStatusDock from "./components/shell/NowStatusDock.vue";
 import Confirm from "./components/ui/Confirm.vue";
 import Icon from "./components/ui/Icon.vue";
 import Sheet from "./components/ui/Sheet.vue";
@@ -90,6 +92,7 @@ function reloadPage() {
 }
 
 onMounted(async () => {
+  void loadWallpapers();
   followHash();
   window.addEventListener("hashchange", followHash);
   window.addEventListener("popstate", followHash);
@@ -137,9 +140,10 @@ onUnmounted(() => {
       >
         <TaOrb :mood="liveMood" :activity="activity" :size="50" />
         <span class="dock-ta-text rail-label">
-          <b>{{ name }}</b>
+          <b>LuckyTri</b>
           <small
-            >{{ MOODS[liveMood].label }} ·
+            >{{ name !== "LuckyTri" ? name + " · " : ""
+            }}{{ MOODS[liveMood].label }} ·
             {{ ACTIVITY_LABELS[activity] || "闲着" }}</small
           >
         </span>
@@ -188,6 +192,9 @@ onUnmounted(() => {
       </div>
     </nav>
 
+    <div class="workspace">
+    <NowStatusDock />
+
     <main id="main" tabindex="-1">
       <header class="topbar">
         <div class="topbar-title">
@@ -226,6 +233,7 @@ onUnmounted(() => {
         </div>
       </Transition>
     </main>
+    </div>
 
     <nav class="tabbar" aria-label="主要功能">
       <button
@@ -252,7 +260,7 @@ onUnmounted(() => {
     <Sheet
       :open="studio.moreOpen"
       title="更多"
-      eyebrow="MORE"
+      eyebrow="更多"
       width="420px"
       @close="studio.moreOpen = false"
     >
@@ -340,12 +348,23 @@ onUnmounted(() => {
   height: calc(100dvh - 28px);
   margin: 14px 0 14px 14px;
   padding: 14px 12px;
-  border-radius: 28px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-soft);
-  backdrop-filter: blur(18px) saturate(1.3);
-  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  border-radius: 34px;
+  background:
+    linear-gradient(
+      180deg,
+      rgb(255 255 255 / 0.72),
+      rgb(255 255 255 / 0.14) 46%,
+      transparent 78%
+    ),
+    var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--glass-edge);
+  box-shadow:
+    inset 1px 1px 0 rgb(255 255 255 / 0.9),
+    0 22px 60px -34px rgb(69 94 148 / 0.34);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur))
+    saturate(var(--glass-saturate));
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -429,9 +448,24 @@ onUnmounted(() => {
   box-shadow: none;
 }
 .dock-link.active {
+  background: linear-gradient(
+    110deg,
+    rgb(255 255 255 / 0.92),
+    color-mix(in srgb, var(--glow-a) 44%, white)
+  );
+  color: var(--accent);
+  box-shadow:
+    inset 0 1px 0 white,
+    0 9px 22px -14px var(--accent);
+}
+.dock-link.active::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-radius: 50%;
   background: var(--accent);
-  color: var(--accent-ink);
-  box-shadow: 0 12px 24px -14px var(--accent);
+  box-shadow: 0 0 10px var(--accent);
 }
 .dock-foot {
   display: grid;
@@ -452,13 +486,25 @@ main {
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
-  width: min(1280px, 100%);
-  margin: 0 auto;
-  padding: 28px 28px 18px;
+  width: min(1232px, calc(100% - 36px));
+  margin: 16px auto 8px;
+  padding: 16px 22px;
+  border-radius: 30px;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.72), transparent 70%),
+    var(--surface);
+  border: 1px solid var(--glass-edge);
+  box-shadow:
+    inset 0 1px 0 white,
+    0 16px 38px -28px rgb(69 94 148 / 0.3);
+  backdrop-filter: blur(18px) saturate(1.5);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
 }
 .topbar h1 {
-  font-size: 30px;
-  letter-spacing: -0.02em;
+  font-family: var(--font-display);
+  font-size: 29px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
 }
 .topbar p {
   margin-top: 2px;
@@ -489,11 +535,8 @@ main {
   font-size: 13px;
   font-weight: 600;
 }
-.at-now .topbar {
-  padding-bottom: 0;
-}
-.at-now .topbar-title {
-  visibility: hidden;
+.at-now .topbar-title p {
+  display: block;
 }
 
 /* The chat page owns the full height; its panes scroll on their own. */
@@ -573,6 +616,9 @@ main {
     width: 52px;
     padding: 10px 0;
   }
+  .dock-link.active::after {
+    display: none;
+  }
   .rail-label,
   .dock :deep(.rail-label) {
     position: absolute !important;
@@ -592,7 +638,7 @@ main {
     display: none;
   }
   main {
-    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+    padding-bottom: calc(128px + env(safe-area-inset-bottom));
   }
   .topbar {
     align-items: center;
@@ -624,11 +670,18 @@ main {
     gap: 2px;
     padding: 6px;
     border-radius: 24px;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    box-shadow: var(--shadow);
-    backdrop-filter: blur(18px) saturate(1.3);
-    -webkit-backdrop-filter: blur(18px) saturate(1.3);
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, white 34%, transparent),
+        transparent 70%
+      ),
+      var(--surface);
+    border: 1px solid var(--glass-edge);
+    box-shadow: var(--glass-sheen), var(--shadow);
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+    -webkit-backdrop-filter: blur(var(--glass-blur))
+      saturate(var(--glass-saturate));
   }
   .tabbar button {
     display: grid;
@@ -648,6 +701,264 @@ main {
   .tabbar button.active {
     background: var(--accent-soft);
     color: var(--accent);
+  }
+}
+
+/* A floating lens replaces the old application rail. The same page buttons
+   remain in place, so navigation and keyboard behaviour stay unchanged. */
+@media (min-width: 761px) {
+  .shell {
+    display: block;
+    padding-top: 1px;
+  }
+  .dock {
+    position: sticky;
+    top: 14px;
+    z-index: 66;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 14px;
+    width: min(1460px, calc(100% - 40px));
+    height: auto;
+    min-height: 72px;
+    margin: 14px auto 0;
+    padding: 8px 12px;
+    border-radius: 999px;
+    overflow: visible;
+    background:
+      radial-gradient(
+        ellipse at 12% -80%,
+        rgb(255 255 255 / 0.94),
+        transparent 58%
+      ),
+      linear-gradient(
+        110deg,
+        rgb(255 255 255 / 0.78),
+        rgb(242 246 255 / 0.61) 52%,
+        rgb(255 255 255 / 0.78)
+      ),
+      color-mix(in srgb, var(--sky-mid) 82%, white);
+    border: 1.5px solid rgb(255 255 255 / 0.83);
+    box-shadow:
+      inset 0 2px 1px white,
+      inset 0 -2px 2px rgb(112 143 210 / 0.13),
+      0 22px 44px -28px rgb(52 82 149 / 0.38);
+  }
+  .dock-ta {
+    flex: none;
+    min-width: 160px;
+    border: 1px solid transparent;
+    padding: 4px 12px 4px 4px;
+    border-radius: 999px;
+  }
+  .dock-ta.active,
+  .dock-ta:hover:not(:disabled) {
+    background: rgb(255 255 255 / 0.42);
+    border-color: rgb(255 255 255 / 0.77);
+    box-shadow:
+      inset 0 1px 0 white,
+      0 8px 17px -14px var(--accent);
+    transform: translateY(-2px) scale(1.02);
+  }
+  .dock-groups {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-width: 0;
+  }
+  .dock-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .dock-group h2 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .dock-link {
+    position: relative;
+    width: auto;
+    min-height: 45px;
+    justify-content: center;
+    gap: 7px;
+    padding: 9px 12px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .dock-link:hover:not(:disabled) {
+    transform: translateY(-3px) scale(1.045);
+    background: rgb(255 255 255 / 0.52);
+    border-color: rgb(255 255 255 / 0.75);
+    box-shadow: 0 12px 18px -14px var(--accent);
+  }
+  .dock-link.active {
+    color: var(--ink);
+    background: linear-gradient(
+      120deg,
+      rgb(255 255 255 / 0.98),
+      color-mix(in srgb, var(--glow-a) 40%, white) 64%,
+      color-mix(in srgb, var(--glow-b) 28%, white)
+    );
+    border-color: rgb(255 255 255 / 0.97);
+    box-shadow:
+      inset 0 1px 0 white,
+      0 8px 19px -13px var(--accent);
+    animation: dock-bloom 560ms var(--spring) both;
+  }
+  .dock-link.active::after {
+    display: none;
+  }
+  .dock-foot {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 3px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+  .dock-tool,
+  .dock :deep(.theme-toggle) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    border-radius: 50%;
+  }
+  .dock-tool .rail-label,
+  .dock :deep(.theme-toggle .rail-label) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .dock-tool:hover:not(:disabled),
+  .dock :deep(.theme-toggle:hover:not(:disabled)) {
+    transform: translateY(-3px) scale(1.08);
+    background: rgb(255 255 255 / 0.62);
+    box-shadow:
+      inset 0 1px white,
+      0 11px 17px -13px var(--accent);
+  }
+  main {
+    width: 100%;
+  }
+  .workspace {
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr);
+    gap: 22px;
+    align-items: start;
+    width: min(1480px, calc(100% - 36px));
+    margin: 8px auto 0;
+  }
+  .workspace > main {
+    width: auto;
+    min-width: 0;
+  }
+  .workspace .topbar {
+    align-items: center;
+    width: calc(100% - 56px);
+    margin: 14px 28px 6px;
+    padding: 4px 22px 8px;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .topbar h1 {
+    font-size: clamp(28px, 2.8vw, 38px);
+    font-weight: 760;
+  }
+}
+@keyframes dock-bloom {
+  from {
+    transform: scale(0.88) translateY(4px);
+    filter: brightness(1.15);
+  }
+  to {
+    transform: scale(1) translateY(0);
+    filter: brightness(1);
+  }
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .dock {
+    gap: 6px;
+    padding-inline: 9px;
+  }
+  .dock-ta {
+    min-width: 145px;
+  }
+  .dock-ta-text.rail-label {
+    position: static !important;
+    display: grid;
+    width: auto;
+    height: auto;
+    clip: auto;
+  }
+  .dock-ta-text small {
+    display: none;
+  }
+  .dock-link {
+    width: 42px;
+    min-width: 42px;
+    padding: 10px;
+  }
+  .dock-tool,
+  .dock :deep(.theme-toggle) {
+    width: 38px;
+    height: 38px;
+  }
+}
+@media (max-width: 760px) {
+  .workspace {
+    display: block;
+    width: 100%;
+    margin: 0;
+  }
+  .topbar {
+    width: calc(100% - 28px);
+    margin-top: 14px;
+    padding: 8px 5px 10px;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+  .tabbar {
+    border: 1.5px solid rgb(255 255 255 / 0.86);
+    background:
+      linear-gradient(
+        130deg,
+        rgb(255 255 255 / 0.77),
+        rgb(255 255 255 / 0.27) 57%,
+        rgb(230 236 255 / 0.55)
+      ),
+      var(--glass-fill);
+    box-shadow:
+      inset 0 2px 1px white,
+      0 20px 38px -24px rgb(52 82 149 / 0.44);
+  }
+  .tabbar button.active {
+    background: linear-gradient(
+      130deg,
+      white,
+      color-mix(in srgb, var(--glow-a) 40%, white)
+    );
+    border: 1px solid white;
+    box-shadow: 0 6px 15px -10px var(--accent);
+    animation: dock-bloom 480ms var(--spring) both;
   }
 }
 </style>

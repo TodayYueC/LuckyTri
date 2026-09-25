@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { toast } from "../../api";
 import { go, studio } from "../../stores/studio";
 import type { Page } from "../../router";
+import Select from "../../components/ui/Select.vue";
 import {
   checkNapCatUpdate,
   configureQq,
@@ -92,7 +93,7 @@ onMounted(load);
           <span class="eyebrow">连接 QQ</span>
           <h2>QQ 接入助手</h2>
           <p>
-            LuckyBot 自动写入 OneBot 反向连接并启动 NapCat；QQ 登录仍由 QQ
+            LuckyTri 自动写入 OneBot 反向连接并启动 NapCat；QQ 登录仍由 QQ
             自己扫码确认。
           </p>
         </div>
@@ -155,20 +156,19 @@ onMounted(load);
               >
                 生成连接配置
               </button>
-              <select
+              <Select
                 v-if="setup.installation?.accountFiles?.length"
                 id="napcatAccount"
                 v-model="account"
-              >
-                <option value="">默认配置（下次登录适用）</option>
-                <option
-                  v-for="a in setup.installation.accountFiles"
-                  :key="a.id"
-                  :value="a.id"
-                >
-                  QQ {{ a.id }}
-                </option>
-              </select>
+                aria-label="登录账号"
+                :options="[
+                  { value: '', label: '默认配置（下次登录适用）' },
+                  ...setup.installation.accountFiles.map((a: any) => ({
+                    value: a.id,
+                    label: a.name || a.id,
+                  })),
+                ]"
+              />
             </div>
           </div>
         </article>

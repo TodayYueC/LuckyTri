@@ -41,7 +41,7 @@ if (existsSync(source)) {
   db.close();
 } else if (!mock) {
   console.error(
-    `找不到 ${source}，先启动一次 LuckyBot 并配置模型，或使用 --mock`,
+    `找不到 ${source}，先启动一次 LuckyTri 并配置模型，或使用 --mock`,
   );
   process.exit(1);
 }

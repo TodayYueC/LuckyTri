@@ -55,15 +55,21 @@ const area = computed(() => {
 });
 const base = computed(() => MID - (props.baseline ?? 0.15) * AMP);
 const recent = computed(() => [...props.moods].slice(0, 6));
+const latest = computed(() => recent.value[0]);
 </script>
 
 <template>
-  <section class="card ribbon">
-    <div class="card-head">
-      <div>
-        <span class="eyebrow">MOOD RIBBON</span>
-        <h2>心情是怎样起伏的</h2>
-        <p>最近 {{ moods.length }} 次被经历牵动；之后都会慢慢回到平常。</p>
+  <section class="ribbon">
+    <div class="ribbon-head">
+      <div class="ribbon-title">
+        <span class="eyebrow">MOOD / 此刻的天气</span>
+        <h2>心情有自己的潮汐。</h2>
+        <p>最近 {{ moods.length }} 次被经历牵动；有起伏，也会慢慢平静。</p>
+      </div>
+      <div v-if="latest" class="latest-mood">
+        <span>刚刚留下的心情</span>
+        <b>{{ latest.feeling }}</b>
+        <small>{{ latest.cause || "暂时说不清缘由" }}</small>
       </div>
     </div>
     <div ref="box" class="ribbon-box">
@@ -100,6 +106,7 @@ const recent = computed(() => [...props.moods].slice(0, 6));
         </defs>
         <line class="base" x1="0" :x2="W" :y1="base" :y2="base" />
         <path class="area" :d="area" />
+        <path class="line-glow" :d="path" />
         <path class="line" :d="path" />
         <g
           v-for="p in points"
@@ -121,7 +128,7 @@ const recent = computed(() => [...props.moods].slice(0, 6));
         的心情，随后又会慢慢回到平常。
       </p>
     </div>
-    <ul v-if="recent.length" class="recent">
+    <ul v-if="recent.length" class="recent" aria-label="最近的心情">
       <li
         v-for="m in recent"
         :key="m.id"
@@ -139,31 +146,116 @@ const recent = computed(() => [...props.moods].slice(0, 6));
 </template>
 
 <style scoped>
+.ribbon {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: 25px 28px 20px;
+  border: 1px solid #ffffffe8;
+  border-radius: 36px;
+  background: linear-gradient(120deg, #ffffffd3, #e5f4ff85 55%, #fae9f682);
+  box-shadow:
+    inset 0 2px 0 #fff,
+    0 26px 52px -39px #6889c492;
+  backdrop-filter: blur(25px) saturate(1.65);
+  -webkit-backdrop-filter: blur(25px) saturate(1.65);
+}
+.ribbon::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  right: -100px;
+  top: -170px;
+  width: 420px;
+  height: 420px;
+  border-radius: 50%;
+  background: conic-gradient(#b9d9ff99, #fff1d9a3, #f5ccf385, #b9d9ff99);
+  filter: blur(31px);
+  animation: ribbon-drift 12s ease-in-out infinite alternate;
+}
+.ribbon-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 24px;
+}
+.ribbon-title h2 {
+  margin: 9px 0 6px;
+  font-size: clamp(22px, 2.5vw, 32px);
+  letter-spacing: -0.035em;
+}
+.ribbon-title p {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.latest-mood {
+  display: grid;
+  flex: 0 0 225px;
+  gap: 2px;
+  max-width: 225px;
+  padding: 11px 16px;
+  border-radius: 20px;
+  border: 1px solid #fff;
+  background: #ffffff85;
+  box-shadow:
+    inset 0 1px 0 #fff,
+    0 12px 26px -21px #6280b0;
+  backdrop-filter: blur(14px);
+}
+.latest-mood span {
+  font-size: 10px;
+  color: var(--ink-soft);
+}
+.latest-mood b {
+  font-size: 17px;
+}
+.latest-mood small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
 .ribbon-box {
   min-width: 0;
+  margin-top: 18px;
+  border-radius: 19px;
+  background: linear-gradient(180deg, #ffffff5b, #ffffff15);
+  border: 1px solid #ffffff9d;
+  box-shadow: inset 0 1px 0 #ffffffb0;
+  overflow: hidden;
 }
 .ribbon-chart {
   width: 100%;
-  height: 150px;
-  overflow: visible;
+  height: 135px;
+  overflow: hidden;
 }
 .base {
-  stroke: var(--ink-faint);
+  stroke: color-mix(in srgb, var(--accent) 24%, transparent);
   stroke-width: 1;
-  stroke-dasharray: 5 7;
+  stroke-dasharray: 3 8;
 }
 .area {
   fill: url(#ribbon-fill);
 }
+.line-glow {
+  fill: none;
+  stroke: color-mix(in srgb, var(--orb-c) 46%, transparent);
+  stroke-width: 13;
+  filter: blur(9px);
+}
 .line {
   fill: none;
   stroke: url(#ribbon-stroke);
-  stroke-width: 3.5;
+  stroke-width: 4;
   stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 2px 2px #ffffffb3);
 }
 .pt circle {
-  stroke: var(--surface-strong);
-  stroke-width: 2;
+  stroke: #fff;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 2px 4px #678fbd8a);
 }
 .pt.warm circle {
   fill: var(--cheek);
@@ -173,28 +265,45 @@ const recent = computed(() => [...props.moods].slice(0, 6));
 }
 .empty-line {
   font-size: 13px;
+  padding: 34px 20px;
 }
 .recent {
   display: flex;
-  gap: 10px;
+  gap: 9px;
   margin: 14px 0 0;
-  padding: 0 0 4px;
+  padding: 1px 1px 5px;
   list-style: none;
   overflow-x: auto;
 }
 .recent li {
   display: grid;
   flex: 0 0 auto;
-  width: 190px;
-  gap: 2px;
-  padding: 10px 12px;
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--surface-strong) 70%, transparent);
-  border: 1px solid var(--line);
-  border-left: 4px solid var(--orb-c);
+  width: 186px;
+  gap: 3px;
+  padding: 11px 13px;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #ffffffbd, #ffffff6e);
+  border: 1px solid #ffffffdf;
+  box-shadow: inset 0 1px 0 #fff;
+  transition:
+    transform 0.42s var(--spring),
+    box-shadow 0.25s;
 }
-.recent li.warm {
-  border-left-color: var(--cheek);
+.recent li:hover {
+  transform: translateY(-4px) scale(1.025);
+  box-shadow: 0 13px 25px -18px #5884b4;
+}
+.recent li::before {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--orb-c);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--orb-c) 13%, transparent);
+}
+.recent li.warm::before {
+  background: var(--cheek);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--cheek) 16%, transparent);
 }
 .recent b {
   font-size: 14px;
@@ -208,5 +317,22 @@ const recent = computed(() => [...props.moods].slice(0, 6));
 .recent small {
   color: var(--ink-soft);
   font-size: 11.5px;
+}
+@keyframes ribbon-drift {
+  to {
+    transform: translate(-45px, 45px) rotate(30deg);
+  }
+}
+@media (max-width: 680px) {
+  .ribbon {
+    padding: 21px 18px 16px;
+  }
+  .ribbon-head {
+    display: grid;
+  }
+  .latest-mood {
+    max-width: none;
+    width: 100%;
+  }
 }
 </style>

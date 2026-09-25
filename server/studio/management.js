@@ -1,51 +1,16 @@
-import { defaultModel, pickModel } from "../core/model-manager.js";
-import { recordModelCheck } from "../readiness.js";
+import { recordModelCheck, savedConnectionSettings } from "../readiness.js";
 import { FEEDBACK_LABELS } from "../feedback.js";
 
 function connectionSettings(store, modelId = "") {
-  const row = store.db
-    .prepare("SELECT value FROM core_config WHERE id='models'")
-    .get();
-  const models = row ? JSON.parse(row.value) : [];
-  const profile = Array.isArray(models)
-    ? modelId
-      ? models.find((item) => item.id === modelId)
-      : pickModel(models, "default")
-    : null;
-  if (modelId && !profile) return null;
-  const settings = store.settings();
-  const resolved = profile || defaultModel(settings);
-  const effectiveSettings = profile
-    ? {
-        ...settings,
-        baseUrl: profile.baseUrl,
-        model: profile.model,
-        apiKey: profile.apiKey || "",
-        providerPreset: profile.provider || settings.providerPreset,
-        reasoningEffort: profile.reasoningEffort || "none",
-        tokenField: profile.tokenField || "max_tokens",
-        apiProtocol: profile.apiProtocol || "chat",
-        json: profile.json !== false,
-        thinkingStyle: profile.thinkingStyle || "",
-        temperature: profile.temperature ?? settings.temperature,
-        topP: profile.topP ?? settings.topP,
-        maxTokens: Math.min(
-          profile.maxOutputTokens || settings.maxTokens || 256,
-          256,
-        ),
-      }
-    : settings;
+  const selected = savedConnectionSettings(store, modelId);
+  if (!selected) return null;
   return {
-    settings: effectiveSettings,
-    isDefault: !profile || !!profile.isDefault,
+    ...selected,
     profile: {
-      ...resolved,
-      apiKey: resolved.apiKey || "",
-      maxOutputTokens: Math.min(
-        resolved.maxOutputTokens || settings.maxTokens || 256,
-        256,
-      ),
-      timeoutMs: Math.min(resolved.timeoutMs || 25000, 25000),
+      ...selected.profile,
+      apiKey: selected.profile.apiKey || "",
+      maxOutputTokens: Math.min(selected.profile.maxOutputTokens || 256, 256),
+      timeoutMs: Math.min(selected.profile.timeoutMs || 25000, 25000),
     },
   };
 }

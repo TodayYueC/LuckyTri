@@ -33,15 +33,30 @@ export function persistIncoming(repo, m) {
   const env = messageEnvelope({ ...m, sessionId });
   const seq = repo.append(env);
   if (!seq) return null;
+  const native = String(m.nativeId || sessionNativeId(sessionId) || "");
+  const groupName = String(m.raw?.group_name || "").trim();
+  const personName = String(m.name || "").trim();
+  const readable =
+    m.kind === "group"
+      ? groupName && groupName !== native && !/^\d{4,20}$/.test(groupName)
+        ? groupName.slice(0, 100)
+        : ""
+      : personName && personName !== native && !/^\d{4,20}$/.test(personName)
+        ? personName.slice(0, 100)
+        : "";
+  const placeholder = m.kind === "group" ? "未命名的群" : personName || "未命名的人";
   repo.db
-    .prepare("INSERT OR IGNORE INTO sessions(id,name,kind) VALUES (?,?,?)")
-    .run(
-      sessionId,
-      m.kind === "group"
-        ? `群聊 ${m.nativeId || sessionNativeId(sessionId)}`
-        : m.name,
-      m.kind,
-    );
+    .prepare(
+      `INSERT INTO sessions(id,name,kind) VALUES (?,?,?)
+       ON CONFLICT(id) DO UPDATE SET name=excluded.name
+       WHERE excluded.name NOT IN ('未命名的群','未命名的人')
+         AND (
+           sessions.name LIKE '群聊 %'
+           OR sessions.name GLOB '[0-9]*'
+           OR sessions.name IN ('未命名的群','未命名的人','')
+         )`,
+    )
+    .run(sessionId, readable || placeholder, m.kind);
   repo.db
     .prepare(
       "INSERT OR IGNORE INTO messages(event_id,session_id,user_id,name,text,time,role,is_demo) VALUES (?,?,?,?,?,?,?,?)",

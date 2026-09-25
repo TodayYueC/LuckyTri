@@ -1,4 +1,43 @@
 import { createHash } from "node:crypto";
+import { defaultModel, pickModel } from "./core/model-manager.js";
+
+// The health panel and connection test must describe the same saved profile.
+export function savedConnectionSettings(store, modelId = "") {
+  const hasProfiles = store.db
+    .prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='core_config'",
+    )
+    .get();
+  const row =
+    hasProfiles &&
+    store.db.prepare("SELECT value FROM core_config WHERE id='models'").get();
+  const models = row ? JSON.parse(row.value) : [];
+  const profile = Array.isArray(models)
+    ? modelId
+      ? models.find((m) => m.id === modelId)
+      : pickModel(models, "default")
+    : null;
+  if (modelId && !profile) return null;
+  const settings = store.settings();
+  const resolved = profile || defaultModel(settings);
+  return {
+    isDefault: !profile || !!profile.isDefault,
+    profile: resolved,
+    settings: profile
+      ? {
+          ...settings,
+          baseUrl: profile.baseUrl,
+          model: profile.model,
+          apiKey: profile.apiKey || "",
+          providerPreset: profile.provider || settings.providerPreset,
+          reasoningEffort: profile.reasoningEffort || "none",
+          temperature: profile.temperature ?? settings.temperature,
+          topP: profile.topP ?? settings.topP,
+          maxTokens: profile.maxOutputTokens || settings.maxTokens || 256,
+        }
+      : settings,
+  };
+}
 export function modelSignature(settings) {
   return createHash("sha256")
     .update(
@@ -28,7 +67,15 @@ export function readiness(
 ) {
   const s = store.settings(),
     record = store.db.prepare("SELECT * FROM model_checks WHERE id=1").get();
-  const current = !!record && record.signature === modelSignature(s);
+  const effective = savedConnectionSettings(store).settings;
+  // Previous connection tests signed their temporary 256-token test budget.
+  // Accept that exact historical signature, without marking untested profiles ready.
+  const current =
+    !!record &&
+    [
+      effective,
+      { ...effective, maxTokens: Math.min(effective.maxTokens || 256, 256) },
+    ].some((value) => record.signature === modelSignature(value));
   const sessions = store.db
     .prepare("SELECT COUNT(*) n FROM sessions WHERE enabled=1")
     .get().n;

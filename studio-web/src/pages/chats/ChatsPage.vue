@@ -330,9 +330,8 @@ async function feedback(id: number, tag: string) {
     </aside>
     <div class="card col talk-col">
       <Transcript
-        v-model:session-id="sessionId"
+        :session-id="sessionId"
         :session="session"
-        :sessions="active"
         :events="events"
         :traces="traces"
         :decisions="decisions"
@@ -396,9 +395,10 @@ async function feedback(id: number, tag: string) {
 
 <style scoped>
 .chats {
+  position: relative;
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr) 340px;
-  gap: 16px;
+  grid-template-columns: 254px minmax(0, 1fr) 320px;
+  gap: 18px;
   width: min(1520px, 100%);
   height: 100%;
   min-height: 0;
@@ -408,17 +408,49 @@ async function feedback(id: number, tag: string) {
   grid-template-columns: minmax(0, 1fr) 320px;
 }
 .col {
+  position: relative;
   min-height: 0;
   height: 100%;
-  padding: 16px;
+  padding: 18px;
+  overflow: hidden;
+  border-radius: 30px;
+  background:
+    linear-gradient(145deg, rgb(255 255 255 / 0.72), transparent 46%),
+    color-mix(in srgb, var(--surface) 85%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.94),
+    0 24px 55px -35px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 .talk-col {
-  padding: 16px 18px 14px;
+  padding: 18px 20px 16px;
+  background:
+    radial-gradient(
+      ellipse at 80% 0,
+      color-mix(in srgb, var(--glow-b) 25%, transparent),
+      transparent 55%
+    ),
+    linear-gradient(
+      145deg,
+      rgb(255 255 255 / 0.78),
+      rgb(255 255 255 / 0.4) 64%
+    ),
+    var(--surface);
+}
+.list-col,
+.panel-col {
+  background:
+    radial-gradient(
+      circle at 0 0,
+      color-mix(in srgb, var(--glow-a) 18%, transparent),
+      transparent 42%
+    ),
+    linear-gradient(165deg, rgb(255 255 255 / 0.75), rgb(255 255 255 / 0.28)),
+    var(--surface);
 }
 .sheet-list {
   height: calc(100dvh - 120px);
 }
-@media (max-width: 760px) {
+@media (max-width: 980px) {
   .chats,
   .chats.compact {
     display: grid;
@@ -426,10 +458,10 @@ async function feedback(id: number, tag: string) {
     height: auto;
   }
   .talk-col {
-    height: 500px;
+    height: clamp(420px, 68dvh, 620px);
   }
   .panel-col {
-    height: 620px;
+    height: 520px;
   }
 }
 </style>

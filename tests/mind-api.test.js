@@ -71,6 +71,21 @@ test("presence：TA 此刻的样子、正在做什么、最近说的话、放在
   ({ body } = await api.get("/mind/presence"));
   assert.equal(body.activity.kind, "idle");
   assert.equal(body.thought.content, "阿明好像有心事");
+  w.advance(MINUTE);
+  w.mind.thoughts.add({
+    kind: "reflection",
+    content: "刚才那句更要紧",
+    sessions: ["private:10001"],
+    sources: [1],
+    importance: 0.2,
+    time: w.now(),
+  });
+  ({ body } = await api.get("/mind/presence"));
+  assert.equal(
+    body.thought.content,
+    "刚才那句更要紧",
+    "首页放在心上显示最新的一条，不按重要程度钉住旧的",
+  );
   assert.equal(body.expecting[0].content, "考高数");
   assert.equal(body.expecting[0].name, "阿明");
 

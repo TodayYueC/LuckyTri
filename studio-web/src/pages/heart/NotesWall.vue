@@ -3,7 +3,6 @@ import { ref } from "vue";
 import { toast } from "../../api";
 import { ask } from "../../dialog";
 import { OUTREACH_STATUS, mind, when } from "../../plates/mind";
-import { hueOf } from "../../format";
 import Empty from "../../components/ui/Empty.vue";
 
 const props = defineProps<{
@@ -39,20 +38,18 @@ async function remove(t: any) {
     toast((error as Error).message, true);
   }
 }
-
-function tilt(t: any) {
-  return ((hueOf(t.id) % 7) - 3) * 0.45 + "deg";
-}
 </script>
 
 <template>
   <section class="notes-wall">
     <div class="wall-head">
-      <p class="muted">
-        TA
-        只在有新的理解时才写，不为显得忙碌写流水账。放下的事会留着原因；不再参与思考的便签不会出现在
-        TA 的独处里。
-      </p>
+      <div>
+        <span class="eyebrow">THOUGHTS / 留给自己的话</span>
+        <h2>有些念头，先放在心上。</h2>
+        <p class="muted">
+          TA 只在有新的理解时才写。放下的事会留着原因，想法也会随着经历改变。
+        </p>
+      </div>
       <form
         class="wall-search"
         role="search"
@@ -74,9 +71,7 @@ function tilt(t: any) {
         class="note-card"
         :class="{ muted: t.hidden, resolved: t.status === 'resolved' }"
         :data-kind="t.kind"
-        :style="{ '--tilt': tilt(t) }"
       >
-        <span class="pin" aria-hidden="true"></span>
         <header>
           <b
             >{{ kinds[t.kind] || t.kind
@@ -228,5 +223,133 @@ function tilt(t: any) {
 }
 .note-card.resolved > p:not(.stamp):not(.outreach) {
   color: var(--ink-soft);
+}
+.notes-wall {
+  display: grid;
+  gap: 20px;
+}
+.wall-head {
+  margin: 0;
+  align-items: end;
+}
+.wall-head > div {
+  flex: 1 1 400px;
+}
+.wall-head h2 {
+  margin: 5px 0 6px;
+  font-size: clamp(20px, 2.3vw, 29px);
+  letter-spacing: -0.03em;
+}
+.wall-head p {
+  max-width: 60ch;
+}
+.wall-search input {
+  border-radius: 999px;
+  padding: 11px 17px;
+  background: #ffffffa9;
+  border-color: #fff;
+  box-shadow:
+    inset 0 1px 0 #fff,
+    0 9px 25px -19px #6388ba;
+}
+.wall {
+  column-gap: 17px;
+}
+.note-card,
+[data-mood="night"] .note-card {
+  isolation: isolate;
+  margin-bottom: 17px;
+  padding: 22px;
+  border-radius: 27px 27px 28px 26px;
+  border: 1px solid #ffffffe8;
+  background: linear-gradient(
+    140deg,
+    #ffffffd4,
+    #ffffff77 60%,
+    color-mix(in srgb, var(--note, #d7e9ff) 45%, transparent)
+  );
+  box-shadow:
+    inset 0 2px 0 #fff,
+    0 18px 32px -28px #5b7faf;
+  backdrop-filter: blur(22px) saturate(1.65);
+  -webkit-backdrop-filter: blur(22px) saturate(1.65);
+  transform: none;
+  transition:
+    transform 0.48s var(--spring),
+    box-shadow 0.3s ease;
+}
+.note-card::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  right: -37px;
+  top: -40px;
+  width: 118px;
+  height: 118px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--note, #d7e9ff) 76%, #fff);
+  filter: blur(18px);
+  opacity: 0.65;
+}
+.note-card:hover,
+.note-card:focus-within {
+  transform: translateY(-5px) scale(1.012);
+  box-shadow:
+    inset 0 2px 0 #fff,
+    0 28px 40px -27px #6885b5;
+}
+.note-card[data-kind="unfinished"] {
+  --note: #f7cfe4;
+}
+.note-card[data-kind="reflection"] {
+  --note: #ffe3c4;
+}
+.note-card[data-kind="revision"] {
+  --note: #c8e6ff;
+}
+.note-card[data-kind="reconnection"] {
+  --note: #cbf1df;
+}
+.note-card header {
+  align-items: center;
+  padding-bottom: 9px;
+  border-bottom: 1px solid #ffffffb0;
+}
+.note-card header b {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 5px 10px;
+  border-radius: 99px;
+  background: #ffffff95;
+  box-shadow: inset 0 1px 0 #fff;
+  color: var(--accent);
+}
+.note-card > p {
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.note-card footer {
+  border-top: 1px solid #ffffffb3;
+}
+.note-card footer .small {
+  border-radius: 99px;
+  background: #ffffffac;
+  border: 1px solid #fff;
+}
+.stamp {
+  border: 1px solid color-mix(in srgb, var(--ok) 35%, #fff);
+  background: #ffffff8c;
+  border-radius: 99px;
+  transform: none;
+}
+.outreach {
+  border: 1px solid #fff;
+  background: #ffffffa3;
+}
+.note-card.muted {
+  opacity: 0.65;
+  border: 1px solid #ffffffaa;
+  background: #ffffff73;
+  box-shadow: inset 0 1px 0 #fff;
 }
 </style>

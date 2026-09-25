@@ -1,8 +1,8 @@
-# LuckyBot
+# LuckyTri
 
-LuckyBot is an AI companion that started in QQ group chats. She follows multi-person conversations on your machine, decides for herself when to join in and when to stay quiet, remembers people and events through long-term memory and a life of her own, and revisits what she used to think.
+LuckyTri is an AI companion that started in QQ group chats. She follows multi-person conversations on your machine, decides for herself when to join in and when to stay quiet, remembers people and events through long-term memory and a life of her own, and revisits what she used to think.
 
-The current connector is OneBot 11. QQ login and delivery are handled by [NapCat](https://napneko.github.io/). LuckyBot does not store a QQ password. Models use a Chat Completions-compatible API.
+The current connector is OneBot 11. QQ login and delivery are handled by [NapCat](https://napneko.github.io/). LuckyTri does not store a QQ password. Models use a Chat Completions-compatible API.
 
 **Language:** [English](README.en.md) · [简体中文](README.md)
 
@@ -29,14 +29,14 @@ There is one of her across every group and private chat. You write her nature; h
 ## Start
 
 ```bash
-git clone https://github.com/TodayYueC/LuckyBot.git
-cd LuckyBot
+git clone https://github.com/TodayYueC/LuckyBot.git LuckyTri
+cd LuckyTri
 npm install
 npm run setup
 npm start
 ```
 
-Open <http://127.0.0.1:3210>. On Windows, `启动LuckyBot.cmd` starts the service and opens LuckyBot. `停止LuckyBot.cmd` stops this project's service.
+Open <http://127.0.0.1:3210>. On Windows, `启动LuckyTri.cmd` starts the service and opens LuckyTri. `停止LuckyTri.cmd` stops this project's service.
 
 `npm run setup` creates `.env` with an admin token and an OneBot token when the file is missing. An existing file is left unchanged.
 
@@ -48,7 +48,7 @@ ONEBOT_TOKEN=
 LLM_API_KEY=
 ```
 
-`ADMIN_TOKEN` protects LuckyBot and the HTTP API. `ONEBOT_TOKEN` protects `/onebot/v11/ws`. `LLM_API_KEY` is optional and, when set, overrides the key saved in LuckyBot. Restart after changing `.env`. Do not commit real secrets.
+`ADMIN_TOKEN` protects LuckyTri and the HTTP API. `ONEBOT_TOKEN` protects `/onebot/v11/ws`. `LLM_API_KEY` is optional and, when set, overrides the key saved in LuckyTri. Restart after changing `.env`. Do not commit real secrets.
 
 Simulation mode is the default. Add a group or QQ number under Conversation → Session settings, then send a simulated message from the live page. Simulation does not send to QQ. Without an API key it uses a local sample and does not call a model.
 

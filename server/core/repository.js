@@ -27,23 +27,8 @@ export function migrateCore(store) {
     CREATE TABLE IF NOT EXISTS core_context_summaries (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, level INTEGER NOT NULL, first_seq INTEGER NOT NULL, last_seq INTEGER NOT NULL, first_time INTEGER, last_time INTEGER, created INTEGER NOT NULL, data TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS core_context_summaries_session ON core_context_summaries(session_id,first_seq);
   `);
-  // Keep existing workspaces on the new public name without touching chat
-  // history or model credentials. Custom persona and prompt text may contain
-  // the old name, so migrate only the fields that are presented to the model.
-  for (const row of db
-    .prepare(
-      "SELECT id,value FROM core_config WHERE id='persona' OR id='prompts' OR id LIKE 'session:%'",
-    )
-    .all()) {
-    const value = String(row.value || "");
-    const next = value
-      .replace(/UnLucky|Unlucky/g, "LuckyBot")
-      .replace(/\bLucky\b/g, "LuckyBot");
-    if (next !== value)
-      db.prepare(
-        "UPDATE core_config SET value=?,version=version+1 WHERE id=?",
-      ).run(next, row.id);
-  }
+  // A saved persona or prompt may intentionally use an older name. Leave it
+  // intact; fresh workspaces receive the LuckyTri defaults from the store.
   if (!db.prepare("SELECT id FROM core_config WHERE id='migration-v1'").get()) {
     db.exec("BEGIN IMMEDIATE");
     try {

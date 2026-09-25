@@ -4,7 +4,7 @@ let asking: Promise<string | null> | null = null;
 
 // Several requests can hit 401 at once; they all wait on the same question.
 function askToken() {
-  asking ??= askText("这个 LuckyBot 设置了管理令牌，输入后才能继续。", {
+  asking ??= askText("这个 LuckyTri 设置了管理令牌，输入后才能继续。", {
     title: "需要管理令牌",
     confirmText: "进入",
     placeholder: "管理令牌",

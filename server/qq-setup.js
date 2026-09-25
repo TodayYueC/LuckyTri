@@ -147,7 +147,7 @@ export async function inspectNapCat(root) {
 
 export function reverseWsConfig({ url, token }) {
   return {
-    name: "luckybot-reverse-ws",
+    name: "luckytri-reverse-ws",
     enable: true,
     url,
     messagePostFormat: "array",
@@ -166,7 +166,7 @@ export async function configureNapCat({ root, accountId = "", url, token }) {
       "没有找到 NapCat 的 config 目录。请先完成官方安装，再选择 NapCat 根目录。",
     );
   if (!/^wss?:\/\/[\w.:\-\[\]]+\/onebot\/v11\/ws$/.test(url))
-    throw Error("LuckyBot 的 WebSocket 地址无效");
+    throw Error("LuckyTri 的 WebSocket 地址无效");
   if (!token) throw Error("请先生成 QQ 接入令牌");
   let target;
   if (accountId) {
@@ -182,7 +182,7 @@ export async function configureNapCat({ root, accountId = "", url, token }) {
     } catch {
       throw Error("现有 OneBot 配置不是有效 JSON，未改动任何文件");
     }
-    backup = `${target}.luckybot-backup-${Date.now()}`;
+    backup = `${target}.luckytri-backup-${Date.now()}`;
     await fs.copyFile(target, backup);
   }
   const network =
@@ -200,6 +200,7 @@ export async function configureNapCat({ root, accountId = "", url, token }) {
             "unlucky-reverse-ws",
             "lucky-reverse-ws",
             "luckybot-reverse-ws",
+            "luckytri-reverse-ws",
           ].includes(client?.name),
       ),
       reverseWsConfig({ url, token }),
@@ -218,7 +219,7 @@ export function napCatLaunchSpec(launcher) {
         "/d",
         "/c",
         "start",
-        "LuckyBot NapCat",
+        "LuckyTri NapCat",
         "/D",
         dirname(launcher),
         "cmd.exe",
@@ -393,7 +394,7 @@ export async function checkOneKeyUpdate(
     {
       headers: {
         Accept: "application/vnd.github+json",
-        "User-Agent": "LuckyBot-Connector",
+        "User-Agent": "LuckyTri-Connector",
       },
       signal: AbortSignal.timeout(15000),
     },
@@ -469,7 +470,7 @@ export async function downloadAndOpenOneKey(
       {
         headers: {
           Accept: "application/vnd.github+json",
-          "User-Agent": "LuckyBot-Connector",
+          "User-Agent": "LuckyTri-Connector",
         },
         signal: AbortSignal.timeout(15000),
       },

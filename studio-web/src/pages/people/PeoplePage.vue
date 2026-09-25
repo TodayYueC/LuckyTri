@@ -66,7 +66,7 @@ onMounted(load);
         :items="[
           {
             key: 'galaxy',
-            label: '人物星系',
+            label: '相遇之间',
             count: bonds?.people.length ?? '',
           },
           { key: 'list', label: '列表' },
@@ -79,9 +79,7 @@ onMounted(load);
         placeholder="找一个人"
         aria-label="找一个人"
       />
-      <p class="muted">
-        同一个人，在哪里都是同一个人。TA 对每个人的感觉都从一起经历的事里来。
-      </p>
+      <p class="muted">她记得相遇，也记得关系会随着时间改变。</p>
     </div>
 
     <template v-if="bonds">
@@ -91,6 +89,7 @@ onMounted(load);
           :people="people"
           :activity="presence.data?.activity?.kind"
           @open="open"
+          @list="view = 'list'"
         />
         <div v-else class="people-list">
           <button
@@ -108,6 +107,7 @@ onMounted(load);
               >
               <div>
                 <h3>{{ p.name }}</h3>
+                <small class="qq">QQ {{ p.userId }}</small>
                 <small class="muted">{{ p.feel }}</small>
               </div>
             </header>
@@ -202,5 +202,99 @@ onMounted(load);
   );
   color: hsl(var(--hue) 45% 22%);
   font: 700 15px var(--font-display);
+}
+.people-bar {
+  padding: 4px 2px 2px;
+}
+.people-bar p {
+  max-width: 32ch;
+}
+.people-search {
+  width: min(235px, 100%);
+  border-radius: 99px;
+  padding: 10px 15px;
+  background: #ffffffad;
+  border: 1px solid #fff;
+  box-shadow:
+    inset 0 1px 0 #fff,
+    0 8px 22px -19px #5c81ae;
+}
+.people-list {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
+  gap: 15px;
+}
+.person-card {
+  isolation: isolate;
+  overflow: hidden;
+  padding: 20px;
+  gap: 17px;
+  border-radius: 27px;
+  border-color: #ffffffe8;
+  background: linear-gradient(
+    135deg,
+    #ffffffcf,
+    #ffffff69 68%,
+    hsl(var(--hue) 80% 91% / 0.42)
+  );
+  box-shadow:
+    inset 0 2px 0 #fff,
+    0 18px 30px -25px #6a88b5;
+  transition:
+    transform 0.45s var(--spring),
+    box-shadow 0.26s ease;
+}
+.person-card::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -60px;
+  right: -70px;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: hsl(var(--hue) 80% 86% / 0.4);
+  filter: blur(25px);
+}
+.person-card:hover:not(:disabled) {
+  transform: translateY(-5px) scale(1.018);
+  box-shadow:
+    inset 0 2px 0 #fff,
+    0 28px 35px -23px #6386b5;
+}
+.person-card:active:not(:disabled) {
+  transform: scale(0.975);
+}
+.person-card header {
+  padding-bottom: 12px;
+  border-bottom: 1px solid #ffffffc4;
+}
+.person-card .avatar {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border: 1px solid #fff;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 26% 20%,
+    #fff,
+    hsl(var(--hue) 78% 86%) 53%,
+    hsl(var(--hue) 69% 76%)
+  );
+  box-shadow:
+    inset 3px 3px 5px #fff,
+    0 8px 14px -9px #5b7fae;
+  transition: transform 0.45s var(--spring);
+}
+.person-card:hover .avatar {
+  transform: rotate(-8deg) scale(1.1);
+}
+.person-card .stack.tight {
+  padding: 5px 0;
+}
+@media (max-width: 760px) {
+  .people-bar p {
+    flex-basis: 100%;
+  }
 }
 </style>

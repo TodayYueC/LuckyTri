@@ -25,6 +25,14 @@ watch(
 
 <template>
   <div class="page memory-page">
+    <header class="memory-intro">
+      <div>
+        <span class="eyebrow">MEMORY · 记忆</span>
+        <h1>见过的人与事，<em>会慢慢有了重量。</em></h1>
+        <p>记住重要的，也允许改变看法。</p>
+      </div>
+      <div class="memory-drop" aria-hidden="true"><span></span></div>
+    </header>
     <Tabs
       v-model="view"
       label="记忆的分区"
@@ -41,12 +49,4 @@ watch(
   </div>
 </template>
 
-<style scoped>
-.memory-page {
-  display: grid;
-  gap: var(--gap);
-}
-.memory-page > .tabs {
-  justify-self: start;
-}
-</style>
+<style scoped src="./MemoryPage.css"></style>

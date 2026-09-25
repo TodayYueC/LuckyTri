@@ -233,7 +233,7 @@ export function mountKnowledge(app, system) {
       try {
         await system.memory.consolidate(
           id,
-          system.models.profile(system.policy(id).modelId),
+          system.models.profile(),
           prompts(repo).memory,
           t,
           { force: true },

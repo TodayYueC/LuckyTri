@@ -12,7 +12,9 @@ import {
   patchMemory,
 } from "../../plates/knowledge";
 import { DISCRETION, MEMORY_STATUS, mind } from "../../plates/mind";
+import { placeName, sessionChoices } from "../../format";
 import Sheet from "../../components/ui/Sheet.vue";
+import Select from "../../components/ui/Select.vue";
 import Empty from "../../components/ui/Empty.vue";
 
 const props = defineProps<{ sessionId: string }>();
@@ -234,21 +236,23 @@ async function consolidate() {
     <div class="archive-bar card">
       <label class="scope">
         <span>在哪里知道的</span>
-        <select id="memoryScope" v-model="scope">
-          <option value="" disabled>选择会话</option>
-          <option v-for="s in sessions" :key="s.id" :value="s.id">
-            {{ s.name }}
-          </option>
-        </select>
+        <Select
+          id="memoryScope"
+          v-model="scope"
+          aria-label="在哪里知道的"
+          :options="sessionChoices(sessions, '选择会话')"
+        />
       </label>
       <label class="scope">
         <span>关于谁</span>
-        <select v-model="person" aria-label="按人筛选">
-          <option value="">所有人</option>
-          <option v-for="[id, name] in people" :key="id" :value="id">
-            {{ name }}
-          </option>
-        </select>
+        <Select
+          v-model="person"
+          aria-label="按人筛选"
+          :options="[
+            { value: '', label: '所有人' },
+            ...people.map(([id, name]) => ({ value: id, label: name })),
+          ]"
+        />
       </label>
       <input
         id="memorySearch"
@@ -268,7 +272,9 @@ async function consolidate() {
           <span class="eyebrow">最近发生了什么</span>
           <h2>
             {{
-              sessions.find((s: any) => s.id === sessionId)?.name || "记忆档案"
+              (sessions.find((s: any) => s.id === sessionId)
+                ? placeName(sessions.find((s: any) => s.id === sessionId))
+                : "记忆档案")
             }}
           </h2>
         </div>
@@ -385,25 +391,18 @@ async function consolidate() {
               <button class="small" @click="change(m, 'confirmed')">
                 保存修改
               </button>
-              <select
-                class="discretion"
+              <small class="faint">编辑后要点保存</small>
+              <Select
                 :aria-label="'分寸：' + m.content"
-                :value="m.discretion || 'open'"
-                @change="
-                  change(
-                    m,
-                    'discretion:' + ($event.target as HTMLSelectElement).value,
-                  )
+                :model-value="m.discretion || 'open'"
+                :options="
+                  Object.entries(DISCRETION).map(([key, label]) => ({
+                    value: key,
+                    label,
+                  }))
                 "
-              >
-                <option
-                  v-for="(label, key) in DISCRETION"
-                  :key="key"
-                  :value="key"
-                >
-                  {{ label }}
-                </option>
-              </select>
+                @update:model-value="change(m, 'discretion:' + $event)"
+              />
               <button class="small" @click="change(m, 'lock')">
                 {{ m.locked ? "解锁" : "锁定" }}
               </button>
@@ -442,11 +441,13 @@ async function consolidate() {
       <form id="addMemory" class="stack" @submit.prevent="add">
         <label>
           所属会话
-          <select id="memorySession" v-model="scope" name="session">
-            <option v-for="s in sessions" :key="s.id" :value="s.id">
-              {{ s.name }}
-            </option>
-          </select>
+          <Select
+            id="memorySession"
+            v-model="scope"
+            name="session"
+            aria-label="所属会话"
+            :options="sessionChoices(sessions)"
+          />
         </label>
         <label>
           用户 ID
@@ -471,114 +472,4 @@ async function consolidate() {
   </section>
 </template>
 
-<style scoped>
-.archive {
-  display: grid;
-  gap: var(--gap);
-}
-.archive-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 14px;
-  padding: 14px 18px;
-}
-.scope {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.scope span {
-  white-space: nowrap;
-}
-.scope select {
-  width: auto;
-  min-width: 140px;
-  padding: 7px 10px;
-}
-#memorySearch {
-  flex: 1 1 220px;
-  border-radius: 999px;
-}
-.summary-card p[data-memory-summary] {
-  font-size: 14px;
-  line-height: 1.8;
-  white-space: pre-wrap;
-}
-.clamp {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-}
-.list-card {
-  display: grid;
-  gap: 12px;
-}
-.tools .push {
-  margin-left: auto;
-}
-#memoryList {
-  display: grid;
-  align-content: start;
-  gap: 8px;
-  max-height: 640px;
-}
-.memory-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--surface-strong) 75%, transparent);
-  border: 1px solid var(--line);
-}
-.memory-row > input {
-  margin-top: 4px;
-}
-.memory-row.superseded {
-  opacity: 0.65;
-  border-style: dashed;
-}
-.memory {
-  flex: 1;
-  min-width: 0;
-}
-.memory summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px 12px;
-}
-.memory summary .content {
-  font-size: 14px;
-  font-weight: 600;
-}
-.tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.memory[open] summary {
-  margin-bottom: 8px;
-}
-.meta {
-  margin-bottom: 8px;
-}
-.memory textarea {
-  min-height: 70px;
-  margin-bottom: 8px;
-}
-.discretion {
-  width: auto;
-  padding: 5px 10px;
-  font-size: 12.5px;
-}
-.more {
-  justify-self: center;
-}
-.foot {
-  font-size: 12px;
-}
-</style>
+<style scoped src="./MemoryArchive.css"></style>

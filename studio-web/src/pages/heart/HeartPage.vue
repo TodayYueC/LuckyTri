@@ -138,8 +138,7 @@ onMounted(load);
         ]"
       />
       <p v-if="view !== 'notes'" class="muted">
-        每一条都指向真实发生过的事。一次经历只让它变一点；新的特质要在不同的日子里反复出现才会成形。你可以撤销，但不能替
-        TA 改写。
+        她从真实经历里慢慢认识自己。点开一条线索，可以看到它如何变化。
       </p>
     </div>
 
@@ -206,7 +205,7 @@ onMounted(load);
       <div v-if="view !== 'notes'" class="grid-2 set-aside">
         <details class="card fold">
           <summary>
-            <span class="eyebrow">SET ASIDE</span>
+            <span class="eyebrow">放下</span>
             <b>TA 自己放下的 · {{ closed.length }}</b>
           </summary>
           <ul v-if="closed.length" class="list">
@@ -220,7 +219,7 @@ onMounted(load);
         </details>
         <details class="card fold">
           <summary>
-            <span class="eyebrow">WITHDRAWN</span>
+            <span class="eyebrow">撤销</span>
             <b>你撤销过的 · {{ self.revoked.length }}</b>
           </summary>
           <ul v-if="self.revoked.length" class="list">
@@ -396,5 +395,105 @@ onMounted(load);
 }
 .thread-sheet > .danger {
   justify-self: start;
+}
+.heart-bar {
+  padding: 4px 2px 2px;
+}
+.heart-bar p {
+  max-width: 50ch;
+  line-height: 1.65;
+}
+.thread-groups {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 355px), 1fr));
+  gap: 16px;
+}
+.thread-group {
+  isolation: isolate;
+  overflow: hidden;
+  gap: 10px;
+  border-radius: 28px;
+  border-color: #ffffffe6;
+  background: linear-gradient(138deg, #ffffffcb, #ffffff63 66%, #deecff4f);
+  box-shadow:
+    inset 0 2px 0 #fff,
+    0 20px 37px -31px #637cad;
+}
+.thread-group::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  width: 140px;
+  height: 140px;
+  top: -74px;
+  right: -51px;
+  border-radius: 50%;
+  background: #dceaff9c;
+  filter: blur(23px);
+}
+.thread-group h2 {
+  padding: 2px 3px 8px;
+  border-bottom: 1px solid #ffffffc2;
+  font-size: 15px;
+}
+.thread-group h2 i {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  box-shadow:
+    0 0 0 4px #ffffff8a,
+    0 4px 12px #6895c966;
+}
+.thread {
+  position: relative;
+  border: 1px solid #ffffffd7;
+  border-radius: 18px;
+  background: linear-gradient(120deg, #ffffffbc, #ffffff6e);
+  box-shadow: inset 0 1px 0 #fff;
+  transition:
+    transform 0.42s var(--spring),
+    box-shadow 0.25s;
+}
+.thread:hover:not(:disabled) {
+  transform: translateY(-3px) scale(1.015);
+  border-color: #fff;
+  box-shadow: 0 14px 22px -18px #6280b5;
+}
+.thread:active:not(:disabled) {
+  transform: scale(0.975);
+}
+.thread.core {
+  border-color: color-mix(in srgb, var(--accent) 28%, #fff);
+  background: linear-gradient(
+    125deg,
+    #ffffffd0,
+    color-mix(in srgb, var(--accent-soft) 44%, transparent)
+  );
+}
+.thread.faded {
+  opacity: 0.68;
+  border-style: solid;
+}
+.set-aside .fold {
+  border-radius: 25px;
+  border: 1px solid #ffffffe6;
+  background: linear-gradient(145deg, #ffffffbb, #ffffff5c);
+  box-shadow: inset 0 1px 0 #fff;
+}
+.set-aside .fold summary {
+  transition: transform 0.38s var(--spring);
+}
+.set-aside .fold summary:hover {
+  transform: translateX(4px);
+}
+.versions li {
+  border: 1px solid #ffffffd9;
+  background: #ffffff9c;
+  border-radius: 17px;
+  box-shadow: inset 0 1px 0 #fff;
+}
+@media (max-width: 760px) {
+  .heart-bar p {
+    flex-basis: 100%;
+  }
 }
 </style>

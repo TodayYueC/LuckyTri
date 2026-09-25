@@ -58,10 +58,15 @@ export function migrateMind(db, store) {
   db.prepare(
     "UPDATE mind_thoughts SET outreach_status='uncertain' WHERE outreach_status='sending'",
   ).run();
-  if (
-    db.prepare("SELECT 1 FROM core_config WHERE id='mind-migration-v1'").get()
-  )
+  migratePeople(db);
+  const alreadyMigrated = db
+    .prepare("SELECT 1 FROM core_config WHERE id='mind-migration-v1'")
+    .get();
+  if (alreadyMigrated) {
+    migrateMemoryProvenance(db);
+    restoreTruncatedFaces(db);
     return;
+  }
   db.exec("BEGIN IMMEDIATE");
   try {
     migrateNature(db, store);
@@ -76,6 +81,138 @@ export function migrateMind(db, store) {
     db.prepare("INSERT INTO core_config(id,value) VALUES (?,?)").run(
       "mind-migration-v1",
       JSON.stringify({ time: Date.now() }),
+    );
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  migrateMemoryProvenance(db);
+  restoreTruncatedFaces(db);
+}
+
+// The first face import kept only 1200 characters, which cut a persona off
+// mid-sentence. When that fragment is still the start of her nature, put the
+// rest back. A different text that was cut the same way has no source left.
+function restoreTruncatedFaces(db) {
+  if (db.prepare("SELECT 1 FROM core_config WHERE id='mind-face-full-v1'").get())
+    return;
+  const row = db
+    .prepare("SELECT value FROM mind_nature ORDER BY version DESC LIMIT 1")
+    .get();
+  let base = "";
+  if (row) {
+    try {
+      base = String(JSON.parse(row.value).base || "");
+    } catch {
+      base = "";
+    }
+  }
+  if (base.length > 1200) {
+    const update = db.prepare("UPDATE mind_faces SET content=? WHERE id=?");
+    for (const face of db
+      .prepare(
+        "SELECT id, content FROM mind_faces WHERE origin='migration' AND length(content)=1200",
+      )
+      .all()) {
+      if (base.startsWith(face.content)) update.run(base, face.id);
+    }
+  }
+  db.prepare("INSERT INTO core_config(id,value) VALUES (?,?)").run(
+    "mind-face-full-v1",
+    JSON.stringify({ time: Date.now() }),
+  );
+}
+
+// Carry forward who she has met and where, without inventing feelings from
+// old chat volume. Bond events start growing from experiences in this mind.
+function migratePeople(db) {
+  if (db.prepare("SELECT 1 FROM core_config WHERE id='mind-people-v1'").get())
+    return;
+  const now = Date.now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const people = db
+      .prepare(
+        `
+        WITH live AS (
+          SELECT seq,time,session_id,
+            CAST(json_extract(payload,'$.userId') AS TEXT) user_id,
+            NULLIF(CAST(json_extract(payload,'$.name') AS TEXT),'') name
+          FROM core_events
+          WHERE role='user'
+            AND COALESCE(json_extract(payload,'$.simulated'),0)=0
+            AND json_extract(payload,'$.userId') IS NOT NULL
+            AND CAST(json_extract(payload,'$.userId') AS TEXT) NOT IN ('','bot')
+            AND time<=?
+        ),
+        people AS (
+          SELECT user_id,MIN(time) first_seen,MAX(time) last_seen
+          FROM live GROUP BY user_id
+        ),
+        ranked_names AS (
+          SELECT user_id,name,ROW_NUMBER() OVER (
+            PARTITION BY user_id ORDER BY time DESC,seq DESC
+          ) rank
+          FROM live WHERE name IS NOT NULL
+        )
+        SELECT p.user_id,p.first_seen,p.last_seen,n.name
+        FROM people p LEFT JOIN ranked_names n ON n.user_id=p.user_id AND n.rank=1
+      `,
+      )
+      .all(now);
+    const sessions = db
+      .prepare(
+        `
+        SELECT user_id,session_id,MAX(time) last_seen FROM (
+          SELECT CAST(json_extract(payload,'$.userId') AS TEXT) user_id,
+            session_id,time
+          FROM core_events
+          WHERE role='user'
+            AND COALESCE(json_extract(payload,'$.simulated'),0)=0
+            AND json_extract(payload,'$.userId') IS NOT NULL
+            AND CAST(json_extract(payload,'$.userId') AS TEXT) NOT IN ('','bot')
+            AND time<=?
+        ) GROUP BY user_id,session_id ORDER BY last_seen DESC
+      `,
+      )
+      .all(now);
+    const sessionsByUser = new Map();
+    for (const row of sessions) {
+      const list = sessionsByUser.get(row.user_id) || [];
+      if (list.length < 40 && !list.includes(row.session_id)) {
+        list.push(row.session_id);
+        sessionsByUser.set(row.user_id, list);
+      }
+    }
+    const read = db.prepare("SELECT * FROM mind_people WHERE user_id=?");
+    const write = db.prepare(
+      "INSERT INTO mind_people(user_id,name,first_seen,last_seen,sessions) VALUES (?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET name=excluded.name,first_seen=excluded.first_seen,last_seen=excluded.last_seen,sessions=excluded.sessions",
+    );
+    for (const person of people) {
+      const existing = read.get(person.user_id);
+      const known = parse(existing?.sessions, []);
+      const places = [
+        ...new Set([
+          ...(Array.isArray(known) ? known : []),
+          ...(sessionsByUser.get(person.user_id) || []).slice().reverse(),
+        ]),
+      ].slice(-40);
+      write.run(
+        person.user_id,
+        existing?.name || person.name || null,
+        existing?.first_seen == null
+          ? person.first_seen
+          : Math.min(existing.first_seen, person.first_seen),
+        existing?.last_seen == null
+          ? person.last_seen
+          : Math.max(existing.last_seen, person.last_seen),
+        JSON.stringify(places),
+      );
+    }
+    db.prepare("INSERT INTO core_config(id,value) VALUES (?,?)").run(
+      "mind-people-v1",
+      JSON.stringify({ time: now }),
     );
     db.exec("COMMIT");
   } catch (error) {
@@ -145,7 +282,7 @@ function migrateFacesAndPolicies(db) {
             Object.entries(override)
               .map(([k, v]) => `${k}：${Array.isArray(v) ? v.join("、") : v}`)
               .join("；"),
-        ).slice(0, 1200),
+        ),
         "[]",
         "migration",
       );
@@ -243,16 +380,21 @@ function migrateInnerLife(db) {
 // Consolidated facts used to wait for a human reviewer and so never reached
 // a reply. Believable ones become what she thinks, with their confidence.
 function migrateMemories(db) {
+  const hasGroundedSources = groundedSourceMatcher(db);
   for (const m of db
     .prepare(
-      "SELECT id,sources,confidence FROM core_memories WHERE status='candidate'",
+      "SELECT id,session_id,sources,confidence FROM core_memories WHERE status='candidate'",
     )
     .all()) {
     const sources = parse(m.sources, []);
     const joking = sources.some?.((s) =>
       ["joke", "hearsay"].includes(s?.certainty),
     );
-    if (Number(m.confidence) >= 0.6 && !joking)
+    if (
+      Number(m.confidence) >= 0.6 &&
+      !joking &&
+      hasGroundedSources(m.session_id, sources)
+    )
       db.prepare("UPDATE core_memories SET status='confirmed' WHERE id=?").run(
         m.id,
       );
@@ -288,6 +430,89 @@ function migrateMemories(db) {
     db.prepare("UPDATE memory_candidates SET status='migrated' WHERE id=?").run(
       c.id,
     );
+  }
+}
+
+// Old memory citations contain a message snapshot as well as a numeric ID.
+// IDs can be reused when an old message store is folded into the new event
+// store, so trust the snapshot only when that speaker said that exact text at
+// that time in the memory's own conversation.
+function groundedSourceMatcher(db) {
+  const find = db.prepare(
+    "SELECT 1 FROM messages WHERE session_id=? AND user_id=? AND text=? AND time=? AND role='user' AND is_demo=0 LIMIT 1",
+  );
+  const cache = new Map();
+  return (session, sources) => {
+    if (!Array.isArray(sources) || !sources.length) return false;
+    return sources.every((source) => {
+      const speaker = String(source?.speaker ?? "");
+      const content = typeof source?.text === "string" ? source.text : "";
+      const time = Number(source?.time);
+      if (!speaker || !content || !Number.isFinite(time)) return false;
+      const key = JSON.stringify([session, speaker, content, time]);
+      if (!cache.has(key))
+        cache.set(key, !!find.get(session, speaker, content, time));
+      return cache.get(key);
+    });
+  };
+}
+
+// Earlier builds promoted high-confidence memories without checking where
+// their evidence came from. Quarantine only unlocked, pre-migration rows that
+// match that automatic-promotion rule; explicit/locked memories remain intact.
+function migrateMemoryProvenance(db) {
+  if (
+    db
+      .prepare("SELECT 1 FROM core_config WHERE id='mind-memory-provenance-v1'")
+      .get()
+  )
+    return;
+  const migration = parse(
+    db
+      .prepare("SELECT value FROM core_config WHERE id='mind-migration-v1'")
+      .get()?.value,
+    null,
+  );
+  if (!migration || !Number.isFinite(Number(migration.time))) return;
+
+  const hasGroundedSources = groundedSourceMatcher(db);
+  const candidates = db
+    .prepare(
+      `SELECT id,session_id,sources,confidence,locked,type,created,updated
+       FROM core_memories
+       WHERE status='confirmed' AND locked=0 AND COALESCE(type,'')!='reviewed'
+         AND id NOT LIKE 'legacy:%' AND id NOT LIKE 'candidate:%'
+         AND created<=? AND updated<=?`,
+    )
+    .all(Number(migration.time), Number(migration.time));
+  const quarantine = [];
+  for (const memory of candidates) {
+    const sources = parse(memory.sources, []);
+    const joking = sources.some?.((source) =>
+      ["joke", "hearsay"].includes(source?.certainty),
+    );
+    if (
+      Number(memory.confidence) >= 0.6 &&
+      !joking &&
+      !hasGroundedSources(memory.session_id, sources)
+    )
+      quarantine.push(memory.id);
+  }
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const demote = db.prepare(
+      "UPDATE core_memories SET status='candidate' WHERE id=? AND status='confirmed' AND locked=0",
+    );
+    for (const id of quarantine) demote.run(id);
+    db.prepare("INSERT INTO core_config(id,value) VALUES (?,?)").run(
+      "mind-memory-provenance-v1",
+      JSON.stringify({ time: Date.now(), quarantined: quarantine.length }),
+    );
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
   }
 }
 
