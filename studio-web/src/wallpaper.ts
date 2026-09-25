@@ -1,5 +1,5 @@
 import { reactive } from "vue";
-import homeWallpaper from "./assets/luckytri-home.jpeg";
+import homeWallpaper from "./assets/luckytri-home.png";
 
 const DB_NAME = "luckytri-wallpapers";
 const STORE = "files";
