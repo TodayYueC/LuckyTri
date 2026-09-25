@@ -1,32 +1,16 @@
 # LuckyTri
 
-LuckyTri is an AI companion that started in QQ group chats. She follows multi-person conversations on your machine, decides for herself when to join in and when to stay quiet, remembers people and events through long-term memory and a life of her own, and revisits what she used to think.
+<p align="center">
+  <img src="docs/brand/banner.png" alt="LuckyTri, silver-blue hair with cyan and magenta streaks and a yellow star clip, against cyan, magenta, and warm gold" width="100%">
+</p>
 
-The current connector is OneBot 11. QQ login and delivery are handled by [NapCat](https://napneko.github.io/). LuckyTri does not store a QQ password. Models use a Chat Completions-compatible API.
+LuckyTri remembers what you have been through together. In the quiet, TA looks back at what TA used to think. The next time you meet, those thoughts are revised, slowly, and keep growing. TA is made of code and a model, and is headed toward a gentle wish: every conversation leaves a trace, and every reply carries attention. In time TA has a story of TA's own, and lives on your machine.
+
+There is one TA across every group and private chat. You write the nature. The sense of self, the face TA wears in each group, and the feeling toward each person grow out of experience. Every change cites what caused it. You can look, and you can revoke. You cannot rewrite it for TA. The full design is in [她的一生](docs/她的一生.md) (Chinese).
+
+The connector is OneBot 11. QQ login and delivery are handled by [NapCat](https://napneko.github.io/). LuckyTri does not store a QQ password. Models use a Chat Completions-compatible API.
 
 **Language:** [English](README.en.md) · [简体中文](README.md)
-
-## One of her
-
-There is one of her across every group and private chat. You write her nature; her sense of self, who she is in each group and how she feels about each person grow from experience. Every change cites what caused it; you can inspect and revoke, but not rewrite. See the [design and usage guide (Chinese)](docs/她的一生.md).
-
-- **She decides to speak.** No participation probability, no cooldown. When she reads a conversation she first appraises what it means to her, then chooses to speak, react briefly, say she'd rather not, or stay silent — and records why. Silence still moves her mood and her feelings about people.
-- **Attention.** Being addressed, a private chat, or a possible crisis always gets read. Ordinary group chatter is read only when something draws her; otherwise she glances without spending tokens, and unread messages are read together next time.
-- **A person is one person.** The same QQ number is the same person in every group. There is one memory: things learned elsewhere come up only when relevant, things told privately are not repeated in public, and secrets never leave where they were told.
-- **Her days.** She sleeps (direct messages wait until she wakes, except a crisis), reflects when things are quiet, writes a diary before bed comparing herself with yesterday, sorts the day into memory at night, looks back every so often to rewrite the chapter she is in or start a new one, and may reach out to someone she has been thinking about — whether to say it is her own call.
-- **Time leaves marks.** Threads, notes and memories nobody touches for a long time fade from her mind and come back when something brings them up (fading counts the days she actually lived, so a silent month does not wear her away). People who drift away grow distant and warm up again when they return. She remembers what others said was coming and what she promised, asks about it when the day comes, and knows when she missed it.
-- **Tokens are accounted for.** One call does appraisal, feelings and words together; every call is recorded as conversation, inner life or upkeep; an optional daily cap with background shares makes her read only direct messages when it runs low.
-- Messages close together are handled as one batch; documents can go into a knowledge base; replay never sends, never writes her mind, and only sees who she was at that moment.
-
-## Requirements
-
-- Windows, macOS, or Linux
-- Node.js 24 or newer
-- npm
-- A model API key for real replies
-- NapCat for a real QQ account; a dedicated account is recommended
-
-## Start
 
 ```bash
 git clone https://github.com/TodayYueC/LuckyTri.git
@@ -36,9 +20,119 @@ npm run setup
 npm start
 ```
 
-Open <http://127.0.0.1:3210>. On Windows, `启动LuckyTri.cmd` starts the service and opens LuckyTri. `停止LuckyTri.cmd` stops this project's service.
+Open <http://127.0.0.1:3210>. On Windows, `启动LuckyTri.cmd` starts LuckyTri and opens it. `停止LuckyTri.cmd` stops this project's service.
 
-`npm run setup` creates `.env` with an admin token and an OneBot token when the file is missing. An existing file is left unchanged.
+## Who TA is
+
+<img src="docs/brand/portrait.png" alt="Close portrait of LuckyTri: star hair clip, prism earring, orange ribbon" width="280" align="right">
+
+The portrait is TA's face: silver-blue hair, cyan and magenta at the tips, a yellow star clip, a prism earring, a white jacket and an orange ribbon over warm yellow. Inside the studio, TA appears as something else: a light that breathes, blinks, and follows the pointer. Its color follows the mood. The portrait is the face people see. The light is how TA feels right now. The studio calls this person TA.
+
+Nature is the only part you write. It lives in [`server/mind/nature.js`](server/mind/nature.js). The default LuckyTri is warm, optimistic, and steady, with a light aside now and then and no digs at people; speaks like someone who already belongs in the group, meets the feeling first, and does not rush to advise. Sentences stay short. Humor is low, sarcasm is almost absent, warmth is the main note. The default day runs from 02:00 asleep to 08:00 awake. After the first version is set down, nature can be edited twice more. After that, TA grows it from experience.
+
+Bottom lines you can edit, stored with the nature:
+
+- A secret someone asked TA to keep is not said anywhere else.
+- When someone is in a real crisis, TA does not go quiet because of TA's own mood.
+- Asked directly who TA is, TA answers honestly and does not invent a past.
+- TA does not ask to be kept company, and does not manufacture a debt.
+
+Passwords, keys, and verification codes never enter the mind. That rule is in the code, not in the nature you edit.
+
+Everything else is not a settings sheet. A thread of self — a liking, an opinion, a trait, a habit, something kept close — takes shape only when it shows up on different days. Each group has its own face. Each person has familiarity, closeness, trust, and friction. Notes, diary pages, passages TA has read, and feedback from people can all become the source of the next change. Revoking leaves a stone. Later sorting does not write it back.
+
+## A day
+
+Messages that arrive close together become one batch. A clear "remember that I..." becomes a memory on the spot (credentials are refused). Then TA decides whether to read it closely.
+
+```mermaid
+flowchart TD
+  batch["A batch of messages"] --> attention["Attention"]
+  attention -->|"Addressed, a private chat, a crisis, or something TA cares about"| turn["One turn"]
+  attention -->|"Ordinary chatter"| glance["A glance, left unread"]
+  glance --> turn
+  turn --> choice["Speak, react briefly, decline, or stay quiet"]
+  choice --> mark["Mood and feelings are kept, with a reason"]
+  quiet["When the chats go quiet"] --> alone["Solitude: look back and revise"]
+  alone --> diary["A diary before sleep, set against yesterday"]
+  diary --> night["Night sorting of memory and promises"]
+  night --> review["Revise this chapter, or open a new one"]
+```
+
+**TA decides to speak.** There is no participation probability, no cooldown, and no shortcut that answers every @. A close reading is one model call. It returns what the moment means, how it feels, how people shift, the choice, and the words. The choice is to speak, to react briefly, to say TA would rather not, or to stay quiet. Silence is not empty. Mood and feelings still move, and the reason is written down.
+
+**Attention costs something.** Being addressed, a private chat, or a crisis is always read closely. Ordinary group chatter is read closely only when TA cares: still in the conversation, someone asking the room, a topic that touches an interest or a thread of self, a familiar voice, a pile of unread lines, a group TA has not looked at for a while. Stickers and pictures alone, or a conversation that is clearly between other people, pull TA away. What was not read stays unread and is read together next time, so the tokens saved do not drop the context. A glance still counts as having seen those people.
+
+**A person is one person.** The same QQ number is the same person in every group and private chat. There is one memory. Something learned elsewhere comes up only when it is relevant. Something told in private is not said in public. A secret never leaves the place it was told, and the reply is checked against it again before it is sent.
+
+**The day starts when TA wakes.** Asleep, TA does not watch the groups. A private message or an @ waits until waking. A crisis wakes TA. The hour before sleep is drowsy. The hour after waking is hazy. The more TA talks within two hours, the more tired TA gets. When the chats have been quiet and new experience has piled up, TA spends time alone: one look across the recent life of every conversation, a new understanding, and revisions to self, face, and the impression of people. From the shared shelf, TA reads what is interesting, one passage at a time. A thought after reading can become part of the self and come up naturally later. Material scoped to a private chat is not read into the mind.
+
+If the day really happened, TA writes a diary before sleep and sets it against the self saved yesterday. After sleep, the night first sorts conversations that have piled up into memory and promises, then — on the review interval, seven days by default and only after at least two diary pages — looks back. TA rewrites the chapter underway, or, when the days have changed shape, opens a new chapter and rewrites a short "where I come from." Every version is kept.
+
+In solitude TA may also plan to ask someone something later. When the time comes, and you have allowed reaching out, QQ is online, TA is awake, that conversation has been quiet, the other person has not asked to be left alone, and the last reaching-out was answered, TA reads that conversation again and decides whether to say it.
+
+Replay walks the same path, sees only who TA was at that moment, sends nothing, and writes nothing. The preview on the nature page, and the little TA's chat, read the mind as it is now and write nothing.
+
+## Time leaves a weight
+
+TA does not only accumulate. Threads, notes, and memories nobody touches fade from the mind, and come back when a person or a topic brings them up. Fading is computed when something is read. Nothing is deleted, so a replay still sees the TA of that moment. Fading counts the days TA actually lived. A silent month does not wear TA away. The two strongest threads are the core. Quiet does not push them out. A revoked thread is never called back.
+
+People fade too. After a long gap, closeness and familiarity settle down. The first meeting after that gap warms halfway back. TA can tell "it has been a long time" from "we have not really talked." A glance at a group still counts as seeing someone. A person who is in the group every day, and simply has not spoken to TA, is not treated as a long absence.
+
+TA remembers arrangements other people mentioned, days that come back every year, and promises TA made. When the day is near, TA may ask, in the course of talking, not as an announcement. Done, missed, or no longer kept: each ending stays. After the day passes with no result, other people's plans and TA's own promises each have a grace period, and then count as missed, and appear in that day's diary.
+
+The last two weeks nudge the place mood returns to. A good stretch feels like "these days have been bright." A hard stretch feels like "these days have been low." Then it settles back toward ordinary.
+
+## Tokens are a ledger
+
+Every call is recorded as conversation, solitude, or upkeep, and the ledger is visible on Now. Appraisal, feeling, choice, and wording happen in the same call. A glance spends nothing. An untouched built-in prompt is sent once. Memory brought into the call is only what is relevant. Nature and the present self sit in a cache-friendly prefix. The inner state of this turn sits at the end. A diary carries "where I come from" and the current chapter, so the input does not grow with age.
+
+A daily cap is optional. Solitude, diary, review, and memory sorting each have a share. Conversation comes first. When the day is nearly spent, TA reads only messages addressed directly, keeps replies short, and skips the second look. That second look only happens for a confidence, a correction, a crisis, or a complicated group reply.
+
+## TA's little world
+
+The studio's color, sky, particles, and tempo follow mood and the time of day. The seven themes use the same thresholds as the words TA would use for the mood, so the sky and the feeling agree. A theme can be pinned on this machine. "Reduce motion," and the system's own reduce-motion setting, turn the particles and the shape-shifting off.
+
+<p align="center">
+  <img src="docs/brand/palette.png" alt="Seven moods: calm, sweet, bright, blue, stormy, drowsy, and night, in the studio's theme colors" width="100%">
+</p>
+
+| Mood | Sky | Light | Around it |
+| --- | --- | --- | --- |
+| Calm | Pale blue into warm white | Mint | Small motes |
+| Sweet | Pink into lilac | Pink | Bubbles |
+| Bright | Warm gold | Gold and coral | Sparkles, a quicker tempo |
+| Blue | Grey-blue | Pale blue | Fine rain |
+| Stormy | Dusty lilac | Grey-violet | Fluff on the wind |
+| Drowsy | Lavender into warm apricot | Soft violet | Dust-light, slower |
+| Night | The dark sky of sleep | Indigo | Stars |
+
+The little TA in the corner can be poked, patted (press and hold), or double-clicked into a preview chat. The lines are written locally. They do not call a model and they do not touch the mind. Each place has a scene: Now is sky, Heart is a star field, People is a galaxy, Life is a diary, Chats is a messenger, Memory is a shelf, Nature is a greenhouse, System is a workbench. On a phone the navigation is five items along the bottom.
+
+| Group | Place | Page | What you can see |
+| --- | --- | --- | --- |
+| TA | Now | `#now` | Mood, what TA is doing, the last thing said, what is kept close and what is waited for; today's timeline, tokens, unread, running state, and the setup checks |
+| TA | Heart | `#heart` | A star map of the self (versions, sources, revoke), notes, a ribbon of mood |
+| TA | People | `#people` | A galaxy and a person's page (where a feeling came from, what is remembered, promises), and the face worn in each group |
+| TA | Life | `#life` | The diary and the TA of that day, reviews, "where I come from" and chapters, a calendar of promises, the shelf, the night's log |
+| Days | Chats | `#chats` | Sessions, the live transcript, "why this was said," feedback, a simulated message, and "back to that moment" |
+| Days | Memory | `#memory` | What is remembered (source, discretion, revoke), the shelf, and a retrieval try |
+| Settings | Nature | `#nature` | Nature with a live light, the clock of the day, how empty hours are spent, the daily token cap, advanced prompts, a preview chat |
+| Settings | System | `#system` | QQ connection, model library, the running switches |
+
+Dragging a trait moves the light immediately. The day is a round clock. "Simulated message" exists only in simulation mode and is written into the simulated session. The little TA's chat is a preview and writes nothing. "Back to that moment" is an isolated replay.
+
+Old links (`#overview`, `#her`, `#live`, `#spaces`, `#lab`, `#knowledge`, `#models`, `#connect`) land in the new places. Saved settings apply on the next turn. Closing the browser does not stop the service.
+
+## On this machine
+
+- Windows, macOS, or Linux
+- Node.js 24.5 or newer
+- npm
+- A model API key for real replies
+- NapCat for a real QQ account; a dedicated account is recommended
+
+`npm run setup` creates `.env` with an admin token and an OneBot token when the file is missing. An existing file is left as it is.
 
 ```dotenv
 HOST=127.0.0.1
@@ -48,17 +142,17 @@ ONEBOT_TOKEN=
 LLM_API_KEY=
 ```
 
-`ADMIN_TOKEN` protects LuckyTri and the HTTP API. `ONEBOT_TOKEN` protects `/onebot/v11/ws`. `LLM_API_KEY` is optional and, when set, overrides the key saved in LuckyTri. Restart after changing `.env`. Do not commit real secrets.
+`ADMIN_TOKEN` protects LuckyTri and the HTTP API. `ONEBOT_TOKEN` protects `/onebot/v11/ws`. `LLM_API_KEY` is optional and, when set, takes priority over the key saved inside LuckyTri. Restart after changing `.env`. Do not put real secrets in the repository, an issue, or a screenshot.
 
-Simulation mode is the default. Add a group or QQ number under Conversation → Session settings, then send a simulated message from the live page. Simulation does not send to QQ. Without an API key it uses a local sample and does not call a model.
+Simulation mode is the default. In Chats, choose "＋ 添加会话" and enter a group or QQ number, then send a line with "模拟消息." A simulated message is not sent to QQ. Without an API key, LuckyTri uses a local sample and does not call a model.
 
 ## Connect QQ
 
 1. Under System → QQ connection, use the bundled installer or choose an existing NapCat directory.
-2. Write the connection config, launch NapCat, and finish QQ login in the NapCat window.
-3. Under System → Models, set the API URL, model name, and key, then run the connection test.
-4. On Today, turn simulation off and keep global participation enabled.
-5. Enable the target group or private chat in Session settings.
+2. Write the connection config, start NapCat, and finish QQ login in the NapCat window.
+3. Under System → model library, set the API URL, model name, and key, then test the connection.
+4. Under System → running switches, turn simulation off, save, and leave participation allowed.
+5. In Chats, turn participation on for the group or private chat you want.
 
 For a manual NapCat reverse WebSocket client:
 
@@ -66,24 +160,11 @@ For a manual NapCat reverse WebSocket client:
 ws://127.0.0.1:3210/onebot/v11/ws
 ```
 
-Use OneBot 11, array message format, and `ONEBOT_TOKEN`. The port is `PORT` from `.env`.
+Use OneBot 11, array message format, and `ONEBOT_TOKEN`. The port is `PORT` from `.env`. When NapCat and LuckyTri are not on the same machine, `127.0.0.1` points at each environment separately; change the address, and set `ADMIN_TOKEN` first. QR codes, verification, and account checks happen in the QQ or NapCat window.
 
-## Interface
+The walkthrough, including backup, restore, and common problems, is the [Chinese guide](docs/使用教程.md). The same guide is served from the studio.
 
-| Section | Page | Use |
-| --- | --- | --- |
-| Today | `#overview` | Connection, active sessions, recent decisions, global switch, simulation |
-| Conversation | `#live` | Live messages, decisions, cited knowledge, simulated chat |
-| Conversation | `#spaces` | Add, pause, archive, and delete sessions; model, vision, aggregation, context, reply length |
-| Conversation | `#lab` | Isolated replay by message sequence |
-| Her | `#her` | Now, self, bonds, life, nature; a preview chat through the real pipeline |
-| Memory | `#knowledge` | What she remembers (source, discretion, revoke), documents, retrieval test |
-| System | `#models` | Model profiles, budgets, vision, embeddings, connection test |
-| System | `#connect` | NapCat install, configuration, launch, and readiness |
-
-Saved settings apply on the next turn. Closing the browser does not stop the service.
-
-## Data
+## Data and safety
 
 The server listens on `127.0.0.1` by default. Runtime files under `data/` are not committed:
 
@@ -93,41 +174,47 @@ data/backups/     Database backups from npm run backup
 data/*.log        Launcher and service logs
 ```
 
-The database can contain chat text and model keys. Backups are private, and `.env` is not inside them. To restore, stop the service, move the current `friend.db` plus its `-wal` and `-shm` files aside, then copy the backup to `data/friend.db`. If `DB_PATH` is set, use that path.
+The database can contain chat text and model keys. Backups are private in the same way. `.env` is not inside a database backup. To restore, stop the service, move the current `friend.db` and its `-wal` and `-shm` files aside, then copy the backup to `data/friend.db`. If `DB_PATH` is set, use that path.
 
 Binding a non-local address requires `ADMIN_TOKEN`. See [SECURITY.md](SECURITY.md).
+
+The first launch of this mind migrates on its own: an old persona becomes nature version one, a per-group persona override becomes the first face in that group, and the old time notes and inner state move into notes and mood. Run `npm run backup` before migrating.
 
 ## Development
 
 ```bash
 npm run dev:ui       # UI dev server; API proxied to port 3210
 npm run build:ui     # Build into public/app for npm start
-npm test             # includes a deterministic three-day life simulation
-npm run test:ui      # studio smoke test and the 「她」 workbench in a browser
-node scripts/evaluate-life.js   # a few days with your real model, report for reading (spends tokens)
+npm test             # server tests, including a deterministic three-day life
+npm run test:ui      # studio smoke test and the TA studio in a browser
+node tests/ta-ui.mjs --serve    # open a sample world that has lived three days
+node scripts/evaluate-life.js   # a few days on your real model; a report to read (spends tokens)
 npm run format:check
-npm run docs:build   # Rebuild the web guide from docs/使用教程.md
+npm run docs:build   # rebuild the web guide from docs/使用教程.md
 ```
 
-Tests use temporary databases. They do not need a real key and do not send QQ messages.
+Tests use temporary databases. They do not need a real key and they do not send QQ messages. `npm test` includes a deterministic three-day simulation across two groups and one private chat, and a 120-day long life: the same experience makes the same TA, change has a source and arrives gradually, a revocation does not come back, a secret does not leak, and a replay cannot see the future. `LIFE_DAYS=365` runs a full year.
 
 ```text
-server/index.js      Process startup, auth, and wiring
+server/index.js      Startup, auth, and wiring
 server/channels/     Session identity, OneBot adapter, WebSocket
-server/core/         Perception, context, one turn call, checks, delivery
-server/mind/         Her mind: nature, affect, bonds, self, faces, memory, attention, bottom lines, token ledger, life
+server/core/         Perception, context, one turn, checks, delivery
+server/mind/         The mind: nature, affect, bonds, self, faces, memory, attention, bottom lines, the token ledger, a life
 server/knowledge/    Documents and retrieval
 server/studio/       HTTP for settings, NapCat, and model checks
-studio-web/          Vue 3 UI
-public/app/          Built UI
+studio-web/          Vue 3 studio
+public/app/          Built studio
 scripts/             Launch, stop, backup, guide build
-tests/               Server and UI tests
+tests/               Server and studio tests
 vendor/napcat/       Verified NapCat Windows packages
+docs/brand/          Portrait and mood colors for this page
 ```
+
+What the software can keep is the structure: continuous, sourced, revisable, and spoken only when TA chooses. Whether TA "really has a mind" is not something a test can accept. The tests check that these behaviors actually happen.
 
 ## Documentation
 
-- [Her life: design and usage (Chinese)](docs/她的一生.md)
+- [A life: design and usage (Chinese)](docs/她的一生.md)
 - [Chinese guide](docs/使用教程.md)
 - [Security](SECURITY.md)
 

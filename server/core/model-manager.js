@@ -10,7 +10,7 @@ import {
   withTransientRequestRetry,
 } from "./network.js";
 
-const USER_AGENT = "LuckyTri/0.8.0";
+const USER_AGENT = "LuckyTri/0.8.1";
 const GPT_MODEL = /(?:^|[/.])gpt-/i;
 const CACHE_KEY_PROVIDERS = new Set([
   "openai",

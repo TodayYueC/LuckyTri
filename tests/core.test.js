@@ -1092,7 +1092,7 @@ test("OpenCode Messages 模型映射系统提示、图像、推理预算并解�
   assert.equal(request.url, "https://opencode.ai/zen/go/v1/messages");
   assert.equal(request.options.headers.Authorization, "Bearer SECRET");
   assert.equal(request.options.headers["anthropic-version"], "2023-06-01");
-  assert.equal(request.options.headers["User-Agent"], "LuckyTri/0.8.0");
+  assert.equal(request.options.headers["User-Agent"], "LuckyTri/0.8.1");
   assert.match(request.options.headers["x-opencode-session"], /^[a-f0-9]{32}$/);
   assert.equal(request.body.model, "minimax-m3");
   assert.equal(request.body.messages[0].content[2].source.type, "base64");
