@@ -29,7 +29,7 @@
 ## 启动
 
 ```bash
-git clone https://github.com/TodayYueC/LuckyBot.git LuckyTri
+git clone https://github.com/TodayYueC/LuckyTri.git
 cd LuckyTri
 npm install
 npm run setup

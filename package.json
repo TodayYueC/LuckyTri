@@ -5,12 +5,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/TodayYueC/LuckyBot.git"
+    "url": "https://github.com/TodayYueC/LuckyTri.git"
   },
   "bugs": {
-    "url": "https://github.com/TodayYueC/LuckyBot/issues"
+    "url": "https://github.com/TodayYueC/LuckyTri/issues"
   },
-  "homepage": "https://github.com/TodayYueC/LuckyBot",
+  "homepage": "https://github.com/TodayYueC/LuckyTri",
   "type": "module",
   "engines": {
     "node": ">=24.5"
