@@ -138,7 +138,7 @@ export function innerView(
     limit: 2,
   });
   const will = living
-    ? mind.meetings.trace(living.thread, { before: now })
+    ? mind.meetings.trace(living.thread, { before: now, session })
     : null;
   return {
     self,

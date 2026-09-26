@@ -145,35 +145,63 @@ export class Meetings {
     return `${name}：${text(row.appraisal, 72)}${ago}${quiet}`;
   }
   // How often other people's words met this wish. Her appraisal does not count.
-  trace(thread, { before = Date.now(), since = 0, inclusive = false } = {}) {
+  // A private touch stays in that room. If she meets that person again, whether
+  // she spoke is taken from the later meeting; the count does not grow.
+  trace(
+    thread,
+    { before = Date.now(), since = 0, inclusive = false, session = "" } = {},
+  ) {
     if (!thread) return { touched: 0 };
     const compare = inclusive ? "<=" : "<";
-    const last = this.db
-      .prepare(
-        `SELECT choice, created FROM mind_meetings m
-         WHERE will_thread=? AND will_met=1 AND created>=? AND created${compare}?
-         AND NOT EXISTS (
+    const room = session
+      ? "AND (m.discretion != 'private' OR m.session_id = ?)"
+      : "";
+    const hidden = `AND NOT EXISTS (
            SELECT 1 FROM mind_revocations r
            WHERE r.target_kind='meeting' AND r.target_id=m.id
-         )
-         ORDER BY created DESC LIMIT 1`,
-      )
-      .get(thread, since, before);
-    if (!last) return { touched: 0 };
-    const touched = this.db
+         )`;
+    const args = [thread, since, before];
+    if (session) args.push(session);
+    const hits = this.db
       .prepare(
-        `SELECT COUNT(*) n FROM mind_meetings m
+        `SELECT choice, created, people, will_people FROM mind_meetings m
          WHERE will_thread=? AND will_met=1 AND created>=? AND created${compare}?
-         AND NOT EXISTS (
-           SELECT 1 FROM mind_revocations r
-           WHERE r.target_kind='meeting' AND r.target_id=m.id
-         )`,
+         ${room} ${hidden}
+         ORDER BY created DESC`,
       )
-      .get(thread, since, before).n;
+      .all(...args);
+    if (!hits.length) return { touched: 0 };
+    const credited = new Set();
+    for (const row of hits) {
+      const named = parse(row.will_people, []);
+      for (const id of named.length ? named : parse(row.people, []))
+        credited.add(String(id));
+    }
+    let last = hits[0];
+    if (credited.size) {
+      const follow = [hits[0].created, before];
+      if (session) follow.push(session);
+      const later = this.db
+        .prepare(
+          `SELECT choice, created, people FROM mind_meetings m
+           WHERE created>=? AND created${compare}? ${room} ${hidden}
+           ORDER BY created DESC LIMIT 40`,
+        )
+        .all(...follow);
+      for (const row of later) {
+        if (parse(row.people, []).some((id) => credited.has(String(id)))) {
+          last = row;
+          break;
+        }
+      }
+    }
+    const touched = hits.length;
     const when = elapsedLabel(last.created, before, this.mind.timeZone());
     const spoke = last.choice === "silent" ? "没出声" : "出了声";
-    const summary =
-      when === "刚才"
+    const followed = last.created !== hits[0].created;
+    const summary = followed
+      ? `被别人的话碰到过 ${touched} 次，后来那次${spoke}`
+      : when === "刚才"
         ? `被别人的话碰到过 ${touched} 次，刚才那次${spoke}`
         : `被别人的话碰到过 ${touched} 次，上一次${when}，那次${spoke}`;
     return {
