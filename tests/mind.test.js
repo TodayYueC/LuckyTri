@@ -487,6 +487,84 @@ test("她正在过的事从心里进到注意力", () => {
   }
 });
 
+test("一个词组对上不算碰到她正在过的事", () => {
+  const w = world();
+  try {
+    w.open("group:1");
+    w.mind.self.propose(
+      { kind: "intention", content: "想看流星雨", strength: 0.3 },
+      { origin: "solitude", time: w.now() },
+    );
+    const meet = (id, said) =>
+      w.mind.experience(
+        {
+          choice: "silent",
+          appraisal: "听到了",
+          reason: "听到了",
+          topic: "",
+          targetMessageIds: [id],
+          feelings: [],
+          bonds: [],
+        },
+        {
+          session: "group:1",
+          snapshot: {
+            batchIds: [id],
+            messages: [
+              {
+                id,
+                role: "user",
+                speaker: "10001",
+                name: "阿明",
+                text: said,
+                relation: "ambient",
+              },
+            ],
+          },
+          kind: "group",
+          spoke: false,
+          time: w.now(),
+        },
+      );
+    meet(1, "天上有一颗流星");
+    assert.equal(
+      w.mind.db
+        .prepare("SELECT COUNT(*) n FROM mind_meetings WHERE will_met=1")
+        .get().n,
+      0,
+    );
+    w.advance(MINUTE);
+    meet(2, "今晚有流星雨");
+    assert.equal(
+      w.mind.db
+        .prepare("SELECT COUNT(*) n FROM mind_meetings WHERE will_met=1")
+        .get().n,
+      1,
+    );
+    w.mind.self.propose(
+      { action: "close", thread: w.mind.self.active()[0].thread },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      { kind: "intention", content: "烘焙", strength: 0.3 },
+      { origin: "solitude", time: w.now() },
+    );
+    w.advance(MINUTE);
+    meet(3, "今天吃烘焙");
+    assert.equal(
+      w.mind.db
+        .prepare(
+          "SELECT COUNT(*) n FROM mind_meetings WHERE will_met=1 AND created>?",
+        )
+        .get(w.now() - MINUTE).n,
+      1,
+      "只有一个特有的词时，一个词就够",
+    );
+  } finally {
+    w.close();
+  }
+});
+
 test("别人的话碰到过她正在过的事之后，这个人再开口会被细看", () => {
   const w = world();
   try {
@@ -689,6 +767,20 @@ test("相遇的意思按她过过的日子淡出，安静的日子磨不掉", ()
     assert.equal(wish.thread.length > 0, true);
     assert.match(view(soon).inner.with[0], /我想看的/);
     assert.equal(look(soon).look, true, "回到那时，这次相遇还在心上");
+    const faded = (cue) =>
+      innerView(w.mind, {
+        session: "group:1",
+        kind: "group",
+        people: ["10001"],
+        cue,
+        now: later,
+      });
+    assert.equal(faded(["今天好冷"]).inner.reminded, undefined);
+    const brought = faded(["又聊到看的那件事"]);
+    assert.match(brought.inner.reminded.join(" "), /我想看的/);
+    assert.match(brought.inner.reminded.join(" "), /很久没想起了/);
+    assert.equal(brought.inner.with, undefined);
+    assert.equal(look(later).look, false, "想起来不等于又要细看");
   } finally {
     w.close();
   }
