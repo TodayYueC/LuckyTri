@@ -492,7 +492,7 @@ test("别人的话碰到过她正在过的事之后，这个人再开口会被�
   try {
     w.open("group:1", "一群");
     w.open("private:7", "阿明");
-    w.mind.self.propose(
+    const wish = w.mind.self.propose(
       { kind: "intention", content: "想看流星雨", strength: 0.3 },
       { origin: "solitude", time: w.now() },
     );
@@ -557,6 +557,26 @@ test("别人的话碰到过她正在过的事之后，这个人再开口会被�
     const again = look("今天好冷");
     assert.equal(again.look, true);
     assert.match(again.reason, /上次的话碰到了我正在过的事/);
+    w.mind.self.propose(
+      { action: "close", thread: wish.thread },
+      { origin: "solitude", time: w.now() },
+    );
+    w.advance(MINUTE);
+    assert.equal(
+      look("今天好冷").look,
+      false,
+      "这件事放下之后，旧的碰到不再把人拉回来",
+    );
+    w.mind.self.propose(
+      { kind: "intention", content: "想看流星雨", strength: 0.3 },
+      { origin: "solitude", time: w.now() },
+    );
+    w.advance(MINUTE);
+    assert.equal(
+      look("今天好冷").look,
+      false,
+      "重新为自己而活是另一条线索，旧的碰到对不上",
+    );
     assert.equal(look("今天好冷", { userId: "10002" }).look, false);
     assert.equal(
       look("你说得对", { relation: "other" }).look,

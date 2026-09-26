@@ -298,6 +298,7 @@ export class ChatSystem {
         session,
         rows.filter((m) => m.role !== "assistant").map((m) => m.userId),
         now,
+        livingFor?.thread || "",
       ),
       closeness,
       pressure: this.mind.budget.pressure("conversation", now),
