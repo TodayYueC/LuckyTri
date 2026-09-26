@@ -123,9 +123,14 @@ export function innerView(
   const persons = [];
   for (const id of [...new Set(people.map(String))].slice(0, 6)) {
     const bond = mind.bonds.person(id, now, { room: session });
+    // A recorded feeling counts even before anyone has spoken. Merely being
+    // seen does not.
     if (
       !bond ||
-      (!bond.interactions && !bond.impression && bond.tension < 0.15)
+      (!bond.interactions &&
+        !bond.impression &&
+        !bond.lastChange &&
+        bond.tension < 0.15)
     )
       continue;
     persons.push({

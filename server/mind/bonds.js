@@ -207,9 +207,17 @@ export function describeBond(state) {
   if (state.tension >= 0.15)
     parts.push(`现在有点别扭${state.why ? `（${state.why}）` : ""}`);
   // Not seen at all is different from around but not talking with her.
+  // Never having talked is not the same as a gap after real conversations.
   if (state.awayDays >= LONG_ABSENCE_DAYS) parts.push("好久不见了");
   else if (state.absentDays >= 2 * LONG_ABSENCE_DAYS)
     parts.push("最近没怎么说上话");
+  else if (
+    state.lastTalkedAt == null &&
+    state.closeness >= 0.35 &&
+    (state.unspokenDays ?? 0) >= 7 &&
+    (state.awayDays ?? 0) < 3
+  )
+    parts.push("还没怎么说过话");
   return parts.join("，");
 }
 
@@ -443,13 +451,20 @@ export class Bonds {
     const notes = this.#shownNotes(merged, room);
     const described = { ...merged, ...notes };
     delete described.notes;
+    if (described.lastTalkedAt == null && described.firstMetAt != null)
+      described.unspokenDays = Math.max(
+        0,
+        Math.floor((now - described.firstMetAt) / DAY),
+      );
+    const feel = describeBond(described);
+    delete described.unspokenDays;
     return {
       userId: String(userId),
       name: known?.name || String(userId),
       sessions: parse(known?.sessions, []),
       lastSeen: known?.last_seen || null,
       ...described,
-      feel: describeBond(described),
+      feel,
     };
   }
   group(session, now = Date.now()) {
