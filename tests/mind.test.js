@@ -1703,6 +1703,26 @@ test("别人说话而她没有过上的日子，不算她过过的日子", () =>
       .prepare("SELECT lived FROM mind_days WHERE day='2026-09-23'")
       .get();
     assert.equal(second.lived, 1);
+    w.mind.db
+      .prepare("UPDATE mind_days SET lived=1, looked=0, spoke=0 WHERE day=?")
+      .run("2026-09-22");
+    assert.equal(w.mind.days.reconcile(w.now()), 1);
+    assert.equal(
+      w.mind.db
+        .prepare("SELECT lived FROM mind_days WHERE day='2026-09-22'")
+        .get().lived,
+      0,
+    );
+    w.mind.db
+      .prepare("UPDATE mind_days SET lived=1, looked=0, spoke=0 WHERE day=?")
+      .run("2026-09-23");
+    assert.equal(w.mind.days.reconcile(w.now()), 0);
+    assert.equal(
+      w.mind.db
+        .prepare("SELECT lived FROM mind_days WHERE day='2026-09-23'")
+        .get().lived,
+      1,
+    );
   } finally {
     w.close();
   }

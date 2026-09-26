@@ -3,9 +3,9 @@ import { sessionNativeId } from "../channels/session-key.js";
 import { interestTerms } from "./attention.js";
 import { agoLabel, elapsedLabel } from "./clock.js";
 import { isPrivateSession } from "./memory.js";
-import { lifeDayKey, lifeDayStart } from "./nature.js";
+import { lifeDayKey, lifeSpan } from "./nature.js";
 import { MEETING_FADED, meetingSalience, touches } from "./salience.js";
-import { hasCredential, messageSeqs, parse, text, zonedTime } from "./util.js";
+import { hasCredential, messageSeqs, parse, text } from "./util.js";
 
 // What a meeting meant, and whether the world actually touched what she is
 // living for. Both are facts of that batch: her own wording cannot invent a
@@ -562,7 +562,7 @@ export class Meetings {
       )
       .all(before))
       if (lifeDayKey(nature, row.created, zone) === day) keep(row.session_id);
-    const span = this.#lifeSpan(day, nature, zone);
+    const span = lifeSpan(nature, day, zone);
     if (!span) return [...ids];
     const end = Math.min(before, span.end - 1);
     if (span.start > end) return [...ids];
@@ -590,17 +590,6 @@ export class Meetings {
       for (const id of sessions) keep(id);
     }
     return [...ids];
-  }
-  // The life day named `day`, as an inclusive start and an exclusive end.
-  #lifeSpan(day, nature, zone) {
-    let cursor = zonedTime(`${day} 12:00`, zone);
-    if (!cursor) return null;
-    for (let i = 0; i < 4 && lifeDayKey(nature, cursor, zone) !== day; i++)
-      cursor += 6 * 3600000;
-    if (lifeDayKey(nature, cursor, zone) !== day) return null;
-    const start = lifeDayStart(nature, cursor, zone);
-    const end = lifeDayStart(nature, start + 26 * 3600000, zone);
-    return end > start ? { start, end } : null;
   }
   withPerson(userId, { before = Date.now(), limit = 8 } = {}) {
     return this.#open(
