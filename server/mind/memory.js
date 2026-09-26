@@ -13,7 +13,7 @@ import {
 } from "../core/speaker-names.js";
 import { agoLabel } from "./clock.js";
 import { hasCredential, secretRequest } from "./guard.js";
-import { MEMORY_IDLE_DAYS } from "./salience.js";
+import { MEMORY_IDLE_DAYS, grounded } from "./salience.js";
 import { DAY, clamp, similar, text } from "./util.js";
 
 const RECALL_CONFIDENCE = 0.5;
@@ -506,6 +506,7 @@ export class MemoryManager {
           m.seq >= first - 6 &&
           secretRequest(m.text),
       );
+      if (!grounded(a.content, cited.map((m) => m.text || ""))) continue;
       const result = this.mind.anticipations.add({
         kind,
         subject,
@@ -623,6 +624,7 @@ export class MemoryManager {
             )
           )
             continue;
+          if (!grounded(f.content, sources.map((m) => m.text || ""))) continue;
           const around = block.filter(
             (m) =>
               String(m.userId) === String(f.subject) &&

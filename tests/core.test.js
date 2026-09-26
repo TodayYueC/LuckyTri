@@ -699,7 +699,7 @@ test("连续阶段摘要追加，推测只以有限把握进入记忆；同一�
       facts: [
         {
           subject: "10001",
-          content: "喜欢茶" + data.messages[0].id,
+          content: "提到了消息" + data.messages[0].id,
           type: "preference",
           confidence: 0.99,
           importance: 0.9,

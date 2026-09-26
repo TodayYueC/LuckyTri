@@ -80,6 +80,15 @@ export function echoes(content, texts) {
   return touches(content, said, need);
 }
 
+// A restatement can keep one shared word, as in "搬到上海" remembered as
+// "住在上海". A sentence with none of those words was not said.
+export function grounded(content, texts) {
+  const said = interestTerms(texts);
+  if (!said.size) return false;
+  for (const term of interestTerms([content])) if (said.has(term)) return true;
+  return false;
+}
+
 // One set, or one set per speaker. An empty list means nothing was said.
 export function cueList(cue, cues) {
   if (Array.isArray(cues) && cues.length) return cues.filter((set) => set?.size);

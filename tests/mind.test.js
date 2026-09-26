@@ -1774,6 +1774,32 @@ test("被要求保密的话，整理记忆时也会记成秘密", async (t) => {
         certainty: "self_report",
         discretion: "open",
       },
+      {
+        subject: "10001",
+        content: "准备婚礼",
+        type: "event",
+        confidence: 0.9,
+        importance: 0.8,
+        sources: [second.seq],
+        certainty: "self_report",
+        discretion: "open",
+      },
+    ],
+    anticipations: [
+      {
+        kind: "event",
+        subject: "10001",
+        content: "要辞职",
+        due: "2026-10-20",
+        sources: [second.seq],
+      },
+      {
+        kind: "event",
+        subject: "10001",
+        content: "结婚典礼",
+        due: "2026-10-20",
+        sources: [second.seq],
+      },
     ],
     self: [],
   };
@@ -1791,6 +1817,20 @@ test("被要求保密的话，整理记忆时也会记成秘密", async (t) => {
     .get();
   assert.equal(row.discretion, "secret");
   assert.ok(first.seq < second.seq);
+  assert.equal(
+    w.store.db
+      .prepare("SELECT 1 FROM core_memories WHERE content LIKE '%婚礼%'")
+      .get(),
+    undefined,
+    "原话里没有的事不能记成他的事实",
+  );
+  const ahead = w.mind.anticipations.pending(Date.now());
+  assert.ok(ahead.some((a) => a.content === "要辞职"));
+  assert.equal(
+    ahead.some((a) => /结婚/.test(a.content)),
+    false,
+    "原话里没有的安排不能记成他要做的事",
+  );
 });
 
 test("整理记忆时，她自己说过的看法和承诺成为她的一部分，来源必须是她自己的话", async (t) => {
