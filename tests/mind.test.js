@@ -1679,6 +1679,35 @@ test("别人的话碰到过她正在过的事之后，这个人再开口会被�
   }
 });
 
+test("别人说话而她没有过上的日子，不算她过过的日子", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    for (const text of ["一", "二", "三", "四"])
+      w.say("group:1", "10001", text, { name: "阿明" });
+    w.advance(24 * HOUR);
+    w.mind.days.rollup(w.now());
+    const first = w.mind.db
+      .prepare("SELECT lived FROM mind_days WHERE day='2026-09-22'")
+      .get();
+    assert.equal(first.lived, 0);
+    w.mind.choose({
+      session: "group:1",
+      choice: "silent",
+      reason: "看了一眼",
+      time: w.now(),
+    });
+    w.advance(24 * HOUR);
+    w.mind.days.rollup(w.now());
+    const second = w.mind.db
+      .prepare("SELECT lived FROM mind_days WHERE day='2026-09-23'")
+      .get();
+    assert.equal(second.lived, 1);
+  } finally {
+    w.close();
+  }
+});
+
 test("相遇的意思按她过过的日子淡出，安静的日子磨不掉", () => {
   const w = world({ start: "2026-09-22T10:00:00+08:00" });
   try {
