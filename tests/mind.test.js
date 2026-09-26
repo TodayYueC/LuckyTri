@@ -1643,6 +1643,69 @@ test("相遇留下意义，私下不外带；意志只在别人的话碰到时�
   }
 });
 
+test("私下的相遇写成打算时，不进别的房间", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("private:7", "阿明");
+    w.open("group:1", "一群");
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "他私下告诉我今晚的安排",
+        reason: "私下",
+        topic: "",
+        targetMessageIds: [1],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "private:7",
+        snapshot: {
+          batchIds: [1],
+          messages: [
+            {
+              id: 1,
+              role: "user",
+              speaker: "7",
+              name: "阿明",
+              text: "今晚我先回去",
+              relation: "direct",
+            },
+          ],
+        },
+        kind: "private",
+        spoke: false,
+        time: w.now(),
+      },
+    );
+    const id = w.mind.db
+      .prepare("SELECT id FROM mind_meetings WHERE session_id='private:7'")
+      .get().id;
+    const place = w.life.placeOf([`g:${id}`]);
+    assert.equal(place.discretion, "private");
+    assert.equal(place.session, "private:7");
+    const added = w.mind.anticipations.add({
+      kind: "plan",
+      content: "问问他那件事",
+      due: "2026-09-23",
+      sources: [`g:${id}`],
+      origin: "solitude",
+      time: w.now(),
+      ...place,
+    });
+    assert.ok(added.id);
+    const textOf = (session) =>
+      w.mind.anticipations
+        .upcoming({ now: w.now(), session })
+        .map((a) => a.text)
+        .join(" ");
+    assert.equal(textOf("group:1"), "");
+    assert.match(textOf("private:7"), /问问他那件事/);
+  } finally {
+    w.close();
+  }
+});
+
 test("含私下相遇的那一天，日记摘要不跟着进别的房间", () => {
   const w = world();
   try {
