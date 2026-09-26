@@ -191,6 +191,104 @@ test("心里记下的印象不算来往，也不会把久别冲成重逢", () =>
   }
 });
 
+test("同一段经历不会被反复加成亲近，隔了很久补记也不算来往", () => {
+  const w = world();
+  try {
+    w.open("group:1");
+    const line = w.say("group:1", "10001", "今天聊得很开心", { name: "阿明" });
+    w.mind.bonds.meet([{ userId: "10001", name: "阿明" }], "group:1", w.now());
+    w.mind.bonds.record({
+      id: "10001",
+      change: "interaction",
+      session: "group:1",
+      sources: [line.seq],
+      time: w.now(),
+    });
+    assert.ok(
+      w.mind.bonds.record({
+        id: "10001",
+        change: "closer",
+        note: "聊得来",
+        sources: [line.seq],
+        session: "group:1",
+        time: w.now(),
+      }),
+    );
+    const once = w.mind.bonds.person("10001", w.now()).closeness;
+    const started = w.now();
+    for (let i = 1; i <= 8; i++) {
+      assert.equal(
+        w.mind.bonds.record({
+          id: "10001",
+          change: "closer",
+          note: "还是聊得来",
+          sources: [line.seq],
+          origin: "solitude",
+          time: started + i * 10 * 24 * HOUR,
+        }),
+        null,
+        "同一句话不再加成",
+      );
+    }
+    const faded = w.mind.bonds.person("10001", started + 80 * 24 * HOUR);
+    assert.ok(faded.absentDays >= 80, "反复引用也不算说上话");
+    assert.ok(faded.closeness < once, "反复引用，久别仍然变淡");
+    assert.ok(
+      w.mind.bonds.record({
+        id: "10001",
+        change: "impression",
+        note: "还记得他说话的样子",
+        sources: [line.seq],
+        origin: "solitude",
+        time: started + 80 * 24 * HOUR,
+      }),
+      "印象仍然可以记下",
+    );
+  } finally {
+    w.close();
+  }
+
+  const late = world();
+  try {
+    late.open("group:1");
+    const old = late.say("group:1", "10002", "很久以前的一句", { name: "小红" });
+    late.mind.bonds.meet(
+      [{ userId: "10002", name: "小红" }],
+      "group:1",
+      late.now(),
+    );
+    late.advance(40 * 24 * HOUR);
+    assert.equal(
+      late.mind.bonds.record({
+        id: "10002",
+        change: "closer",
+        note: "现在才觉得亲近",
+        sources: [old.seq],
+        origin: "solitude",
+        time: late.now(),
+      }),
+      null,
+      "隔了很久补记的亲近不算",
+    );
+    assert.ok(
+      late.mind.bonds.record({
+        id: "10002",
+        change: "impression",
+        note: "还记得那一句",
+        sources: [old.seq],
+        origin: "solitude",
+        time: late.now(),
+      }),
+    );
+    assert.ok(
+      late.mind.bonds.person("10002", late.now()).closeness <= 0.15,
+      "补记不把亲近抬高",
+    );
+  } finally {
+    late.close();
+  }
+});
+
 test("被叫到却没出声，不算说上话", () => {
   const w = world();
   try {

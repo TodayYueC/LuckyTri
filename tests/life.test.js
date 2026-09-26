@@ -869,7 +869,7 @@ test("人还在眼前但好久没说上话，独处时能分清这不是好久�
       id: "10001",
       change: "closer",
       note: "聊得来",
-      sources: [said[0].seq],
+      sources: [said[i].seq],
       session: "group:1",
       time: w.now(),
     });
