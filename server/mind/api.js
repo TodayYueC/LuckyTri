@@ -268,6 +268,10 @@ export function mountMind(app, chat, life) {
           .list({ now, limit: 300 })
           .filter((a) => String(a.subject) === id)
           .slice(0, 30),
+        meetings: mind.meetings.withPerson(id, { before: now }).map((m) => ({
+          ...m,
+          sessionName: names.get(m.sessionId) || m.sessionId,
+        })),
       });
     }),
   );

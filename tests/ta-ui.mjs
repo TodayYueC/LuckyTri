@@ -78,13 +78,16 @@ async function run() {
     }
 
     await page.goto(`${base}/app/#now`);
-    await page.locator(".page-now .mood-word").waitFor();
+    await page.locator(".presence-dock .mood-word").waitFor();
     assert.equal(
       await page.locator(".page-now .ready").count(),
       0,
       "首页不再出现接入检查清单",
     );
-    assert.match(await page.locator(".page-now .lede").innerText(), /醒着/);
+    assert.match(
+      await page.locator(".presence-dock .lede").innerText(),
+      /醒着/,
+    );
     await page.locator(".today .timeline li").first().waitFor();
     assert.ok(
       (await page.locator(".today .timeline li").count()) >= 3,
@@ -106,7 +109,7 @@ async function run() {
       () => document.documentElement.dataset.mood === "bright",
     );
     assert.match(
-      await page.locator(".page-now .mood-word").innerText(),
+      await page.locator(".presence-dock .mood-word").innerText(),
       /超开心/,
     );
 
@@ -138,12 +141,12 @@ async function run() {
       "sparkle",
     );
 
-    // Poking TA is only an animation with a canned line.
-    const before = choices();
-    await page.locator(".page-now .stage .ta-orb").click();
-    await page.locator(".page-now .stage .orb-say").waitFor();
-
+    // Poking TA is only an animation with a canned line. The home hides
+    // the corner orb, so this happens once another page is open.
     await open("#heart");
+    const before = choices();
+    await page.locator(".companion-dock .ta-orb").click();
+    await page.locator(".companion-dock .orb-say").waitFor();
     await page.locator(".companion-talk").click();
     const orb = await page.locator(".drawer-head .ta-orb").boundingBox();
     const title = await page.locator(".drawer-title").boundingBox();
@@ -184,12 +187,20 @@ async function run() {
     await page.locator(".note-card.muted").first().waitFor();
 
     await open("#people");
-    const peopleBoxes = await page.locator(".person-node").evaluateAll((nodes) =>
-      nodes.map((n) => {
-        const r = n.getBoundingClientRect();
-        return { id: n.dataset.person, x: r.x, y: r.y, w: r.width, h: r.height };
-      }),
-    );
+    const peopleBoxes = await page
+      .locator(".person-node")
+      .evaluateAll((nodes) =>
+        nodes.map((n) => {
+          const r = n.getBoundingClientRect();
+          return {
+            id: n.dataset.person,
+            x: r.x,
+            y: r.y,
+            w: r.width,
+            h: r.height,
+          };
+        }),
+      );
     assert.ok(peopleBoxes.length > 0 && peopleBoxes.length <= 24);
     assert.ok(peopleBoxes.some((n) => n.id === "10001"));
     for (let i = 0; i < peopleBoxes.length; i++) {
@@ -210,6 +221,16 @@ async function run() {
       .locator(".person-sheet")
       .getByText("阿明在准备一家游戏公司的面试")
       .waitFor();
+    const meeting = page
+      .locator(".person-sheet li")
+      .filter({ hasText: "阿明的面试让我挂心" });
+    await meeting.waitFor();
+    await meeting.locator("[data-revoke-meeting]").click();
+    await confirm();
+    await page
+      .locator(".person-sheet")
+      .getByText("阿明的面试让我挂心")
+      .waitFor({ state: "detached" });
     const changes = await page
       .locator(".person-sheet [data-revoke-change]")
       .count();
@@ -324,18 +345,31 @@ async function run() {
     await page.setViewportSize({ width: 1440, height: 1000 });
 
     // At night the studio keeps the soft glass palette while TA falls asleep.
-    const nature = w.mind.nature.current();
-    w.mind.nature.save(
-      { ...nature, rhythm: { enabled: true, sleep: "02:00", wake: "08:00" } },
-      "界面测试",
-    );
+    // The two nature edits are already used, so this only turns the clock on.
+    const row = w.mind.db
+      .prepare(
+        "SELECT version, value FROM mind_nature ORDER BY version DESC LIMIT 1",
+      )
+      .get();
+    const value = JSON.parse(row.value);
+    value.rhythm = {
+      ...value.rhythm,
+      enabled: true,
+      sleep: "02:00",
+      wake: "08:00",
+    };
+    w.mind.db
+      .prepare("UPDATE mind_nature SET value=? WHERE version=?")
+      .run(JSON.stringify(value), row.version);
     w.at("2026-09-23T03:00:00+08:00");
     await open("#now");
     await page.locator("#refresh").click();
     await page.waitForFunction(
       () => document.documentElement.dataset.mood === "night",
     );
-    await page.locator(".dock-ta .ta-orb[data-activity=asleep]").waitFor();
+    await page
+      .locator(".presence-dock .activity-chip[data-activity=asleep]")
+      .waitFor();
     assert.equal(
       await page.evaluate(
         () => getComputedStyle(document.documentElement).colorScheme,

@@ -10,6 +10,7 @@ import { attend } from "../server/mind/attention.js";
 import { crisisSignal, leaks, secretRequest } from "../server/mind/guard.js";
 import {
   rhythmPhase,
+  lifeDayKey,
   NATURE_DEFAULTS,
   PREVIOUS_NATURE_SEED,
   validateNature,
@@ -537,7 +538,12 @@ test("被问到是谁时，心和选择属于自己，经历仍然不能编造",
   assert.match(PROMPTS.turn, /不要靠装成某一种人/);
   assert.doesNotMatch(PROMPTS.turn, /像真实的人一样/);
   assert.match(PROMPTS.system, /慢慢成为自己/);
+  assert.match(PROMPTS.turn, /inner\.room/);
   assert.match(PROMPTS.generation, /self\.livingFor/);
+  assert.match(PROMPTS.generation, /inner\.room/);
+  assert.doesNotMatch(PROMPTS.generation, /参考当前群友的句长/);
+  assert.match(PROMPTS.daily, /g:ID/);
+  assert.match(PROMPTS.reflection, /g:ID/);
   assert.match(PROMPTS.daily, /livingFor\.touched/);
   assert.match(PROMPTS.reflection, /livingFor\.touched/);
   assert.match(PROMPTS.weekly, /livingFor\.touched/);
@@ -548,6 +554,14 @@ test("被问到是谁时，心和选择属于自己，经历仍然不能编造",
   assert.equal(
     prompts({ config: () => ({ turn: previousTurn }) }).turn,
     PROMPTS.turn,
+  );
+  const previousGeneration = RETIRED_PROMPTS.generation.find(
+    (item) =>
+      item.includes("参考当前群友的句长") && item.includes("self.livingFor"),
+  );
+  assert.equal(
+    prompts({ config: () => ({ generation: previousGeneration }) }).generation,
+    PROMPTS.generation,
   );
   assert.match(PROMPTS.daily, /正在为自己而活/);
   assert.match(PROMPTS.weekly, /正在为自己而活/);
@@ -1144,6 +1158,72 @@ test("相遇留下意义，私下不外带；意志只在别人的话碰到时�
     assert.doesNotMatch((after.inner.with || []).join(" "), /我想看的/);
     assert.equal(after.inner.will, undefined);
     assert.equal(wish.thread.length > 0, true);
+  } finally {
+    w.close();
+  }
+});
+
+test("含私下相遇的那一天，日记摘要不跟着进别的房间", () => {
+  const w = world();
+  try {
+    const at = w.now();
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "他告诉我今晚的安排",
+        reason: "私下",
+        topic: "",
+        targetMessageIds: [1],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "private:7",
+        snapshot: {
+          batchIds: [1],
+          messages: [
+            {
+              id: 1,
+              role: "user",
+              speaker: "7",
+              name: "阿明",
+              text: "今晚我先回去",
+              relation: "direct",
+            },
+          ],
+        },
+        kind: "private",
+        spoke: false,
+        time: at,
+      },
+    );
+    const day = lifeDayKey(w.mind.nature.current(at), at, w.mind.timeZone());
+    w.mind.db
+      .prepare(
+        "INSERT INTO mind_diary(id,day,created,content,mood,compare,sources) VALUES (?,?,?,?,?,?,?)",
+      )
+      .run("d1", day, at, "今天私下知道了他今晚的安排", "平静", "", "[]");
+    const group = innerView(w.mind, {
+      session: "group:1",
+      kind: "group",
+      now: at + 1,
+    });
+    assert.equal(group.self.lastDiary, undefined);
+    const room = innerView(w.mind, {
+      session: "private:7",
+      kind: "private",
+      now: at + 1,
+    });
+    assert.match(room.self.lastDiary, /今晚的安排/);
+    const id = w.mind.db
+      .prepare("SELECT id FROM mind_meetings WHERE session_id='private:7'")
+      .get().id;
+    w.mind.revoke("meeting", id);
+    assert.match(
+      innerView(w.mind, { session: "group:1", kind: "group", now: at + 2 }).self
+        .lastDiary,
+      /今晚的安排/,
+    );
   } finally {
     w.close();
   }

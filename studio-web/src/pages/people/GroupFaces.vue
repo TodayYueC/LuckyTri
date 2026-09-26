@@ -45,7 +45,8 @@ async function revoke(session: string, id: string) {
       <h2>在不同的地方，她有不同的相处方式。</h2>
       <p class="muted">
         面貌由 TA
-        在独处和写日记时自己修正，吸收那个群的说话习惯；每一版都有来源。
+        在独处和写日记时自己修正；每一版都有来源。这个地方的说话节奏不会写成 TA
+        的样子。
       </p>
     </div>
     <div class="face-grid">
@@ -58,9 +59,16 @@ async function revoke(session: string, id: string) {
         <header>
           <span class="badge">{{ g.kind === "private" ? "私" : "群" }}</span>
           <div>
-            <h3>{{ placeName({ id: g.session, name: g.name, kind: g.kind }) }}</h3>
+            <h3>
+              {{ placeName({ id: g.session, name: g.name, kind: g.kind }) }}
+            </h3>
             <small v-if="g.kind === 'private'" class="qq"
-              >QQ {{ String(g.session || "").split(":").pop() }}</small
+              >QQ
+              {{
+                String(g.session || "")
+                  .split(":")
+                  .pop()
+              }}</small
             >
             <small class="muted"
               >{{ g.kind === "private" ? "私聊" : "群聊"

@@ -94,6 +94,28 @@ async function patch(m: any, body: Record<string, unknown>) {
   }
 }
 
+async function revokeMeeting(m: any) {
+  if (
+    !(await ask(
+      `撤销这次相遇留下的意思？「${m.meant}」之后不会再回到 TA 心里，也不会再被当成变化的来源。`,
+      {
+        title: "撤销这次相遇",
+        confirmText: "撤销",
+        danger: true,
+      },
+    ))
+  )
+    return;
+  try {
+    await mind.revoke("meeting", m.id);
+    toast("已撤销");
+    await load();
+    emit("changed");
+  } catch (e) {
+    toast((e as Error).message, true);
+  }
+}
+
 async function revokeAhead(a: any) {
   const reason = await askText(
     `撤销「${a.content}」？TA 不再惦记这件事，之后整理记忆时也不会把它写回来。可以写下原因（可不填）：`,
@@ -222,6 +244,28 @@ watch(
         <p v-else class="muted">只是一起聊过天，还没有特别的变化。</p>
       </section>
 
+      <section v-if="data.meetings?.length">
+        <h3 class="sheet-title">和{{ person.name }}的相遇留下了什么</h3>
+        <ul class="list">
+          <li v-for="m in data.meetings" :key="m.id" class="change">
+            <span class="chip" :data-tone="m.private ? 'quiet' : undefined">{{
+              m.private ? "私下" : m.choice === "silent" ? "没出声" : "出了声"
+            }}</span>
+            <div class="grow">
+              <p>{{ m.meant }}</p>
+              <small class="faint">{{ m.when }} · {{ m.sessionName }}</small>
+            </div>
+            <button
+              class="text-button"
+              data-revoke-meeting
+              @click="revokeMeeting(m)"
+            >
+              撤销
+            </button>
+          </li>
+        </ul>
+      </section>
+
       <section>
         <h3 class="sheet-title">TA 记得关于{{ person.name }}的事</h3>
         <ul v-if="data.memories.length" class="list">
@@ -234,7 +278,10 @@ watch(
             <p>{{ m.content }}</p>
             <small class="faint">
               {{ MEMORY_STATUS[m.status] || m.status }} · 在「{{
-                placeName({ name: m.sessionName, id: m.session_id || m.sessionId })
+                placeName({
+                  name: m.sessionName,
+                  id: m.session_id || m.sessionId,
+                })
               }}」知道的 · {{ m.when }}
             </small>
             <div v-if="m.status === 'confirmed'" class="instant">

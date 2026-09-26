@@ -651,3 +651,156 @@ test("待过的地方安静下来，她会看一次要不要说，不出声之�
   assert.equal(w.calls.filter((c) => c.stage === "turn").length, 1);
   assert.equal(w.sent.length, 0);
 });
+
+function remember(w, session, event, appraisal) {
+  w.mind.experience(
+    {
+      choice: "silent",
+      appraisal,
+      reason: appraisal,
+      topic: "",
+      targetMessageIds: [event.seq],
+      feelings: [],
+      bonds: [],
+    },
+    {
+      session,
+      snapshot: {
+        batchIds: [event.seq],
+        messages: [
+          {
+            id: event.seq,
+            role: "user",
+            speaker: String(event.userId),
+            name: event.name,
+            text: event.text,
+            relation: "ambient",
+          },
+        ],
+      },
+      kind: session.startsWith("private") ? "private" : "group",
+      spoke: false,
+      time: w.now(),
+    },
+  );
+}
+
+test("独处和日记能引用已经留下的意思；没发生的、撤销的、私下的不能被带到别处", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1", "一群");
+  w.open("private:7", "阿明");
+  const events = chat(w, "group:1", [
+    ["10001", "周五要面试了"],
+    ["10001", "有点紧张"],
+    ["bot", "紧张很正常"],
+    ["10002", "加油啊"],
+    ["10001", "谢谢"],
+    ["10001", "面完告诉你们"],
+    ["10002", "等你好消息"],
+  ]);
+  remember(w, "group:1", events[0], "阿明的面试让我挂心");
+  const priv = w.say("private:7", "7", "今晚有流星雨", { name: "阿明" });
+  w.advance(MINUTE);
+  remember(w, "private:7", priv, "他知道我想看的那场");
+  w.advance(30 * MINUTE);
+  let seen;
+  w.answers.reflection = (data) => {
+    seen = data;
+    const open = data.meetings.find((m) => !m.private);
+    const quiet = data.meetings.find((m) => m.private);
+    return {
+      thought: {
+        kind: "reflection",
+        content: "私下知道的那场，先留在这里",
+        sources: [quiet.ref],
+      },
+      self: [
+        {
+          action: "new",
+          kind: "care",
+          content: "我会把阿明的面试放在心上",
+          sources: [open.ref],
+        },
+        {
+          action: "new",
+          kind: "view",
+          content: "我把一场没发生的相遇当成了经历",
+          sources: ["g:00000000-0000-4000-8000-000000000000"],
+        },
+      ],
+      outreach: {
+        session: "group:1",
+        text: "今晚有流星雨记得看",
+        afterHours: 6,
+      },
+    };
+  };
+  const result = await w.life.tick();
+  assert.equal(result.status, "written");
+  assert.equal(seen.meetings.length, 2);
+  assert.equal(seen.meetings[0].private, undefined);
+  assert.equal(seen.meetings[1].private, true);
+  const care = w.mind.self.active().find((s) => s.kind === "care");
+  assert.equal(care.sources[0], seen.meetings[0].ref);
+  assert.equal(
+    w.mind.self.active().some((s) => /没发生/.test(s.content)),
+    false,
+  );
+  const [thought] = w.mind.thoughts.list();
+  assert.equal(thought.sources[0], seen.meetings[1].ref);
+  assert.equal(thought.outreach, "");
+  assert.equal(w.sent.length, 0);
+  const meetingId = seen.meetings[0].ref.slice(2);
+  assert.match(w.mind.meetings.withPerson("10001")[0].meant, /面试/);
+  w.mind.revoke("meeting", meetingId);
+  assert.equal(
+    w.mind.meetings
+      .held({ before: w.now() + 1 })
+      .some((m) => m.ref === seen.meetings[0].ref),
+    false,
+  );
+  assert.equal(
+    w.mind.meetings.withPerson("10001", { before: w.now() + 1 }).length,
+    0,
+  );
+});
+
+test("日记从今天已经留下的意思写起，并能把它当成来源", async (t) => {
+  const w = world({ start: "2026-09-22T12:00:00+08:00", rhythm: true });
+  t.after(w.close);
+  w.open("group:1");
+  w.life.save({ solitude: false });
+  const events = chat(w, "group:1", [
+    ["10001", "周五要面试了"],
+    ["10002", "加油啊"],
+    ["10001", "谢谢"],
+    ["10002", "等你好消息"],
+  ]);
+  remember(w, "group:1", events[0], "阿明的面试让我挂心");
+  let seen;
+  w.answers.daily = (data) => {
+    seen = data;
+    return {
+      diary: "今天面试这件事让我挂心",
+      mood: "挂心",
+      compare: "今天是开始",
+      self: [
+        {
+          action: "new",
+          kind: "care",
+          content: "我会记得阿明要面试",
+          sources: [data.today.meetings[0].ref],
+        },
+      ],
+    };
+  };
+  w.at("2026-09-23T01:30:00+08:00");
+  const diary = await w.life.tick();
+  assert.equal(diary.status, "written");
+  assert.match(seen.today.meetings[0].meant, /挂心/);
+  assert.equal(
+    w.mind.self.active().find((s) => s.kind === "care").sources[0],
+    seen.today.meetings[0].ref,
+  );
+});
