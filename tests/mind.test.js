@@ -1708,6 +1708,26 @@ test("别人说话而她没有过上的日子，不算她过过的日子", () =>
   }
 });
 
+test("别人的消息本身不会让她写这一天的日记", () => {
+  const w = world({ start: "2026-09-22T23:10:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    for (const text of ["一", "二", "三", "四"])
+      w.say("group:1", "10001", text, { name: "阿明" });
+    assert.equal(w.life.diaryDue(w.now()), null);
+    w.mind.choose({
+      session: "group:1",
+      choice: "silent",
+      reason: "看了",
+      time: w.now(),
+    });
+    const due = w.life.diaryDue(w.now());
+    assert.equal(due.day, w.life.lifeDay(w.now()));
+  } finally {
+    w.close();
+  }
+});
+
 test("相遇的意思按她过过的日子淡出，安静的日子磨不掉", () => {
   const w = world({ start: "2026-09-22T10:00:00+08:00" });
   try {
@@ -2700,6 +2720,75 @@ test("含私下相遇的那一天，日记摘要不跟着进别的房间", () =>
       innerView(w.mind, { session: "group:1", kind: "group", now: at + 2 }).self
         .lastDiary,
       /今晚的安排/,
+    );
+  } finally {
+    w.close();
+  }
+});
+
+test("私聊里的话、私下的印象和由此长成的线索，不跟着日记进别的房间", () => {
+  const w = world();
+  try {
+    w.open("private:7", "阿明");
+    w.open("group:1", "一群");
+    const said = w.say("private:7", "7", "这是只告诉你的事", { name: "阿明" });
+    w.mind.bonds.meet([{ userId: "7", name: "阿明" }], "private:7", w.now());
+    w.mind.bonds.record({
+      id: "7",
+      change: "impression",
+      note: "他私下告诉我一件事",
+      sources: [`m:${said.seq}`],
+      session: "private:7",
+      time: w.now(),
+    });
+    w.mind.self.propose(
+      {
+        action: "new",
+        kind: "care",
+        content: "我会记得他只告诉我的那件事",
+        sources: [`m:${said.seq}`],
+      },
+      { time: w.now() },
+    );
+    const openPeople = w.life.peopleIn(
+      [{ messages: [{ userId: "7" }] }],
+      w.now(),
+      { open: true },
+    );
+    assert.equal(openPeople[0].impression, undefined);
+    assert.match(
+      w.life.peopleIn([{ messages: [{ userId: "7" }] }], w.now())[0].impression,
+      /私下告诉我/,
+    );
+    assert.equal(
+      w.life
+        .selfView(w.now(), { open: true })
+        .some((t) => /只告诉我/.test(t.content)),
+      false,
+    );
+    assert.equal(
+      w.life.selfView(w.now()).some((t) => /只告诉我/.test(t.content)),
+      true,
+    );
+    const at = w.now();
+    const day = lifeDayKey(w.mind.nature.current(at), at, w.mind.timeZone());
+    w.mind.db
+      .prepare(
+        "INSERT INTO mind_diary(id,day,created,content,mood,compare,sources) VALUES (?,?,?,?,?,?,?)",
+      )
+      .run("d-private-words", day, at, "今天他私下告诉我一件事", "平静", "", "[]");
+    assert.equal(
+      innerView(w.mind, { session: "group:1", kind: "group", now: at + 1 }).self
+        .lastDiary,
+      undefined,
+    );
+    assert.match(
+      innerView(w.mind, {
+        session: "private:7",
+        kind: "private",
+        now: at + 1,
+      }).self.lastDiary,
+      /私下告诉我/,
     );
   } finally {
     w.close();
