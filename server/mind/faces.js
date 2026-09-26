@@ -72,6 +72,13 @@ export class Faces {
     const roots = this.mind.meetings.privateRoots(sources);
     if (roots.length && !roots.includes(session))
       return { rejected: "来源不能带到这个会话" };
+    const spent = new Set();
+    for (const row of this.db
+      .prepare("SELECT sources FROM mind_faces WHERE session_id=?")
+      .all(session))
+      for (const source of JSON.parse(row.sources || "[]")) spent.add(source);
+    if (sources.length && sources.every((source) => spent.has(source)))
+      return { rejected: "没有新的经历" };
     const current = this.current(session, time);
     if (current) {
       for (const key of Object.keys(next))

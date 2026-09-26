@@ -835,6 +835,7 @@ test("她在各群的样子要有经历支持；撤销一版后回到上一版",
   t.after(w.close);
   w.open("group:1");
   const m = w.say("group:1", "10001", "哈哈哈你又来接梗了");
+  const later = w.say("group:1", "10001", "这次我安静听着");
   assert.equal(
     w.mind.faces.propose({ session: "group:1", role: "接梗的人" }).rejected,
     "缺少来源",
@@ -848,9 +849,20 @@ test("她在各群的样子要有经历支持；撤销一版后回到上一版",
     },
     { time: w.now() },
   );
+  assert.equal(
+    w.mind.faces.propose(
+      {
+        session: "group:1",
+        role: "安静听的那个",
+        sources: [m.seq],
+      },
+      { time: w.now() + 1000 },
+    ).rejected,
+    "没有新的经历",
+  );
   const second = w.mind.faces.propose(
-    { session: "group:1", role: "安静听的那个", sources: [m.seq] },
-    { time: w.now() + 1000 },
+    { session: "group:1", role: "安静听的那个", sources: [later.seq] },
+    { time: w.now() + 2000 },
   );
   assert.equal(w.mind.faces.current("group:1").id, second.id);
   assert.equal(w.mind.faces.current("group:1").tone, "随意", "没改的部分沿用");
