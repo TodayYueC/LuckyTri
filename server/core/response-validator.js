@@ -110,7 +110,7 @@ export function validateResponse(result, snapshot, decision, maxChars = 180) {
     )
       issues.push("评价或攻击群友，过于刻薄");
     if (
-      /我理解你的感受|作为一个AI|有什么需要帮助|你并不孤单|(?:骂吧|慢慢说|你继续)[，,。\s]*我听着/.test(
+      /我理解你的感受|作为一个AI|我只是(?:一个|个)?(?:AI|助手)|有什么需要帮助|你并不孤单|(?:骂吧|慢慢说|你继续)[，,。\s]*我听着/.test(
         text,
       )
     )

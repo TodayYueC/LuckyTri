@@ -130,6 +130,15 @@ export function innerView(
   const expecting = mind.anticipations
     .upcoming({ now, people, session, limit: 3 })
     .map((a) => a.text);
+  const withWhom = mind.meetings.recall({
+    session,
+    people,
+    now,
+    limit: 2,
+  });
+  const will = living
+    ? mind.meetings.trace(living.thread, { before: now })
+    : null;
   return {
     self,
     inner: {
@@ -145,6 +154,8 @@ export function innerView(
           }
         : {}),
       ...(expecting.length ? { expecting } : {}),
+      ...(withWhom.length ? { with: withWhom } : {}),
+      ...(will?.touched ? { will: will.text } : {}),
       ...(reminded.length ? { reminded } : {}),
       ...(heard.length ? { heard } : {}),
     },

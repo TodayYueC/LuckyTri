@@ -124,6 +124,29 @@ export function mountMind(app, chat, life) {
             when: a.when,
           })),
         dayOfLife: mind.days.dayOfLife(now),
+        will: (() => {
+          const living = life.livingForView(now);
+          if (!living) return null;
+          const trace = mind.meetings.trace(living.thread, {
+            before: now,
+            inclusive: true,
+          });
+          return {
+            content: living.content,
+            ...(trace.touched
+              ? { touched: trace.touched, lastSpoke: trace.lastSpoke }
+              : {}),
+          };
+        })(),
+        meaning: (() => {
+          const row = mind.meetings.latest({ before: now });
+          if (!row) return null;
+          return {
+            text: text(row.appraisal, 80),
+            when: elapsedLabel(row.created, now, mind.timeZone()),
+            spoke: row.choice !== "silent",
+          };
+        })(),
       });
     }),
   );

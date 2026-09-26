@@ -27,7 +27,7 @@ export class Reading {
       .all();
   }
   // The next part of something she already started, or the unread passage
-  // closest to what she likes and wonders about. Deterministic.
+  // closest to what she is living for, then what she likes and wonders about.
   next(now = Date.now()) {
     const unread = this.shared();
     if (!unread.length) return null;
@@ -39,11 +39,20 @@ export class Reading {
     const cont = last && unread.find((c) => c.document_id === last.document_id);
     if (cont) return cont;
     const nature = this.mind.nature.current(now);
+    const threads = this.mind.self.annotated({ before: now, now });
+    const living = interestTerms(
+      threads
+        .filter((t) => t.kind === "intention" && !t.faded)
+        .slice(0, 1)
+        .map((t) => t.content),
+    );
     const wants = interestTerms([
       ...(nature.interests || []),
-      ...this.mind.self
-        .active({ before: now, limit: 12 })
-        .filter((t) => ["interest", "curiosity", "view"].includes(t.kind))
+      ...threads
+        .filter((t) =>
+          ["interest", "curiosity", "view", "intention"].includes(t.kind),
+        )
+        .slice(0, 12)
         .map((t) => t.content),
     ]);
     const first = new Map();
@@ -58,7 +67,9 @@ export class Reading {
     let bestScore = -1;
     for (const c of firsts) {
       const said = interestTerms([c.title, c.heading, c.text.slice(0, 400)]);
-      const score = [...said].filter((t) => wants.has(t)).length;
+      const score =
+        [...said].filter((t) => living.has(t)).length * 3 +
+        [...said].filter((t) => wants.has(t) && !living.has(t)).length;
       if (score > bestScore) {
         best = c;
         bestScore = score;

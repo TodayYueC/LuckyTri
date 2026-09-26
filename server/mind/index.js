@@ -12,6 +12,7 @@ import { Reading } from "./reading.js";
 import { Days } from "./days.js";
 import { Anticipations } from "./anticipations.js";
 import { Periods } from "./periods.js";
+import { Meetings } from "./meetings.js";
 import { innerView } from "./view.js";
 import { clamp, dayKey, parse, text } from "./util.js";
 
@@ -76,6 +77,7 @@ export class Mind {
     this.days = new Days(this);
     this.anticipations = new Anticipations(this);
     this.periods = new Periods(this);
+    this.meetings = new Meetings(this);
   }
   timeZone() {
     return this.repo.config("life", {})?.timeZone || "Asia/Shanghai";
@@ -229,6 +231,7 @@ export class Mind {
         origin: "group",
         time,
       });
+    this.meetings.keep(turn, { session, snapshot, time });
   }
   revoke(kind, id, reason = "") {
     const note = text(reason, 200);
@@ -260,6 +263,12 @@ export class Mind {
       tomb(this.thoughts.get(id)?.content || "");
     } else if (kind === "anticipation") {
       tomb(this.anticipations.revoke(id, note));
+    } else if (kind === "meeting") {
+      const row = this.db
+        .prepare("SELECT * FROM mind_meetings WHERE id=?")
+        .get(id);
+      if (!row) throw Error("相遇不存在");
+      tomb(row.appraisal || row.topic);
     } else throw Error("不能撤销这类内容");
     this.store.revision++;
   }

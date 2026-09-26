@@ -330,6 +330,39 @@ export class Life {
       ...(t.status === "emerging" ? { emerging: true } : {}),
     }));
   }
+  livingForView(now, { since = 0 } = {}) {
+    const thread = this.mind.self
+      .annotated({ before: now, now })
+      .find((t) => t.kind === "intention" && !t.faded);
+    if (!thread) return null;
+    const trace = this.mind.meetings.trace(thread.thread, {
+      before: now,
+      since,
+      inclusive: true,
+    });
+    return {
+      thread: thread.thread,
+      content: text(thread.content, 80),
+      ...(trace.touched ? { touched: trace.touched } : {}),
+    };
+  }
+  faceView(experiences, now) {
+    const seen = new Map();
+    for (const face of [
+      ...experiences.map((e) => this.mind.faces.current(e.session, now)),
+      ...this.mind.faces.all(now),
+    ]) {
+      if (!face || seen.has(face.session_id)) continue;
+      seen.set(face.session_id, {
+        session: face.session_id,
+        role: face.role,
+        tone: face.tone,
+        aspiration: face.aspiration,
+      });
+      if (seen.size >= 6) break;
+    }
+    return [...seen.values()];
+  }
   // Threads slipping out of view: she may let them go or, with something
   // new behind it, hold on.
   fadingView(now) {
@@ -532,6 +565,7 @@ export class Life {
       const thoughts = this.mind.thoughts.open({ now, limit: 10 });
       const chunk = s.reading ? this.mind.reading.next(now) : null;
       const chapter = this.chapterView(now);
+      const livingFor = this.livingForView(now);
       const input = {
         ...(chunk ? { reading: this.mind.reading.passage(chunk) } : {}),
         clock: localClock(now, this.mind.timeZone()),
@@ -543,16 +577,9 @@ export class Life {
           phase: phaseLabel,
         }))(this.mind.affect.state(now, { nature })),
         self: this.selfView(now),
+        ...(livingFor ? { livingFor } : {}),
         fading: this.fadingView(now),
-        faces: experiences
-          .map((e) => this.mind.faces.current(e.session, now))
-          .filter(Boolean)
-          .map((f) => ({
-            session: f.session_id,
-            role: f.role,
-            tone: f.tone,
-            aspiration: f.aspiration,
-          })),
+        faces: this.faceView(experiences, now),
         people: this.peopleIn(experiences, now),
         missing: this.missingView(now),
         ahead: this.mind.anticipations.due({ now, limit: 5 }),
@@ -613,6 +640,7 @@ export class Life {
           ...thoughts.map((t) => `t:${t.id}`),
           ...input.feedback.map((f) => f.ref),
           ...(chunk ? [`r:${chunk.id}`] : []),
+          ...(input.livingFor ? [`s:${input.livingFor.thread}`] : []),
           ...missing.map((p) => p.ref).filter(Boolean),
           ...ahead.map((a) => a.ref),
         ]);
@@ -905,6 +933,9 @@ export class Life {
             }
           : null,
         self: this.selfView(now),
+        ...(this.livingForView(end, { since: start })
+          ? { livingFor: this.livingForView(end, { since: start }) }
+          : {}),
         people: this.peopleIn(experiences, now),
         ...(story ? { story: text(story.content, 600) } : {}),
         ...(chapter ? { chapter } : {}),
@@ -930,6 +961,7 @@ export class Life {
         ...thoughts.map((t) => `t:${t.id}`),
         ...input.today.feedback.map((f) => f.ref),
         ...open.map((a) => a.ref),
+        ...(input.livingFor ? [`s:${input.livingFor.thread}`] : []),
       ]);
       this.db
         .prepare(
@@ -1216,6 +1248,9 @@ export class Life {
         ...(story ? { story: text(story.content, 600) } : {}),
         ...(anniversaries.length ? { anniversaries } : {}),
         self: this.selfView(now).slice(0, 10),
+        ...(this.livingForView(now, { since: start })
+          ? { livingFor: this.livingForView(now, { since: start }) }
+          : {}),
       };
       const result = await this.chat.models.call(
         this.profile(),
@@ -1226,7 +1261,10 @@ export class Life {
       );
       const week = text(result?.week, 1500);
       if (!week || hasCredential(week)) throw SyntaxError("回顾格式无效");
-      const valid = new Set(diaries.map((d) => `d:${d.day}`));
+      const valid = new Set([
+        ...diaries.map((d) => `d:${d.day}`),
+        ...(input.livingFor ? [`s:${input.livingFor.thread}`] : []),
+      ]);
       periods.write("week", {
         start,
         end: now,
@@ -1249,8 +1287,14 @@ export class Life {
         runId: id,
       });
       const told = text(result?.story, 1800);
+      const prior = story?.content || "";
+      const living = input.livingFor?.content || "";
+      const livingMoved = Boolean(living) && !prior.includes(living);
       const retold =
-        !!told && !hasCredential(told) && (turned.opened || !story);
+        !!told &&
+        told !== prior &&
+        !hasCredential(told) &&
+        (turned.opened || !story || livingMoved);
       if (retold)
         periods.write("story", {
           content: told,

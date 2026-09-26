@@ -131,50 +131,57 @@ watch(() => [studio.tick, studio.pulse], load);
 <template>
   <div class="page now">
     <div class="now-presentation">
-    <section ref="heroRef" class="now-hero" :class="{ 'wallpaper-adjusting': adjusting }">
-      <div class="wallpaper-layer" aria-hidden="true">
-        <img
-          ref="imageRef"
-          :src="wallpapers.hero"
-          :style="pictureStyle"
-          alt=""
-          draggable="false"
-        />
-      </div>
-      <div
-        v-if="adjusting"
-        class="wallpaper-drag-layer"
-        role="application"
-        aria-label="拖动调整首页壁纸构图"
-        @pointerdown.prevent="beginPictureDrag"
-        @pointermove.prevent="movePicture"
-        @pointerup="endPictureDrag"
-        @pointercancel="endPictureDrag"
-        @lostpointercapture="endPictureDrag"
+      <section
+        ref="heroRef"
+        class="now-hero"
+        :class="{ 'wallpaper-adjusting': adjusting }"
       >
-        <span class="wallpaper-tip">按住并拖动图片，调整人物位置</span>
-      </div>
-      <div class="wallpaper-controls">
-        <template v-if="adjusting">
-          <span class="wallpaper-tip-inline">拖动背景调整构图</span>
-          <button type="button" @click="resetPicture">恢复默认</button>
-          <button type="button" class="primary" @click="finishPicture">
-            完成
-          </button>
-        </template>
-        <button v-else type="button" @click="adjusting = true">
-          调整构图
-        </button>
-        <button
-          v-if="!adjusting"
-          type="button"
-          @click="wallpaperPicking = !wallpaperPicking"
+        <div class="wallpaper-layer" aria-hidden="true">
+          <img
+            ref="imageRef"
+            :src="wallpapers.hero"
+            :style="pictureStyle"
+            alt=""
+            draggable="false"
+          />
+        </div>
+        <div
+          v-if="adjusting"
+          class="wallpaper-drag-layer"
+          role="application"
+          aria-label="拖动调整首页壁纸构图"
+          @pointerdown.prevent="beginPictureDrag"
+          @pointermove.prevent="movePicture"
+          @pointerup="endPictureDrag"
+          @pointercancel="endPictureDrag"
+          @lostpointercapture="endPictureDrag"
         >
-          换壁纸
-        </button>
-      </div>
-      <WallpaperPicker :open="wallpaperPicking && !adjusting" @close="wallpaperPicking = false" />
-    </section>
+          <span class="wallpaper-tip">按住并拖动图片，调整人物位置</span>
+        </div>
+        <div class="wallpaper-controls">
+          <template v-if="adjusting">
+            <span class="wallpaper-tip-inline">拖动背景调整构图</span>
+            <button type="button" @click="resetPicture">恢复默认</button>
+            <button type="button" class="primary" @click="finishPicture">
+              完成
+            </button>
+          </template>
+          <button v-else type="button" @click="adjusting = true">
+            调整构图
+          </button>
+          <button
+            v-if="!adjusting"
+            type="button"
+            @click="wallpaperPicking = !wallpaperPicking"
+          >
+            换壁纸
+          </button>
+        </div>
+        <WallpaperPicker
+          :open="wallpaperPicking && !adjusting"
+          @close="wallpaperPicking = false"
+        />
+      </section>
     </div>
 
     <section class="notes">
@@ -183,8 +190,13 @@ watch(() => [studio.tick, studio.pulse], load);
         <template v-if="p?.lastWords">
           <p class="quote">“{{ p.lastWords.text }}”</p>
           <small
-            >{{ placeName({ name: p.lastWords.sessionName, id: p.lastWords.session }) }} ·
-            {{ ago(p.lastWords.time, p.now) }}</small
+            >{{
+              placeName({
+                name: p.lastWords.sessionName,
+                id: p.lastWords.session,
+              })
+            }}
+            · {{ ago(p.lastWords.time, p.now) }}</small
           >
         </template>
         <p v-else class="muted">TA 还没在哪里开过口。</p>
@@ -196,6 +208,21 @@ watch(() => [studio.tick, studio.pulse], load);
           <small>{{ p.thought.when }}</small>
         </template>
         <p v-else class="muted">心里暂时没有挂着的事。</p>
+        <p v-if="p?.will" class="will-line">
+          正在为自己而活：{{ p.will.content }}
+        </p>
+        <small v-if="p?.will?.touched">
+          被别人的话碰到过 {{ p.will.touched }} 次，上次{{
+            p.will.lastSpoke ? "出了声" : "没出声"
+          }}
+        </small>
+        <p v-if="p?.meaning" class="muted">
+          上次相遇：{{ p.meaning.text
+          }}<template v-if="!p.meaning.spoke">（没出声）</template>
+        </p>
+        <small v-if="p?.meaning?.when && p.meaning.when !== '刚才'">{{
+          p.meaning.when
+        }}</small>
         <button class="text-button" @click="go('heart', 'notes')">
           看看 TA 的便签
         </button>

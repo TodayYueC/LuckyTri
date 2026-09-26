@@ -39,6 +39,7 @@ export function attend({
   energy = 0.7,
   interests = new Set(),
   curiosities = new Set(),
+  living = new Set(),
   closeness = new Map(),
   pressure = 0,
   initiative = 25,
@@ -93,7 +94,8 @@ export function attend({
   )
     add(1.5, "有人在问大家");
   const said = [...interestTerms(texts)];
-  if (
+  if (said.some((term) => living.has(term))) add(2, "聊到了我正在过的事");
+  else if (
     said.some((term) => interests.has(term)) ||
     said.filter((term) => curiosities.has(term)).length >= 2
   )

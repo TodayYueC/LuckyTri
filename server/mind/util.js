@@ -86,12 +86,13 @@ export function relax(value, baseline, elapsed, halfLife) {
 
 // Evidence is stored as short typed strings so every kind of experience can
 // be cited the same way: "m:<event seq>", "t:<thought id>", "d:<day>",
-// "f:<decision id>", "r:<passage id>", "a:<anticipation id>".
+// "f:<decision id>", "r:<passage id>", "a:<anticipation id>",
+// "s:<self thread>" for something she is living for.
 export function evidence(list) {
   const out = [];
   for (const item of Array.isArray(list) ? list : []) {
     if (Number.isSafeInteger(item) && item > 0) out.push(`m:${item}`);
-    else if (typeof item === "string" && /^[mtdfra]:[\w:.-]{1,80}$/.test(item))
+    else if (typeof item === "string" && /^[mtdfras]:[\w:.-]{1,80}$/.test(item))
       out.push(item);
     else if (/^\d+$/.test(String(item))) out.push(`m:${item}`);
   }

@@ -54,6 +54,8 @@ export interface Presence {
     time: number;
   } | null;
   thought: { content: string; when?: string } | null;
+  will: { content: string; touched?: number; lastSpoke?: boolean } | null;
+  meaning: { text: string; when?: string; spoke?: boolean } | null;
   expecting: {
     id: string;
     kind: string;
