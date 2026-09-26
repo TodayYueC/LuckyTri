@@ -138,12 +138,10 @@ export class Affect {
         "SELECT * FROM mind_affect WHERE created<=? AND created>? ORDER BY created",
       )
       .all(now, now - 2 * DAY);
-    // Solitude and the diary do not cite a message. Only the latest of each
-    // is a mood; earlier ones do not pile up and overturn her.
+    // A feeling with no message behind it is one mood, not a stack.
+    // Only the latest of each origin counts; earlier ones stay in the record.
     const latestBare = new Map();
-    const bare = (row) =>
-      parse(row.sources, []).length === 0 &&
-      (row.origin === "solitude" || row.origin === "daily");
+    const bare = (row) => parse(row.sources, []).length === 0;
     for (const row of rows) if (bare(row)) latestBare.set(row.origin, row);
     const felt = rows.filter(
       (row) => !bare(row) || latestBare.get(row.origin) === row,
