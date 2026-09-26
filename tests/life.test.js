@@ -16,6 +16,32 @@ function chat(w, session, lines) {
   return events;
 }
 
+test("她不在的私聊，不会把公开的这一天关在外面", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1", "一群");
+  w.open("private:10001", "阿明");
+  const heard = w.say("group:1", "10002", "周五要面试了", { name: "小红" });
+  await w.hear("group:1", heard);
+  w.store.db
+    .prepare("UPDATE sessions SET enabled=0 WHERE id=?")
+    .run("private:10001");
+  const missed = w.say("private:10001", "10001", "这事别告诉别人", {
+    name: "阿明",
+  });
+  await w.hear("private:10001", missed);
+  const day = w.mind.days.key(w.now());
+  assert.equal(w.mind.meetings.privateBeyond(day, "group:1", w.now()), false);
+  w.store.db
+    .prepare("UPDATE sessions SET enabled=1 WHERE id=?")
+    .run("private:10001");
+  const told = w.say("private:10001", "10001", "我其实很怕面试", {
+    name: "阿明",
+  });
+  await w.hear("private:10001", told);
+  assert.equal(w.mind.meetings.privateBeyond(day, "group:1", w.now()), true);
+});
+
 test("她不在时的话，重新打开后也不算还在聊天", async (t) => {
   const w = world();
   t.after(w.close);

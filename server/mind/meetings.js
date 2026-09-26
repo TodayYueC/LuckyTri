@@ -650,7 +650,7 @@ export class Meetings {
       "(session_id LIKE 'private:%' OR session_id LIKE '%:private:%' OR session_id LIKE '__private__%')";
     for (const row of this.db
       .prepare(
-        `SELECT session_id FROM core_events WHERE time>=? AND time<=? AND time<? AND ${hidden} LIMIT 20`,
+        `SELECT session_id FROM core_events WHERE time>=? AND time<=? AND time<? AND seq NOT IN (SELECT seq FROM mind_unlived) AND ${hidden} LIMIT 20`,
       )
       .all(span.start, end, span.end))
       keep(row.session_id);
