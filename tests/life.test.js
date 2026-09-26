@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { speakerNames } from "../server/core/speaker-names.js";
 import { world, HOUR, MINUTE } from "./helpers/world.js";
 
 function chat(w, session, lines) {
@@ -100,6 +101,41 @@ test("关掉时被叫到，不算她当时在场", async (t) => {
   assert.equal(await w.life.considerPresence(w.now()), null);
   w.say("group:1", "10001", "LuckyTri，回来了", { name: "阿明" });
   assert.equal(w.life.wasHere("group:1", w.now(), names), true);
+});
+
+test("她不在时记下的称呼，不会套到后来听到的话上", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("private:10001", "阿明");
+  const earlier = w.say("private:10001", "10001", "早上好", { name: "阿明" });
+  await w.hear("private:10001", earlier);
+  w.store.db
+    .prepare("UPDATE sessions SET enabled=0 WHERE id=?")
+    .run("private:10001");
+  const missed = w.say("private:10001", "10001", "我改名片了", {
+    name: "南极居民",
+  });
+  await w.hear("private:10001", missed);
+  w.store.db
+    .prepare("UPDATE sessions SET enabled=1 WHERE id=?")
+    .run("private:10001");
+  const next = w.say("private:10001", "10001", "周五要面试了", {
+    name: "10001",
+  });
+  let shown = null;
+  w.answers.turn = (data) => {
+    shown = data.context;
+    return { choice: "silent", feelings: [], bonds: [] };
+  };
+  const trace = await w.hear("private:10001", next);
+  assert.notEqual(trace.status, "error");
+  assert.ok(shown);
+  assert.equal(JSON.stringify(shown).includes("南极居民"), false);
+  const heard = (shown.messages || []).find((m) =>
+    String(m.text).includes("周五要面试了"),
+  );
+  assert.equal(heard?.name, "阿明");
+  assert.equal(speakerNames(w.store.db, ["private:10001"]).get("10001"), "阿明");
 });
 
 test("她不在时的话，重新打开后也不能当成听到的", async (t) => {
