@@ -430,7 +430,7 @@ export class MemoryManager {
   pending(session) {
     return this.repo.db
       .prepare(
-        "SELECT COUNT(*) n FROM core_events WHERE session_id=? AND role='user' AND seq>COALESCE((SELECT seq FROM core_cursors WHERE session_id=?),0) AND COALESCE(json_extract(payload,'$.simulated'),0)=0",
+        "SELECT COUNT(*) n FROM core_events WHERE session_id=? AND role='user' AND seq>COALESCE((SELECT seq FROM core_cursors WHERE session_id=?),0) AND seq NOT IN (SELECT seq FROM mind_unlived) AND COALESCE(json_extract(payload,'$.simulated'),0)=0",
       )
       .get(session, session).n;
   }
@@ -545,9 +545,18 @@ export class MemoryManager {
         db
           .prepare("SELECT seq FROM core_cursors WHERE session_id=?")
           .get(session)?.seq || 0;
+      const aside = new Set(
+        db
+          .prepare("SELECT seq FROM mind_unlived")
+          .all()
+          .map((row) => row.seq),
+      );
       const rows = this.repo
         .eventsAfter(session, cursor, { simulated })
-        .filter((m) => !/^\[(图片|表情|媒体)\]+$/.test(m.text || ""));
+        .filter(
+          (m) =>
+            !aside.has(m.seq) && !/^\[(图片|表情|媒体)\]+$/.test(m.text || ""),
+        );
       const users = rows.filter((m) => m.role === "user");
       if (!users.length || (users.length < BLOCK_USERS && !force)) return;
       this.lastAttempt.set(session, Date.now());
