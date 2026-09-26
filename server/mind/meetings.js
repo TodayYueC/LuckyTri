@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { sessionNativeId } from "../channels/session-key.js";
 import { interestTerms } from "./attention.js";
 import { agoLabel, elapsedLabel } from "./clock.js";
 import { isPrivateSession } from "./memory.js";
@@ -147,7 +148,9 @@ export class Meetings {
   // How often other people's words met this wish. Her appraisal does not count.
   // A private touch stays in that room. If she meets that person again with no
   // one else in the batch, whether she spoke is taken from that later meeting.
-  // A mixed batch does not count as having spoken to them. The count does not grow.
+  // A mixed batch does not count as having spoken to them. Words she later
+  // sends in a private chat with that person do count, and only in that chat.
+  // The count does not grow.
   trace(
     thread,
     { before = Date.now(), since = 0, inclusive = false, session = "" } = {},
@@ -200,6 +203,14 @@ export class Meetings {
         )
         .get(...follow);
       if (later) last = later;
+      const voiced = this.#voicedPrivately(
+        ids,
+        last.created,
+        before,
+        inclusive,
+        session,
+      );
+      if (voiced) last = { choice: voiced.choice, created: voiced.created };
     }
     const touched = hits.length;
     const when = elapsedLabel(last.created, before, this.mind.timeZone());
@@ -215,6 +226,33 @@ export class Meetings {
       lastSpoke: last.choice !== "silent",
       text: summary,
     };
+  }
+  // A later private conversation with that person, where she chose to speak
+  // without a new batch of their messages. A group message is not assumed
+  // to be for them, and a private one does not follow her into another room.
+  #voicedPrivately(ids, after, before, inclusive, session) {
+    const compare = inclusive ? "<=" : "<";
+    const room = session ? "AND session_id=?" : "";
+    const args = [after, before];
+    if (session) args.push(session);
+    const rows = this.db
+      .prepare(
+        `SELECT choice, created, session_id FROM mind_choices
+         WHERE choice!='silent' AND created>? AND created${compare}? ${room}
+         ORDER BY created DESC`,
+      )
+      .all(...args);
+    const credited = new Set(ids.map(String));
+    return (
+      rows.find((row) => {
+        if (!isPrivateSession(row.session_id)) return false;
+        try {
+          return credited.has(String(sessionNativeId(row.session_id)));
+        } catch {
+          return false;
+        }
+      }) || null
+    );
   }
   // A faded meaning the current words actually meet. It is only remembered,
   // not written back, and it does not by itself make her look.

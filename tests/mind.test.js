@@ -797,6 +797,77 @@ test("后来同一批里还有别人时，不把开口算成对这个人出了�
   }
 });
 
+test("后来在只属于这个人的私聊里开口，才算对这个人出了声", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.open("private:10001", "阿明");
+    w.mind.self.propose(
+      { kind: "intention", content: "想看流星雨", strength: 0.3 },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "听到了",
+        reason: "听到了",
+        topic: "",
+        targetMessageIds: [1],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [1],
+          messages: [
+            {
+              id: 1,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: "今晚有流星雨",
+              relation: "ambient",
+            },
+          ],
+        },
+        kind: "group",
+        spoke: false,
+        time: w.now(),
+      },
+    );
+    const will = (session) =>
+      innerView(w.mind, {
+        session,
+        kind: session.startsWith("private") ? "private" : "group",
+        people: ["10001"],
+        now: w.now() + 1,
+      }).inner.will || "";
+    w.advance(MINUTE);
+    w.mind.choose({
+      session: "group:1",
+      choice: "speak",
+      reason: "在群里说了别的",
+      time: w.now(),
+    });
+    assert.match(will("group:1"), /没出声/);
+    assert.doesNotMatch(will("group:1"), /后来那次出了声/);
+    w.advance(MINUTE);
+    w.mind.choose({
+      session: "private:10001",
+      choice: "speak",
+      reason: "私聊里说了那件事",
+      time: w.now(),
+    });
+    assert.match(will("group:1"), /没出声/);
+    assert.doesNotMatch(will("group:1"), /后来那次出了声/);
+    assert.match(will("private:10001"), /碰到过 1 次/);
+    assert.match(will("private:10001"), /后来那次出了声/);
+  } finally {
+    w.close();
+  }
+});
+
 test("别人的话碰到过她正在过的事之后，这个人再开口会被细看", () => {
   const w = world();
   try {
