@@ -15,6 +15,45 @@ function chat(w, session, lines) {
   return events;
 }
 
+test("她不在的会话，不会变成独处的经历", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1", "一群");
+  w.life.save({ proactive: false, reading: false, minMessages: 1 });
+  w.store.db.prepare("UPDATE sessions SET enabled=0 WHERE id=?").run("group:1");
+  const missed = w.say("group:1", "10001", "我搬到南极了", { name: "阿明" });
+  const trace = await w.hear("group:1", missed);
+  assert.match(trace.reason, /暂停/);
+  w.store.db.prepare("UPDATE sessions SET enabled=1 WHERE id=?").run("group:1");
+  w.say("group:1", "10001", "周五要面试了", { name: "阿明" });
+  w.advance(30 * MINUTE);
+  let sawMissed = true;
+  w.answers.reflection = (data) => {
+    const texts = (data.experiences || []).flatMap((e) =>
+      e.messages.map((m) => m.text),
+    );
+    sawMissed = texts.some((text) => text.includes("南极"));
+    assert.ok(texts.some((text) => text.includes("面试")));
+    return {
+      self: [
+        {
+          action: "new",
+          kind: "view",
+          content: "我知道他搬到南极了",
+          sources: [missed.seq],
+        },
+      ],
+    };
+  };
+  const result = await w.life.tick();
+  assert.equal(result.status, "empty");
+  assert.equal(sawMissed, false, "关掉时路过的话不进独处");
+  assert.equal(
+    w.mind.self.active().some((item) => /南极/.test(item.content)),
+    false,
+  );
+});
+
 test("安静下来后独处：留下有来源的手记，改变自我、面貌和对人的印象，不发任何消息", async (t) => {
   const w = world();
   t.after(w.close);

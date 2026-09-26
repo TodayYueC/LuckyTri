@@ -424,8 +424,10 @@ export class ChatSystem {
         !replay &&
         !preview &&
         !this.enabled(session, { simulated: simulatedTurn })
-      )
+      ) {
+        this.mind.unlived(batch.map((m) => m.seq));
         return finish("silent", "会话已暂停或处于模拟模式");
+      }
       if (gate) {
         trace.attention = {
           look: gate.look,
