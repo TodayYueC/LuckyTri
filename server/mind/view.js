@@ -105,7 +105,7 @@ export function innerView(
   if (!self.here) delete self.here;
   const persons = [];
   for (const id of [...new Set(people.map(String))].slice(0, 6)) {
-    const bond = mind.bonds.person(id, now);
+    const bond = mind.bonds.person(id, now, { room: session });
     if (
       !bond ||
       (!bond.interactions && !bond.impression && bond.tension < 0.15)
