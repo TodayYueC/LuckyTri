@@ -181,12 +181,20 @@ export class MemoryManager {
     });
   }
   secretsOutside(session) {
+    return this.#outside(session, "secret");
+  }
+  // Private facts may be recalled, with a warning. They still must not leave
+  // in the words she actually sends.
+  privateOutside(session) {
+    return this.#outside(session, "private");
+  }
+  #outside(session, discretion) {
     const here = new Set(this.scopes(session));
     return this.repo.db
       .prepare(
-        "SELECT id,session_id,subject,content FROM core_memories WHERE discretion='secret' AND status='confirmed' ORDER BY updated DESC LIMIT 200",
+        "SELECT id,session_id,subject,content FROM core_memories WHERE discretion=? AND status='confirmed' ORDER BY updated DESC LIMIT 200",
       )
-      .all()
+      .all(discretion)
       .filter((m) => !here.has(m.session_id));
   }
   update(id, patch) {
