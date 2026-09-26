@@ -215,7 +215,7 @@ export class Life {
     const marks = ids.map(() => "?").join(",");
     const recent = this.db
       .prepare(
-        `SELECT MAX(time) t FROM core_events WHERE session_id IN (${marks}) AND ${LIVE}`,
+        `SELECT MAX(time) t FROM core_events WHERE session_id IN (${marks}) AND seq NOT IN (SELECT seq FROM mind_unlived) AND ${LIVE}`,
       )
       .get(...ids).t;
     if (!recent) return "还没有真实的经历";
@@ -277,7 +277,7 @@ export class Life {
     );
     const active = this.db
       .prepare(
-        `SELECT session_id, MAX(time) t, COUNT(*) n FROM core_events WHERE seq>? AND time<=? AND ${LIVE} GROUP BY session_id ORDER BY t DESC`,
+        `SELECT session_id, MAX(time) t, COUNT(*) n FROM core_events WHERE seq>? AND time<=? AND seq NOT IN (SELECT seq FROM mind_unlived) AND ${LIVE} GROUP BY session_id ORDER BY t DESC`,
       )
       .all(since, now)
       .filter((r) => names.has(r.session_id))
