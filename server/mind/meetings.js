@@ -167,14 +167,17 @@ export class Meetings {
          )`;
     const args = [thread, since, before];
     if (session) args.push(session);
+    const wish = this.#wishAt(thread, before);
+    if (!wish || wish.status === "closed") return { touched: 0 };
     const hits = this.db
       .prepare(
-        `SELECT choice, created, people, will_people FROM mind_meetings m
+        `SELECT choice, created, people, will_people, sources FROM mind_meetings m
          WHERE will_thread=? AND will_met=1 AND created>=? AND created${compare}?
          ${room} ${hidden}
          ORDER BY created DESC`,
       )
-      .all(...args);
+      .all(...args)
+      .filter((row) => this.#stillMeets(row, wish.content));
     if (!hits.length) return { touched: 0 };
     const credited = new Set();
     for (const row of hits) {
@@ -355,7 +358,7 @@ export class Meetings {
       choice: row.choice,
       when: elapsedLabel(row.created, now, this.mind.timeZone()),
       ...(row.discretion === "private" ? { private: true } : {}),
-      ...(row.will_met ? { touchedWill: true } : {}),
+      ...(row.will_met && this.#touchStill(row, now) ? { touchedWill: true } : {}),
     };
   }
   // People whose own words met the wish she is still living for, and whom she
@@ -382,6 +385,7 @@ export class Meetings {
     const out = [];
     for (const row of rows) {
       if (meetingSalience(row.created, lived) < MEETING_FADED) continue;
+      if (!this.#stillMeets(row, living.content)) continue;
       const named = parse(row.will_people, []);
       const who = named.length ? named : parse(row.people, []);
       for (const userId of who.map(String)) {
@@ -410,11 +414,13 @@ export class Meetings {
       ...new Set((userIds || []).map((id) => String(id || "")).filter(Boolean)),
     ].slice(0, 12);
     if (!thread || !ids.length) return new Set();
+    const wish = this.#wishAt(thread, before);
+    if (!wish || wish.status === "closed") return new Set();
     const lived = this.mind.days.lived(before);
     return new Set(
       this.db
         .prepare(
-          `SELECT p.user_id, m.created, m.will_people FROM mind_meeting_people p
+          `SELECT p.user_id, m.created, m.will_people, m.sources FROM mind_meeting_people p
            JOIN mind_meetings m ON m.id = p.meeting_id
            WHERE p.user_id IN (${ids.map(() => "?").join(",")})
              AND m.will_met = 1 AND m.will_thread = ? AND m.created < ?
@@ -429,10 +435,57 @@ export class Meetings {
           if (meetingSalience(row.created, lived) < MEETING_FADED) return false;
           const credited = parse(row.will_people, []);
           // Rows written before speakers were credited individually.
-          if (!credited.length) return true;
-          return credited.map(String).includes(String(row.user_id));
+          if (credited.length && !credited.map(String).includes(String(row.user_id)))
+            return false;
+          return this.#stillMeets(row, wish.content);
         })
         .map((row) => String(row.user_id)),
+    );
+  }
+  // The wish as it stood at `before`. A later wording does not inherit touches
+  // that only met the old one.
+  #wishAt(thread, before) {
+    return (
+      this.mind.self
+        .history(thread)
+        .filter((row) => row.created <= before)
+        .at(-1) || null
+    );
+  }
+  #touchStill(row, now) {
+    if (!row.will_thread) return false;
+    const wish = this.#wishAt(row.will_thread, now);
+    if (!wish || wish.status === "closed") return false;
+    return this.#stillMeets(row, wish.content);
+  }
+  // The recorded touch counts only while those people's own words still meet
+  // the wish. If the original messages cannot be read, the record stands.
+  #stillMeets(row, content) {
+    const seqs = parse(row.sources, [])
+      .map((id) => Number(id))
+      .filter((id) => Number.isSafeInteger(id) && id > 0);
+    if (!seqs.length || !content) return true;
+    const events = this.db
+      .prepare(
+        `SELECT role, payload FROM core_events WHERE seq IN (${seqs.map(() => "?").join(",")})`,
+      )
+      .all(...seqs);
+    if (!events.length) return true;
+    const bySpeaker = new Map();
+    for (const event of events) {
+      if (event.role === "assistant") continue;
+      const payload = parse(event.payload, {});
+      const speaker = String(payload.userId || "");
+      if (!speaker) continue;
+      const texts = bySpeaker.get(speaker) || [];
+      texts.push(payload.text || "");
+      bySpeaker.set(speaker, texts);
+    }
+    const named = parse(row.will_people, []);
+    const who = named.length ? named.map(String) : [...bySpeaker.keys()];
+    const need = interestTerms([content]).size < 2 ? 1 : 2;
+    return who.some((id) =>
+      touches(content, interestTerms(bySpeaker.get(id) || []), need),
     );
   }
   // Where a cited meeting belongs. A private one cannot be carried elsewhere.
