@@ -31,6 +31,22 @@ function scopesFor(db, session) {
   }
 }
 
+function saidBy(rows) {
+  const groups = new Map();
+  let anon = 0;
+  for (const row of rows || []) {
+    if (row?.role === "assistant") continue;
+    const id = String(row?.userId || "");
+    const key = id || `\0${anon++}`;
+    const texts = groups.get(key) || [];
+    if (row?.text) texts.push(String(row.text));
+    groups.set(key, texts);
+  }
+  return [...groups.values()]
+    .map((texts) => texts.join(" "))
+    .filter((text) => text.trim());
+}
+
 function allowedCollection(db, collection, session) {
   if (!session) return true;
   const { aliases, kind, privateKey } = scopesFor(db, session);
@@ -181,21 +197,8 @@ export class KnowledgeManager {
         .map((c) => c.id),
     );
     if (!allowed.size) return [];
-    const query = rows.map((r) => r.text || "").join(" ");
-    const match = ftsMatchQuery(query);
-    const scored = new Map();
-    if (match) {
-      try {
-        for (const hit of this.repo.db
-          .prepare(
-            "SELECT chunk_id FROM core_chunk_fts WHERE tokens MATCH ? LIMIT 40",
-          )
-          .all(match))
-          scored.set(hit.chunk_id, (scored.get(hit.chunk_id) || 0) + 2);
-      } catch {
-        /* malformed MATCH */
-      }
-    }
+    const queries = saidBy(rows);
+    if (!queries.length) return [];
     const chunks = this.repo.db
       .prepare(
         "SELECT c.*, d.title, d.created AS document_created FROM core_chunks c JOIN core_documents d ON d.id=c.document_id WHERE d.status='ready' AND d.created<=?",
@@ -205,21 +208,46 @@ export class KnowledgeManager {
     let queryVec = null;
     try {
       const profile = this.models.profile("default");
-      if (profile.embedding && query.trim()) queryVec = this._queryVector;
+      if (profile.embedding && queries.length) queryVec = this._queryVector;
     } catch {
       queryVec = null;
     }
-    const queryTerms = lexicalTerms(query);
+    // Each person's own words. Two people are not added together, and a
+    // line she already said does not count as the room asking. A vector,
+    // when one is already prepared, still describes the batch as a whole.
+    const lexical = new Map();
+    for (const query of queries) {
+      const match = ftsMatchQuery(query);
+      const fts = new Set();
+      if (match)
+        try {
+          for (const hit of this.repo.db
+            .prepare(
+              "SELECT chunk_id FROM core_chunk_fts WHERE tokens MATCH ? LIMIT 40",
+            )
+            .all(match))
+            fts.add(hit.chunk_id);
+        } catch {
+          /* malformed MATCH */
+        }
+      const queryTerms = lexicalTerms(query);
+      for (const chunk of chunks) {
+        const score =
+          (fts.has(chunk.id) ? 2 : 0) +
+          overlapScore(chunk.text, queryTerms) * 0.5;
+        if (score > (lexical.get(chunk.id) || 0)) lexical.set(chunk.id, score);
+      }
+    }
+    const best = new Map();
     for (const chunk of chunks) {
-      let score = scored.get(chunk.id) || 0;
-      score += overlapScore(chunk.text, queryTerms) * 0.5;
+      let score = lexical.get(chunk.id) || 0;
       if (queryVec && chunk.embedding)
         score += cosine(queryVec, unpackVector(chunk.embedding)) * 4;
       const ageDays = (Date.now() - (chunk.document_created || 0)) / 86400000;
       if (ageDays > 30) score *= 0.85;
-      if (score > 0) scored.set(chunk.id, score);
+      if (score > 0) best.set(chunk.id, score);
     }
-    return [...scored.entries()]
+    return [...best.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 8)
       .map(([id, score]) => {
@@ -243,6 +271,7 @@ export class KnowledgeManager {
       try {
         const [vec] = await this.models.embed(profile, [
           rows
+            .filter((r) => r.role !== "assistant")
             .map((r) => r.text || "")
             .join(" ")
             .slice(0, 4000),

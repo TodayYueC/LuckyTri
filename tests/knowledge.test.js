@@ -73,6 +73,19 @@ test("混合检索命中共享知识，私聊集合不进群，回放遵守水�
     { text: "银行卡号你还记得吗", userId: "10001" },
   ]);
   assert.ok(privateHits.some((h) => h.text.includes("银行卡")));
+  const hers = km.retrieve("group:12345", [
+    {
+      role: "assistant",
+      userId: "bot",
+      text: "遇到动态规划超时，先检查状态转移是否重复计算。",
+    },
+    { role: "user", userId: "10002", text: "今天好冷" },
+  ]);
+  assert.equal(
+    hers.some((h) => h.text.includes("动态规划")),
+    false,
+    "她自己说过的话不算群里在问",
+  );
   const early = Date.now() - 10;
   repo.db
     .prepare("UPDATE core_documents SET created=? WHERE title='算法FAQ'")
@@ -83,6 +96,25 @@ test("混合检索命中共享知识，私聊集合不进群，回放遵守水�
     early,
   );
   assert.equal(replayHits.length, 0);
+  await km.ingest({
+    collectionId: shared.id,
+    title: "观测笔记",
+    text: "烘焙的温度要稳，天文观测要避光。",
+    embed: false,
+  });
+  const hit = (rows) =>
+    km
+      .retrieve("group:12345", rows)
+      .find((h) => h.text.includes("烘焙"));
+  const split = hit([
+    { role: "user", userId: "10001", text: "烘焙温度" },
+    { role: "user", userId: "10002", text: "天文观测" },
+  ]);
+  const whole = hit([
+    { role: "user", userId: "10001", text: "烘焙温度，天文观测" },
+  ]);
+  assert.ok(split && whole);
+  assert.ok(split.score < whole.score, "两个人的词不能加成同一份资料");
   store.db.close();
 });
 
