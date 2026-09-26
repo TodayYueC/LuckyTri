@@ -4505,6 +4505,77 @@ test("要求保密之后留下的印象，不进别的房间", () => {
   }
 });
 
+test("要求保密的话写成手记，不会因为也引用了别的群就带过去", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.open("group:2", "另一群");
+    const said = w.say("group:1", "10001", "别告诉别人，我下个月要辞职", {
+      name: "阿明",
+    });
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "这事先放在心里",
+        reason: "听到了",
+        topic: "",
+        targetMessageIds: [said.seq],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [said.seq],
+          messages: [
+            {
+              id: said.seq,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: said.text,
+              relation: "mention",
+            },
+          ],
+        },
+        kind: "group",
+        spoke: false,
+        time: w.now(),
+      },
+    );
+    const other = w.say("group:2", "10002", "今晚有流星雨", { name: "小红" });
+    const noted = w.life.writeThought(
+      {
+        kind: "reflection",
+        content: "他要离开现在的公司",
+        sources: [said.seq, other.seq],
+      },
+      {
+        valid: new Set([`m:${said.seq}`, `m:${other.seq}`]),
+        thoughts: [],
+        involved: ["group:1", "group:2"],
+        now: w.now(),
+      },
+    );
+    assert.ok(noted);
+    assert.deepEqual(w.mind.thoughts.get(noted).sessions, ["group:1"]);
+    assert.equal(
+      w.mind.thoughts
+        .open({ now: w.now() + 1, session: "group:2" })
+        .some((t) => t.id === noted),
+      false,
+    );
+    assert.equal(
+      w.mind.thoughts
+        .open({ now: w.now() + 1, session: "group:1" })
+        .some((t) => t.id === noted),
+      true,
+    );
+  } finally {
+    w.close();
+  }
+});
+
 test("要求保密的安排，别的房间看不见这一天，原来的房间还看得见", () => {
   const w = world({ start: "2026-09-22T10:00:00+08:00" });
   try {
