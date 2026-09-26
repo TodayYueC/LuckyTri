@@ -223,7 +223,7 @@ export class Meetings {
            SELECT 1 FROM mind_revocations r
            WHERE r.target_kind='meeting' AND r.target_id=m.id
          )
-         ORDER BY m.created DESC LIMIT 30`,
+         ORDER BY m.created DESC`,
       )
       .all(now)
       .filter(
