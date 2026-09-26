@@ -9,6 +9,7 @@ import { buildContext } from "../server/core/context-builder.js";
 import {
   asPlainDocument,
   chunkText,
+  packVector,
   unpackVector,
 } from "../server/knowledge/retrieval.js";
 import { ChatSystem } from "../server/core/orchestrator.js";
@@ -115,6 +116,52 @@ test("混合检索命中共享知识，私聊集合不进群，回放遵守水�
   ]);
   assert.ok(split && whole);
   assert.ok(split.score < whole.score, "两个人的词不能加成同一份资料");
+  store.db.close();
+});
+
+test("向量也按同一个人的话比对，两个人不能合成一条", async () => {
+  const { store, repo } = setup();
+  const km = new KnowledgeManager(repo, {
+    profile: () => ({ ...defaultModel(store.settings()), embedding: true }),
+    embed: async (_profile, texts) =>
+      texts.map((text) =>
+        text.includes("烘焙") && text.includes("天文") ? [1, 0] : [0, 1],
+      ),
+  });
+  const shared = km.createCollection({ name: "共享", scope: "shared" });
+  const doc = await km.ingest({
+    collectionId: shared.id,
+    title: "合在一起才用",
+    text: "综合笔记只在两件事同时出现时才用得上。",
+    embed: false,
+  });
+  repo.db
+    .prepare("UPDATE core_chunks SET embedding=? WHERE document_id=?")
+    .run(packVector([1, 0]), doc.id);
+  const found = async (rows) =>
+    (await km.retrieveWithEmbed("group:12345", rows)).some((hit) =>
+      hit.text.includes("综合笔记"),
+    );
+  assert.equal(
+    await found([
+      { role: "user", userId: "10001", text: "今天想烘焙" },
+      { role: "user", userId: "10002", text: "聊聊天文" },
+    ]),
+    false,
+    "两个人各说一半，向量也不能合成",
+  );
+  assert.equal(
+    await found([
+      { role: "assistant", userId: "bot", text: "烘焙和天文" },
+      { role: "user", userId: "10002", text: "今天好冷" },
+    ]),
+    false,
+    "她自己说过的话不算群里在问",
+  );
+  assert.equal(
+    await found([{ role: "user", userId: "10001", text: "烘焙和天文一起看" }]),
+    true,
+  );
   store.db.close();
 });
 
