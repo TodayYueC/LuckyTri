@@ -43,6 +43,7 @@ export function migrateMind(db, store) {
     CREATE TABLE IF NOT EXISTS mind_meeting_people (meeting_id TEXT NOT NULL, user_id TEXT NOT NULL, PRIMARY KEY (meeting_id, user_id));
     CREATE INDEX IF NOT EXISTS mind_meeting_people_user ON mind_meeting_people(user_id, meeting_id);
     CREATE INDEX IF NOT EXISTS core_memories_subject ON core_memories(subject,status);
+    CREATE TABLE IF NOT EXISTS mind_unlived (seq INTEGER PRIMARY KEY);
   `);
   const addColumn = (table, column, definition) => {
     if (

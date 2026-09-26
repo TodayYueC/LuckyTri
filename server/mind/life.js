@@ -238,7 +238,7 @@ export class Life {
       return "距离上次独处太近";
     const fresh = this.db
       .prepare(
-        `SELECT COUNT(*) n FROM core_events WHERE session_id IN (${marks}) AND role='user' AND seq>? AND ${LIVE}`,
+        `SELECT COUNT(*) n FROM core_events WHERE session_id IN (${marks}) AND role='user' AND seq>? AND seq NOT IN (SELECT seq FROM mind_unlived) AND ${LIVE}`,
       )
       .get(...ids, last?.watermark || 0).n;
     const revisit = this.db
@@ -269,6 +269,12 @@ export class Life {
   }
   experiences(since, now, { limit = 5, rows = 24 } = {}) {
     const names = new Map(this.living().map((s) => [s.id, s]));
+    const aside = new Set(
+      this.db
+        .prepare("SELECT seq FROM mind_unlived")
+        .all()
+        .map((row) => row.seq),
+    );
     const active = this.db
       .prepare(
         `SELECT session_id, MAX(time) t, COUNT(*) n FROM core_events WHERE seq>? AND time<=? AND ${LIVE} GROUP BY session_id ORDER BY t DESC`,
@@ -276,31 +282,36 @@ export class Life {
       .all(since, now)
       .filter((r) => names.has(r.session_id))
       .slice(0, limit);
-    return active.map((r) => {
-      const events = this.repo
-        .eventsAfter(r.session_id, since, { simulated: false })
-        .filter((m) => m.time <= now);
-      const stage = this.db
-        .prepare(
-          "SELECT data FROM core_stages WHERE session_id=? ORDER BY last_seq DESC LIMIT 1",
-        )
-        .get(r.session_id);
-      const selfName = this.mind.nature.current(now).name;
-      return {
-        session: r.session_id,
-        name: names.get(r.session_id).name,
-        kind: names.get(r.session_id).kind,
-        lastActive: elapsedLabel(r.t, now, this.mind.timeZone()),
-        ...(stage ? { earlier: text(parse(stage.data, {}).summary, 400) } : {}),
-        messages: events.slice(-rows).map((m) => ({
-          seq: m.seq,
-          name: m.role === "assistant" ? selfName : m.name,
-          ...(m.role === "assistant" ? { self: true } : { userId: m.userId }),
-          time: localClock(m.time, this.mind.timeZone()).local.slice(5),
-          text: text(m.text, 160),
-        })),
-      };
-    });
+    return active
+      .map((r) => {
+        const events = this.repo
+          .eventsAfter(r.session_id, since, { simulated: false })
+          .filter((m) => m.time <= now && !aside.has(m.seq));
+        if (!events.length) return null;
+        const stage = this.db
+          .prepare(
+            "SELECT data FROM core_stages WHERE session_id=? ORDER BY last_seq DESC LIMIT 1",
+          )
+          .get(r.session_id);
+        const selfName = this.mind.nature.current(now).name;
+        return {
+          session: r.session_id,
+          name: names.get(r.session_id).name,
+          kind: names.get(r.session_id).kind,
+          lastActive: elapsedLabel(r.t, now, this.mind.timeZone()),
+          ...(stage
+            ? { earlier: text(parse(stage.data, {}).summary, 400) }
+            : {}),
+          messages: events.slice(-rows).map((m) => ({
+            seq: m.seq,
+            name: m.role === "assistant" ? selfName : m.name,
+            ...(m.role === "assistant" ? { self: true } : { userId: m.userId }),
+            time: localClock(m.time, this.mind.timeZone()).local.slice(5),
+            text: text(m.text, 160),
+          })),
+        };
+      })
+      .filter(Boolean);
   }
   feedbackSince(since) {
     const labels = {

@@ -100,6 +100,14 @@ export class Mind {
       )
       .run(session, seq, time);
   }
+  // Messages that passed while she was not in the room. They are not unread,
+  // and they are not something she lived.
+  unlived(seqs) {
+    const mark = this.db.prepare(
+      "INSERT OR IGNORE INTO mind_unlived(seq) VALUES (?)",
+    );
+    for (const seq of seqs || []) if (seq) mark.run(seq);
+  }
   // Someone called her while she slept; she will look when she wakes.
   defer(session) {
     this.db
