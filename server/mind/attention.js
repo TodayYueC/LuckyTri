@@ -95,7 +95,21 @@ export function attend({
   )
     add(1.5, "有人在问大家");
   const said = [...interestTerms(texts)];
-  if (said.some((term) => living.has(term))) add(2, "聊到了我正在过的事");
+  // The same rule as a counted touch: one person's own words, two
+  // distinctive pairs, or one when the wish itself only has one. Two
+  // people cannot be added together, and her own line does not count.
+  const livingNeed = living.size < 2 ? 1 : 2;
+  const meetsLiving = (text) => {
+    let shared = 0;
+    for (const term of interestTerms([text]))
+      if (living.has(term) && ++shared >= livingNeed) return true;
+    return false;
+  };
+  if (
+    living.size &&
+    batch.some((m) => m.role !== "assistant" && meetsLiving(m.text || ""))
+  )
+    add(2, "聊到了我正在过的事");
   else if (
     said.some((term) => interests.has(term)) ||
     said.filter((term) => curiosities.has(term)).length >= 2
