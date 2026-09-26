@@ -576,19 +576,21 @@ export class Meetings {
       roots.add(thread.session_id);
     return !roots.size || roots.has(session);
   }
-  // Wording she learned in private. `exceptSession` is where she may still say it.
+  // Wording she learned in private, or was asked to keep. `exceptSession` is
+  // where she may still say it.
   privateSayings(exceptSession = "") {
     const out = [];
     const keep = (content, sessionId) => {
       if (!content || (exceptSession && sessionId === exceptSession)) return;
       out.push({ content, session_id: sessionId || "" });
     };
-    for (const row of this.db
-      .prepare(
-        "SELECT content, session_id FROM core_memories WHERE discretion='private' AND status='confirmed' ORDER BY updated DESC LIMIT 200",
-      )
-      .all())
-      keep(row.content, row.session_id);
+    for (const discretion of ["private", "secret"])
+      for (const row of this.db
+        .prepare(
+          "SELECT content, session_id FROM core_memories WHERE discretion=? AND status='confirmed' ORDER BY updated DESC LIMIT 200",
+        )
+        .all(discretion))
+        keep(row.content, row.session_id);
     for (const row of this.db
       .prepare(
         `SELECT appraisal AS content, session_id FROM mind_meetings m

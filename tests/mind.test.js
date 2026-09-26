@@ -4219,6 +4219,48 @@ test("引用群里的话写下的手记，不因为这次也看过私聊就进�
   }
 });
 
+test("要求保密的事，不会跟着日记进别的房间", () => {
+  const w = world();
+  try {
+    const at = w.now();
+    w.open("group:1", "一群");
+    w.open("group:2", "另一群");
+    w.mind.memory.insert({
+      session: "group:1",
+      subject: "10001",
+      content: "下个月要辞职跳槽去上海",
+      discretion: "secret",
+      time: at,
+    });
+    const day = lifeDayKey(w.mind.nature.current(at), at, w.mind.timeZone());
+    w.mind.db
+      .prepare(
+        "INSERT INTO mind_diary(id,day,created,content,mood,compare,sources) VALUES (?,?,?,?,?,?,?)",
+      )
+      .run(
+        "d-secret",
+        day,
+        at,
+        "今天他说下个月要辞职跳槽去上海",
+        "平静",
+        "",
+        "[]",
+      );
+    assert.equal(
+      innerView(w.mind, { session: "group:2", kind: "group", now: at + 1 }).self
+        .lastDiary,
+      undefined,
+    );
+    assert.match(
+      innerView(w.mind, { session: "group:1", kind: "group", now: at + 1 }).self
+        .lastDiary,
+      /辞职/,
+    );
+  } finally {
+    w.close();
+  }
+});
+
 test("含私下相遇的那一天，日记摘要不跟着进别的房间", () => {
   const w = world();
   try {
