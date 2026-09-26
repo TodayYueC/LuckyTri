@@ -9,6 +9,7 @@ import {
   parse,
   relax,
   text,
+  zonedTime,
 } from "./util.js";
 
 const TENSION_HALF_LIFE = 12 * HOUR;
@@ -16,6 +17,9 @@ const TENSION_HALF_LIFE = 12 * HOUR;
 // familiarity more slowly to most of it; the first contact after a long
 // absence brings back half of what was lost.
 const ABSENCE_GRACE = 14 * DAY;
+// A feeling written days after the moment is a note, not a new meeting.
+// Three days still covers a delayed evening of solitude or the next diary.
+const FEELING_WINDOW = 3 * DAY;
 const CLOSENESS_HALF_LIFE = 60 * DAY;
 const FAMILIARITY_HALF_LIFE = 120 * DAY;
 const REWARM = 0.5;
@@ -237,6 +241,72 @@ export class Bonds {
       );
     }
   }
+  // This change was already taken from these same sources.
+  #repeatedFeeling(kind, id, change, cited) {
+    if (!cited.length) return false;
+    const rows = this.db
+      .prepare(
+        `SELECT sources FROM mind_bond_events
+         WHERE subject_kind=? AND subject_id=? AND change=?
+         AND id NOT IN (
+           SELECT target_id FROM mind_revocations WHERE target_kind='bond'
+         )`,
+      )
+      .all(kind, String(id), change);
+    const seen = new Set();
+    for (const row of rows)
+      for (const source of parse(row.sources, [])) seen.add(source);
+    return cited.every((source) => seen.has(source));
+  }
+  // When the cited moment actually happened. Null when nothing can be dated,
+  // so a feeling without a readable source is not treated as late.
+  #evidenceAt(cited) {
+    let newest = null;
+    const take = (time) => {
+      if (Number.isFinite(time) && (newest === null || time > newest))
+        newest = time;
+    };
+    const seqs = messageSeqs(cited);
+    if (seqs.length) {
+      const rows = this.db
+        .prepare(
+          `SELECT time FROM core_events WHERE seq IN (${seqs.map(() => "?").join(",")})`,
+        )
+        .all(...seqs);
+      for (const row of rows) take(row.time);
+    }
+    const meetings = cited
+      .filter((source) => source.startsWith("g:"))
+      .map((source) => source.slice(2));
+    if (meetings.length) {
+      const rows = this.db
+        .prepare(
+          `SELECT created FROM mind_meetings WHERE id IN (${meetings.map(() => "?").join(",")})`,
+        )
+        .all(...meetings);
+      for (const row of rows) take(row.created);
+    }
+    const thoughts = cited
+      .filter((source) => source.startsWith("t:"))
+      .map((source) => source.slice(2));
+    if (thoughts.length) {
+      const rows = this.db
+        .prepare(
+          `SELECT created FROM mind_thoughts WHERE id IN (${thoughts.map(() => "?").join(",")})`,
+        )
+        .all(...thoughts);
+      for (const row of rows) take(row.created);
+    }
+    for (const source of cited) {
+      const day = /^d:(\d{4}-\d{2}-\d{2})$/.exec(source);
+      if (day) take(zonedTime(`${day[1]} 23:59`, this.mind.timeZone()));
+    }
+    return newest;
+  }
+  #staleFeeling(cited, time) {
+    const when = this.#evidenceAt(cited);
+    return when !== null && time - when > FEELING_WINDOW;
+  }
   record({
     kind = "person",
     id,
@@ -249,6 +319,17 @@ export class Bonds {
   }) {
     const delta = BOND_CHANGES[change];
     if (!delta || !id || id === "bot") return null;
+    const cited = evidence(sources);
+    // The same moment cannot be spent again to grow closer, and a feeling
+    // filled in long afterward does not become a meeting that just happened.
+    // An impression can still be written; it does not move the numbers.
+    if (
+      change !== "interaction" &&
+      change !== "impression" &&
+      (this.#repeatedFeeling(kind, id, change, cited) ||
+        this.#staleFeeling(cited, time))
+    )
+      return null;
     if (change === "interaction") {
       // One felt "we talked" per person, place and hour keeps the ledger small.
       const recent = this.db
@@ -276,7 +357,7 @@ export class Bonds {
         delta.trust || 0,
         delta.tension || 0,
         text(note, change === "impression" ? 80 : 60),
-        JSON.stringify(evidence(sources)),
+        JSON.stringify(cited),
         session,
         origin,
       );
