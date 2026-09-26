@@ -687,6 +687,28 @@ test("后来又见到这个人，出没出声按后来的那次算，次数不�
     keep(1, "今晚有流星雨", "silent");
     w.advance(MINUTE);
     keep(2, "今天好冷", "speak");
+    const insert = w.mind.db.prepare(
+      "INSERT INTO mind_meetings(id,created,session_id,choice,appraisal,people,sources,discretion,will_people) VALUES (?,?,?,?,?,?,?,?,?)",
+    );
+    const link = w.mind.db.prepare(
+      "INSERT INTO mind_meeting_people(meeting_id,user_id) VALUES (?,?)",
+    );
+    for (let i = 0; i < 45; i++) {
+      w.advance(MINUTE);
+      const id = `other-${i}`;
+      insert.run(
+        id,
+        w.now(),
+        "group:1",
+        "silent",
+        "别人在聊",
+        '["10002"]',
+        JSON.stringify([100 + i]),
+        "open",
+        "[]",
+      );
+      link.run(id, "10002");
+    }
     const will = innerView(w.mind, {
       session: "group:1",
       people: ["10001"],
