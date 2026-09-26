@@ -16,6 +16,34 @@ function chat(w, session, lines) {
   return events;
 }
 
+test("她不在时的话，重新打开后也不算还在聊天", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1", "一群");
+  w.life.save({ proactive: false });
+  chat(w, "group:1", [
+    ["10001", "周五要面试了"],
+    ["10001", "有点紧张"],
+    ["bot", "紧张很正常，你准备得挺久了"],
+    ["10002", "加油啊"],
+    ["10001", "谢谢大家"],
+    ["10001", "面完告诉你们"],
+    ["10002", "等你好消息"],
+  ]);
+  w.advance(30 * MINUTE);
+  w.store.db.prepare("UPDATE sessions SET enabled=0 WHERE id=?").run("group:1");
+  const missed = w.say("group:1", "10001", "我搬到南极了", { name: "阿明" });
+  await w.hear("group:1", missed);
+  w.store.db.prepare("UPDATE sessions SET enabled=1 WHERE id=?").run("group:1");
+  assert.equal(w.life.eligible(w.now()), null);
+  const [room] = w.life.experiences(0, w.now());
+  assert.equal(room.lastActive, "今天早些时候");
+  assert.equal(
+    room.messages.some((m) => String(m.text).includes("南极")),
+    false,
+  );
+});
+
 test("关掉时路过的话，不算她度过的一天", async (t) => {
   const w = world();
   t.after(w.close);
