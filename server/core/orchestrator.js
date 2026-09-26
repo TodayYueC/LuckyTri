@@ -294,6 +294,11 @@ export class ChatSystem {
       interests,
       curiosities,
       living,
+      held: this.mind.meetings.touchedPeople(
+        session,
+        rows.filter((m) => m.role !== "assistant").map((m) => m.userId),
+        now,
+      ),
       closeness,
       pressure: this.mind.budget.pressure("conversation", now),
       initiative: nature.initiative,

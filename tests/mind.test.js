@@ -487,6 +487,104 @@ test("她正在过的事从心里进到注意力", () => {
   }
 });
 
+test("别人的话碰到过她正在过的事之后，这个人再开口会被细看", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.open("private:7", "阿明");
+    w.mind.self.propose(
+      { kind: "intention", content: "想看流星雨", strength: 0.3 },
+      { origin: "solitude", time: w.now() },
+    );
+    const meet = (session, id, text) =>
+      w.mind.experience(
+        {
+          choice: "silent",
+          appraisal: "他们聊到了我想看的",
+          reason: "听到了",
+          topic: "",
+          targetMessageIds: [id],
+          feelings: [],
+          bonds: [],
+        },
+        {
+          session,
+          snapshot: {
+            batchIds: [id],
+            messages: [
+              {
+                id,
+                role: "user",
+                speaker: "10001",
+                name: "阿明",
+                text,
+                relation: "ambient",
+              },
+            ],
+          },
+          kind: session.startsWith("private") ? "private" : "group",
+          spoke: false,
+          time: w.now(),
+        },
+      );
+    const look = (text, { relation = "unknown", userId = "10001" } = {}) => {
+      const message = w.say("group:1", userId, text, { name: "阿明" });
+      message.relation = relation;
+      const decision = w.system.gate(
+        "group:1",
+        [message],
+        [message],
+        w.now(),
+        w.mind.nature.current(),
+      );
+      w.mind.look("group:1", message.seq, w.now());
+      return decision;
+    };
+    assert.equal(
+      look("今天好冷").look,
+      false,
+      "还没被碰到时，无关的话只扫一眼",
+    );
+    meet("private:7", 1, "今晚有流星雨");
+    w.advance(MINUTE);
+    assert.equal(
+      look("今天好冷").look,
+      false,
+      "私下碰到的事不把群里的下一句变成细看",
+    );
+    meet("group:1", 2, "周末有流星雨");
+    w.advance(MINUTE);
+    const again = look("今天好冷");
+    assert.equal(again.look, true);
+    assert.match(again.reason, /上次的话碰到了我正在过的事/);
+    assert.equal(look("今天好冷", { userId: "10002" }).look, false);
+    assert.equal(
+      look("你说得对", { relation: "other" }).look,
+      false,
+      "两人私下说话仍然只扫一眼",
+    );
+    assert.equal(look("[图片]").look, false, "只有图片仍然只扫一眼");
+    const id = w.mind.db
+      .prepare("SELECT id FROM mind_meetings WHERE session_id='group:1'")
+      .get().id;
+    w.mind.revoke("meeting", id);
+    w.advance(MINUTE);
+    assert.equal(look("今天好冷").look, false, "撤销之后恢复成普通群友");
+    assert.equal(
+      attend({
+        batch: [{ userId: "10001", text: "今天好冷", relation: "unknown" }],
+        held: new Set(["10001"]),
+        pressure: 1,
+        now: w.now(),
+      }).look,
+      false,
+      "今天的话已经说得够多时，仍然只听",
+    );
+  } finally {
+    w.close();
+  }
+});
+
 test("独处先读她正在为自己而活的事", () => {
   const w = world();
   try {
