@@ -145,8 +145,9 @@ export class Meetings {
     return `${name}：${text(row.appraisal, 72)}${ago}${quiet}`;
   }
   // How often other people's words met this wish. Her appraisal does not count.
-  // A private touch stays in that room. If she meets that person again, whether
-  // she spoke is taken from the later meeting; the count does not grow.
+  // A private touch stays in that room. If she meets that person again with no
+  // one else in the batch, whether she spoke is taken from that later meeting.
+  // A mixed batch does not count as having spoken to them. The count does not grow.
   trace(
     thread,
     { before = Date.now(), since = 0, inclusive = false, session = "" } = {},
@@ -180,14 +181,19 @@ export class Meetings {
     let last = hits[0];
     if (credited.size) {
       const ids = [...credited];
-      const follow = [...ids, hits[0].created, before];
+      const marks = ids.map(() => "?").join(",");
+      const follow = [...ids, ...ids, hits[0].created, before];
       if (session) follow.push(session);
       const later = this.db
         .prepare(
           `SELECT m.choice, m.created FROM mind_meetings m
            WHERE EXISTS (
              SELECT 1 FROM json_each(m.people) j
-             WHERE j.value IN (${ids.map(() => "?").join(",")})
+             WHERE j.value IN (${marks})
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM json_each(m.people) j
+             WHERE j.value NOT IN (${marks})
            )
            AND m.created>=? AND m.created${compare}? ${room} ${hidden}
            ORDER BY m.created DESC LIMIT 1`,

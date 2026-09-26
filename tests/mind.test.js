@@ -722,6 +722,81 @@ test("后来又见到这个人，出没出声按后来的那次算，次数不�
   }
 });
 
+test("后来同一批里还有别人时，不把开口算成对这个人出了声", () => {
+  const w = world();
+  try {
+    w.open("group:1");
+    w.mind.self.propose(
+      { kind: "intention", content: "想看流星雨", strength: 0.3 },
+      { origin: "solitude", time: w.now() },
+    );
+    const heard = (id, speaker, name, said) => ({
+      id,
+      role: "user",
+      speaker,
+      name,
+      text: said,
+      relation: "ambient",
+    });
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "听到了",
+        reason: "听到了",
+        topic: "",
+        targetMessageIds: [1],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [1],
+          messages: [heard(1, "10001", "阿明", "今晚有流星雨")],
+        },
+        kind: "group",
+        spoke: false,
+        time: w.now(),
+      },
+    );
+    w.advance(MINUTE);
+    w.mind.experience(
+      {
+        choice: "speak",
+        appraisal: "两个人在聊天气",
+        reason: "接了一句",
+        topic: "",
+        targetMessageIds: [2],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [2, 3],
+          messages: [
+            heard(2, "10001", "阿明", "今天好冷"),
+            heard(3, "10002", "小红", "我也觉得"),
+          ],
+        },
+        kind: "group",
+        spoke: true,
+        time: w.now(),
+      },
+    );
+    const will = innerView(w.mind, {
+      session: "group:1",
+      people: ["10001"],
+      now: w.now() + 1,
+    }).inner.will;
+    assert.match(will, /碰到过 1 次/);
+    assert.match(will, /没出声/);
+    assert.doesNotMatch(will, /后来那次出了声/);
+  } finally {
+    w.close();
+  }
+});
+
 test("别人的话碰到过她正在过的事之后，这个人再开口会被细看", () => {
   const w = world();
   try {
@@ -1701,6 +1776,71 @@ test("私下的相遇写成打算时，不进别的房间", () => {
         .join(" ");
     assert.equal(textOf("group:1"), "");
     assert.match(textOf("private:7"), /问问他那件事/);
+    const noted = w.life.writeThought(
+      {
+        kind: "reflection",
+        content: "他私下说的那件事我先放在这里",
+        sources: [`g:${id}`],
+      },
+      {
+        valid: new Set([`g:${id}`]),
+        thoughts: [],
+        involved: ["group:1", "private:7"],
+        now: w.now(),
+      },
+    );
+    assert.ok(noted);
+    assert.deepEqual(w.mind.thoughts.get(noted).sessions, ["private:7"]);
+    assert.equal(
+      w.mind.thoughts
+        .open({ now: w.now() + 1, session: "group:1" })
+        .some((t) => t.id === noted),
+      false,
+    );
+    assert.equal(
+      w.mind.thoughts
+        .open({ now: w.now() + 1, session: "private:7" })
+        .some((t) => t.id === noted),
+      true,
+    );
+  } finally {
+    w.close();
+  }
+});
+
+test("引用群里的话写下的手记，不因为这次也看过私聊就进私聊", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.open("private:7", "阿明");
+    const message = w.say("group:1", "10001", "今晚有流星雨", { name: "阿明" });
+    const ref = `m:${message.seq}`;
+    const noted = w.life.writeThought(
+      { kind: "reflection", content: "群里提到了流星雨", sources: [ref] },
+      {
+        valid: new Set([ref]),
+        thoughts: [],
+        involved: ["group:1", "private:7"],
+        now: w.now(),
+      },
+    );
+    assert.ok(noted);
+    assert.deepEqual(w.mind.thoughts.get(noted).sessions, ["group:1"]);
+    assert.equal(
+      w.mind.thoughts
+        .open({ now: w.now() + 1, session: "private:7" })
+        .some((t) => t.id === noted),
+      false,
+    );
+    const carried = w.mind.thoughts.add({
+      content: "群里的事先记着",
+      sessions: ["group:1", "private:7"],
+      sources: [ref],
+      time: w.now(),
+    });
+    const place = w.life.placeOf([`t:${carried}`]);
+    assert.equal(place.discretion, "open");
+    assert.equal(place.session, "group:1");
   } finally {
     w.close();
   }

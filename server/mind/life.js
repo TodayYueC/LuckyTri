@@ -405,9 +405,9 @@ export class Life {
       };
     });
   }
-  // Where a thought came from decides where a plan built on it may surface:
-  // anything rooted in a private chat stays there.
-  placeOf(sources) {
+  // Sessions a citation actually rests on. A thought that also lists a
+  // private room only counts as private when it has no public room.
+  sourcePlaces(sources) {
     const refs = evidence(sources);
     const seqs = messageSeqs(refs);
     const sessions = seqs.length
@@ -418,17 +418,25 @@ export class Life {
           .all(...seqs)
           .map((r) => r.session_id)
       : [];
-    for (const ref of refs.filter((r) => r.startsWith("t:")))
-      sessions.push(...(this.mind.thoughts.get(ref.slice(2))?.sessions || []));
+    for (const ref of refs.filter((r) => r.startsWith("t:"))) {
+      const owned = this.mind.thoughts.get(ref.slice(2))?.sessions || [];
+      const publicOnes = owned.filter((id) => !isPrivateSession(id));
+      sessions.push(...(publicOnes.length ? publicOnes : owned));
+    }
     for (const row of this.mind.meetings.places(
       refs.filter((r) => r.startsWith("g:")),
     ))
       sessions.push(row.session_id);
+    return [...new Set(sessions)];
+  }
+  // Where a thought came from decides where a plan built on it may surface:
+  // anything rooted in a private chat stays there.
+  placeOf(sources) {
+    const sessions = this.sourcePlaces(sources);
     const hidden = sessions.find((s) => isPrivateSession(s));
     if (hidden) return { session: hidden, discretion: "private" };
-    const places = [...new Set(sessions)];
     return {
-      session: places.length === 1 ? places[0] : null,
+      session: sessions.length === 1 ? sessions[0] : null,
       discretion: "open",
     };
   }
@@ -801,10 +809,23 @@ export class Life {
       );
       if (privateRooms.size && !privateRooms.has(reach.session)) reach = null;
     }
+    const place = this.placeOf(sources);
+    const rooted = this.sourcePlaces(sources).filter((id) =>
+      place.discretion === "private"
+        ? isPrivateSession(id)
+        : !isPrivateSession(id),
+    );
+    const sessions = rooted.length
+      ? rooted
+      : involved.filter((id) =>
+          place.discretion === "private"
+            ? isPrivateSession(id)
+            : !isPrivateSession(id),
+        );
     const added = this.mind.thoughts.add({
       kind: thought.kind,
       content,
-      sessions: involved,
+      sessions,
       sources,
       parentId: parent?.id || null,
       importance: clamp(thought.importance ?? 0.5),
