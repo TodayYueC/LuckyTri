@@ -38,7 +38,8 @@ export function sceneOf(text) {
   if (/哈哈|笑死|hh|绷不住|离谱/.test(text)) return "joke";
   if (/^(?:嗯+|哦+|好[的吧]?|行|ok|收到|谢谢)[。！!\s]*$/i.test(text))
     return "ack";
-  if (/^\[(?:叫了你一声|回复你)\]$/.test(text)) return "called";
+  if (/^\[(?:叫了你一声|回复你)\]$/.test(text) || text.trim() === "@我")
+    return "called";
   if (/\[表情\]/.test(text)) return "sticker";
   if (/\[图片\]/.test(text)) return "image";
   return "share";

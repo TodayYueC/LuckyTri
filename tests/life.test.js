@@ -19,6 +19,7 @@ test("安静下来后独处：留下有来源的手记，改变自我、面貌�
   const w = world();
   t.after(w.close);
   w.open("group:1", "一群");
+  w.life.save({ proactive: false });
   const events = chat(w, "group:1", [
     ["10001", "周五要面试了"],
     ["10001", "有点紧张"],
@@ -537,4 +538,59 @@ test("主动联系交给她自己的意愿：条件都满足才考虑，她可�
   const choices = w.mind.choices({ session: "private:10001" });
   assert.equal(choices[0].occasion, "outreach");
   assert.equal(choices[0].choice, "silent");
+});
+
+test("主动联系默认开着，独处可以计划一句想说的话", async (t) => {
+  const w = world();
+  t.after(w.close);
+  assert.equal(w.life.settings().proactive, true);
+  w.open("group:1", "一群");
+  const events = chat(w, "group:1", [
+    ["10001", "周五要面试了"],
+    ["10001", "有点紧张"],
+    ["10001", "准备了很久"],
+    ["10001", "希望顺利"],
+    ["10001", "面完告诉你们"],
+    ["10001", "先去准备了"],
+  ]);
+  w.advance(30 * MINUTE);
+  w.answers.reflection = {
+    thought: {
+      kind: "unfinished",
+      content: "想问问面试",
+      sources: [events[0].seq],
+    },
+    outreach: { session: "group:1", text: "面试怎么样啦", afterHours: 30 },
+  };
+  assert.equal((await w.life.tick()).status, "written");
+  assert.equal(w.mind.thoughts.list()[0].outreach, "面试怎么样啦");
+});
+
+test("待过的地方安静下来，她会看一次要不要说，不出声之后不会马上再问", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1", "一群");
+  w.life.save({ solitude: false, diary: false });
+  w.say("group:1", "10001", "今天好冷");
+  w.advance(MINUTE);
+  w.say("group:1", "bot", "是有点");
+  w.advance(MINUTE);
+  w.say("group:1", "10001", "想喝热的");
+  w.advance(25 * MINUTE);
+  w.answers.turn = {
+    choice: "silent",
+    reason: "没什么要补的",
+    bubbles: [],
+  };
+  const first = await w.life.tick();
+  assert.equal(first.status, "presence-silent");
+  assert.equal(
+    w.calls.find((c) => c.stage === "turn").data.occasion.type,
+    "presence",
+  );
+  assert.equal(w.calls.filter((c) => c.stage === "turn").length, 1);
+  w.advance(MINUTE);
+  await w.life.tick();
+  assert.equal(w.calls.filter((c) => c.stage === "turn").length, 1);
+  assert.equal(w.sent.length, 0);
 });
