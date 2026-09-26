@@ -2153,6 +2153,16 @@ test("一个词组或两个人拼起来，不会因为正在过的事而细看",
   });
   assert.equal(split.look, false, "两个人的词拼起来不算碰到");
   assert.doesNotMatch(split.reason, /正在过的事/);
+  const own = attend({
+    batch: [
+      line("10001", "天上有一颗流星"),
+      line("10001", "这场星雨好大？"),
+    ],
+    now,
+    living: wish,
+  });
+  assert.equal(own.look, true, "同一个人分两句说完，仍然算碰到");
+  assert.match(own.reason, /正在过的事/);
   const hers = attend({
     batch: [
       line("bot", "我想看流星雨", "assistant"),
@@ -2404,6 +2414,19 @@ test("两个人的话拼在一起不算碰到，旁边的人也不算", () => {
       0,
       "两句话拼起来的词不算碰到",
     );
+    w.advance(MINUTE);
+    keep([
+      line(11, "10001", "阿明", "天上有一颗流星"),
+      line(12, "10001", "阿明", "这场星雨好大"),
+    ]);
+    assert.equal(
+      w.mind.db
+        .prepare("SELECT COUNT(*) n FROM mind_meetings WHERE will_met=1")
+        .get().n,
+      1,
+      "同一个人分两句说完，仍然算碰到",
+    );
+    w.mind.db.prepare("DELETE FROM mind_meetings").run();
     w.advance(MINUTE);
     keep([
       line(3, "10001", "阿明", "今晚有流星雨"),
