@@ -47,18 +47,23 @@ export class Meetings {
     });
     const wish = living ? interestTerms([living.content]) : new Set();
     const need = wish.size < 2 ? 1 : 2;
-    // Each person's own words have to meet the wish. Two messages cannot
-    // be added together, and someone who only stood nearby is not credited.
+    // Each person's own words have to meet the wish, across the messages
+    // they sent in this batch. Two people cannot be added together, and
+    // someone who only stood nearby is not credited.
+    const bySpeaker = new Map();
+    for (const m of heard) {
+      const id = String(m.speaker || "");
+      if (!id) continue;
+      const texts = bySpeaker.get(id) || [];
+      texts.push(m.text || "");
+      bySpeaker.set(id, texts);
+    }
     const willPeople = living
-      ? [
-          ...new Set(
-            heard
-              .filter((m) =>
-                touches(living.content, interestTerms([m.text || ""]), need),
-              )
-              .map((m) => String(m.speaker)),
-          ),
-        ]
+      ? [...bySpeaker.entries()]
+          .filter(([, texts]) =>
+            touches(living.content, interestTerms(texts), need),
+          )
+          .map(([id]) => id)
       : [];
     const willMet = willPeople.length > 0;
     if (!appraisal && !willMet) return null;

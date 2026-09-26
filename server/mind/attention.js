@@ -94,19 +94,29 @@ export function attend({
     )
   )
     add(1.5, "有人在问大家");
-  // One person's own words. Two people cannot be added together, and her
-  // own line does not count. A wish or a curiosity needs two distinctive
-  // pairs, or one when that set only has one. An interest needs one.
+  // One person's own words, including several messages from that person.
+  // Two people cannot be added together, and her own line does not count.
+  // A wish or a curiosity needs two distinctive pairs, or one when that
+  // set only has one. An interest needs one.
   const meets = (terms, need) => {
     if (!terms?.size) return false;
     const required = terms.size < need ? 1 : need;
-    return batch.some((m) => {
-      if (m.role === "assistant") return false;
+    const groups = new Map();
+    let anon = 0;
+    for (const m of batch) {
+      if (m.role === "assistant") continue;
+      const id = String(m.userId || "");
+      const key = id || `\0${anon++}`;
+      const texts = groups.get(key) || [];
+      texts.push(m.text || "");
+      groups.set(key, texts);
+    }
+    for (const texts of groups.values()) {
       let shared = 0;
-      for (const term of interestTerms([m.text || ""]))
+      for (const term of interestTerms(texts))
         if (terms.has(term) && ++shared >= required) return true;
-      return false;
-    });
+    }
+    return false;
   };
   if (meets(living, 2)) add(2, "聊到了我正在过的事");
   else if (meets(interests, 1) || meets(curiosities, 2))
