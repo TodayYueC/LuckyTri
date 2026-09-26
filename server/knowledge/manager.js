@@ -205,18 +205,15 @@ export class KnowledgeManager {
       )
       .all(cutoff)
       .filter((c) => allowed.has(c.collection_id));
-    let queryVec = null;
-    try {
-      const profile = this.models.profile("default");
-      if (profile.embedding && queries.length) queryVec = this._queryVector;
-    } catch {
-      queryVec = null;
-    }
     // Each person's own words. Two people are not added together, and a
-    // line she already said does not count as the room asking. A vector,
-    // when one is already prepared, still describes the batch as a whole.
-    const lexical = new Map();
-    for (const query of queries) {
+    // line she already said does not count as the room asking. A prepared
+    // vector belongs to that same person, not to the batch mixed together.
+    const vectors = Array.isArray(this._speakerVectors)
+      ? this._speakerVectors
+      : [];
+    const best = new Map();
+    for (let i = 0; i < queries.length; i++) {
+      const query = queries[i];
       const match = ftsMatchQuery(query);
       const fts = new Set();
       if (match)
@@ -231,21 +228,18 @@ export class KnowledgeManager {
           /* malformed MATCH */
         }
       const queryTerms = lexicalTerms(query);
+      const vec = vectors[i] || null;
       for (const chunk of chunks) {
-        const score =
+        let score =
           (fts.has(chunk.id) ? 2 : 0) +
           overlapScore(chunk.text, queryTerms) * 0.5;
-        if (score > (lexical.get(chunk.id) || 0)) lexical.set(chunk.id, score);
+        if (vec && chunk.embedding)
+          score += cosine(vec, unpackVector(chunk.embedding)) * 4;
+        const ageDays =
+          (Date.now() - (chunk.document_created || 0)) / 86400000;
+        if (ageDays > 30) score *= 0.85;
+        if (score > (best.get(chunk.id) || 0)) best.set(chunk.id, score);
       }
-    }
-    const best = new Map();
-    for (const chunk of chunks) {
-      let score = lexical.get(chunk.id) || 0;
-      if (queryVec && chunk.embedding)
-        score += cosine(queryVec, unpackVector(chunk.embedding)) * 4;
-      const ageDays = (Date.now() - (chunk.document_created || 0)) / 86400000;
-      if (ageDays > 30) score *= 0.85;
-      if (score > 0) best.set(chunk.id, score);
     }
     return [...best.entries()]
       .sort((a, b) => b[1] - a[1])
@@ -267,24 +261,21 @@ export class KnowledgeManager {
   }
   async retrieveWithEmbed(session, rows, cutoff = Date.now()) {
     const profile = this.models.profile("default");
-    if (profile.embedding) {
+    const queries = saidBy(rows).slice(0, 8);
+    if (profile.embedding && queries.length) {
       try {
-        const [vec] = await this.models.embed(profile, [
-          rows
-            .filter((r) => r.role !== "assistant")
-            .map((r) => r.text || "")
-            .join(" ")
-            .slice(0, 4000),
-        ]);
-        this._queryVector = vec;
+        this._speakerVectors = await this.models.embed(
+          profile,
+          queries.map((query) => query.slice(0, 2000)),
+        );
       } catch {
-        this._queryVector = null;
+        this._speakerVectors = null;
       }
-    } else this._queryVector = null;
+    } else this._speakerVectors = null;
     try {
       return this.retrieve(session, rows, cutoff);
     } finally {
-      this._queryVector = null;
+      this._speakerVectors = null;
     }
   }
   removeDocument(id) {
