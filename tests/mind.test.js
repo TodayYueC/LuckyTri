@@ -1852,6 +1852,105 @@ test("被要求保密的话，整理记忆时也会记成秘密", async (t) => {
   );
 });
 
+test("别人插话之后，他要求保密的事仍然是秘密", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1");
+  const hush = w.say("group:1", "10001", "跟你说个事，别告诉别人");
+  for (let i = 0; i < 8; i++) w.say("group:1", "10002", `今天天气${i}`);
+  const told = w.say("group:1", "10001", "我下个月要辞职了");
+  const other = w.say("group:1", "10002", "我明天去图书馆");
+  assert.ok(told.seq - hush.seq > 6);
+  w.answers.memory = {
+    summary: "聊了私事和图书馆",
+    facts: [
+      {
+        subject: "10001",
+        content: "下个月要辞职",
+        type: "event",
+        confidence: 0.9,
+        importance: 0.8,
+        sources: [told.seq],
+        certainty: "self_report",
+        discretion: "open",
+      },
+      {
+        subject: "10002",
+        content: "明天去图书馆",
+        type: "event",
+        confidence: 0.9,
+        importance: 0.5,
+        sources: [other.seq],
+        certainty: "self_report",
+        discretion: "open",
+      },
+    ],
+    anticipations: [
+      {
+        kind: "event",
+        subject: "10001",
+        content: "要辞职",
+        due: "2026-10-20",
+        sources: [told.seq],
+      },
+    ],
+    self: [],
+  };
+  await w.mind.memory.consolidate(
+    "group:1",
+    w.system.models.profile(),
+    "",
+    { calls: [] },
+    { force: true, models: w.system.models },
+  );
+  assert.equal(
+    w.store.db
+      .prepare("SELECT discretion FROM core_memories WHERE content='下个月要辞职'")
+      .get().discretion,
+    "secret",
+  );
+  assert.equal(
+    w.store.db
+      .prepare("SELECT discretion FROM core_memories WHERE content='明天去图书馆'")
+      .get().discretion,
+    "open",
+  );
+  assert.equal(
+    w.store.db
+      .prepare("SELECT discretion FROM mind_anticipations WHERE content='要辞职'")
+      .get().discretion,
+    "secret",
+  );
+});
+
+test("先要求保密再请她记住，别人插话也不记成公开", (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1");
+  w.say("group:1", "10001", "跟你说个事，别告诉别人");
+  for (let i = 0; i < 8; i++) w.say("group:1", "10002", `今天天气${i}`);
+  const told = w.say("group:1", "10001", "记住，我下个月要辞职");
+  const id = w.mind.memory.remember(told);
+  assert.ok(id);
+  assert.equal(
+    w.store.db.prepare("SELECT discretion FROM core_memories WHERE id=?").get(id)
+      .discretion,
+    "secret",
+  );
+  w.store.db.prepare("UPDATE sessions SET enabled=0 WHERE id=?").run("group:1");
+  const missed = w.say("group:1", "10003", "别告诉别人，记住，我喜欢猫");
+  w.mind.unlived([missed.seq]);
+  w.store.db.prepare("UPDATE sessions SET enabled=1 WHERE id=?").run("group:1");
+  const later = w.say("group:1", "10003", "记住，我明天去图书馆");
+  const openId = w.mind.memory.remember(later);
+  assert.equal(
+    w.store.db
+      .prepare("SELECT discretion FROM core_memories WHERE id=?")
+      .get(openId).discretion,
+    "open",
+  );
+});
+
 test("整理记忆时，她自己说过的看法和承诺成为她的一部分，来源必须是她自己的话", async (t) => {
   const w = world();
   t.after(w.close);

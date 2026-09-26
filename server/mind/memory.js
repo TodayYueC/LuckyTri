@@ -24,6 +24,20 @@ const BLOCK_USERS = 40;
 const SENSITIVE = /密码|验证码|密钥|身份证|银行卡|api.?key|token/i;
 const DISCRETIONS = new Set(["open", "private", "secret"]);
 
+// A request to keep something quiet stays with that person for the rest of
+// this stretch. Other people's messages in between do not wash it out, and
+// it does not make anyone else's words a secret.
+function askedSecret(block, subject, beforeSeq) {
+  if (!subject) return false;
+  return block.some(
+    (m) =>
+      m.role === "user" &&
+      String(m.userId) === String(subject) &&
+      m.seq <= beforeSeq &&
+      secretRequest(m.text),
+  );
+}
+
 // Words from the newest messages first, so a long batch still searches for
 // what was just said.
 function recallQuery(rows) {
@@ -401,6 +415,9 @@ export class MemoryManager {
       ? `原话：${said}`
       : said.replace(/^我/, "");
     const privateChat = message.kind === "private";
+    const quiet =
+      secretRequest(value) ||
+      this.#recentSecret(message.sessionId, message.userId, message.seq);
     const id = this.insert({
       session: message.sessionId,
       subject: String(message.userId),
@@ -417,7 +434,7 @@ export class MemoryManager {
           certainty: "self_report",
         },
       ],
-      discretion: secretRequest(value)
+      discretion: quiet
         ? "secret"
         : privateChat
           ? "private"
@@ -426,6 +443,29 @@ export class MemoryManager {
     });
     if (id) this.repo.store.revision++;
     return id;
+  }
+  // "别告诉别人" then, after other people talk, "记住，我……" is still a secret.
+  // Only words she could have heard count, and only this person's own recent lines.
+  #recentSecret(session, userId, seq) {
+    if (!session || seq == null) return false;
+    const rows = this.repo.db
+      .prepare(
+        `SELECT payload FROM core_events
+         WHERE session_id=? AND role='user' AND seq<?
+         AND json_extract(payload,'$.userId')=?
+         AND seq NOT IN (SELECT seq FROM mind_unlived)
+         ORDER BY seq DESC LIMIT 8`,
+      )
+      .all(session, seq, String(userId));
+    return rows.some((row) => {
+      let payload = {};
+      try {
+        payload = JSON.parse(row.payload);
+      } catch {
+        payload = {};
+      }
+      return secretRequest(payload.text);
+    });
   }
   pending(session) {
     return this.repo.db
@@ -499,13 +539,14 @@ export class MemoryManager {
         continue;
       const first = Math.min(...cited.map((m) => m.seq));
       const last = Math.max(...cited.map((m) => m.seq));
-      const secret = block.some(
-        (m) =>
-          m.role === "user" &&
-          m.seq <= last &&
-          m.seq >= first - 6 &&
-          secretRequest(m.text),
-      );
+      const secret =
+        block.some(
+          (m) =>
+            m.role === "user" &&
+            m.seq <= last &&
+            m.seq >= first - 6 &&
+            secretRequest(m.text),
+        ) || askedSecret(block, subject, last);
       if (!grounded(a.content, cited.map((m) => m.text || ""))) continue;
       const result = this.mind.anticipations.add({
         kind,
@@ -634,15 +675,9 @@ export class MemoryManager {
           )
             continue;
           if (!grounded(f.content, sources.map((m) => m.text || ""))) continue;
-          const around = block.filter(
-            (m) =>
-              String(m.userId) === String(f.subject) &&
-              m.seq <= Math.max(...f.sources) &&
-              m.seq >= Math.min(...f.sources) - 6,
-          );
           const secret =
             f.discretion === "secret" ||
-            around.some((m) => secretRequest(m.text));
+            askedSecret(block, f.subject, Math.max(...f.sources));
           const id = this.insert({
             session,
             subject: String(f.subject),
