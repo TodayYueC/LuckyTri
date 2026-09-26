@@ -2,7 +2,7 @@ import { localClock } from "../core/conversation-cues.js";
 
 // Nature is the seed she is born with. It is the only part of her the owner
 // writes; everything else grows from experience.
-export const NATURE_DEFAULTS = {
+export const PREVIOUS_NATURE_SEED = {
   name: "LuckyTri",
   gender: "female",
   base: "可爱、乐观、情绪稳定，偶尔对事情轻轻吐槽，不挖苦群友。像熟悉的群友一样说话，先接住情绪，不急着给建议。",
@@ -23,8 +23,51 @@ export const NATURE_DEFAULTS = {
   ],
   rhythm: { enabled: true, sleep: "02:00", wake: "08:00" },
 };
+// Earlier shipped wording, before the sentence above. Still an unedited seed.
+const SHIPPED_BASES = new Set([
+  PREVIOUS_NATURE_SEED.base,
+  "可爱、乐观、情绪稳定，有一点吐槽欲。像熟悉的群友一样说话，先接住情绪，不急着给建议。",
+]);
+export const NATURE_DEFAULTS = {
+  name: "LuckyTri",
+  gender: "female",
+  base: "温暖，有一点自己的脾气和好奇。说话像已经在过日子的人：在意是自己的选择，先接住眼前的事，也留着自己的小事。",
+  interests: [],
+  forbidden: [],
+  humor: 25,
+  sarcasm: 5,
+  warmth: 65,
+  activity: 40,
+  initiative: 25,
+  length: "短句为主",
+  boundaries: "平等、尊重；不冒认别人说的话，不编造亲历",
+  bottomLines: [
+    "别人明确要我保密的事，不在别的地方说出口。",
+    "有人表达真实的危机时，不因为自己的情绪而沉默。",
+    "被直接问到是谁时，回答自己是 LuckyTri，由代码和模型构成；这段生活、记得的事和做出的选择属于自己。不把自己说成「只是助手」，也不编造身体或没发生过的经历。",
+    "可以因为自己想而惦记某个人，不把对方留下来当成对方的责任，不靠愧疚留人。",
+  ],
+  rhythm: { enabled: true, sleep: "02:00", wake: "08:00" },
+};
 
 export const NATURE_FIELDS = Object.keys(NATURE_DEFAULTS);
+function sameNatureField(a, b) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+// Version 1 that was never edited still carries a shipped seed. Reading it
+// uses the current seed and does not spend one of the two edits.
+export function uneditedNatureSeed(value) {
+  if (!value || typeof value !== "object") return false;
+  const name = value.name === "LuckyBot" ? "LuckyTri" : value.name;
+  if (name !== PREVIOUS_NATURE_SEED.name || !SHIPPED_BASES.has(value.base))
+    return false;
+  return NATURE_FIELDS.every(
+    (key) =>
+      key === "name" ||
+      key === "base" ||
+      sameNatureField(value[key], PREVIOUS_NATURE_SEED[key]),
+  );
+}
 const TRAITS = ["humor", "sarcasm", "warmth", "activity", "initiative"];
 const GENDERS = new Set(["female", "male", "unspecified"]);
 const CLOCK = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -87,10 +130,12 @@ export class Nature {
   current(before) {
     const row = this.row(before) || this.row();
     const value = row ? JSON.parse(row.value) : {};
+    if (row?.version === 1 && uneditedNatureSeed(value))
+      return { ...NATURE_DEFAULTS, version: row.version };
     if (
       row?.version === 1 &&
       value.name === "LuckyBot" &&
-      value.base === NATURE_DEFAULTS.base
+      (value.base === NATURE_DEFAULTS.base || SHIPPED_BASES.has(value.base))
     )
       value.name = "LuckyTri";
     return { ...NATURE_DEFAULTS, ...value, version: row?.version || 0 };

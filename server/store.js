@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { summarizeGroupStyle } from "./group-style.js";
 import { isGroupSession } from "./channels/session-key.js";
+import { NATURE_DEFAULTS } from "./mind/nature.js";
 export function createStore(path = process.env.DB_PATH || "data/friend.db") {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
@@ -62,8 +63,7 @@ export function createStore(path = process.env.DB_PATH || "data/friend.db") {
   const defaults = {
     name: "LuckyTri",
     aliases: "LuckyTri,LuckyBot,Lucky",
-    persona:
-      "可爱、乐观、情绪稳定，偶尔对事情轻轻吐槽，不挖苦群友。像熟悉的群友一样说话，先接住情绪，不急着给建议。",
+    persona: NATURE_DEFAULTS.base,
     enabled: true,
     demo: true,
     baseUrl: "https://api.deepseek.com/v1",
@@ -124,15 +124,12 @@ export function createStore(path = process.env.DB_PATH || "data/friend.db") {
     );
     if (renamedPersona !== migrated.persona)
       migrated = { ...migrated, persona: renamedPersona };
-    if (
-      existing.persona ===
-      "可爱、乐观、情绪稳定，有一点吐槽欲。像熟悉的群友一样说话，先接住情绪，不急着给建议。"
-    )
-      migrated = {
-        ...migrated,
-        persona:
-          "可爱、乐观、情绪稳定，偶尔对事情轻轻吐槽，不挖苦群友。像熟悉的群友一样说话，先接住情绪，不急着给建议。",
-      };
+    const shippedPersona = new Set([
+      "可爱、乐观、情绪稳定，有一点吐槽欲。像熟悉的群友一样说话，先接住情绪，不急着给建议。",
+      "可爱、乐观、情绪稳定，偶尔对事情轻轻吐槽，不挖苦群友。像熟悉的群友一样说话，先接住情绪，不急着给建议。",
+    ]);
+    if (shippedPersona.has(migrated.persona))
+      migrated = { ...migrated, persona: NATURE_DEFAULTS.base };
     if (JSON.stringify(migrated) !== JSON.stringify(existing))
       db.prepare("UPDATE settings SET value=? WHERE id=1").run(
         JSON.stringify(migrated),

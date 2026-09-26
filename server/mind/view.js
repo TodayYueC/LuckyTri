@@ -46,6 +46,9 @@ export function innerView(
   const affect = mind.affect.state(now, { nature });
   const face = mind.faces.current(session, now);
   const threads = mind.self.active({ before: now, now, limit: 6 });
+  const living = mind.self
+    .annotated({ before: now, now })
+    .find((row) => row.kind === "intention" && !row.faded);
   const terms = interestTerms(cue);
   const reminded = [
     ...mind.self
@@ -85,6 +88,7 @@ export function innerView(
           ),
         }
       : {}),
+    ...(living ? { livingFor: text(living.content, 80) } : {}),
     ...(diary
       ? { lastDiary: `${diary.day}：${text(diary.content, 110)}` }
       : {}),
