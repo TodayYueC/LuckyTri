@@ -58,12 +58,14 @@ export function innerView(
       .map((t) => `${SELF_KINDS[t.kind]}：${text(t.content, 80)}${FORGOTTEN}`),
     ...mind.thoughts
       .reminded({ now, cue: terms, session, limit: 1 })
+      .filter((t) => mind.meetings.sayable(t.content, session))
       .map(
         (t) =>
           `${elapsedLabel(t.created, now, mind.timeZone())}想到：${text(t.content, 110)}${FORGOTTEN}`,
       ),
     ...mind.meetings
       .reminded({ session, now, cue: terms, limit: 1 })
+      .filter((line) => mind.meetings.sayable(line, session))
       .map((line) => `${line}${FORGOTTEN}`),
   ];
   const diary = mind.db
@@ -72,17 +74,27 @@ export function innerView(
     )
     .get(now);
   const diaryHere =
-    diary && !mind.meetings.privateBeyond(diary.day, session, now)
+    diary &&
+    !mind.meetings.privateBeyond(diary.day, session, now) &&
+    mind.meetings.sayable(diary.content, session)
       ? `${diary.day}：${text(diary.content, 110)}`
       : "";
   const read = mind.reading
     .recent({ now, limit: 2 })
     .filter((r) => r.created > now - 7 * DAY);
   const room = kind === "group" ? groupStyle(mind, session) : "";
+  const spoken = (value) =>
+    value && mind.meetings.sayable(value, session) ? value : "";
   const self = {
     ...(face
       ? {
-          here: describeFace(face),
+          here: describeFace({
+            ...face,
+            role: spoken(face.role),
+            tone: spoken(face.tone),
+            aspiration: spoken(face.aspiration),
+            content: spoken(face.content),
+          }),
         }
       : {}),
     ...(visibleThreads.length
@@ -120,7 +132,9 @@ export function innerView(
       id,
       name: bond.name,
       feel: bond.feel,
-      ...(bond.impression ? { impression: bond.impression } : {}),
+      ...(bond.impression && mind.meetings.sayable(bond.impression, session)
+        ? { impression: bond.impression }
+        : {}),
       // Someone coming back after days away, or someone who has been around
       // without talking with her for a while.
       ...(bond.awayDays >= 3
@@ -131,7 +145,9 @@ export function innerView(
     });
   }
   const group = kind === "group" ? mind.bonds.group(session, now) : null;
-  const thoughts = mind.thoughts.open({ now, limit: 3, session });
+  const thoughts = mind.thoughts
+    .open({ now, limit: 3, session })
+    .filter((t) => mind.meetings.sayable(t.content, session));
   const heard = feedback(mind, session, now);
   const expecting = mind.anticipations
     .upcoming({ now, people, session, limit: 3 })
