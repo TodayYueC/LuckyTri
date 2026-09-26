@@ -46,9 +46,7 @@ export function innerView(
   const affect = mind.affect.state(now, { nature, room: session });
   const face = mind.faces.current(session, now);
   const threads = mind.self.active({ before: now, now, limit: 6 });
-  const living = mind.self
-    .annotated({ before: now, now })
-    .find((row) => row.kind === "intention" && !row.faded);
+  const living = mind.self.living({ before: now, now, room: session });
   const terms = interestTerms(cue);
   const carries = (thread) => mind.meetings.stays(thread, session);
   const visibleThreads = threads.filter(carries);

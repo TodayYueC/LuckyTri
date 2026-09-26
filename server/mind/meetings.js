@@ -33,9 +33,11 @@ export class Meetings {
       ? ""
       : text(turn?.appraisal, 120);
     const people = [...new Set(heard.map((m) => String(m.speaker)))];
-    const living = this.mind.self
-      .annotated({ before: time, now: time })
-      .find((row) => row.kind === "intention" && !row.faded);
+    const living = this.mind.self.living({
+      before: time,
+      now: time,
+      room: session,
+    });
     const wish = living ? interestTerms([living.content]) : new Set();
     const need = wish.size < 2 ? 1 : 2;
     // Each person's own words have to meet the wish. Two messages cannot

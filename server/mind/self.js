@@ -95,6 +95,19 @@ export class Self {
       }))
       .sort((a, b) => b.salience - a.salience || b.created - a.created);
   }
+  // The one wish she is living. In a room, a stronger wish that does not
+  // belong there does not erase the next wish that does.
+  living({ before = Number.MAX_SAFE_INTEGER, now, room } = {}) {
+    const at = now ?? (before < Number.MAX_SAFE_INTEGER ? before : Date.now());
+    return (
+      this.annotated({ before, now: at }).find(
+        (row) =>
+          row.kind === "intention" &&
+          !row.faded &&
+          (room === undefined || this.mind.meetings.stays(row, room)),
+      ) || null
+    );
+  }
   active({ before, limit = 40, now } = {}) {
     const ranked = this.annotated({ before, now }).filter((row) => !row.faded);
     const picked = ranked.filter((row) => row.core).slice(0, limit);
