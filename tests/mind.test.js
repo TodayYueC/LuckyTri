@@ -1975,6 +1975,36 @@ test("先要求保密再请她记住，别人插话也不记成公开", (t) => {
   );
 });
 
+test("还没整理完的这段里，隔了很多句再说记住，仍然是秘密", (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1");
+  const hush = w.say("group:1", "10001", "跟你说个事，别告诉别人");
+  for (let i = 0; i < 9; i++)
+    w.say("group:1", "10001", `今天先说第${i}件`);
+  const told = w.say("group:1", "10001", "记住，我下个月要辞职");
+  assert.ok(told.seq - hush.seq > 8);
+  const id = w.mind.memory.remember(told);
+  assert.equal(
+    w.store.db.prepare("SELECT discretion FROM core_memories WHERE id=?").get(id)
+      .discretion,
+    "secret",
+  );
+  w.mind.db
+    .prepare(
+      "INSERT INTO core_cursors(session_id,seq) VALUES (?,?) ON CONFLICT(session_id) DO UPDATE SET seq=excluded.seq",
+    )
+    .run("group:1", told.seq);
+  const later = w.say("group:1", "10001", "记住，我明天去图书馆");
+  const openId = w.mind.memory.remember(later);
+  assert.equal(
+    w.store.db
+      .prepare("SELECT discretion FROM core_memories WHERE id=?")
+      .get(openId).discretion,
+    "open",
+  );
+});
+
 test("整理记忆时，她自己说过的看法和承诺成为她的一部分，来源必须是她自己的话", async (t) => {
   const w = world();
   t.after(w.close);

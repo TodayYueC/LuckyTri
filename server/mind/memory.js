@@ -444,19 +444,21 @@ export class MemoryManager {
     if (id) this.repo.store.revision++;
     return id;
   }
-  // "别告诉别人" then, after other people talk, "记住，我……" is still a secret.
-  // Only words she could have heard count, and only this person's own recent lines.
+  // "别告诉别人" then, after more of their own messages, "记住，我……" is still
+  // a secret until this stretch is consolidated. Only words she could have
+  // heard count. A request from the previous stretch does not carry over.
   #recentSecret(session, userId, seq) {
     if (!session || seq == null) return false;
     const rows = this.repo.db
       .prepare(
         `SELECT payload FROM core_events
          WHERE session_id=? AND role='user' AND seq<?
+         AND seq>COALESCE((SELECT seq FROM core_cursors WHERE session_id=?),0)
          AND json_extract(payload,'$.userId')=?
          AND seq NOT IN (SELECT seq FROM mind_unlived)
-         ORDER BY seq DESC LIMIT 8`,
+         ORDER BY seq DESC LIMIT 40`,
       )
-      .all(session, seq, String(userId));
+      .all(session, seq, session, String(userId));
     return rows.some((row) => {
       let payload = {};
       try {
