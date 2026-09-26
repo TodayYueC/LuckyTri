@@ -80,13 +80,14 @@ export function echoes(content, texts) {
   return touches(content, said, need);
 }
 
-// A restatement can keep one shared word, as in "搬到上海" remembered as
-// "住在上海". A sentence with none of those words was not said.
+// A restatement may add words, as in "搬到上海" remembered as "住在上海".
+// The last distinctive word of what is written still has to be one that was
+// said. Swapping that word ("辞职" written as "结婚") does not count.
 export function grounded(content, texts) {
   const said = interestTerms(texts);
-  if (!said.size) return false;
-  for (const term of interestTerms([content])) if (said.has(term)) return true;
-  return false;
+  const terms = [...interestTerms([content])];
+  if (!terms.length || !said.size) return false;
+  return said.has(terms.at(-1));
 }
 
 // One set, or one set per speaker. An empty list means nothing was said.

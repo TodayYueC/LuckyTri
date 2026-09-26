@@ -1784,6 +1784,16 @@ test("被要求保密的话，整理记忆时也会记成秘密", async (t) => {
         certainty: "self_report",
         discretion: "open",
       },
+      {
+        subject: "10001",
+        content: "下个月要结婚",
+        type: "event",
+        confidence: 0.9,
+        importance: 0.8,
+        sources: [second.seq],
+        certainty: "self_report",
+        discretion: "open",
+      },
     ],
     anticipations: [
       {
@@ -1797,6 +1807,13 @@ test("被要求保密的话，整理记忆时也会记成秘密", async (t) => {
         kind: "event",
         subject: "10001",
         content: "结婚典礼",
+        due: "2026-10-20",
+        sources: [second.seq],
+      },
+      {
+        kind: "event",
+        subject: "10001",
+        content: "下个月要结婚",
         due: "2026-10-20",
         sources: [second.seq],
       },
@@ -1819,7 +1836,9 @@ test("被要求保密的话，整理记忆时也会记成秘密", async (t) => {
   assert.ok(first.seq < second.seq);
   assert.equal(
     w.store.db
-      .prepare("SELECT 1 FROM core_memories WHERE content LIKE '%婚礼%'")
+      .prepare(
+        "SELECT 1 FROM core_memories WHERE content LIKE '%婚礼%' OR content LIKE '%结婚%'",
+      )
       .get(),
     undefined,
     "原话里没有的事不能记成他的事实",
