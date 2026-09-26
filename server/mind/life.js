@@ -916,7 +916,15 @@ export class Life {
   // A review can be rewritten into the story she carries everywhere, so a day
   // whose words stay private does not travel there as text.
   diaryLine(entry, now = this.now()) {
-    const closed = this.mind.meetings.privateBeyond(entry.day, "", now);
+    const closed =
+      this.mind.meetings.privateBeyond(entry.day, "", now) ||
+      !this.mind.meetings.sayable(entry.content, "");
+    const compare =
+      !closed &&
+      entry.compare &&
+      this.mind.meetings.sayable(entry.compare, "")
+        ? text(entry.compare, 120)
+        : "";
     return {
       ref: `d:${entry.day}`,
       day: entry.day,
@@ -924,11 +932,22 @@ export class Life {
       content: closed
         ? "这一天有留在私下的事，原文不带到回顾里。"
         : text(entry.content, 400),
-      ...(!closed && entry.compare
-        ? { compare: text(entry.compare, 120) }
-        : {}),
+      ...(compare ? { compare } : {}),
       ...(closed ? { private: true } : {}),
     };
+  }
+  // The account she carries into later writing. Sentences that repeat a
+  // private fact are left out; the rest can still be retold.
+  openWords(value, limit) {
+    let out = String(value || "");
+    for (const saying of this.mind.meetings.privateSayings(""))
+      if (saying.content) out = out.split(saying.content).join("");
+    out = out
+      .replace(/[。！？]{2,}/g, (mark) => mark[0])
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    if (!out || !this.mind.meetings.sayable(out, "")) return "";
+    return text(out, limit);
   }
   openThreads(rows, now = this.now()) {
     const known = this.mind.self.latest(now);
@@ -1058,8 +1077,17 @@ export class Life {
           ? { livingFor: this.livingForView(end, { since: start, open: true }) }
           : {}),
         people: this.peopleIn(experiences, now, { open: true }),
-        ...(story ? { story: text(story.content, 600) } : {}),
-        ...(chapter ? { chapter } : {}),
+        ...(this.openWords(story?.content, 600)
+          ? { story: this.openWords(story.content, 600) }
+          : {}),
+        ...(chapter
+          ? {
+              chapter: {
+                ...chapter,
+                gist: this.openWords(chapter.gist, 120) || undefined,
+              },
+            }
+          : {}),
         ...(anniversaries.length ? { anniversaries } : {}),
       };
       if (!input.today.meetings.length) delete input.today.meetings;
@@ -1353,7 +1381,7 @@ export class Life {
               chapter: {
                 number: chapter.chapter,
                 title: chapter.title,
-                content: text(chapter.content, 800),
+                content: this.openWords(chapter.content, 800),
                 reviews: periods.reviewsSince(
                   periods.began(chapter.chapter),
                   now,
@@ -1366,11 +1394,13 @@ export class Life {
               previousChapter: {
                 number: previous.chapter,
                 title: previous.title,
-                summary: text(previous.content, 160),
+                summary: this.openWords(previous.content, 160),
               },
             }
           : {}),
-        ...(story ? { story: text(story.content, 600) } : {}),
+        ...(story && this.openWords(story.content, 600)
+          ? { story: this.openWords(story.content, 600) }
+          : {}),
         ...(anniversaries.length ? { anniversaries } : {}),
         self: this.selfView(now, { open: true }).slice(0, 10),
         ...(this.livingForView(now, { since: start, open: true })

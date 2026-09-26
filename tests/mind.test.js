@@ -928,6 +928,48 @@ test("读后的话如果就是私下的原话，不进别的房间", () => {
   }
 });
 
+test("来路里对得上私下原话的句子，不写进后来的回顾", () => {
+  const w = world();
+  try {
+    w.open("private:7", "阿明");
+    w.mind.memory.insert({
+      session: "private:7",
+      subject: "7",
+      content: "最近在准备考研",
+      discretion: "private",
+    });
+    const hidden = w.life.diaryLine(
+      {
+        day: "2026-09-22",
+        content: "今天记下他最近在准备考研",
+        compare: "比昨天更知道这件事",
+      },
+      w.now(),
+    );
+    assert.equal(hidden.private, true);
+    assert.match(hidden.content, /不带到回顾/);
+    assert.equal(hidden.compare, undefined);
+    const kept = w.life.openWords(
+      "我从群里开始认识大家。他最近在准备考研。后来我开始学烘焙。",
+      600,
+    );
+    assert.match(kept, /学烘焙/);
+    assert.doesNotMatch(kept, /考研/);
+    const open = w.life.diaryLine(
+      {
+        day: "2020-01-01",
+        content: "今天在群里说了夏天",
+        compare: "和昨天差不多",
+      },
+      w.now(),
+    );
+    assert.match(open.content, /夏天/);
+    assert.match(open.compare, /差不多/);
+  } finally {
+    w.close();
+  }
+});
+
 test("日记、手记、样子和印象里的私下原话，不进别的房间", () => {
   const w = world();
   try {
