@@ -125,6 +125,19 @@ test("几次没有来源的独处不会把心情叠过一次", () => {
     const stacked = w.mind.affect.state(start + 2 * HOUR);
     assert(Math.abs(stacked.valence - base) <= 0.35 + 1e-9);
     assert.equal(stacked.mood, "很低落");
+    const talked = w.now();
+    for (let i = 0; i < 3; i++)
+      w.mind.affect.feel({
+        feeling: "很烦",
+        intensity: 1,
+        valence: -1,
+        cause: "没引用到原话",
+        origin: "turn",
+        time: talked + i * HOUR,
+      });
+    const fromTalk = w.mind.affect.state(talked + 2 * HOUR);
+    assert(Math.abs(fromTalk.valence - base) <= 0.35 + 1e-9);
+    assert.equal(fromTalk.mood, "很烦");
   } finally {
     w.close();
   }
