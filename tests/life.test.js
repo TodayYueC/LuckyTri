@@ -16,6 +16,49 @@ function chat(w, session, lines) {
   return events;
 }
 
+test("话没发出去，不算对这个人出了声", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("private:10001", "阿明");
+  w.system.send = async () => {
+    throw new Error("发送失败");
+  };
+  const msg = w.say("private:10001", "10001", "在吗", { name: "阿明" });
+  w.answers.turn = (data) => ({
+    choice: "speak",
+    appraisal: "他在叫我",
+    targetMessageIds: data.context.batchIds,
+    bubbles: ["在的"],
+    feelings: [],
+    bonds: [],
+  });
+  const trace = await w.hear("private:10001", msg);
+  assert.equal(trace.status, "error");
+  const person = w.mind.bonds.person("10001", w.now());
+  assert.equal(person?.lastTalkedAt ?? null, null);
+  assert.equal(
+    w.mind.db.prepare("SELECT choice FROM mind_meetings").get()?.choice,
+    "silent",
+  );
+  assert.equal(
+    w.mind.db.prepare("SELECT choice FROM mind_choices").get()?.choice,
+    "silent",
+  );
+  w.system.send = async () => ({ message_id: "ok" });
+  const again = w.say("private:10001", "10001", "还在吗", { name: "阿明" });
+  w.answers.turn = (data) => ({
+    choice: "speak",
+    appraisal: "他再叫了一次",
+    targetMessageIds: data.context.batchIds,
+    bubbles: ["在的"],
+    feelings: [],
+    bonds: [],
+  });
+  const sent = await w.hear("private:10001", again);
+  assert.equal(sent.status, "sent");
+  assert.equal(w.mind.bonds.person("10001", w.now()).lastTalkedAt, w.now());
+});
+
 test("她不在的私聊，不会把公开的这一天关在外面", async (t) => {
   const w = world();
   t.after(w.close);

@@ -710,53 +710,85 @@ export class ChatSystem {
       }
       trace.decision = turn;
       trace.path = occasion?.type || (direct ? "direct" : "contextual");
+      const roomKind = privateChat ? "private" : "group";
+      let talkSettled = false;
+      const land = (spoke) => {
+        if (!live || talkSettled) return;
+        talkSettled = true;
+        const choice =
+          spoke || turn.choice === "silent" ? turn.choice : "silent";
+        this.mind.settleTalk(
+          { ...turn, choice },
+          {
+            session,
+            snapshot,
+            kind: roomKind,
+            spoke: choice !== "silent",
+            withheld: !spoke && turn.choice !== "silent",
+            time: now,
+          },
+        );
+        this.mind.choose({
+          session,
+          traceId: trace.id,
+          choice,
+          appraisal: turn.appraisal,
+          reason: choice === turn.choice ? turn.reason : "没发出去",
+          watermark,
+          occasion: occasion?.type || null,
+          time: now,
+        });
+      };
       if (live) {
         this.mind.look(session, watermark, now);
         this.mind.experience(turn, {
           session,
           snapshot,
-          kind: privateChat ? "private" : "group",
-          spoke: turn.choice !== "silent",
-          time: now,
-        });
-        this.mind.choose({
-          session,
-          traceId: trace.id,
-          choice: turn.choice,
-          appraisal: turn.appraisal,
-          reason: turn.reason,
-          watermark,
-          occasion: occasion?.type || null,
+          kind: roomKind,
+          spoke: false,
+          deferTalk: true,
           time: now,
         });
       }
       if (!replay && !preview)
         this.topics.record(session, trace.id, watermark, turn);
-      if (turn.choice === "silent") return finish("silent", turn.reason);
-      return await this.speak({
-        session,
-        batch,
-        turn,
-        snapshot,
-        trace,
-        finish,
-        models,
-        model,
-        nature,
-        prompt,
-        policy,
-        state,
-        watermark,
-        clearEpoch,
-        privateChat,
-        direct,
-        simulatedTurn,
-        replay,
-        preview,
-        pressure,
-        generationImages,
-        anchor,
-      });
+      if (turn.choice === "silent") {
+        land(false);
+        return finish("silent", turn.reason);
+      }
+      let spoken;
+      try {
+        spoken = await this.speak({
+          session,
+          batch,
+          turn,
+          snapshot,
+          trace,
+          finish,
+          models,
+          model,
+          nature,
+          prompt,
+          policy,
+          state,
+          watermark,
+          clearEpoch,
+          privateChat,
+          direct,
+          simulatedTurn,
+          replay,
+          preview,
+          pressure,
+          generationImages,
+          anchor,
+        });
+      } catch (error) {
+        land(false);
+        trace.error = error.message;
+        return finish("error", error.message);
+      }
+      land(Array.isArray(spoken?.sent) && spoken.sent.length > 0);
+      return spoken;
     } catch (e) {
       trace.error = e.message;
       return finish("error", e.message);
