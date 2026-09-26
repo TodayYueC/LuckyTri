@@ -71,6 +71,15 @@ export function touches(content, cue, need = 2) {
   return false;
 }
 
+// Whether this wording is still her sentence: two distinctive pairs in common
+// with what was said, or one when the wording only has one.
+export function echoes(content, texts) {
+  const said = interestTerms(texts);
+  if (!said.size) return false;
+  const need = interestTerms([content]).size < 2 ? 1 : 2;
+  return touches(content, said, need);
+}
+
 // One set, or one set per speaker. An empty list means nothing was said.
 export function cueList(cue, cues) {
   if (Array.isArray(cues) && cues.length) return cues.filter((set) => set?.size);

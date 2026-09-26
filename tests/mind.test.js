@@ -1810,6 +1810,7 @@ test("整理记忆时，她自己说过的看法和承诺成为她的一部分�
         sources: [mine.seq],
       },
       { kind: "intention", content: "明天提醒他早起", sources: [mine.seq] },
+      { kind: "intention", content: "我想学烘焙", sources: [mine.seq] },
       { kind: "intention", content: "我想学烘焙" },
       { kind: "interest", content: "我喜欢熬夜" },
       { kind: "view", content: "我讨厌早起", sources: [user.seq] },

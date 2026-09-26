@@ -5,6 +5,7 @@ import {
   THREAD_FADING,
   anyTouches,
   cueList,
+  echoes,
   threadSalience,
 } from "./salience.js";
 import { leaks } from "./guard.js";
@@ -257,6 +258,13 @@ export class Self {
       (spoken === prior.content || origin === "memory")
     )
       return { rejected: "没有新的经历" };
+    // Citing her message is not enough. The words kept have to be hers.
+    if (
+      origin === "memory" &&
+      action !== "close" &&
+      !echoes(spoken, this.#spoken(fresh))
+    )
+      return { rejected: "对不上她说过的话" };
     // A revision that cites nothing new keeps the old provenance. Dropping
     // it would let a privately learned sentence travel into other rooms.
     const kept = sources.length || !prior ? sources : prior.sources || [];
@@ -315,5 +323,16 @@ export class Self {
     const hit = leaks([content], this.mind.meetings.privateSayings())[0];
     if (hit?.session_id) return hit.session_id;
     return isPrivateSession(requested) ? requested : null;
+  }
+  #spoken(sources) {
+    const seqs = messageSeqs(sources);
+    if (!seqs.length) return [];
+    return this.db
+      .prepare(
+        `SELECT role, payload FROM core_events WHERE seq IN (${seqs.map(() => "?").join(",")})`,
+      )
+      .all(...seqs)
+      .filter((row) => row.role === "assistant")
+      .map((row) => parse(row.payload, {}).text || "");
   }
 }
