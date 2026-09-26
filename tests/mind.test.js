@@ -1101,6 +1101,43 @@ test("擦边想起不算把旧事重新记住", () => {
   }
 });
 
+test("她刚说过的话，不会把别人的事当成正在被聊到", () => {
+  const w = world();
+  try {
+    w.open("group:1");
+    w.mind.memory.insert({
+      session: "group:1",
+      subject: "10001",
+      content: "喜欢猫",
+      importance: 0.3,
+      time: w.now(),
+    });
+    const hers = w.mind.memory.retrieve(
+      "group:1",
+      [
+        { userId: "bot", role: "assistant", text: "喜欢猫" },
+        { userId: "10004", role: "user", text: "今天好冷" },
+      ],
+      w.now(),
+      { touch: false },
+    );
+    assert.equal(
+      hers.some((m) => m.content === "喜欢猫"),
+      false,
+      "她自己刚说的，不算别人聊到了",
+    );
+    const whole = w.mind.memory.retrieve(
+      "group:1",
+      [{ userId: "10004", role: "user", text: "喜欢猫" }],
+      w.now(),
+      { touch: false },
+    );
+    assert.ok(whole.some((m) => m.content === "喜欢猫"));
+  } finally {
+    w.close();
+  }
+});
+
 test("就算模型把私下知道的事说出来，发出去之前也会被拦下重写", async (t) => {
   const w = world();
   t.after(w.close);

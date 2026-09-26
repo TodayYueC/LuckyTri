@@ -29,12 +29,14 @@ const DISCRETIONS = new Set(["open", "private", "secret"]);
 function recallQuery(rows) {
   const terms = [];
   const seen = new Set();
-  for (const row of [...rows].reverse())
+  for (const row of [...rows].reverse()) {
+    if (row.role === "assistant") continue;
     for (const term of lexicalTerms(row.text || ""))
       if (!seen.has(term)) {
         seen.add(term);
         terms.push(term);
       }
+  }
   return terms
     .slice(0, RECALL_TERMS)
     .map((term) => `"${term.replace(/"/g, "")}"`)
@@ -85,7 +87,12 @@ export class MemoryManager {
     const db = this.repo.db;
     const here = new Set(this.scopes(session));
     here.delete("__shared__");
-    const speakers = new Set(rows.map((r) => String(r.userId)));
+    const speakers = new Set(
+      rows
+        .filter((r) => r.role !== "assistant")
+        .map((r) => String(r.userId || ""))
+        .filter(Boolean),
+    );
     const present = new Set(people.map(String));
     // Two people cannot be added together, and her own line does not count
     // as the world talking about what she remembers.
