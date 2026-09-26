@@ -179,21 +179,21 @@ export class Meetings {
     }
     let last = hits[0];
     if (credited.size) {
-      const follow = [hits[0].created, before];
+      const ids = [...credited];
+      const follow = [...ids, hits[0].created, before];
       if (session) follow.push(session);
       const later = this.db
         .prepare(
-          `SELECT choice, created, people FROM mind_meetings m
-           WHERE created>=? AND created${compare}? ${room} ${hidden}
-           ORDER BY created DESC LIMIT 40`,
+          `SELECT m.choice, m.created FROM mind_meetings m
+           WHERE EXISTS (
+             SELECT 1 FROM json_each(m.people) j
+             WHERE j.value IN (${ids.map(() => "?").join(",")})
+           )
+           AND m.created>=? AND m.created${compare}? ${room} ${hidden}
+           ORDER BY m.created DESC LIMIT 1`,
         )
-        .all(...follow);
-      for (const row of later) {
-        if (parse(row.people, []).some((id) => credited.has(String(id)))) {
-          last = row;
-          break;
-        }
-      }
+        .get(...follow);
+      if (later) last = later;
     }
     const touched = hits.length;
     const when = elapsedLabel(last.created, before, this.mind.timeZone());
