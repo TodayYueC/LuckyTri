@@ -582,6 +582,7 @@ export class Life {
         faces: this.faceView(experiences, now),
         people: this.peopleIn(experiences, now),
         missing: this.missingView(now),
+        fromWish: this.mind.meetings.wishAway({ now }),
         ahead: this.mind.anticipations.due({ now, limit: 5 }),
         thoughts: thoughts.map((t) => ({
           id: t.id,
@@ -599,6 +600,11 @@ export class Life {
         }),
       };
       if (!input.missing.length) delete input.missing;
+      if (input.fromWish?.length && input.missing)
+        input.fromWish = input.fromWish.filter(
+          (p) => !input.missing.some((m) => m.userId === p.userId),
+        );
+      if (!input.fromWish.length) delete input.fromWish;
       if (!input.fading.length) delete input.fading;
       if (!input.ahead.length) delete input.ahead;
       if (!input.meetings.length) delete input.meetings;
@@ -653,6 +659,7 @@ export class Life {
           ...(chunk ? [`r:${chunk.id}`] : []),
           ...(input.livingFor ? [`s:${input.livingFor.thread}`] : []),
           ...(input.meetings || []).map((m) => m.ref),
+          ...(input.fromWish || []).map((p) => p.ref),
           ...missing.map((p) => p.ref).filter(Boolean),
           ...ahead.map((a) => a.ref),
         ]);
@@ -665,6 +672,7 @@ export class Life {
           reachable: new Set([
             ...involved,
             ...missing.flatMap((p) => p.sessions),
+            ...(input.fromWish || []).map((p) => p.session),
           ]),
           id,
           now,

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { interestTerms } from "./attention.js";
-import { elapsedLabel } from "./clock.js";
+import { agoLabel, elapsedLabel } from "./clock.js";
 import { isPrivateSession } from "./memory.js";
 import { lifeDayKey } from "./nature.js";
 import { MEETING_FADED, meetingSalience, touches } from "./salience.js";
@@ -269,6 +269,50 @@ export class Meetings {
       ...(row.discretion === "private" ? { private: true } : {}),
       ...(row.will_met ? { touchedWill: true } : {}),
     };
+  }
+  // People whose own words met the wish she is still living for, and whom she
+  // has not seen for a few days. A faded touch does not keep them here.
+  // Solitude may remember them; it does not have to speak.
+  wishAway({ now = Date.now(), days = 3, limit = 3 } = {}) {
+    const living = this.mind.self
+      .annotated({ before: now, now })
+      .find((row) => row.kind === "intention" && !row.faded);
+    if (!living) return [];
+    const lived = this.mind.days.lived(now);
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM mind_meetings m
+         WHERE will_thread=? AND will_met=1 AND created<?
+         AND NOT EXISTS (
+           SELECT 1 FROM mind_revocations r
+           WHERE r.target_kind='meeting' AND r.target_id=m.id
+         )
+         ORDER BY created DESC`,
+      )
+      .all(living.thread, now);
+    const seen = new Set();
+    const out = [];
+    for (const row of rows) {
+      if (meetingSalience(row.created, lived) < MEETING_FADED) continue;
+      const named = parse(row.will_people, []);
+      const who = named.length ? named : parse(row.people, []);
+      for (const userId of who.map(String)) {
+        if (seen.has(userId)) continue;
+        const person = this.mind.bonds.person(userId, now);
+        if (!person?.seenAt || (person.awayDays ?? 0) < days) continue;
+        seen.add(userId);
+        out.push({
+          ref: `g:${row.id}`,
+          userId,
+          name: person.name || userId,
+          away: agoLabel(now - person.seenAt),
+          session: row.session_id,
+          ...(row.discretion === "private" ? { private: true } : {}),
+        });
+        if (out.length >= limit) return out;
+      }
+    }
+    return out;
   }
   // People whose words met the wish she is still living for, and who can be
   // seen from this room. An older wish, a private meeting, and a revoked one
