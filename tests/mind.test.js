@@ -1874,6 +1874,15 @@ test("被要求保密的话，整理记忆时也会记成秘密", async (t) => {
     false,
     "原话里没有的安排不能记成他要做的事",
   );
+  const stage = JSON.parse(
+    w.store.db.prepare("SELECT data FROM core_stages").get().data,
+  );
+  assert.equal(
+    stage.facts.some((f) => /结婚|婚礼/.test(f.content)),
+    false,
+    "没留下的事也不写进这段摘要的事实里",
+  );
+  assert.ok(stage.facts.some((f) => f.content === "下个月要辞职"));
 });
 
 test("别人插话之后，他要求保密的事仍然是秘密", async (t) => {
