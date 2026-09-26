@@ -29,9 +29,9 @@ export const SELF_KINDS = {
 const STEP = 0.15;
 const NEW_CAP = 0.35;
 const TRAIT_CAP = 0.25;
-// Things she can come to like or wonder about on her own; everything else
-// must point at something that actually happened.
-const SELF_ORIGINATED = new Set(["interest", "curiosity"]);
+// Likes, questions, and a small wish of her own can begin without a message.
+// Views, traits, habits, and cares still have to point at something that happened.
+const SELF_ORIGINATED = new Set(["interest", "curiosity", "intention"]);
 
 export class Self {
   constructor(mind) {
