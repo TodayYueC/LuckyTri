@@ -3,7 +3,7 @@ import { interestTerms } from "./attention.js";
 import { elapsedLabel } from "./clock.js";
 import { isPrivateSession } from "./memory.js";
 import { lifeDayKey } from "./nature.js";
-import { MEETING_FADED, meetingSalience } from "./salience.js";
+import { MEETING_FADED, meetingSalience, touches } from "./salience.js";
 import { hasCredential, parse, text } from "./util.js";
 
 // What a meeting meant, and whether the world actually touched what she is
@@ -37,7 +37,11 @@ export class Meetings {
       .find((row) => row.kind === "intention" && !row.faded);
     const said = interestTerms(heard.map((m) => m.text || ""));
     const wish = living ? interestTerms([living.content]) : new Set();
-    const willMet = living ? [...said].some((term) => wish.has(term)) : false;
+    // One shared pair is not a meeting of her will, unless the wish itself
+    // has only one distinctive pair.
+    const willMet = living
+      ? touches(living.content, said, wish.size < 2 ? 1 : 2)
+      : false;
     if (!appraisal && !willMet) return null;
     const id = randomUUID();
     const choice = ["speak", "react", "decline", "silent"].includes(
@@ -167,6 +171,31 @@ export class Meetings {
       lastSpoke: last.choice !== "silent",
       text: summary,
     };
+  }
+  // A faded meaning the current words actually meet. It is only remembered,
+  // not written back, and it does not by itself make her look.
+  reminded({ session, now = Date.now(), cue, limit = 1 } = {}) {
+    if (!cue?.size) return [];
+    const lived = this.mind.days.lived(now);
+    return this.db
+      .prepare(
+        `SELECT * FROM mind_meetings m
+         WHERE m.appraisal!='' AND m.created<?
+         AND NOT EXISTS (
+           SELECT 1 FROM mind_revocations r
+           WHERE r.target_kind='meeting' AND r.target_id=m.id
+         )
+         ORDER BY m.created DESC LIMIT 30`,
+      )
+      .all(now)
+      .filter(
+        (row) =>
+          this.#visible(row, session) &&
+          meetingSalience(row.created, lived) < MEETING_FADED &&
+          touches(row.appraisal, cue),
+      )
+      .slice(0, limit)
+      .map((row) => this.line(row, parse(row.people, []), now));
   }
   // Meanings she already kept, so solitude and the diary can cite them.
   // A revoked meeting is not an experience anymore.

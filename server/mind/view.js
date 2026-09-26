@@ -60,6 +60,9 @@ export function innerView(
         (t) =>
           `${elapsedLabel(t.created, now, mind.timeZone())}想到：${text(t.content, 110)}${FORGOTTEN}`,
       ),
+    ...mind.meetings
+      .reminded({ session, now, cue: terms, limit: 1 })
+      .map((line) => `${line}${FORGOTTEN}`),
   ];
   const diary = mind.db
     .prepare(
