@@ -909,6 +909,68 @@ test("记忆是一个人的记忆：公开的事在别处相关时想起，私�
   assert(!secretRequest("我告诉你一个好消息"));
 });
 
+test("擦边想起不算把旧事重新记住", () => {
+  const w = world({ start: "2026-09-01T12:00:00+08:00" });
+  try {
+    w.open("group:1");
+    w.mind.memory.insert({
+      session: "group:1",
+      subject: "10001",
+      content: "喜欢猫",
+      importance: 0.3,
+      time: w.now(),
+    });
+    const mark = w.mind.db.prepare(
+      "INSERT OR IGNORE INTO mind_days(day,created,lived,events,valence,arousal,looked,spoke,people) VALUES (?,?,1,0,NULL,NULL,1,0,0)",
+    );
+    const live = (n) => {
+      for (let i = 0; i < n; i++) {
+        mark.run(w.mind.days.key(w.now()), w.now());
+        w.advance(24 * HOUR);
+      }
+    };
+    const weak = (touch) =>
+      w.mind.memory.retrieve(
+        "group:1",
+        [{ userId: "10004", text: "猫" }],
+        w.now(),
+        { people: ["10001"], touch },
+      );
+    live(20);
+    weak(true);
+    live(30);
+    assert.equal(
+      weak(false).some((m) => m.content === "喜欢猫"),
+      false,
+      "擦到一个词不把旧事重新记住",
+    );
+    const spoken = w.mind.memory.retrieve(
+      "group:1",
+      [{ userId: "10001", text: "今天好累" }],
+      w.now(),
+      { touch: true },
+    );
+    assert.match(
+      spoken.find((m) => m.content === "喜欢猫").when,
+      /知道的/,
+      "本人在说话时想起，仍知道这是旧事",
+    );
+    live(20);
+    assert.ok(
+      weak(false).some((m) => m.content === "喜欢猫"),
+      "真正想起之后，弱一点的线索还能再想起一阵",
+    );
+    live(30);
+    assert.equal(
+      weak(false).some((m) => m.content === "喜欢猫"),
+      false,
+      "安静够久，又要强线索",
+    );
+  } finally {
+    w.close();
+  }
+});
+
 test("就算模型把私下知道的事说出来，发出去之前也会被拦下重写", async (t) => {
   const w = world();
   t.after(w.close);

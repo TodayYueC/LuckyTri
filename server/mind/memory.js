@@ -138,6 +138,7 @@ export class MemoryManager {
       scored.push({
         m,
         local,
+        strong,
         score:
           relevance +
           about +
@@ -155,7 +156,9 @@ export class MemoryManager {
       const access = db.prepare(
         "UPDATE core_memories SET last_access=? WHERE id=?",
       );
-      for (const { m } of selected) access.run(cutoff, m.id);
+      // A weak overlap does not count as remembering. Only a real cue, the
+      // person speaking, or a locked memory starts the quiet stretch again.
+      for (const { m, strong } of selected) if (strong) access.run(cutoff, m.id);
     }
     return selected.map(({ m, local, why }) => {
       const age = cutoff - Number(m.created || cutoff);
