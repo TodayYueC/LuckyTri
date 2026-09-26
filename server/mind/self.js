@@ -217,6 +217,9 @@ export class Self {
     const sources = valid ? cited.filter((s) => valid.has(s)) : cited;
     if (cited.length && !sources.length)
       return { rejected: "来源不在本次经历中" };
+    // Memory consolidation only records what she herself said. A wish with
+    // no message is hers to form in solitude, not for the summarizer to add.
+    if (origin === "memory" && !sources.length) return { rejected: "缺少来源" };
     if (
       content &&
       this.revokedContents().some((old) => similar(old, content, 0.7))
@@ -251,7 +254,7 @@ export class Self {
       prior &&
       action !== "close" &&
       !fresh.length &&
-      spoken === prior.content
+      (spoken === prior.content || origin === "memory")
     )
       return { rejected: "没有新的经历" };
     // A revision that cites nothing new keeps the old provenance. Dropping
