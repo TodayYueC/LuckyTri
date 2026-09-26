@@ -893,6 +893,35 @@ test("人还在眼前但好久没说上话，独处时能分清这不是好久�
   assert.equal(seen.missing, undefined);
 });
 
+test("从没说过话、人还在眼前的亲近的人，独处时不会被漏掉", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.life.save({ diary: false });
+    const said = [];
+    for (const text of ["一", "二", "三", "四", "五"])
+      said.push(w.say("group:1", "10001", text, { name: "阿明" }));
+    w.mind.bonds.meet([{ userId: "10001", name: "阿明" }], "group:1", w.now());
+    for (let i = 0; i < 5; i++)
+      w.mind.bonds.record({
+        id: "10001",
+        change: "closer",
+        note: "看着挺好",
+        sources: [said[i].seq],
+        session: "group:1",
+        time: w.now(),
+      });
+    w.advance(8 * 24 * HOUR);
+    w.mind.bonds.meet([{ userId: "10001", name: "阿明" }], "group:1", w.now());
+    const quiet = w.life.quietView(w.now());
+    assert.equal(quiet[0]?.userId, "10001");
+    assert.equal(quiet[0].lastTalked, undefined, "没有说过话就不写上次说上话");
+    assert.equal(w.life.missingView(w.now()).length, 0, "人还在眼前，不是好久不见");
+  } finally {
+    w.close();
+  }
+});
+
 test("好久没见到、而话曾经碰到她正在过的事的人，独处时能想起，并且只能回到那次的会话", async (t) => {
   const w = world();
   t.after(w.close);
