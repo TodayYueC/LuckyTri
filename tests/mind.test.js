@@ -149,6 +149,104 @@ test("心里记下的印象不算来往，也不会把久别冲成重逢", () =>
   }
 });
 
+test("私下形成的印象和别扭原因不进别的房间", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.open("private:10001", "阿明");
+    w.mind.bonds.meet([{ userId: "10001", name: "阿明" }], "group:1", w.now());
+    w.mind.bonds.record({
+      id: "10001",
+      change: "impression",
+      note: "挺会聊天",
+      sources: [1],
+      session: "group:1",
+      time: w.now(),
+    });
+    w.advance(MINUTE);
+    w.mind.bonds.record({
+      id: "10001",
+      change: "impression",
+      note: "他私下说了住址",
+      sources: [2],
+      session: "private:10001",
+      time: w.now(),
+    });
+    w.advance(MINUTE);
+    w.mind.bonds.record({
+      id: "10001",
+      change: "friction",
+      note: "私聊里那句让我别扭",
+      sources: [2],
+      session: "private:10001",
+      time: w.now(),
+    });
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "他告诉我今晚的安排",
+        reason: "私下",
+        topic: "",
+        targetMessageIds: [3],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "private:10001",
+        snapshot: {
+          batchIds: [3],
+          messages: [
+            {
+              id: 3,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: "今晚我先回去",
+              relation: "direct",
+            },
+          ],
+        },
+        kind: "private",
+        spoke: false,
+        time: w.now(),
+      },
+    );
+    const meeting = w.mind.db
+      .prepare("SELECT id FROM mind_meetings WHERE session_id='private:10001'")
+      .get().id;
+    w.advance(MINUTE);
+    w.mind.bonds.record({
+      id: "10001",
+      change: "impression",
+      note: "他私下告诉我的安排",
+      sources: [`g:${meeting}`],
+      origin: "solitude",
+      time: w.now(),
+    });
+    const people = (session) =>
+      innerView(w.mind, {
+        session,
+        kind: session.startsWith("private") ? "private" : "group",
+        people: ["10001"],
+        now: w.now() + 1,
+      }).inner.people[0];
+    const group = people("group:1");
+    assert.equal(group.impression, "挺会聊天");
+    assert.match(group.feel, /别扭/);
+    assert.doesNotMatch(group.feel, /住址|私聊里那句|安排/);
+    assert.doesNotMatch(group.impression, /住址|安排/);
+    const room = people("private:10001");
+    assert.equal(room.impression, "他私下告诉我的安排");
+    assert.match(room.feel, /私聊里那句/);
+    assert.equal(
+      w.mind.bonds.person("10001", w.now()).impression,
+      "他私下告诉我的安排",
+    );
+  } finally {
+    w.close();
+  }
+});
+
 test("自我渐进生长：强度每次只变一点，新特质要跨天的经历才成形，撤销的不会回来", (t) => {
   const w = world();
   t.after(w.close);

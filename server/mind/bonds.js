@@ -1,5 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { DAY, HOUR, clamp, evidence, parse, relax, text } from "./util.js";
+import { isPrivateSession } from "./memory.js";
+import {
+  DAY,
+  HOUR,
+  clamp,
+  evidence,
+  messageSeqs,
+  parse,
+  relax,
+  text,
+} from "./util.js";
 
 const TENSION_HALF_LIFE = 12 * HOUR;
 // After two quiet weeks closeness drifts down to half of its best, and
@@ -57,6 +67,7 @@ function foldEvents(rows) {
     firstMetAt: rows[0]?.created ?? null,
     lastTalkedAt: null,
     lastEventAt: null,
+    notes: [],
   };
   let at = null;
   for (const row of rows) {
@@ -85,8 +96,24 @@ function foldEvents(rows) {
       state.closeness = clamp(state.closeness + row.closeness);
       state.trust = clamp(state.trust + row.trust);
       state.tension = clamp(state.tension + row.tension);
-      if (row.change === "impression" && row.note) state.impression = row.note;
-      else if (row.note) state.why = row.note;
+      if (row.change === "impression" && row.note) {
+        state.impression = row.note;
+        state.notes.push({
+          kind: "impression",
+          note: row.note,
+          session: row.session_id || "",
+          sources: row.sources || "[]",
+        });
+      } else if (row.note) {
+        state.why = row.note;
+        state.notes.push({
+          kind: "why",
+          note: row.note,
+          session: row.session_id || "",
+          sources: row.sources || "[]",
+        });
+      }
+      if (state.notes.length > 24) state.notes.splice(0, state.notes.length - 24);
       state.lastChange = row.change;
       state.lastChangeAt = row.created;
     }
@@ -254,7 +281,41 @@ export class Bonds {
     if (whole) this.folded.set(key, { signature, state });
     return settle(state, now);
   }
-  person(userId, now = Date.now()) {
+  // A private reason stays in that conversation. Another room can still
+  // feel the closeness or the tension, and can still see an older note
+  // that was formed in the open.
+  #noteFits(note, room) {
+    const hidden = new Set();
+    if (note.session && isPrivateSession(note.session)) hidden.add(note.session);
+    const sources = parse(note.sources, []);
+    for (const row of this.mind.meetings.places(sources))
+      if (row.discretion === "private") hidden.add(row.session_id);
+    const seqs = messageSeqs(sources);
+    if (seqs.length) {
+      const found = this.db
+        .prepare(
+          `SELECT DISTINCT session_id FROM core_events WHERE seq IN (${seqs.map(() => "?").join(",")})`,
+        )
+        .all(...seqs);
+      for (const row of found)
+        if (isPrivateSession(row.session_id)) hidden.add(row.session_id);
+    }
+    return !hidden.size || hidden.has(room);
+  }
+  #shownNotes(state, room) {
+    const pick = (kind, current) => {
+      const rows = (state.notes || []).filter((note) => note.kind === kind);
+      if (!room) return rows.at(-1)?.note || current || "";
+      for (let i = rows.length - 1; i >= 0; i--)
+        if (this.#noteFits(rows[i], room)) return rows[i].note;
+      return "";
+    };
+    return {
+      impression: pick("impression", state.impression),
+      why: pick("why", state.why),
+    };
+  }
+  person(userId, now = Date.now(), { room = "" } = {}) {
     const state = this.state("person", userId, now);
     const known = this.db
       .prepare("SELECT * FROM mind_people WHERE user_id=?")
@@ -272,18 +333,23 @@ export class Bonds {
       seenAt: seen || null,
       awayDays: seen ? Math.max(0, Math.floor((now - seen) / DAY)) : null,
     };
+    const notes = this.#shownNotes(merged, room);
+    const described = { ...merged, ...notes };
+    delete described.notes;
     return {
       userId: String(userId),
       name: known?.name || String(userId),
       sessions: parse(known?.sessions, []),
       lastSeen: known?.last_seen || null,
-      ...merged,
-      feel: describeBond(merged),
+      ...described,
+      feel: describeBond(described),
     };
   }
   group(session, now = Date.now()) {
     const state = this.state("group", session, now);
-    return state ? { session, ...state, feel: describeGroup(state) } : null;
+    if (!state) return null;
+    const { notes: _notes, ...rest } = state;
+    return { session, ...rest, feel: describeGroup(rest) };
   }
   people({ now = Date.now(), limit = 200 } = {}) {
     return this.db
