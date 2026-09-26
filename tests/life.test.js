@@ -40,6 +40,48 @@ test("关掉时路过的话，不算她度过的一天", async (t) => {
   assert.equal(row.lived, 0);
 });
 
+test("她不在时的说话方式，回来后也不当成这个地方的样子", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1", "一群");
+  w.store.db.prepare("UPDATE sessions SET enabled=0 WHERE id=?").run("group:1");
+  const insert = w.store.db.prepare(
+    "INSERT INTO messages(event_id,session_id,user_id,name,text,time,role,is_demo) VALUES (?,?,?,?,?,?,?,0)",
+  );
+  for (let i = 0; i < 18; i++) {
+    const msg = w.say(
+      "group:1",
+      String(10001 + (i % 3)),
+      `明天第${i}组一起去`,
+    );
+    await w.hear("group:1", msg);
+    insert.run(
+      msg.eventId,
+      "group:1",
+      msg.userId,
+      msg.name,
+      msg.text,
+      msg.time,
+      "user",
+    );
+  }
+  w.store.db.prepare("UPDATE sessions SET enabled=1 WHERE id=?").run("group:1");
+  const away = w.mind.view({ session: "group:1", kind: "group", now: w.now() });
+  assert.equal(away.inner.room, undefined);
+  for (let i = 0; i < 18; i++)
+    insert.run(
+      `lived${i}`,
+      "group:1",
+      String(10001 + (i % 3)),
+      "甲",
+      `后天第${i}组再去一次`,
+      w.now(),
+      "user",
+    );
+  const back = w.mind.view({ session: "group:1", kind: "group", now: w.now() });
+  assert.match(back.inner.room, /常见句长约/);
+});
+
 test("关掉时被叫到，不算她当时在场", async (t) => {
   const w = world();
   t.after(w.close);

@@ -36,7 +36,21 @@ const FEEDBACK = {
 
 function groupStyle(mind, session) {
   try {
-    const profile = summarizeGroupStyle(mind.store.context(session, 200, 0));
+    const rows = mind.store.context(session, 200, 0);
+    const ids = rows.map((row) => row.event_id).filter(Boolean);
+    const away = ids.length
+      ? new Set(
+          mind.db
+            .prepare(
+              `SELECT e.event_id FROM core_events e JOIN mind_unlived u ON u.seq=e.seq WHERE e.event_id IN (${ids.map(() => "?").join(",")})`,
+            )
+            .all(...ids)
+            .map((row) => row.event_id),
+        )
+      : new Set();
+    const profile = summarizeGroupStyle(
+      away.size ? rows.filter((row) => !away.has(row.event_id)) : rows,
+    );
     return profile.ready ? profile.summary : "";
   } catch {
     return "";
