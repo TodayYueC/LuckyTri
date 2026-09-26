@@ -592,16 +592,27 @@ export class Life {
         })),
         feedback: this.feedbackSince(last?.started || now - DAY),
         experiences,
+        meetings: this.mind.meetings.held({
+          since: last?.started || now - 36 * HOUR,
+          before: now,
+          limit: 6,
+        }),
       };
       if (!input.missing.length) delete input.missing;
       if (!input.fading.length) delete input.fading;
       if (!input.ahead.length) delete input.ahead;
+      if (!input.meetings.length) delete input.meetings;
       while (
         estimateTokens(input) > SOLITUDE_INPUT_CAP &&
         input.experiences.some((e) => e.messages.length > 4)
       )
         for (const e of input.experiences)
           if (e.messages.length > 4) e.messages.shift();
+      while (
+        estimateTokens(input) > SOLITUDE_INPUT_CAP &&
+        input.meetings?.length > 2
+      )
+        input.meetings.shift();
       const result = await this.chat.models.call(
         this.profile(),
         "reflection",
@@ -641,6 +652,7 @@ export class Life {
           ...input.feedback.map((f) => f.ref),
           ...(chunk ? [`r:${chunk.id}`] : []),
           ...(input.livingFor ? [`s:${input.livingFor.thread}`] : []),
+          ...(input.meetings || []).map((m) => m.ref),
           ...missing.map((p) => p.ref).filter(Boolean),
           ...ahead.map((a) => a.ref),
         ]);
@@ -758,7 +770,7 @@ export class Life {
     if (thought.kind === "revision" && !parent) return null;
     const recent = this.mind.thoughts.list({ limit: 20 });
     if (recent.some((t) => similar(t.content, content))) return null;
-    const reach =
+    let reach =
       outreach &&
       typeof outreach.text === "string" &&
       outreach.text.trim() &&
@@ -766,6 +778,17 @@ export class Life {
       !/寂寞|孤独|不理我|好久没找我|怎么不回|一直等你/.test(outreach.text)
         ? outreach
         : null;
+    // A private meeting can change what she thinks. It cannot become a
+    // planned word in some other room.
+    if (reach) {
+      const privateRooms = new Set(
+        this.mind.meetings
+          .places(sources)
+          .filter((row) => row.discretion === "private")
+          .map((row) => row.session_id),
+      );
+      if (privateRooms.size && !privateRooms.has(reach.session)) reach = null;
+    }
     const added = this.mind.thoughts.add({
       kind: thought.kind,
       content,
@@ -918,6 +941,11 @@ export class Life {
           feedback: this.feedbackSince(start),
           ...(Object.keys(ahead).length ? { ahead } : {}),
           experiences,
+          meetings: this.mind.meetings.held({
+            since: start,
+            before: end,
+            limit: 6,
+          }),
         },
         yesterday: yesterday
           ? {
@@ -941,12 +969,18 @@ export class Life {
         ...(chapter ? { chapter } : {}),
         ...(anniversaries.length ? { anniversaries } : {}),
       };
+      if (!input.today.meetings.length) delete input.today.meetings;
       while (
         estimateTokens(input) > SOLITUDE_INPUT_CAP &&
         input.today.experiences.some((e) => e.messages.length > 3)
       )
         for (const e of input.today.experiences)
           if (e.messages.length > 3) e.messages.shift();
+      while (
+        estimateTokens(input) > SOLITUDE_INPUT_CAP &&
+        input.today.meetings?.length > 2
+      )
+        input.today.meetings.shift();
       const result = await this.chat.models.call(
         this.profile(),
         "daily",
@@ -962,6 +996,7 @@ export class Life {
         ...input.today.feedback.map((f) => f.ref),
         ...open.map((a) => a.ref),
         ...(input.livingFor ? [`s:${input.livingFor.thread}`] : []),
+        ...(input.today.meetings || []).map((m) => m.ref),
       ]);
       this.db
         .prepare(

@@ -127,13 +127,13 @@ try {
   await p.getByRole("button", { name: "＋ 添加会话", exact: true }).click();
   await p.locator("#addSession [name=id]").fill("12345");
   await p.locator("#addSession [name=name]").fill("测试小分队");
-  await p.locator("#addSession button").click();
+  await p.locator("#addSession button.primary").click();
   await p.locator("[data-session='group:12345']").waitFor();
   await navigate("live");
   await p.getByRole("button", { name: "模拟消息", exact: true }).click();
   await p.locator("#simulate").waitFor();
   await p.locator("#simulate [name=text]").fill("Lucky，今天真的好难过");
-  await p.locator("#simulate button").click();
+  await p.locator("#simulate button.primary").click();
   await p.locator(".chat-messages .message.bot p").first().waitFor();
   assert(
     !/听起来真的累坏了|然后呢然后呢/.test(
@@ -162,7 +162,7 @@ try {
   await p.getByRole("button", { name: "＋ 手动记忆", exact: true }).click();
   await p.locator("#addMemory [name=subject]").fill("10001");
   await p.locator("#addMemory [name=content]").fill("喜欢拿铁");
-  await p.locator("#addMemory button").click();
+  await p.locator("#addMemory button.primary").click();
   await p
     .locator("#memoryList summary")
     .filter({ hasText: "喜欢拿铁" })
@@ -524,7 +524,7 @@ try {
   await p.getByRole("button", { name: "＋ 添加会话", exact: true }).click();
   await p.locator("#addSession [name=id]").fill("65432");
   await p.locator("#addSession [name=name]").fill("手动添加群");
-  await p.locator("#addSession button").click();
+  await p.locator("#addSession button.primary").click();
   await p.locator("[data-session='group:65432']").waitFor();
   await p
     .locator("[data-session='group:65432'] details.advanced-policy summary")

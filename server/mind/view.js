@@ -17,7 +17,7 @@ const FEEDBACK = {
 function groupStyle(mind, session) {
   try {
     const profile = summarizeGroupStyle(mind.store.context(session, 200, 0));
-    return profile.ready ? `群里的说话习惯：${profile.summary}` : "";
+    return profile.ready ? profile.summary : "";
   } catch {
     return "";
   }
@@ -66,18 +66,18 @@ export function innerView(
       "SELECT day,content FROM mind_diary WHERE created<=? ORDER BY created DESC LIMIT 1",
     )
     .get(now);
+  const diaryHere =
+    diary && !mind.meetings.privateBeyond(diary.day, session, now)
+      ? `${diary.day}：${text(diary.content, 110)}`
+      : "";
   const read = mind.reading
     .recent({ now, limit: 2 })
     .filter((r) => r.created > now - 7 * DAY);
+  const room = kind === "group" ? groupStyle(mind, session) : "";
   const self = {
-    ...(face || kind === "group"
+    ...(face
       ? {
-          here: [
-            describeFace(face),
-            kind === "group" ? groupStyle(mind, session) : "",
-          ]
-            .filter(Boolean)
-            .join("；"),
+          here: describeFace(face),
         }
       : {}),
     ...(threads.length
@@ -89,9 +89,7 @@ export function innerView(
         }
       : {}),
     ...(living ? { livingFor: text(living.content, 80) } : {}),
-    ...(diary
-      ? { lastDiary: `${diary.day}：${text(diary.content, 110)}` }
-      : {}),
+    ...(diaryHere ? { lastDiary: diaryHere } : {}),
     ...(read.length
       ? {
           readLately: read.map(
@@ -157,6 +155,7 @@ export function innerView(
       ...(withWhom.length ? { with: withWhom } : {}),
       ...(will?.touched ? { will: will.text } : {}),
       ...(reminded.length ? { reminded } : {}),
+      ...(room ? { room } : {}),
       ...(heard.length ? { heard } : {}),
     },
     affect,

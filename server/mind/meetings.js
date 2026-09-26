@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { interestTerms } from "./attention.js";
 import { elapsedLabel } from "./clock.js";
 import { isPrivateSession } from "./memory.js";
+import { lifeDayKey } from "./nature.js";
 import { hasCredential, parse, text } from "./util.js";
 
 // What a meeting meant, and whether the world actually touched what she is
@@ -163,6 +164,94 @@ export class Meetings {
       lastSpoke: last.choice !== "silent",
       text: summary,
     };
+  }
+  // Meanings she already kept, so solitude and the diary can cite them.
+  // A revoked meeting is not an experience anymore.
+  held({ since = 0, before = Date.now(), limit = 6, inclusive = true } = {}) {
+    const compare = inclusive ? "<=" : "<";
+    return this.db
+      .prepare(
+        `SELECT * FROM mind_meetings m
+         WHERE m.created>=? AND m.created${compare}? AND m.appraisal!=''
+         AND NOT EXISTS (
+           SELECT 1 FROM mind_revocations r
+           WHERE r.target_kind='meeting' AND r.target_id=m.id
+         )
+         ORDER BY m.created DESC LIMIT ?`,
+      )
+      .all(since, before, limit)
+      .reverse()
+      .map((row) => this.heldLine(row, before));
+  }
+  heldLine(row, now) {
+    const ids = parse(row.people, []);
+    const who = [
+      ...new Set(ids.map((id) => this.mind.bonds.name(id) || "有人")),
+    ]
+      .slice(0, 3)
+      .join("、");
+    return {
+      ref: `g:${row.id}`,
+      who: who || "有人",
+      meant: text(row.appraisal, 80),
+      choice: row.choice,
+      when: elapsedLabel(row.created, now, this.mind.timeZone()),
+      ...(row.discretion === "private" ? { private: true } : {}),
+      ...(row.will_met ? { touchedWill: true } : {}),
+    };
+  }
+  // Where a cited meeting belongs. A private one cannot be carried elsewhere.
+  places(refs) {
+    const ids = [
+      ...new Set(
+        (refs || [])
+          .filter((ref) => String(ref).startsWith("g:"))
+          .map((ref) => String(ref).slice(2)),
+      ),
+    ];
+    if (!ids.length) return [];
+    return this.db
+      .prepare(
+        `SELECT id, session_id, discretion FROM mind_meetings WHERE id IN (${ids.map(() => "?").join(",")})`,
+      )
+      .all(...ids);
+  }
+  // A private meeting from that life day must not ride along in some other
+  // room's diary line. Her own room can still see it.
+  privateBeyond(day, session, before = Date.now()) {
+    if (!day) return false;
+    const nature = this.mind.nature.current(before);
+    const zone = this.mind.timeZone();
+    return this.db
+      .prepare(
+        `SELECT created, session_id FROM mind_meetings m
+         WHERE discretion='private' AND appraisal!='' AND created<=?
+         AND NOT EXISTS (
+           SELECT 1 FROM mind_revocations r
+           WHERE r.target_kind='meeting' AND r.target_id=m.id
+         )`,
+      )
+      .all(before)
+      .some(
+        (row) =>
+          row.session_id !== session &&
+          lifeDayKey(nature, row.created, zone) === day,
+      );
+  }
+  withPerson(userId, { before = Date.now(), limit = 8 } = {}) {
+    return this.#open(
+      `m.id IN (SELECT meeting_id FROM mind_meeting_people WHERE user_id=?) AND m.created<=? AND m.appraisal!=''`,
+      [String(userId), before],
+    )
+      .slice(0, limit)
+      .map((row) => ({
+        id: row.id,
+        meant: text(row.appraisal, 120),
+        choice: row.choice,
+        when: elapsedLabel(row.created, before, this.mind.timeZone()),
+        private: row.discretion === "private",
+        sessionId: row.session_id,
+      }));
   }
   latest({ before = Date.now() } = {}) {
     return (

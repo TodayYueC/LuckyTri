@@ -166,6 +166,24 @@ export async function livedWorld() {
     importance: 0.6,
     time: w.now(),
   });
+  w.mind.db
+    .prepare(
+      "INSERT INTO mind_meetings(id,created,session_id,choice,appraisal,topic,people,sources,discretion) VALUES (?,?,?,?,?,?,?,?,?)",
+    )
+    .run(
+      "meeting-aming",
+      w.now(),
+      "group:12345",
+      "silent",
+      "阿明的面试让我挂心",
+      "面试",
+      '["10001"]',
+      "[41]",
+      "open",
+    );
+  w.mind.db
+    .prepare("INSERT INTO mind_meeting_people(meeting_id,user_id) VALUES (?,?)")
+    .run("meeting-aming", "10001");
   return w;
 }
 
