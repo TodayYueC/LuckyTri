@@ -382,20 +382,21 @@ export class Meetings {
        )
        ORDER BY created DESC`,
     );
-    const seen = new Set();
-    const out = [];
+    const buckets = [];
     for (const living of wishes) {
+      const bucket = [];
+      const seenHere = new Set();
       for (const row of read.all(living.thread, now)) {
         if (meetingSalience(row.created, lived) < MEETING_FADED) continue;
         if (!this.#stillMeets(row, living.content)) continue;
         const named = parse(row.will_people, []);
         const who = named.length ? named : parse(row.people, []);
         for (const userId of who.map(String)) {
-          if (seen.has(userId)) continue;
+          if (seenHere.has(userId)) continue;
           const person = this.mind.bonds.person(userId, now);
           if (!person?.seenAt || (person.awayDays ?? 0) < days) continue;
-          seen.add(userId);
-          out.push({
+          seenHere.add(userId);
+          bucket.push({
             ref: `g:${row.id}`,
             userId,
             name: person.name || userId,
@@ -403,9 +404,26 @@ export class Meetings {
             session: row.session_id,
             ...(row.discretion === "private" ? { private: true } : {}),
           });
-          if (out.length >= limit) return out;
         }
       }
+      if (bucket.length) buckets.push(bucket);
+    }
+    // One person from each wish before any wish takes another slot, so a
+    // stronger private wish cannot fill the whole list.
+    const seen = new Set();
+    const out = [];
+    while (out.length < limit) {
+      let added = false;
+      for (const bucket of buckets) {
+        while (bucket.length && seen.has(bucket[0].userId)) bucket.shift();
+        const next = bucket.shift();
+        if (!next) continue;
+        seen.add(next.userId);
+        out.push(next);
+        added = true;
+        if (out.length >= limit) break;
+      }
+      if (!added) break;
     }
     return out;
   }
