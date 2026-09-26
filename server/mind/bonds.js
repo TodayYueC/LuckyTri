@@ -56,20 +56,25 @@ function foldEvents(rows) {
     peakFamiliarity: 0,
     firstMetAt: rows[0]?.created ?? null,
     lastTalkedAt: null,
+    lastEventAt: null,
   };
   let at = null;
   for (const row of rows) {
-    if (at !== null) {
-      drift(state, at, row.created);
-      if (row.created - at > ABSENCE_GRACE) {
+    if (at !== null) drift(state, at, row.created);
+    at = row.created;
+    state.lastEventAt = row.created;
+    if (row.change === "interaction") {
+      // Only a real exchange ends an absence. A note kept in solitude is
+      // not a reunion, and it does not restart the time since they talked.
+      if (
+        state.lastTalkedAt !== null &&
+        row.created - state.lastTalkedAt > ABSENCE_GRACE
+      ) {
         state.closeness += (state.peakCloseness - state.closeness) * REWARM;
         state.familiarity +=
           (state.peakFamiliarity - state.familiarity) * REWARM;
       }
-    }
-    at = row.created;
-    state.lastTalkedAt = row.created;
-    if (row.change === "interaction") {
+      state.lastTalkedAt = row.created;
       state.interactions++;
       state.familiarity = clamp(
         state.familiarity + row.familiarity * (1 - state.familiarity),
@@ -94,7 +99,8 @@ function foldEvents(rows) {
 // How it feels at `now`: the folded history, carried forward to this moment.
 function settle(folded, now) {
   const state = { ...folded };
-  if (state.lastTalkedAt !== null) drift(state, state.lastTalkedAt, now);
+  if (state.lastEventAt !== null) drift(state, state.lastEventAt, now);
+  delete state.lastEventAt;
   state.absentDays =
     state.lastTalkedAt === null
       ? null

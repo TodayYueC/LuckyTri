@@ -101,6 +101,54 @@ test("同一个 QQ 号在所有群和私聊里是同一个人；别扭会慢慢�
   );
 });
 
+test("心里记下的印象不算来往，也不会把久别冲成重逢", () => {
+  const w = world();
+  try {
+    w.mind.bonds.meet([{ userId: "10001", name: "阿明" }], "group:1", w.now());
+    w.mind.bonds.record({
+      id: "10001",
+      change: "interaction",
+      session: "group:1",
+      time: w.now(),
+    });
+    w.mind.bonds.record({
+      id: "10001",
+      change: "closer",
+      note: "聊得来",
+      sources: [1],
+      session: "group:1",
+      time: w.now(),
+    });
+    w.advance(80 * 24 * HOUR);
+    const away = w.mind.bonds.person("10001", w.now());
+    w.mind.bonds.record({
+      id: "10001",
+      change: "impression",
+      note: "还记得他说话的样子",
+      sources: [1],
+      origin: "solitude",
+      time: w.now(),
+    });
+    const noted = w.mind.bonds.person("10001", w.now());
+    assert.equal(noted.impression, "还记得他说话的样子");
+    assert.ok(noted.absentDays >= 80, "印象不刷新上次说上话");
+    assert.ok(noted.closeness <= away.closeness, "印象不把久别热回来");
+    assert.ok(noted.closeness < 0.2, "久别仍然变淡");
+    w.advance(HOUR);
+    w.mind.bonds.record({
+      id: "10001",
+      change: "interaction",
+      session: "group:1",
+      time: w.now(),
+    });
+    const back = w.mind.bonds.person("10001", w.now());
+    assert.ok(back.closeness > noted.closeness, "真正再来往才会热回来");
+    assert.equal(back.absentDays, 0);
+  } finally {
+    w.close();
+  }
+});
+
 test("自我渐进生长：强度每次只变一点，新特质要跨天的经历才成形，撤销的不会回来", (t) => {
   const w = world();
   t.after(w.close);
