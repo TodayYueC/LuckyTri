@@ -149,6 +149,90 @@ test("心里记下的印象不算来往，也不会把久别冲成重逢", () =>
   }
 });
 
+test("被叫到却没出声，不算说上话", () => {
+  const w = world();
+  try {
+    w.open("group:1");
+    w.mind.bonds.meet([{ userId: "10001", name: "阿明" }], "group:1", w.now());
+    w.mind.bonds.record({
+      id: "10001",
+      change: "interaction",
+      session: "group:1",
+      time: w.now(),
+    });
+    const before = w.mind.bonds.person("10001", w.now()).familiarity;
+    w.advance(8 * 24 * HOUR);
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "他在叫我",
+        reason: "先不接",
+        topic: "",
+        targetMessageIds: [],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [1],
+          messages: [
+            {
+              id: 1,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: "LuckyTri 在吗",
+              relation: "direct",
+            },
+          ],
+        },
+        kind: "group",
+        spoke: false,
+        time: w.now(),
+      },
+    );
+    const quiet = w.mind.bonds.person("10001", w.now());
+    assert.ok(quiet.absentDays >= 8, "没接话不刷新上次说上话");
+    assert.ok(quiet.familiarity > before, "被叫到仍然更熟一点");
+    assert.equal(quiet.interactions, 2);
+    w.advance(HOUR);
+    w.mind.experience(
+      {
+        choice: "speak",
+        appraisal: "回了",
+        reason: "接一下",
+        topic: "",
+        targetMessageIds: [2],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [2],
+          messages: [
+            {
+              id: 2,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: "在吗",
+              relation: "ambient",
+            },
+          ],
+        },
+        kind: "group",
+        spoke: true,
+        time: w.now(),
+      },
+    );
+    assert.equal(w.mind.bonds.person("10001", w.now()).absentDays, 0);
+  } finally {
+    w.close();
+  }
+});
+
 test("私下形成的印象和别扭原因不进别的房间", () => {
   const w = world();
   try {

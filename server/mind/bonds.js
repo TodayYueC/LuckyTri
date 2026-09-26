@@ -75,9 +75,11 @@ function foldEvents(rows) {
     at = row.created;
     state.lastEventAt = row.created;
     if (row.change === "interaction") {
-      // Only a real exchange ends an absence. A note kept in solitude is
-      // not a reunion, and it does not restart the time since they talked.
+      // Being noticed is not a conversation. Only speaking with them ends
+      // the time since they last talked, and only that can warm a long gap.
+      const talked = row.origin !== "noticed";
       if (
+        talked &&
         state.lastTalkedAt !== null &&
         row.created - state.lastTalkedAt > ABSENCE_GRACE
       ) {
@@ -85,7 +87,7 @@ function foldEvents(rows) {
         state.familiarity +=
           (state.peakFamiliarity - state.familiarity) * REWARM;
       }
-      state.lastTalkedAt = row.created;
+      if (talked) state.lastTalkedAt = row.created;
       state.interactions++;
       state.familiarity = clamp(
         state.familiarity + row.familiarity * (1 - state.familiarity),

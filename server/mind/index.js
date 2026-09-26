@@ -218,7 +218,9 @@ export class Mind {
         change: "interaction",
         sources: [m.id],
         session,
-        origin: addressed ? "direct" : "group",
+        // Being called and staying quiet can make a person more familiar.
+        // It is not a conversation, and it does not end the time since she spoke.
+        origin: spoke ? (addressed ? "direct" : "group") : "noticed",
         time,
       });
     }
