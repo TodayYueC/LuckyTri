@@ -60,8 +60,15 @@ export function buildContext(
     perceive(repo, session, watermark, eventMode, persona.name);
   const batch = resolved.filter((x) => batchIds.includes(x.seq));
   const mandatory = new Set(batch.flatMap((m) => [m.seq, ...m.replyChain]));
+  const aside = new Set(
+    repo.db
+      .prepare("SELECT seq FROM mind_unlived")
+      .all()
+      .map((row) => row.seq),
+  );
   const names = new Map();
   for (const m of resolved) {
+    if (aside.has(m.seq)) continue;
     const label = readableName(m.name, m.userId);
     if (label) names.set(String(m.userId), label);
   }
@@ -89,12 +96,6 @@ export function buildContext(
 
   // The window start only moves when a block is summarized (or, without
   // summaries, on a fixed grid), so consecutive turns share one prefix.
-  const aside = new Set(
-    repo.db
-      .prepare("SELECT seq FROM mind_unlived")
-      .all()
-      .map((row) => row.seq),
-  );
   const history = resolved.filter(
     (m) => !m.referenceOnly && !aside.has(m.seq),
   );

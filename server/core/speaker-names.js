@@ -31,7 +31,7 @@ function sessionNames(db, session) {
     .prepare(
       `SELECT seq, json_extract(payload,'$.userId') AS user_id,
               json_extract(payload,'$.name') AS name
-       FROM core_events WHERE session_id=? AND seq>? ORDER BY seq`,
+       FROM core_events WHERE session_id=? AND seq>? AND seq NOT IN (SELECT seq FROM mind_unlived) ORDER BY seq`,
     )
     .all(session, after);
   for (const row of rows) {
