@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { isPrivateSession } from "./memory.js";
 import { rhythmPhase } from "./nature.js";
-import { DAY, HOUR, clamp, evidence, relax, text } from "./util.js";
+import { DAY, HOUR, clamp, evidence, parse, relax, text } from "./util.js";
 
 const HALF_LIFE = 3 * HOUR;
 const BASELINE = { valence: 0.15, arousal: 0.35 };
@@ -99,8 +100,21 @@ export class Affect {
             : "",
     };
   }
+  // The mood can follow her into another room. The words of a private
+  // cause cannot.
+  #causeHere(row, room) {
+    if (!room) return true;
+    if (
+      row.session_id &&
+      isPrivateSession(row.session_id) &&
+      row.session_id !== room
+    )
+      return false;
+    const roots = this.mind.meetings.privateRoots(parse(row.sources, []));
+    return !roots.length || roots.includes(room);
+  }
   // Folded from events at or before `now`, so a replay never sees later moods.
-  state(now = Date.now(), { nature = this.mind.nature.current(now) } = {}) {
+  state(now = Date.now(), { nature = this.mind.nature.current(now), room = "" } = {}) {
     const timeZone = this.mind.timeZone();
     const lately = this.lately(now);
     const base = {
@@ -151,9 +165,11 @@ export class Affect {
       1,
     );
     const lingering = residual > 0.15;
+    const cause =
+      lingering && last && this.#causeHere(last, room) ? last.cause || "" : "";
     return {
       mood: lingering ? last.feeling : moodLabel(valence, arousal),
-      cause: lingering ? last.cause || "" : "",
+      cause,
       valence: Math.round(valence * 100) / 100,
       arousal: Math.round(arousal * 100) / 100,
       energy: Math.round(energy * 100) / 100,

@@ -252,17 +252,24 @@ export class ChatSystem {
       .sort((a, b) => a - b)
       .slice(-BATCH_LIMIT);
     const rows = seqs.map((seq) => bySeq.get(seq)).filter(Boolean);
-    const affect = this.mind.affect.state(now, { nature });
+    const affect = this.mind.affect.state(now, { nature, room: session });
     const interests = interestTerms(nature.interests || []);
+    const here = (thread) => {
+      const roots = this.mind.meetings.privateRoots(thread.sources);
+      return !roots.length || roots.includes(session);
+    };
     const livingFor = this.mind.self
       .annotated({ before: now, now })
       .find((thread) => thread.kind === "intention" && !thread.faded);
-    const living = interestTerms(livingFor ? [livingFor.content] : []);
+    const livingThread = livingFor && here(livingFor) ? livingFor : null;
+    const living = interestTerms(livingThread ? [livingThread.content] : []);
     const curiosities = interestTerms(
       this.mind.self
         .active({ before: now, limit: 12 })
-        .filter((t) =>
-          ["interest", "curiosity", "care", "intention"].includes(t.kind),
+        .filter(
+          (t) =>
+            ["interest", "curiosity", "care", "intention"].includes(t.kind) &&
+            here(t),
         )
         .map((t) => t.content),
     );
@@ -298,7 +305,7 @@ export class ChatSystem {
         session,
         rows.filter((m) => m.role !== "assistant").map((m) => m.userId),
         now,
-        livingFor?.thread || "",
+        livingThread?.thread || "",
       ),
       closeness,
       pressure: this.mind.budget.pressure("conversation", now),

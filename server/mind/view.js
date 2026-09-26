@@ -43,7 +43,7 @@ export function innerView(
   { session, kind = "group", people = [], cue = [], now = Date.now() },
 ) {
   const nature = mind.nature.current(now);
-  const affect = mind.affect.state(now, { nature });
+  const affect = mind.affect.state(now, { nature, room: session });
   const face = mind.faces.current(session, now);
   const threads = mind.self.active({ before: now, now, limit: 6 });
   const living = mind.self
