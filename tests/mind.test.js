@@ -56,6 +56,51 @@ test("心境由经历推动、随时间回落；一次经历不能把她推翻",
   const later = w.mind.affect.state(w.now());
   assert.notEqual(later.mood, "很难过");
   assert(Math.abs(later.valence - base.valence) < 0.05, "半天后回到平常");
+  const again = w.now();
+  w.mind.affect.feel({
+    feeling: "很难过",
+    intensity: 1,
+    valence: -1,
+    cause: "还是那句话",
+    sources: [1],
+    time: again,
+  });
+  w.mind.affect.feel({
+    feeling: "更难过",
+    intensity: 1,
+    valence: -1,
+    cause: "还是那句话",
+    sources: [1],
+    time: again,
+  });
+  w.mind.affect.feel({
+    feeling: "还是难过",
+    intensity: 1,
+    valence: -1,
+    sources: [2],
+    time: again,
+  });
+  w.mind.affect.feel({
+    feeling: "仍然难过",
+    intensity: 1,
+    valence: -1,
+    sources: [3],
+    time: again,
+  });
+  const piled = w.mind.affect.state(again);
+  assert(Math.abs(piled.valence - later.valence) <= 0.35 + 1e-9, "同一时刻的几种感受合在一起仍有上限");
+  w.advance(HOUR);
+  assert.equal(
+    w.mind.affect.feel({
+      feeling: "又来了",
+      intensity: 1,
+      valence: -1,
+      sources: [1],
+      time: w.now(),
+    }),
+    null,
+    "同一条消息不会再推一次心情",
+  );
   assert.equal(
     w.mind.affect.state(w.now() - 12 * HOUR + 1).mood,
     "很难过",
