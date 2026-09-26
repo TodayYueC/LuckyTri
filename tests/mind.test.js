@@ -2737,6 +2737,48 @@ test("私下的相遇写成打算时，不进别的房间", () => {
   }
 });
 
+test("私下的原话不能变成去别的房间主动开口", () => {
+  const w = world();
+  try {
+    w.open("private:7", "阿明");
+    w.open("group:1", "一群");
+    const said = w.say("private:7", "7", "这事先别跟别人说", { name: "阿明" });
+    const ref = `m:${said.seq}`;
+    const opts = {
+      valid: new Set([ref]),
+      thoughts: [],
+      involved: ["group:1", "private:7"],
+      reachable: new Set(["group:1", "private:7"]),
+      now: w.now(),
+    };
+    const leaked = w.life.writeThought(
+      {
+        kind: "reflection",
+        content: "他让我先别把这件事说出去",
+        sources: [ref],
+      },
+      { ...opts, outreach: { text: "我想在群里提一下那件事", session: "group:1" } },
+    );
+    const hidden = w.mind.thoughts.get(leaked);
+    assert.equal(hidden.outreach, "");
+    assert.equal(hidden.outreach_session, null);
+    assert.deepEqual(hidden.sessions, ["private:7"]);
+    const kept = w.life.writeThought(
+      {
+        kind: "reflection",
+        content: "我想私下再问他一句",
+        sources: [ref],
+      },
+      { ...opts, outreach: { text: "那件事后来怎样了", session: "private:7" } },
+    );
+    const home = w.mind.thoughts.get(kept);
+    assert.equal(home.outreach_session, "private:7");
+    assert.match(home.outreach, /后来怎样/);
+  } finally {
+    w.close();
+  }
+});
+
 test("引用群里的话写下的手记，不因为这次也看过私聊就进私聊", () => {
   const w = world();
   try {
