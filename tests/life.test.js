@@ -893,7 +893,7 @@ test("人还在眼前但好久没说上话，独处时能分清这不是好久�
   assert.equal(seen.missing, undefined);
 });
 
-test("从没说过话、人还在眼前的亲近的人，独处时不会被漏掉", () => {
+test("从没说过话、人还在眼前的亲近的人，独处和房间里都不会被漏掉", () => {
   const w = world({ start: "2026-09-22T10:00:00+08:00" });
   try {
     w.open("group:1", "一群");
@@ -901,7 +901,14 @@ test("从没说过话、人还在眼前的亲近的人，独处时不会被漏�
     const said = [];
     for (const text of ["一", "二", "三", "四", "五"])
       said.push(w.say("group:1", "10001", text, { name: "阿明" }));
-    w.mind.bonds.meet([{ userId: "10001", name: "阿明" }], "group:1", w.now());
+    w.mind.bonds.meet(
+      [
+        { userId: "10001", name: "阿明" },
+        { userId: "10002", name: "小红" },
+      ],
+      "group:1",
+      w.now(),
+    );
     for (let i = 0; i < 5; i++)
       w.mind.bonds.record({
         id: "10001",
@@ -911,12 +918,42 @@ test("从没说过话、人还在眼前的亲近的人，独处时不会被漏�
         session: "group:1",
         time: w.now(),
       });
+    const here = () =>
+      w.mind.view({
+        session: "group:1",
+        kind: "group",
+        people: ["10001", "10002"],
+        now: w.now(),
+      }).inner.people;
+    const early = here();
+    assert.equal(early.find((p) => p.id === "10001")?.id, "10001");
+    assert.doesNotMatch(
+      early.find((p) => p.id === "10001").feel,
+      /还没怎么说过话/,
+      "刚相处时不写成一直没说过话",
+    );
+    assert.equal(
+      early.find((p) => p.id === "10002"),
+      undefined,
+      "只见过面、没有相处的人不进这个房间的感觉",
+    );
     w.advance(8 * 24 * HOUR);
-    w.mind.bonds.meet([{ userId: "10001", name: "阿明" }], "group:1", w.now());
+    w.mind.bonds.meet(
+      [
+        { userId: "10001", name: "阿明" },
+        { userId: "10002", name: "小红" },
+      ],
+      "group:1",
+      w.now(),
+    );
     const quiet = w.life.quietView(w.now());
     assert.equal(quiet[0]?.userId, "10001");
     assert.equal(quiet[0].lastTalked, undefined, "没有说过话就不写上次说上话");
     assert.equal(w.life.missingView(w.now()).length, 0, "人还在眼前，不是好久不见");
+    const later = here().find((p) => p.id === "10001");
+    assert.ok(later, "人在眼前时，这种亲近仍然在");
+    assert.match(later.feel, /还没怎么说过话/);
+    assert.equal(later.lastTalked, undefined);
   } finally {
     w.close();
   }
