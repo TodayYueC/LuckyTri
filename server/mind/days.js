@@ -41,7 +41,7 @@ export class Days {
   write(day, start, end, now) {
     const events = this.db
       .prepare(
-        `SELECT COUNT(*) n, COUNT(DISTINCT CASE WHEN role='user' THEN json_extract(payload,'$.userId') END) people FROM core_events WHERE time>=? AND time<? AND ${LIVE}`,
+        `SELECT COUNT(*) n, COUNT(DISTINCT CASE WHEN role='user' THEN json_extract(payload,'$.userId') END) people FROM core_events WHERE time>=? AND time<? AND ${LIVE} AND seq NOT IN (SELECT seq FROM mind_unlived)`,
       )
       .get(start, end);
     const felt = this.db
@@ -150,7 +150,9 @@ export class Days {
   // Her first day: the first thing that happened to her, or her first nature.
   born() {
     const event = this.db
-      .prepare(`SELECT MIN(time) t FROM core_events WHERE ${LIVE}`)
+      .prepare(
+        `SELECT MIN(time) t FROM core_events WHERE ${LIVE} AND seq NOT IN (SELECT seq FROM mind_unlived)`,
+      )
       .get().t;
     const nature = this.db
       .prepare("SELECT MIN(created) t FROM mind_nature")
