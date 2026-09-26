@@ -144,7 +144,7 @@
 .dots em[data-state="lapsed"] {
   background: var(--ink-faint);
 }
-.picked {
+.picked.card {
   min-height: 220px;
 }
 .picked h3 {
