@@ -102,14 +102,16 @@ export class Thoughts {
       .filter((t) => !session || t.sessions.includes(session));
     const clock = sourceClock(notes);
     return notes
-      .map((t) => ({
-        ...t,
-        salience: thoughtSalience(
-          { ...t, created: clock.get(t.id) ?? t.created },
-          lived,
-          now,
-        ),
-      }))
+      .map((t) => {
+        const earned = clock.get(t.id) ?? t.created;
+        // A revisit brings back the note that actually lived the experience.
+        // Rewriting it later and setting another time does not.
+        const seen = earned < t.created ? { ...t, revisit_at: null } : t;
+        return {
+          ...t,
+          salience: thoughtSalience({ ...seen, created: earned }, lived, now),
+        };
+      })
       .sort((a, b) => b.salience - a.salience || b.created - a.created);
   }
   open({ now = Date.now(), limit = 12, session = "" } = {}) {
