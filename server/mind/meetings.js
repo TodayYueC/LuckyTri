@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { sessionNativeId } from "../channels/session-key.js";
 import { interestTerms } from "./attention.js";
 import { agoLabel, elapsedLabel } from "./clock.js";
-import { leaks } from "./guard.js";
+import { leaks, secretRequest } from "./guard.js";
 import { isPrivateSession } from "./memory.js";
 import { lifeDayKey, lifeSpan } from "./nature.js";
 import {
@@ -66,6 +66,7 @@ export class Meetings {
           .map(([id]) => id)
       : [];
     const willMet = willPeople.length > 0;
+    const quiet = heard.some((m) => secretRequest(String(m.text || "")));
     if (!appraisal && !willMet) return null;
     const id = randomUUID();
     const choice = ["speak", "react", "decline", "silent"].includes(
@@ -88,7 +89,7 @@ export class Meetings {
         sourceKey,
         willMet ? living.thread : null,
         willMet ? 1 : 0,
-        isPrivateSession(session) ? "private" : "open",
+        isPrivateSession(session) ? "private" : quiet ? "secret" : "open",
         JSON.stringify(willPeople),
       );
     const link = this.db.prepare(
@@ -110,7 +111,8 @@ export class Meetings {
       .all(...args);
   }
   #visible(row, session) {
-    return !(row.discretion === "private" && row.session_id !== session);
+    const concealed = row.discretion === "private" || row.discretion === "secret";
+    return !(concealed && row.session_id !== session);
   }
   #bound(inclusive) {
     return inclusive ? "m.created<=?" : "m.created<?";
@@ -173,7 +175,7 @@ export class Meetings {
     if (!thread) return { touched: 0 };
     const compare = inclusive ? "<=" : "<";
     const room = session
-      ? "AND (m.discretion != 'private' OR m.session_id = ?)"
+      ? "AND (m.discretion NOT IN ('private','secret') OR m.session_id = ?)"
       : "";
     const hidden = `AND NOT EXISTS (
            SELECT 1 FROM mind_revocations r
@@ -372,7 +374,9 @@ export class Meetings {
       meant: text(row.appraisal, 80),
       choice: row.choice,
       when: elapsedLabel(row.created, now, this.mind.timeZone()),
-      ...(row.discretion === "private" ? { private: true } : {}),
+      ...(row.discretion === "private" || row.discretion === "secret"
+        ? { private: true }
+        : {}),
       ...(row.will_met && this.#touchStill(row, now) ? { touchedWill: true } : {}),
     };
   }
@@ -414,7 +418,9 @@ export class Meetings {
             name: person.name || userId,
             away: agoLabel(now - person.seenAt),
             session: row.session_id,
-            ...(row.discretion === "private" ? { private: true } : {}),
+            ...(row.discretion === "private" || row.discretion === "secret"
+              ? { private: true }
+              : {}),
           });
         }
       }
@@ -457,7 +463,7 @@ export class Meetings {
            JOIN mind_meetings m ON m.id = p.meeting_id
            WHERE p.user_id IN (${ids.map(() => "?").join(",")})
              AND m.will_met = 1 AND m.will_thread = ? AND m.created < ?
-             AND (m.discretion != 'private' OR m.session_id = ?)
+             AND (m.discretion NOT IN ('private','secret') OR m.session_id = ?)
              AND NOT EXISTS (
                SELECT 1 FROM mind_revocations r
                WHERE r.target_kind = 'meeting' AND r.target_id = m.id
@@ -543,7 +549,8 @@ export class Meetings {
     const refs = Array.isArray(sources) ? sources : parse(sources, []);
     const rooms = new Set();
     for (const row of this.places(refs))
-      if (row.discretion === "private") rooms.add(row.session_id);
+      if (row.discretion === "private" || row.discretion === "secret")
+        rooms.add(row.session_id);
     const seqs = messageSeqs(refs);
     if (seqs.length) {
       const found = this.db
@@ -594,7 +601,7 @@ export class Meetings {
     for (const row of this.db
       .prepare(
         `SELECT appraisal AS content, session_id FROM mind_meetings m
-         WHERE discretion='private' AND appraisal!=''
+         WHERE discretion IN ('private','secret') AND appraisal!=''
          AND NOT EXISTS (
            SELECT 1 FROM mind_revocations r
            WHERE r.target_kind='meeting' AND r.target_id=m.id
@@ -686,7 +693,7 @@ export class Meetings {
         meant: text(row.appraisal, 120),
         choice: row.choice,
         when: elapsedLabel(row.created, before, this.mind.timeZone()),
-        private: row.discretion === "private",
+        private: row.discretion === "private" || row.discretion === "secret",
         sessionId: row.session_id,
       }));
   }
