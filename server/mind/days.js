@@ -4,8 +4,6 @@ import { DAY } from "./util.js";
 
 const MINUTE = 60000;
 const LIVE = "COALESCE(json_extract(payload,'$.simulated'),0)=0";
-// A day with fewer live messages than this passed her by.
-const LIVED_EVENTS = 3;
 const BACKFILL_DAYS = 14;
 const MILESTONES = [100, 200, 300, 500, 1000];
 
@@ -51,12 +49,27 @@ export class Days {
         "SELECT SUM(valence*intensity) v, SUM(intensity) i, AVG(arousal) a, COUNT(*) n FROM mind_affect WHERE created>=? AND created<?",
       )
       .get(start, end);
-    if (!events.n && !felt.n) return false;
     const choices = this.db
       .prepare(
         "SELECT COUNT(*) n, COALESCE(SUM(choice!='silent'),0) spoke FROM mind_choices WHERE created>=? AND created<?",
       )
       .get(start, end);
+    // Other people's messages are not a day she lived. She lived it if she
+    // looked, spoke, or actually spent the quiet time.
+    const present = !!(
+      choices.n ||
+      this.db
+        .prepare(
+          `SELECT 1 FROM core_events WHERE role='assistant' AND time>=? AND time<? AND ${LIVE}`,
+        )
+        .get(start, end) ||
+      this.db
+        .prepare(
+          "SELECT 1 FROM mind_runs WHERE started>=? AND started<? AND status IN ('written','empty','complete')",
+        )
+        .get(start, end)
+    );
+    if (!events.n && !felt.n && !present) return false;
     const round = (value) => Math.round(value * 100) / 100;
     this.db
       .prepare(
@@ -65,7 +78,7 @@ export class Days {
       .run(
         day,
         now,
-        Number(events.n >= LIVED_EVENTS),
+        Number(present),
         events.n,
         felt.i > 0 ? round(felt.v / felt.i) : null,
         felt.n ? round(felt.a) : null,
