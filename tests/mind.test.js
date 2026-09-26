@@ -247,6 +247,104 @@ test("私下形成的印象和别扭原因不进别的房间", () => {
   }
 });
 
+test("引用私下相遇写成的自我线索不进别的房间", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.open("private:10001", "阿明");
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "他告诉我住址",
+        reason: "私下",
+        topic: "",
+        targetMessageIds: [1],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "private:10001",
+        snapshot: {
+          batchIds: [1],
+          messages: [
+            {
+              id: 1,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: "我住在南区",
+              relation: "direct",
+            },
+          ],
+        },
+        kind: "private",
+        spoke: false,
+        time: w.now(),
+      },
+    );
+    const meeting = w.mind.db
+      .prepare("SELECT id FROM mind_meetings WHERE session_id='private:10001'")
+      .get().id;
+    const said = w.say("group:1", "10002", "今晚有流星雨", { name: "小红" });
+    w.mind.self.propose(
+      {
+        kind: "care",
+        content: "他告诉我住址在南区",
+        sources: [`g:${meeting}`],
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "interest",
+        content: "我喜欢听他们聊星星",
+        sources: [said.seq],
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      { kind: "intention", content: "想看流星雨", strength: 0.3 },
+      { origin: "solitude", time: w.now() },
+    );
+    const view = (session) =>
+      innerView(w.mind, {
+        session,
+        kind: session.startsWith("private") ? "private" : "group",
+        now: w.now() + 1,
+      }).self;
+    const group = view("group:1");
+    assert.match(group.threads.join(" "), /聊星星/);
+    assert.doesNotMatch(group.threads.join(" "), /住址|南区/);
+    assert.equal(group.livingFor, "想看流星雨");
+    const room = view("private:10001");
+    assert.match(room.threads.join(" "), /住址在南区/);
+    assert.equal(room.livingFor, "想看流星雨");
+    assert.equal(
+      w.mind.faces.propose(
+        {
+          session: "group:1",
+          aspiration: "记住他的住址",
+          sources: [`g:${meeting}`],
+        },
+        { time: w.now() },
+      ).rejected,
+      "来源不能带到这个会话",
+    );
+    assert.ok(
+      w.mind.faces.propose(
+        {
+          session: "private:10001",
+          aspiration: "记住他告诉我的事",
+          sources: [`g:${meeting}`],
+        },
+        { time: w.now() },
+      ).id,
+    );
+  } finally {
+    w.close();
+  }
+});
+
 test("自我渐进生长：强度每次只变一点，新特质要跨天的经历才成形，撤销的不会回来", (t) => {
   const w = world();
   t.after(w.close);

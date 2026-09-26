@@ -69,6 +69,9 @@ export class Faces {
     const sources = valid ? cited.filter((s) => valid.has(s)) : cited;
     if (!sources.length && origin !== "migration")
       return { rejected: "缺少来源" };
+    const roots = this.mind.meetings.privateRoots(sources);
+    if (roots.length && !roots.includes(session))
+      return { rejected: "来源不能带到这个会话" };
     const current = this.current(session, time);
     if (current) {
       for (const key of Object.keys(next))

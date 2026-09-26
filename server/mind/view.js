@@ -50,9 +50,16 @@ export function innerView(
     .annotated({ before: now, now })
     .find((row) => row.kind === "intention" && !row.faded);
   const terms = interestTerms(cue);
+  const carries = (sources) => {
+    const roots = mind.meetings.privateRoots(sources || []);
+    return !roots.length || roots.includes(session);
+  };
+  const visibleThreads = threads.filter((t) => carries(t.sources));
+  const shownLiving = living && carries(living.sources) ? living : null;
   const reminded = [
     ...mind.self
       .reminded({ before: now, now, cue: terms, limit: 2 })
+      .filter((t) => carries(t.sources))
       .map((t) => `${SELF_KINDS[t.kind]}：${text(t.content, 80)}${FORGOTTEN}`),
     ...mind.thoughts
       .reminded({ now, cue: terms, session, limit: 1 })
@@ -83,15 +90,15 @@ export function innerView(
           here: describeFace(face),
         }
       : {}),
-    ...(threads.length
+    ...(visibleThreads.length
       ? {
-          threads: threads.map(
+          threads: visibleThreads.map(
             (t) =>
               `${SELF_KINDS[t.kind]}：${text(t.content, 80)}${t.status === "emerging" ? "（刚开始有这种感觉）" : ""}`,
           ),
         }
       : {}),
-    ...(living ? { livingFor: text(living.content, 80) } : {}),
+    ...(shownLiving ? { livingFor: text(shownLiving.content, 80) } : {}),
     ...(diaryHere ? { lastDiary: diaryHere } : {}),
     ...(read.length
       ? {
@@ -137,8 +144,8 @@ export function innerView(
     now,
     limit: 2,
   });
-  const will = living
-    ? mind.meetings.trace(living.thread, { before: now, session })
+  const will = shownLiving
+    ? mind.meetings.trace(shownLiving.thread, { before: now, session })
     : null;
   return {
     self,
