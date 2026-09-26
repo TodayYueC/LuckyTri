@@ -97,10 +97,13 @@ export function innerView(
     ...(diaryHere ? { lastDiary: diaryHere } : {}),
     ...(read.length
       ? {
-          readLately: read.map(
-            (r) =>
-              `读过《${r.title}》第 ${r.ordinal + 1} 段${r.note ? `：${text(r.note, 60)}` : ""}`,
-          ),
+          readLately: read.map((r) => {
+            const note =
+              r.note && mind.meetings.sayable(r.note, session)
+                ? text(r.note, 60)
+                : "";
+            return `读过《${r.title}》第 ${r.ordinal + 1} 段${note ? `：${note}` : ""}`;
+          }),
         }
       : {}),
   };

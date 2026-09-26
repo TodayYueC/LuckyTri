@@ -886,6 +886,48 @@ test("更强的私下小事不会把别的房间正在过的事挤掉", () => {
   }
 });
 
+test("读后的话如果就是私下的原话，不进别的房间", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.open("private:7", "阿明");
+    w.mind.memory.insert({
+      session: "private:7",
+      subject: "7",
+      content: "最近在准备考研",
+      discretion: "private",
+    });
+    w.mind.reading.record(
+      { document_id: "doc", id: "chunk-a", ordinal: 0, total: 2, title: "烘焙笔记" },
+      "他最近在准备考研",
+      null,
+      w.now(),
+    );
+    w.mind.reading.record(
+      { document_id: "doc", id: "chunk-b", ordinal: 1, total: 2, title: "烤箱温度" },
+      "这一段讲的是火候",
+      null,
+      w.now() + 1,
+    );
+    const group = innerView(w.mind, {
+      session: "group:1",
+      kind: "group",
+      now: w.now() + 2,
+    }).self.readLately.join("\n");
+    assert.match(group, /烘焙笔记/);
+    assert.match(group, /火候/);
+    assert.doesNotMatch(group, /考研/);
+    const room = innerView(w.mind, {
+      session: "private:7",
+      kind: "private",
+      now: w.now() + 2,
+    }).self.readLately.join("\n");
+    assert.match(room, /考研/);
+  } finally {
+    w.close();
+  }
+});
+
 test("更强的私下小事不会让另一件仍在过的事从独处里消失", () => {
   const w = world({ start: "2026-09-22T10:00:00+08:00" });
   try {
