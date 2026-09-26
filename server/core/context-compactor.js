@@ -140,8 +140,11 @@ export class ContextCompactor {
   }
   forPrompt(session, options = {}) {
     const rows = this.list(session, options);
+    const shown = rows.filter(
+      (row) => row.summary || (row.keyPoints && row.keyPoints.length),
+    );
     return {
-      summaries: rows.map((row) => ({
+      summaries: shown.map((row) => ({
         level: row.level,
         period: row.period,
         summary: row.summary,
@@ -154,7 +157,7 @@ export class ContextCompactor {
           : {}),
       })),
       coverage: rows.at(-1)?.lastSeq || 0,
-      start: rows[0]?.firstSeq || 0,
+      start: shown[0]?.firstSeq || rows[0]?.firstSeq || 0,
     };
   }
   clear(session) {
@@ -205,7 +208,11 @@ export class ContextCompactor {
     const rows = this.rows(session);
     for (let level = 0; level < TOP_LEVEL; level++) {
       const spec = SUMMARY_LEVELS[level];
-      const same = rows.filter((row) => row.level === level);
+      const same = rows.filter(
+        (row) =>
+          row.level === level &&
+          (row.data.summary || (row.data.keyPoints || []).length),
+      );
       if (same.length <= spec.capacity) continue;
       const children = same.slice(0, spec.fanIn);
       const target = level + 1;
@@ -272,8 +279,29 @@ export class ContextCompactor {
   }
   async summarizeBlock(session, rows, options) {
     const { models, profile, system, trace, timeZone, self } = options;
+    const aside = new Set(
+      this.repo.db
+        .prepare("SELECT seq FROM mind_unlived")
+        .all()
+        .map((row) => row.seq),
+    );
+    const lived = rows.filter((m) => !aside.has(m.seq));
+    const span = {
+      first: { seq: rows[0].seq, time: rows[0].time },
+      last: { seq: rows.at(-1).seq, time: rows.at(-1).time },
+    };
+    // She was not in the room for these lines. Cover them so they are not
+    // summarized later, and do not put the words into the summary.
+    if (!lived.length)
+      return this.save(session, 0, span.first, span.last, {
+        summary: "",
+        keyPoints: [],
+        messages: 0,
+      });
     const names = speakerNames(this.repo.db, [session]);
-    const previous = this.rows(session).at(-1);
+    const previous = this.rows(session)
+      .filter((row) => row.data.summary)
+      .at(-1);
     const spec = SUMMARY_LEVELS[0];
     const result = await models.call(
       lighter(profile),
@@ -294,18 +322,15 @@ export class ContextCompactor {
               },
             }
           : {}),
-        messages: rows.map((m) => sourceRow(m, names, timeZone)),
+        messages: lived.map((m) => sourceRow(m, names, timeZone)),
         limits: { summaryChars: spec.summaryChars, keyPoints: spec.keyPoints },
       },
       trace,
     );
-    return this.save(
-      session,
-      0,
-      { seq: rows[0].seq, time: rows[0].time },
-      { seq: rows.at(-1).seq, time: rows.at(-1).time },
-      { ...cleanSummary(result, 0), messages: rows.length },
-    );
+    return this.save(session, 0, span.first, span.last, {
+      ...cleanSummary(result, 0),
+      messages: lived.length,
+    });
   }
   async mergeSummaries(session, { target, children }, options) {
     const { models, profile, mergeSystem, trace, timeZone, self } = options;
