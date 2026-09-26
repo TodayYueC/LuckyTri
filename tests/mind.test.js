@@ -1099,7 +1099,7 @@ test("后来同一批里还有别人时，不把开口算成对这个人出了�
         appraisal: "两个人在聊天气",
         reason: "接了一句",
         topic: "",
-        targetMessageIds: [2],
+        targetMessageIds: [3],
         feelings: [],
         bonds: [],
       },
@@ -1125,6 +1125,108 @@ test("后来同一批里还有别人时，不把开口算成对这个人出了�
     assert.match(will, /碰到过 1 次/);
     assert.match(will, /没出声/);
     assert.doesNotMatch(will, /后来那次出了声/);
+  } finally {
+    w.close();
+  }
+});
+
+test("后来回的是这个人，即使同一批还有别人，也算对这个人出了声", () => {
+  const w = world();
+  try {
+    w.open("group:1");
+    w.mind.self.propose(
+      { kind: "intention", content: "想看流星雨", strength: 0.3 },
+      { origin: "solitude", time: w.now() },
+    );
+    const heard = (id, speaker, name, said, relation = "ambient") => ({
+      id,
+      role: "user",
+      speaker,
+      name,
+      text: said,
+      relation,
+    });
+    const will = () =>
+      innerView(w.mind, {
+        session: "group:1",
+        people: ["10001"],
+        now: w.now() + 1,
+      }).inner.will;
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "听到了",
+        reason: "听到了",
+        topic: "",
+        targetMessageIds: [1],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [1],
+          messages: [heard(1, "10001", "阿明", "今晚有流星雨")],
+        },
+        kind: "group",
+        spoke: false,
+        time: w.now(),
+      },
+    );
+    w.advance(MINUTE);
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "他在叫我",
+        reason: "先不接",
+        topic: "",
+        targetMessageIds: [],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [2, 3],
+          messages: [
+            heard(2, "10001", "阿明", "LuckyTri 在吗", "direct"),
+            heard(3, "10002", "小红", "我也想问"),
+          ],
+        },
+        kind: "group",
+        spoke: false,
+        time: w.now(),
+      },
+    );
+    assert.match(will(), /没出声/);
+    assert.doesNotMatch(will(), /后来那次出了声/);
+    w.advance(HOUR);
+    w.mind.experience(
+      {
+        choice: "speak",
+        appraisal: "回了他一句",
+        reason: "接的是他",
+        topic: "",
+        targetMessageIds: [4],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [4, 5],
+          messages: [
+            heard(4, "10001", "阿明", "今天好冷"),
+            heard(5, "10002", "小红", "我也觉得"),
+          ],
+        },
+        kind: "group",
+        spoke: true,
+        time: w.now(),
+      },
+    );
+    assert.match(will(), /碰到过 1 次/);
+    assert.match(will(), /后来那次出了声/);
   } finally {
     w.close();
   }
