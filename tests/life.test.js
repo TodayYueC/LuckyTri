@@ -15,6 +15,65 @@ function chat(w, session, lines) {
   return events;
 }
 
+test("她不在时的话，重新打开后也不能当成听到的", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("private:10001", "阿明");
+  w.store.db
+    .prepare("UPDATE sessions SET enabled=0 WHERE id=?")
+    .run("private:10001");
+  const missed = w.say("private:10001", "10001", "我搬到南极了", {
+    name: "阿明",
+  });
+  await w.hear("private:10001", missed);
+  w.store.db
+    .prepare("UPDATE sessions SET enabled=1 WHERE id=?")
+    .run("private:10001");
+  const next = w.say("private:10001", "10001", "在吗", { name: "阿明" });
+  w.answers.turn = (data) => {
+    const texts = (data.context.messages || []).map((m) => m.text);
+    assert.equal(
+      texts.some((text) => text.includes("南极")),
+      false,
+      "关掉时的话不进后来的细看",
+    );
+    assert.ok(texts.some((text) => text.includes("在吗")));
+    return {
+      appraisal: "他回来了",
+      choice: "speak",
+      targetMessageIds: data.context.batchIds,
+      bubbles: ["在的"],
+      feelings: [
+        {
+          feeling: "惊讶",
+          intensity: 0.6,
+          valence: 0.2,
+          cause: [missed.seq],
+        },
+      ],
+      bonds: [
+        {
+          userId: "10001",
+          change: "closer",
+          why: "他搬去南极",
+          evidence: [missed.seq],
+        },
+      ],
+    };
+  };
+  const trace = await w.hear("private:10001", next);
+  assert.equal(trace.status, "sent");
+  assert.notEqual(w.mind.affect.state(w.now()).mood, "惊讶");
+  assert.equal(
+    w.mind.db
+      .prepare(
+        "SELECT 1 FROM mind_bond_events WHERE note LIKE '%南极%'",
+      )
+      .get(),
+    undefined,
+  );
+});
+
 test("她不在的会话，不会变成独处的经历", async (t) => {
   const w = world();
   t.after(w.close);

@@ -89,7 +89,15 @@ export function buildContext(
 
   // The window start only moves when a block is summarized (or, without
   // summaries, on a fixed grid), so consecutive turns share one prefix.
-  const history = resolved.filter((m) => !m.referenceOnly);
+  const aside = new Set(
+    repo.db
+      .prepare("SELECT seq FROM mind_unlived")
+      .all()
+      .map((row) => row.seq),
+  );
+  const history = resolved.filter(
+    (m) => !m.referenceOnly && !aside.has(m.seq),
+  );
   const keep = contextKeep(policy);
   let start;
   if (summaries.length) {
@@ -155,7 +163,9 @@ export function buildContext(
   if (budget < 1000) throw Error("输入预算太小，无法容纳语境与人格");
   let used = 0;
   const kept = [];
-  for (const m of resolved.filter((m) => mandatory.has(m.seq))) {
+  for (const m of resolved.filter(
+    (m) => mandatory.has(m.seq) && !aside.has(m.seq),
+  )) {
     const row = sanitize(m);
     used += estimateTokens(row);
     kept.push(row);

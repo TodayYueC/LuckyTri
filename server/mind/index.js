@@ -186,20 +186,23 @@ export class Mind {
       session,
       time,
     );
-    for (const f of (turn.feelings || []).slice(0, 3))
+    for (const f of (turn.feelings || []).slice(0, 3)) {
+      const cited = (Array.isArray(f.cause) ? f.cause : []).filter((id) =>
+        ids.has(id),
+      );
+      if (Array.isArray(f.cause) && f.cause.length && !cited.length) continue;
       this.affect.feel({
         feeling: f.feeling,
         intensity: clamp(f.intensity, 0, 1),
         valence: clamp(f.valence, -1, 1),
         arousal: f.arousal,
         cause: turn.appraisal || "",
-        sources: (Array.isArray(f.cause) ? f.cause : []).filter((id) =>
-          ids.has(id),
-        ),
+        sources: cited,
         session,
         origin: "turn",
         time,
       });
+    }
     for (const b of (turn.bonds || []).slice(0, 4)) {
       if (!TURN_CHANGES.has(b.change) || !speakers.has(String(b.userId)))
         continue;
