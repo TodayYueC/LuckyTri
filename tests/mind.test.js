@@ -699,6 +699,95 @@ test("注意力没有骰子：同样的情况永远得到同样的注意力", ()
   assert.doesNotMatch(both.reason, /在意的东西/);
 });
 
+test("私下的心情原因和在意不进别的房间", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.open("private:10001", "阿明");
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "他告诉我住址",
+        reason: "私下",
+        topic: "",
+        targetMessageIds: [1],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "private:10001",
+        snapshot: {
+          batchIds: [1],
+          messages: [
+            {
+              id: 1,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: "我住在南区河边",
+              relation: "direct",
+            },
+          ],
+        },
+        kind: "private",
+        spoke: false,
+        time: w.now(),
+      },
+    );
+    const meeting = w.mind.db
+      .prepare("SELECT id FROM mind_meetings WHERE session_id='private:10001'")
+      .get().id;
+    w.mind.affect.feel({
+      feeling: "挂心",
+      intensity: 1,
+      valence: -0.4,
+      cause: "他告诉我住址在南区",
+      sources: [`g:${meeting}`],
+      session: "private:10001",
+      time: w.now(),
+    });
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "住址在南区河边",
+        sources: [`g:${meeting}`],
+        strength: 0.3,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    const stateOf = (session) =>
+      innerView(w.mind, {
+        session,
+        kind: session.startsWith("private") ? "private" : "group",
+        now: w.now() + 1,
+      }).inner.state;
+    assert.doesNotMatch(stateOf("group:1"), /住址|南区/);
+    assert.match(stateOf("group:1"), /挂心/);
+    assert.match(stateOf("private:10001"), /住址在南区/);
+    assert.match(w.mind.affect.state(w.now()).cause, /住址在南区/);
+    const ask = (session) => {
+      const message = w.say(session, "10001", "南区河边怎么走？", {
+        name: "阿明",
+      });
+      return w.system.gate(
+        session,
+        [message],
+        [message],
+        w.now(),
+        w.mind.nature.current(),
+      );
+    };
+    const group = ask("group:1");
+    assert.equal(group.look, false);
+    assert.doesNotMatch(group.reason, /正在过的事|在意的东西/);
+    const room = ask("private:10001");
+    assert.equal(room.look, true);
+    assert.match(room.reason, /正在过的事/);
+  } finally {
+    w.close();
+  }
+});
+
 test("她正在过的事从心里进到注意力", () => {
   const w = world();
   try {
