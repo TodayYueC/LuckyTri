@@ -356,6 +356,74 @@ test("旧想法被新经历修正时追加保存；引用不存在的来源或�
   assert.equal(w.mind.thoughts.get(current.id).status, "open", "旧的理解还在");
 });
 
+test("换一种说法另写的手记，不会重新留在心上", () => {
+  const w = world({ start: "2026-09-01T12:00:00+08:00" });
+  try {
+    w.open("group:1");
+    const said = w.say("group:1", "10001", "面试还没有结果", { name: "阿明" });
+    const opts = {
+      valid: new Set([`m:${said.seq}`]),
+      thoughts: [],
+      involved: ["group:1"],
+    };
+    const first = w.life.writeThought(
+      {
+        kind: "reflection",
+        content: "面试结果还不知道",
+        sources: [said.seq],
+        importance: 0.5,
+      },
+      { ...opts, id: "run", now: w.now() },
+    );
+    const mark = w.mind.db.prepare(
+      "INSERT OR IGNORE INTO mind_days(day,created,lived,events,valence,arousal,looked,spoke,people) VALUES (?,?,1,0,NULL,NULL,1,0,0)",
+    );
+    for (let i = 0; i < 40; i++) {
+      mark.run(w.mind.days.key(w.now()), w.now());
+      w.advance(24 * HOUR);
+    }
+    const second = w.life.writeThought(
+      {
+        kind: "reflection",
+        content: "这件事我换句话还是记着",
+        sources: [said.seq],
+        importance: 0.9,
+      },
+      { ...opts, id: "run2", now: w.now() },
+    );
+    assert.ok(second);
+    const weighed = w.mind.thoughts.weighed({ now: w.now() });
+    assert.ok(
+      weighed.find((t) => t.id === second).salience < 0.1,
+      "换说法没有把这条重新留在心上",
+    );
+    assert.ok(weighed.find((t) => t.id === first).salience < 0.1);
+    const later = w.say("group:1", "10001", "面试过了", { name: "阿明" });
+    const third = w.life.writeThought(
+      {
+        kind: "reflection",
+        content: "他面试过了",
+        sources: [later.seq],
+        importance: 0.5,
+      },
+      {
+        valid: new Set([`m:${later.seq}`]),
+        thoughts: [],
+        involved: ["group:1"],
+        id: "run3",
+        now: w.now(),
+      },
+    );
+    assert.ok(
+      w.mind.thoughts.weighed({ now: w.now() }).find((t) => t.id === third)
+        .salience > 0.4,
+      "新的经历会重新留下",
+    );
+  } finally {
+    w.close();
+  }
+});
+
 test("睡前写日记，和昨天的自己对照；每天留一份快照；夜里回顾时写自传，章节可以重写，旧版本还在", async (t) => {
   const w = world({ start: "2026-09-22T12:00:00+08:00", rhythm: true });
   t.after(w.close);

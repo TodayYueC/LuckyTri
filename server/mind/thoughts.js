@@ -89,17 +89,27 @@ export class Thoughts {
       .map(row);
   }
   // Still on her mind at `now`, ranked by how present each one is; a thought
-  // let go of later still counts as open when looking back.
+  // let go of later still counts as open when looking back. A later note
+  // that only repeats sources already used does not start this clock over.
   weighed({ now = Date.now(), session = "" } = {}) {
     const lived = this.mind.days.lived(now);
-    return this.db
+    const notes = this.db
       .prepare(
         "SELECT * FROM mind_thoughts WHERE hidden=0 AND created<=? AND (status='open' OR resolved_at>?) ORDER BY created DESC LIMIT 400",
       )
       .all(now, now)
       .map(row)
-      .filter((t) => !session || t.sessions.includes(session))
-      .map((t) => ({ ...t, salience: thoughtSalience(t, lived, now) }))
+      .filter((t) => !session || t.sessions.includes(session));
+    const clock = sourceClock(notes);
+    return notes
+      .map((t) => ({
+        ...t,
+        salience: thoughtSalience(
+          { ...t, created: clock.get(t.id) ?? t.created },
+          lived,
+          now,
+        ),
+      }))
       .sort((a, b) => b.salience - a.salience || b.created - a.created);
   }
   open({ now = Date.now(), limit = 12, session = "" } = {}) {
@@ -176,4 +186,26 @@ export class Thoughts {
       .all(now)
       .map(row);
   }
+}
+
+// The first time a source was lived. A later note that only repeats those
+// sources keeps that time, so rewriting it does not make it newly present.
+function sourceClock(notes) {
+  const earned = new Map();
+  const clock = new Map();
+  for (const note of [...notes].sort((a, b) => a.created - b.created)) {
+    const sources = note.sources.length ? note.sources : [`t:${note.id}`];
+    const fresh = sources.some((source) => !earned.has(source));
+    if (fresh) {
+      clock.set(note.id, note.created);
+      for (const source of sources)
+        if (!earned.has(source)) earned.set(source, note.created);
+    } else {
+      clock.set(
+        note.id,
+        Math.min(...sources.map((source) => earned.get(source))),
+      );
+    }
+  }
+  return clock;
 }
