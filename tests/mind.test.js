@@ -875,6 +875,91 @@ test("私下的心情原因和在意不进别的房间", () => {
   }
 });
 
+test("愿望换了说法之后，对不上的旧相遇不再算碰到", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    const said = w.say("group:1", "10001", "今晚有流星雨", { name: "阿明" });
+    const wish = w.mind.self.propose(
+      { kind: "intention", content: "想看流星雨", strength: 0.3 },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "听到了",
+        reason: "听到了",
+        topic: "",
+        targetMessageIds: [said.seq],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [said.seq],
+          messages: [
+            {
+              id: said.seq,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: "今晚有流星雨",
+              relation: "ambient",
+            },
+          ],
+        },
+        kind: "group",
+        spoke: false,
+        time: w.now(),
+      },
+    );
+    const will = () =>
+      innerView(w.mind, {
+        session: "group:1",
+        people: ["10001"],
+        now: w.now() + 1,
+      }).inner.will;
+    const ask = (text) => {
+      const message = w.say("group:1", "10001", text, { name: "阿明" });
+      message.relation = "unknown";
+      return w.system.gate(
+        "group:1",
+        [message],
+        [message],
+        w.now(),
+        w.mind.nature.current(),
+      ).look;
+    };
+    assert.match(will(), /碰到过 1 次/);
+    assert.equal(ask("今晚还有流星雨吗？"), true);
+    w.advance(MINUTE);
+    w.mind.self.propose(
+      {
+        action: "revise",
+        thread: wish.thread,
+        content: "还是想看流星雨",
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    assert.match(will(), /碰到过 1 次/);
+    w.advance(MINUTE);
+    w.mind.self.propose(
+      {
+        action: "revise",
+        thread: wish.thread,
+        content: "想学烘焙",
+        sources: [said.seq],
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    assert.equal(will(), undefined);
+    assert.equal(ask("今晚还有流星雨吗？"), false);
+  } finally {
+    w.close();
+  }
+});
+
 test("她正在过的事从心里进到注意力", () => {
   const w = world();
   try {
@@ -1399,24 +1484,25 @@ test("别人的话碰到过她正在过的事之后，这个人再开口会被�
       { kind: "intention", content: "想看流星雨", strength: 0.3 },
       { origin: "solitude", time: w.now() },
     );
-    const meet = (session, id, text) =>
+    const meet = (session, text) => {
+      const message = w.say(session, "10001", text, { name: "阿明" });
       w.mind.experience(
         {
           choice: "silent",
           appraisal: "他们聊到了我想看的",
           reason: "听到了",
           topic: "",
-          targetMessageIds: [id],
+          targetMessageIds: [message.seq],
           feelings: [],
           bonds: [],
         },
         {
           session,
           snapshot: {
-            batchIds: [id],
+            batchIds: [message.seq],
             messages: [
               {
-                id,
+                id: message.seq,
                 role: "user",
                 speaker: "10001",
                 name: "阿明",
@@ -1430,6 +1516,7 @@ test("别人的话碰到过她正在过的事之后，这个人再开口会被�
           time: w.now(),
         },
       );
+    };
     const look = (text, { relation = "unknown", userId = "10001" } = {}) => {
       const message = w.say("group:1", userId, text, { name: "阿明" });
       message.relation = relation;
@@ -1448,14 +1535,14 @@ test("别人的话碰到过她正在过的事之后，这个人再开口会被�
       false,
       "还没被碰到时，无关的话只扫一眼",
     );
-    meet("private:7", 1, "今晚有流星雨");
+    meet("private:7", "今晚有流星雨");
     w.advance(MINUTE);
     assert.equal(
       look("今天好冷").look,
       false,
       "私下碰到的事不把群里的下一句变成细看",
     );
-    meet("group:1", 2, "周末有流星雨");
+    meet("group:1", "周末有流星雨");
     w.advance(MINUTE);
     const again = look("今天好冷");
     assert.equal(again.look, true);
