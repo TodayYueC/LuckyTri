@@ -597,6 +597,42 @@ test("主动联系交给她自己的意愿：条件都满足才考虑，她可�
   assert.equal(choices[0].choice, "silent");
 });
 
+test("人已经出现之后，主动联系会带着这个事实，说不说仍由她决定", async (t) => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  t.after(w.close);
+  w.open("group:1", "一群");
+  w.open("group:2", "另一群");
+  w.life.save({ proactive: true, diary: false, solitude: false });
+  const said = w.say("group:1", "10001", "今晚有流星雨", { name: "阿明" });
+  w.mind.bonds.meet([{ userId: "10001", name: "阿明" }], "group:1", w.now());
+  w.advance(5 * HOUR);
+  const id = w.mind.thoughts.add({
+    kind: "reconnection",
+    content: "好几天没见到阿明",
+    sessions: ["group:1"],
+    sources: [`m:${said.seq}`],
+    outreach: "好久没见你了",
+    outreachSession: "group:1",
+    revisitHours: 1,
+    time: w.now() - 2 * HOUR,
+  });
+  assert.equal(
+    w.life.returnedSince(w.mind.thoughts.get(id), w.now()).length,
+    0,
+  );
+  w.mind.bonds.meet([{ userId: "10001", name: "阿明" }], "group:2", w.now());
+  w.advance(4 * HOUR);
+  let seen;
+  w.answers.turn = (data) => {
+    if (data.occasion?.type === "outreach") seen = data.occasion;
+    return { choice: "silent", reason: "已经见到了", bubbles: [] };
+  };
+  const result = await w.life.reachOut(w.now());
+  assert.equal(result.status, "outreach-declined");
+  assert.equal(seen.returned[0].name, "阿明");
+  assert.equal(w.sent.length, 0);
+});
+
 test("主动联系默认开着，独处可以计划一句想说的话", async (t) => {
   const w = world();
   t.after(w.close);

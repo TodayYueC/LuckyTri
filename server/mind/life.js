@@ -1540,9 +1540,14 @@ export class Life {
       this.mind.thoughts.setOutreach(t.id, "sending");
       this.busy = true;
       try {
+        const returned = this.returnedSince(t, now);
         const trace = await this.chat.initiate(session, {
           type: "outreach",
-          data: { thought: t.content, planned: t.outreach },
+          data: {
+            thought: t.content,
+            planned: t.outreach,
+            ...(returned.length ? { returned } : {}),
+          },
         });
         const uncertain =
           trace &&
@@ -1575,6 +1580,52 @@ export class Life {
       }
     }
     return null;
+  }
+  // People this planned sentence was about, who have shown up since she
+  // wrote it. The sentence can still be said; the absence is no longer a fact.
+  returnedSince(thought, now) {
+    const sources = parse(thought?.sources, []);
+    const ids = new Set();
+    const meetingIds = sources
+      .filter((ref) => String(ref).startsWith("g:"))
+      .map((ref) => String(ref).slice(2));
+    if (meetingIds.length) {
+      const rows = this.db
+        .prepare(
+          `SELECT people, will_people FROM mind_meetings WHERE id IN (${meetingIds.map(() => "?").join(",")})`,
+        )
+        .all(...meetingIds);
+      for (const row of rows) {
+        const named = parse(row.will_people, []);
+        const who = named.length ? named : parse(row.people, []);
+        for (const id of who) ids.add(String(id));
+      }
+    }
+    const seqs = messageSeqs(sources);
+    if (seqs.length) {
+      const events = this.db
+        .prepare(
+          `SELECT payload, role FROM core_events WHERE seq IN (${seqs.map(() => "?").join(",")})`,
+        )
+        .all(...seqs);
+      for (const row of events) {
+        if (row.role === "assistant") continue;
+        const payload = parse(row.payload, {});
+        if (payload.userId && payload.userId !== "bot")
+          ids.add(String(payload.userId));
+      }
+    }
+    const out = [];
+    for (const id of ids) {
+      const person = this.mind.bonds.person(id, now);
+      if (!person?.seenAt || person.seenAt <= thought.created) continue;
+      out.push({
+        name: person.name || id,
+        since: agoLabel(now - person.seenAt),
+      });
+      if (out.length >= 3) break;
+    }
+    return out;
   }
   outreachBlocked(session, now, s) {
     if (!session || !this.chat.enabled(session, { simulated: false }))

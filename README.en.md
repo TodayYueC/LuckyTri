@@ -69,7 +69,7 @@ flowchart TD
 
 If the day really happened, TA writes a diary before sleep and sets it against the self saved yesterday. After sleep, the night first sorts conversations that have piled up into memory and promises, then — on the review interval, seven days by default and only after at least two diary pages — looks back. TA rewrites the chapter underway, or, when the days have changed shape, opens a new chapter and rewrites a short "where I come from." Every version is kept.
 
-In solitude TA may also plan to ask someone something later. When the time comes, and you have allowed reaching out, QQ is online, TA is awake, that conversation has been quiet, the other person has not asked to be left alone, and the last reaching-out was answered, TA reads that conversation again and decides whether to say it.
+In solitude TA may also plan to ask someone something later. When the time comes, and you have allowed reaching out, QQ is online, TA is awake, that conversation has been quiet, the other person has not asked to be left alone, and the last reaching-out was answered, TA reads that conversation again and decides whether to say it. If that person has shown up since the sentence was written, the decision includes that they have been seen.
 
 Replay walks the same path, sees only who TA was at that moment, sends nothing, and writes nothing. The preview on the nature page, and the little TA's chat, read the mind as it is now and write nothing.
 
