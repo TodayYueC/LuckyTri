@@ -928,6 +928,75 @@ test("读后的话如果就是私下的原话，不进别的房间", () => {
   }
 });
 
+test("日记、手记、样子和印象里的私下原话，不进别的房间", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.open("private:7", "阿明");
+    w.mind.memory.insert({
+      session: "private:7",
+      subject: "7",
+      content: "最近在准备考研",
+      discretion: "private",
+    });
+    const said = w.say("group:1", "10001", "今天好冷", { name: "阿明" });
+    w.mind.faces.propose(
+      {
+        session: "group:1",
+        role: "偶尔接话的",
+        aspiration: "他最近在准备考研",
+        sources: [`m:${said.seq}`],
+      },
+      { time: w.now() },
+    );
+    w.mind.bonds.meet([{ userId: "10001", name: "阿明" }], "group:1", w.now());
+    w.mind.bonds.record({
+      id: "10001",
+      change: "impression",
+      note: "他最近在准备考研",
+      sources: [`m:${said.seq}`],
+      session: "group:1",
+      time: w.now(),
+    });
+    w.mind.thoughts.add({
+      kind: "reflection",
+      content: "他最近在准备考研",
+      sessions: ["group:1"],
+      sources: [`m:${said.seq}`],
+      time: w.now(),
+    });
+    const day = lifeDayKey(
+      w.mind.nature.current(w.now()),
+      w.now(),
+      w.mind.timeZone(),
+    );
+    w.mind.db
+      .prepare(
+        "INSERT INTO mind_diary(id,day,created,content,mood,compare,sources) VALUES (?,?,?,?,?,?,?)",
+      )
+      .run("d-words", day, w.now(), "他最近在准备考研", "平静", "", "[]");
+    const group = innerView(w.mind, {
+      session: "group:1",
+      kind: "group",
+      people: ["10001"],
+      now: w.now() + 1,
+    });
+    const shown = JSON.stringify(group);
+    assert.doesNotMatch(shown, /考研/);
+    assert.match(group.self.here, /偶尔接话/);
+    const room = JSON.stringify(
+      innerView(w.mind, {
+        session: "private:7",
+        kind: "private",
+        now: w.now() + 1,
+      }),
+    );
+    assert.match(room, /考研/);
+  } finally {
+    w.close();
+  }
+});
+
 test("更强的私下小事不会让另一件仍在过的事从独处里消失", () => {
   const w = world({ start: "2026-09-22T10:00:00+08:00" });
   try {
