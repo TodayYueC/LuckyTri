@@ -5,7 +5,7 @@ import { agoLabel, elapsedLabel } from "./clock.js";
 import { isPrivateSession } from "./memory.js";
 import { lifeDayKey } from "./nature.js";
 import { MEETING_FADED, meetingSalience, touches } from "./salience.js";
-import { hasCredential, parse, text } from "./util.js";
+import { hasCredential, messageSeqs, parse, text } from "./util.js";
 
 // What a meeting meant, and whether the world actually touched what she is
 // living for. Both are facts of that batch: her own wording cannot invent a
@@ -406,6 +406,31 @@ export class Meetings {
         `SELECT id, session_id, discretion FROM mind_meetings WHERE id IN (${ids.map(() => "?").join(",")})`,
       )
       .all(...ids);
+  }
+  // Private rooms a citation rests on. Empty means the words are hers, or
+  // they came from somewhere she can speak of openly.
+  privateRoots(sources) {
+    const refs = Array.isArray(sources) ? sources : parse(sources, []);
+    const rooms = new Set();
+    for (const row of this.places(refs))
+      if (row.discretion === "private") rooms.add(row.session_id);
+    const seqs = messageSeqs(refs);
+    if (seqs.length) {
+      const found = this.db
+        .prepare(
+          `SELECT DISTINCT session_id FROM core_events WHERE seq IN (${seqs.map(() => "?").join(",")})`,
+        )
+        .all(...seqs);
+      for (const row of found)
+        if (isPrivateSession(row.session_id)) rooms.add(row.session_id);
+    }
+    for (const ref of refs.filter((item) => String(item).startsWith("t:"))) {
+      const owned = this.mind.thoughts.get(String(ref).slice(2))?.sessions || [];
+      const open = owned.filter((id) => !isPrivateSession(id));
+      if (!open.length)
+        for (const id of owned) if (isPrivateSession(id)) rooms.add(id);
+    }
+    return [...rooms];
   }
   // A private meeting from that life day must not ride along in some other
   // room's diary line. Her own room can still see it.
