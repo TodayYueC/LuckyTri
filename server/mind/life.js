@@ -825,16 +825,11 @@ export class Life {
       !/寂寞|孤独|不理我|好久没找我|怎么不回|一直等你/.test(outreach.text)
         ? outreach
         : null;
-    // A private meeting can change what she thinks. It cannot become a
-    // planned word in some other room.
+    // Anything grounded in a private room stays there, including a planned
+    // sentence. A private message counts the same as a private meeting.
     if (reach) {
-      const privateRooms = new Set(
-        this.mind.meetings
-          .places(sources)
-          .filter((row) => row.discretion === "private")
-          .map((row) => row.session_id),
-      );
-      if (privateRooms.size && !privateRooms.has(reach.session)) reach = null;
+      const roots = this.mind.meetings.privateRoots(sources);
+      if (roots.length && !roots.includes(reach.session)) reach = null;
     }
     const place = this.placeOf(sources);
     const rooted = this.sourcePlaces(sources).filter((id) =>
