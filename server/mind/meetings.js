@@ -535,6 +535,47 @@ export class Meetings {
     }
     return [...rooms];
   }
+  // A thread stays in a room when its words were not learned in private, or
+  // this is the room where they were.
+  stays(thread, session) {
+    const roots = new Set(this.privateRoots(thread?.sources || []));
+    if (thread?.session_id && isPrivateSession(thread.session_id))
+      roots.add(thread.session_id);
+    return !roots.size || roots.has(session);
+  }
+  // Wording she learned in private. `exceptSession` is where she may still say it.
+  privateSayings(exceptSession = "") {
+    const out = [];
+    const keep = (content, sessionId) => {
+      if (!content || (exceptSession && sessionId === exceptSession)) return;
+      out.push({ content, session_id: sessionId || "" });
+    };
+    for (const row of this.db
+      .prepare(
+        "SELECT content, session_id FROM core_memories WHERE discretion='private' AND status='confirmed' ORDER BY updated DESC LIMIT 200",
+      )
+      .all())
+      keep(row.content, row.session_id);
+    for (const row of this.db
+      .prepare(
+        `SELECT appraisal AS content, session_id FROM mind_meetings m
+         WHERE discretion='private' AND appraisal!=''
+         AND NOT EXISTS (
+           SELECT 1 FROM mind_revocations r
+           WHERE r.target_kind='meeting' AND r.target_id=m.id
+         )
+         ORDER BY created DESC LIMIT 200`,
+      )
+      .all())
+      keep(row.content, row.session_id);
+    for (const row of this.db
+      .prepare(
+        "SELECT note AS content, session_id FROM mind_bond_events WHERE note!='' ORDER BY created DESC LIMIT 200",
+      )
+      .all())
+      if (isPrivateSession(row.session_id)) keep(row.content, row.session_id);
+    return out;
+  }
   // A private meeting, a private message, or a privately worded feeling from
   // that life day must not ride along in some other room's diary line. Her
   // own room can still see it. Revoking the meeting releases only the

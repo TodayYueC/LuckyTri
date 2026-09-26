@@ -717,6 +717,143 @@ test("就算模型把私下知道的事说出来，发出去之前也会被拦�
   assert.match(trace.validation.join(), /私下知道/);
 });
 
+test("没有来源的小事如果就是私下的原话，不进别的房间", () => {
+  const w = world();
+  try {
+    w.open("private:7", "阿明");
+    w.open("group:1", "一群");
+    w.mind.memory.insert({
+      session: "private:7",
+      subject: "7",
+      content: "最近在准备考研",
+      discretion: "private",
+    });
+    const leaked = w.mind.self.propose(
+      {
+        action: "new",
+        kind: "intention",
+        content: "他最近在准备考研",
+        sources: [],
+      },
+      { time: w.now() },
+    );
+    const row = w.mind.self
+      .latest(w.now() + 1)
+      .find((t) => t.thread === leaked.thread);
+    assert.equal(row.session_id, "private:7");
+    const group = innerView(w.mind, {
+      session: "group:1",
+      kind: "group",
+      now: w.now() + 1,
+    });
+    assert.equal(group.self.livingFor, undefined);
+    assert.equal(
+      (group.self.threads || []).some((t) => /考研/.test(t)),
+      false,
+    );
+    assert.match(
+      innerView(w.mind, {
+        session: "private:7",
+        kind: "private",
+        now: w.now() + 1,
+      }).self.livingFor,
+      /考研/,
+    );
+  } finally {
+    w.close();
+  }
+  const own = world();
+  try {
+    own.open("group:1", "一群");
+    const baked = own.mind.self.propose(
+      {
+        action: "new",
+        kind: "intention",
+        content: "我想自己学烘焙",
+        sources: [],
+      },
+      { time: own.now() },
+    );
+    const row = own.mind.self
+      .latest(own.now() + 1)
+      .find((t) => t.thread === baked.thread);
+    assert.equal(row.session_id, null);
+    assert.match(
+      innerView(own.mind, {
+        session: "group:1",
+        kind: "group",
+        now: own.now() + 1,
+      }).self.livingFor,
+      /烘焙/,
+    );
+  } finally {
+    own.close();
+  }
+});
+
+test("私下相遇里的原话，在别的房间说出去之前会被拦住", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("private:7", "阿明");
+  w.open("group:1", "一群");
+  const said = w.say("private:7", "7", "今晚我先回去", { name: "阿明" });
+  w.mind.experience(
+    {
+      choice: "silent",
+      appraisal: "他告诉我今晚先回去",
+      reason: "私下",
+      topic: "",
+      targetMessageIds: [said.seq],
+      feelings: [],
+      bonds: [],
+    },
+    {
+      session: "private:7",
+      snapshot: {
+        batchIds: [said.seq],
+        messages: [
+          {
+            id: said.seq,
+            role: "user",
+            speaker: "7",
+            name: "阿明",
+            text: said.text,
+            relation: "direct",
+          },
+        ],
+      },
+      kind: "private",
+      spoke: false,
+      time: w.now(),
+    },
+  );
+  w.answers.turn = (data) => ({
+    choice: "speak",
+    targetMessageIds: data.context.batchIds,
+    bubbles: ["他告诉我今晚先回去"],
+  });
+  w.answers.rewrite = { bubbles: ["这个我不好说"] };
+  const trace = await w.hear(
+    "group:1",
+    w.say("group:1", "10002", "LuckyBot，他今晚去哪"),
+  );
+  assert.deepEqual(
+    w.sent.map((s) => s.text),
+    ["这个我不好说"],
+  );
+  assert.match(trace.validation.join(), /私下知道/);
+  w.sent.length = 0;
+  const home = await w.hear(
+    "private:7",
+    w.say("private:7", "7", "LuckyBot，还记得吗", { name: "阿明" }),
+  );
+  assert.deepEqual(
+    w.sent.map((s) => s.text),
+    ["他告诉我今晚先回去"],
+  );
+  assert.equal(home.validation, undefined);
+});
+
 test("就算模型写出了别处的秘密，发出去之前也会被拦下重写", async (t) => {
   const w = world();
   t.after(w.close);

@@ -50,16 +50,13 @@ export function innerView(
     .annotated({ before: now, now })
     .find((row) => row.kind === "intention" && !row.faded);
   const terms = interestTerms(cue);
-  const carries = (sources) => {
-    const roots = mind.meetings.privateRoots(sources || []);
-    return !roots.length || roots.includes(session);
-  };
-  const visibleThreads = threads.filter((t) => carries(t.sources));
-  const shownLiving = living && carries(living.sources) ? living : null;
+  const carries = (thread) => mind.meetings.stays(thread, session);
+  const visibleThreads = threads.filter(carries);
+  const shownLiving = living && carries(living) ? living : null;
   const reminded = [
     ...mind.self
       .reminded({ before: now, now, cue: terms, limit: 2 })
-      .filter((t) => carries(t.sources))
+      .filter(carries)
       .map((t) => `${SELF_KINDS[t.kind]}：${text(t.content, 80)}${FORGOTTEN}`),
     ...mind.thoughts
       .reminded({ now, cue: terms, session, limit: 1 })
