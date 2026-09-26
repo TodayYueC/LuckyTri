@@ -345,6 +345,93 @@ test("引用私下相遇写成的自我线索不进别的房间", () => {
   }
 });
 
+test("没有新来源的修正不会把私下的线索带到别的房间", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.open("private:10001", "阿明");
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "他告诉我住址",
+        reason: "私下",
+        topic: "",
+        targetMessageIds: [1],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "private:10001",
+        snapshot: {
+          batchIds: [1],
+          messages: [
+            {
+              id: 1,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: "我住在南区",
+              relation: "direct",
+            },
+          ],
+        },
+        kind: "private",
+        spoke: false,
+        time: w.now(),
+      },
+    );
+    const meeting = w.mind.db
+      .prepare("SELECT id FROM mind_meetings WHERE session_id='private:10001'")
+      .get().id;
+    const made = w.mind.self.propose(
+      {
+        kind: "care",
+        content: "他告诉我住址在南区",
+        sources: [`g:${meeting}`],
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.advance(MINUTE);
+    const revised = w.mind.self.propose(
+      {
+        action: "revise",
+        thread: made.thread,
+        content: "住址那件事我还记着",
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    assert.equal(revised.action, "revise");
+    assert.deepEqual(w.mind.self.history(made.thread).at(-1).sources, [
+      `g:${meeting}`,
+    ]);
+    const threads = (session) =>
+      (
+        innerView(w.mind, {
+          session,
+          kind: session.startsWith("private") ? "private" : "group",
+          now: w.now() + 1,
+        }).self.threads || []
+      ).join(" ");
+    assert.doesNotMatch(threads("group:1"), /住址/);
+    assert.match(threads("private:10001"), /住址那件事/);
+    const said = w.say("group:1", "10002", "今晚有流星雨", { name: "小红" });
+    w.advance(MINUTE);
+    w.mind.self.propose(
+      {
+        action: "revise",
+        thread: made.thread,
+        content: "我喜欢听他们聊星星",
+        sources: [said.seq],
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    assert.match(threads("group:1"), /聊星星/);
+    assert.doesNotMatch(threads("group:1"), /住址/);
+  } finally {
+    w.close();
+  }
+});
+
 test("自我渐进生长：强度每次只变一点，新特质要跨天的经历才成形，撤销的不会回来", (t) => {
   const w = world();
   t.after(w.close);
