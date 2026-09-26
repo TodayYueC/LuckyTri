@@ -669,12 +669,52 @@ test("记忆是一个人的记忆：公开的事在别处相关时想起，私�
   const home = memory.retrieve("group:1", rows, Date.now() + 1000);
   assert.ok(home.some((m) => m.content.includes("辞职")));
   const secrets = memory.secretsOutside("group:2");
+  const privates = memory.privateOutside("group:2");
+  assert.match(
+    privates.map((m) => m.content).join(" "),
+    /准备考研/,
+  );
+  assert.equal(
+    memory.privateOutside("private:10001").some((m) => /考研/.test(m.content)),
+    false,
+  );
+  assert.equal(leaks(["他最近在准备考研呢"], privates).length, 1);
+  assert.equal(leaks(["今天天气不错"], privates).length, 0);
   assert.equal(leaks(["听说他下个月要辞职跳槽去上海了"], secrets).length, 1);
   assert.equal(leaks(["嗯"], secrets).length, 0);
   assert.equal(leaks(["今天天气不错"], secrets).length, 0);
   assert(secretRequest("这事你帮我保密啊"));
   assert(secretRequest("别告诉别人"));
   assert(!secretRequest("我告诉你一个好消息"));
+});
+
+test("就算模型把私下知道的事说出来，发出去之前也会被拦下重写", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("private:10001");
+  w.open("group:2");
+  w.mind.memory.insert({
+    session: "private:10001",
+    subject: "10001",
+    content: "最近在准备考研",
+    discretion: "private",
+  });
+  w.answers.turn = (data) => ({
+    choice: "speak",
+    targetMessageIds: data.context.batchIds,
+    bubbles: ["他最近在准备考研呢"],
+  });
+  w.answers.rewrite = { bubbles: ["我不太清楚诶"] };
+  const trace = await w.hear(
+    "group:2",
+    w.say("group:2", "10002", "LuckyBot，阿明最近怎么样"),
+  );
+  assert.equal(trace.status, "sent");
+  assert.deepEqual(
+    w.sent.map((s) => s.text),
+    ["我不太清楚诶"],
+  );
+  assert.match(trace.validation.join(), /私下知道/);
 });
 
 test("就算模型写出了别处的秘密，发出去之前也会被拦下重写", async (t) => {
