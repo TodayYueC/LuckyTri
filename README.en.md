@@ -75,7 +75,7 @@ Replay walks the same path, sees only who TA was at that moment, sends nothing, 
 
 ## Time leaves a weight
 
-TA does not only accumulate. Threads, notes, and memories nobody touches fade from the mind, and come back when a person or a topic brings them up. Fading is computed when something is read. Nothing is deleted, so a replay still sees the TA of that moment. Fading counts the days TA actually lived. A silent month does not wear TA away. The two strongest threads are the core. Quiet does not push them out. A revoked thread is never called back.
+TA does not only accumulate. Threads, notes, and memories nobody touches fade from the mind, and come back when a person or a topic brings them up. What a meeting meant also fades by the days TA lived. It is not deleted. Fading is computed when something is read. Nothing is deleted, so a replay still sees the TA of that moment. Fading counts the days TA actually lived. A silent month does not wear TA away. The two strongest threads are the core. Quiet does not push them out. A revoked thread is never called back.
 
 People fade too. After a long gap, closeness and familiarity settle down. The first meeting after that gap warms halfway back. TA can tell "it has been a long time" from "we have not really talked." A glance at a group still counts as seeing someone. A person who is in the group every day, and simply has not spoken to TA, is not treated as a long absence.
 

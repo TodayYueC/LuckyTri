@@ -3,6 +3,7 @@ import { interestTerms } from "./attention.js";
 import { elapsedLabel } from "./clock.js";
 import { isPrivateSession } from "./memory.js";
 import { lifeDayKey } from "./nature.js";
+import { MEETING_FADED, meetingSalience } from "./salience.js";
 import { hasCredential, parse, text } from "./util.js";
 
 // What a meeting meant, and whether the world actually touched what she is
@@ -113,7 +114,9 @@ export class Meetings {
         ),
       );
     take(this.#open(`m.session_id=? AND ${bound}`, [session, now]));
+    const lived = this.mind.days.lived(now);
     return rows
+      .filter((row) => meetingSalience(row.created, lived) >= MEETING_FADED)
       .sort((a, b) => b.created - a.created)
       .slice(0, limit)
       .map((row) => this.line(row, people, now));
@@ -208,10 +211,11 @@ export class Meetings {
       ...new Set((userIds || []).map((id) => String(id || "")).filter(Boolean)),
     ].slice(0, 12);
     if (!thread || !ids.length) return new Set();
+    const lived = this.mind.days.lived(before);
     return new Set(
       this.db
         .prepare(
-          `SELECT DISTINCT p.user_id FROM mind_meeting_people p
+          `SELECT p.user_id, m.created FROM mind_meeting_people p
            JOIN mind_meetings m ON m.id = p.meeting_id
            WHERE p.user_id IN (${ids.map(() => "?").join(",")})
              AND m.will_met = 1 AND m.will_thread = ? AND m.created < ?
@@ -222,6 +226,7 @@ export class Meetings {
              )`,
         )
         .all(...ids, thread, before, session)
+        .filter((row) => meetingSalience(row.created, lived) >= MEETING_FADED)
         .map((row) => String(row.user_id)),
     );
   }
