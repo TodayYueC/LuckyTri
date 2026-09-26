@@ -166,9 +166,17 @@ export class Mind {
       .all(before, ...(session ? [session] : []), limit);
   }
   // Living through a conversation changes her whether or not she speaks.
+  // `deferTalk` waits until words actually leave before counting a conversation.
   experience(
     turn,
-    { session, snapshot, kind = "group", spoke = false, time = Date.now() },
+    {
+      session,
+      snapshot,
+      kind = "group",
+      spoke = false,
+      deferTalk = false,
+      time = Date.now(),
+    },
   ) {
     const ids = new Set((snapshot.messages || []).map((m) => m.id));
     const speakers = new Map(
@@ -220,31 +228,53 @@ export class Mind {
         time,
       });
     }
-    const targets = new Set(turn.targetMessageIds || []);
-    for (const m of batch) {
-      if (m.role !== "user") continue;
-      const addressed = m.relation === "direct";
-      if (!addressed && !(spoke && targets.has(m.id))) continue;
-      this.bonds.record({
-        id: String(m.speaker),
-        change: "interaction",
-        sources: [m.id],
-        session,
-        // Being called and staying quiet can make a person more familiar.
-        // It is not a conversation, and it does not end the time since she spoke.
-        origin: spoke ? (addressed ? "direct" : "group") : "noticed",
-        time,
-      });
+    if (!deferTalk) this.settleTalk(turn, { session, snapshot, kind, spoke, time });
+  }
+  // Whether this turn became a conversation. A choice to speak that never
+  // leaves does not count as having spoken.
+  settleTalk(
+    turn,
+    {
+      session,
+      snapshot,
+      kind = "group",
+      spoke = false,
+      withheld = false,
+      time = Date.now(),
+    },
+  ) {
+    const batch = (snapshot.messages || []).filter((m) =>
+      (snapshot.batchIds || []).includes(m.id),
+    );
+    // A draft that never left must not spend the hour's one conversation mark.
+    // Otherwise a later message that does go out would not count as talking.
+    if (!withheld) {
+      const targets = new Set(turn.targetMessageIds || []);
+      for (const m of batch) {
+        if (m.role !== "user") continue;
+        const addressed = m.relation === "direct";
+        if (!addressed && !(spoke && targets.has(m.id))) continue;
+        this.bonds.record({
+          id: String(m.speaker),
+          change: "interaction",
+          sources: [m.id],
+          session,
+          // Being called and staying quiet can make a person more familiar.
+          // It is not a conversation, and it does not end the time since she spoke.
+          origin: spoke ? (addressed ? "direct" : "group") : "noticed",
+          time,
+        });
+      }
+      if (spoke && kind === "group")
+        this.bonds.record({
+          kind: "group",
+          id: session,
+          change: "interaction",
+          session,
+          origin: "group",
+          time,
+        });
     }
-    if (spoke && kind === "group")
-      this.bonds.record({
-        kind: "group",
-        id: session,
-        change: "interaction",
-        session,
-        origin: "group",
-        time,
-      });
     this.meetings.keep(turn, { session, snapshot, time });
   }
   revoke(kind, id, reason = "") {
