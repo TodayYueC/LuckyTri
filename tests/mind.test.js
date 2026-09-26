@@ -924,6 +924,21 @@ test("相遇的意思按她过过的日子淡出，安静的日子磨不掉", ()
     assert.equal(wish.thread.length > 0, true);
     assert.match(view(soon).inner.with[0], /我想看的/);
     assert.equal(look(soon).look, true, "回到那时，这次相遇还在心上");
+    const insertMeeting = w.mind.db.prepare(
+      "INSERT INTO mind_meetings(id,created,session_id,choice,appraisal,people,sources,discretion,will_people) VALUES (?,?,?,?,?,?,?,?,?)",
+    );
+    for (let i = 0; i < 35; i++)
+      insertMeeting.run(
+        `later-${i}`,
+        later - 1000 - i,
+        "group:1",
+        "silent",
+        "今天只是闲聊",
+        '["10002"]',
+        JSON.stringify([200 + i]),
+        "open",
+        "[]",
+      );
     const faded = (cue) =>
       innerView(w.mind, {
         session: "group:1",
@@ -936,7 +951,7 @@ test("相遇的意思按她过过的日子淡出，安静的日子磨不掉", ()
     const brought = faded(["又聊到看的那件事"]);
     assert.match(brought.inner.reminded.join(" "), /我想看的/);
     assert.match(brought.inner.reminded.join(" "), /很久没想起了/);
-    assert.equal(brought.inner.with, undefined);
+    assert.doesNotMatch((brought.inner.with || []).join(" "), /我想看的/);
     assert.equal(look(later).look, false, "想起来不等于又要细看");
   } finally {
     w.close();
