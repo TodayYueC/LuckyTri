@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { localClock } from "./conversation-cues.js";
 import { readableName, speakerNames } from "./speaker-names.js";
+import { grounded } from "../mind/salience.js";
 
 export const DEFAULT_CONTEXT_MESSAGES = 40;
 export const COMPACTION_BLOCK = 30;
@@ -75,6 +76,10 @@ function cleanSummary(value, level) {
     ),
     keyPoints,
   };
+}
+
+function keptPoints(points, said) {
+  return points.filter((point) => grounded(point.text, said));
 }
 
 function sourceRow(m, names, timeZone) {
@@ -327,8 +332,13 @@ export class ContextCompactor {
       },
       trace,
     );
+    const cleaned = cleanSummary(result, 0);
+    cleaned.keyPoints = keptPoints(
+      cleaned.keyPoints,
+      lived.map((m) => String(m.text || "")),
+    );
     return this.save(session, 0, span.first, span.last, {
-      ...cleanSummary(result, 0),
+      ...cleaned,
       messages: lived.length,
     });
   }
@@ -354,13 +364,20 @@ export class ContextCompactor {
     );
     const first = children[0];
     const last = children.at(-1);
+    const cleaned = cleanSummary(result, target);
+    cleaned.keyPoints = keptPoints(cleaned.keyPoints, [
+      ...children.map((row) => row.data.summary || ""),
+      ...children.flatMap((row) =>
+        (row.data.keyPoints || []).map((point) => point.text || ""),
+      ),
+    ]);
     return this.save(
       session,
       target,
       { seq: first.first_seq, time: first.first_time },
       { seq: last.last_seq, time: last.last_time },
       {
-        ...cleanSummary(result, target),
+        ...cleaned,
         messages: children.reduce((n, row) => n + (row.data.messages || 0), 0),
       },
       children.map((row) => row.id),

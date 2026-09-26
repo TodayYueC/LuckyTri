@@ -69,7 +69,8 @@ function summarizer(calls = []) {
       return {
         summary: `第 ${data.messages[0].id}–${data.messages.at(-1).id} 条在闲聊`,
         keyPoints: [
-          { text: `待续${data.messages[0].id}`, importance: 0.9, open: true },
+          { text: `消息${data.messages[0].id}`, importance: 0.9, open: true },
+          { text: "他下个月要结婚", importance: 0.8, open: true },
           { text: "他的密码是 123456", importance: 1 },
         ],
       };
@@ -117,7 +118,7 @@ test("窗口外最旧的 30 条压成一段细摘要，原文从摘要之后开�
   assert.equal(view.coverage, 30);
   assert.equal(view.summaries[0].period, "09-24 08:01–08:30");
   // Sensitive points are dropped; unfinished ones are marked for the model.
-  assert.deepEqual(view.summaries[0].keyPoints, ["未完：待续1"]);
+  assert.deepEqual(view.summaries[0].keyPoints, ["未完：消息1"]);
   assert.equal(compactor.nextBlock(SESSION, 40), null);
   const trace = repo.db
     .prepare("SELECT status,data FROM core_traces WHERE mode='summary'")
@@ -167,7 +168,7 @@ test("细摘要超过 4 段时最旧 3 段合并为中摘要，关键点随合�
   assert.match(rows[0].summary, /^合并：/);
   assert.deepEqual(
     rows[0].keyPoints.map((point) => point.text),
-    ["待续1", "待续31", "待续61"],
+    ["消息1", "消息31", "消息61"],
   );
   const merge = calls.find((call) => call.data.children);
   assert.equal(merge.system, "merge");
