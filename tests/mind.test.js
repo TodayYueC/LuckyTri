@@ -966,6 +966,44 @@ test("擦边想起不算把旧事重新记住", () => {
       false,
       "安静够久，又要强线索",
     );
+    const split = w.mind.memory.retrieve(
+      "group:1",
+      [
+        { userId: "10002", role: "user", text: "喜欢" },
+        { userId: "10004", role: "user", text: "猫" },
+      ],
+      w.now(),
+      { people: ["10001"], touch: false },
+    );
+    assert.equal(
+      split.some((m) => m.content === "喜欢猫"),
+      false,
+      "两个人各说一个词不算真正聊到",
+    );
+    const hers = w.mind.memory.retrieve(
+      "group:1",
+      [
+        { userId: "bot", role: "assistant", text: "喜欢猫" },
+        { userId: "10004", role: "user", text: "今天好累" },
+      ],
+      w.now(),
+      { people: ["10001"], touch: false },
+    );
+    assert.equal(
+      hers.some((m) => m.content === "喜欢猫"),
+      false,
+      "她自己说过的话不算别人聊到了",
+    );
+    const whole = w.mind.memory.retrieve(
+      "group:1",
+      [{ userId: "10002", role: "user", text: "喜欢猫" }],
+      w.now(),
+      { people: ["10001"], touch: false },
+    );
+    assert.ok(
+      whole.some((m) => m.content === "喜欢猫"),
+      "同一个人自己说全了，会想起",
+    );
   } finally {
     w.close();
   }

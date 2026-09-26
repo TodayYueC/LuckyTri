@@ -87,7 +87,27 @@ export class MemoryManager {
     here.delete("__shared__");
     const speakers = new Set(rows.map((r) => String(r.userId)));
     const present = new Set(people.map(String));
-    const query = lexicalTerms(rows.map((r) => r.text || "").join(" "));
+    // Two people cannot be added together, and her own line does not count
+    // as the world talking about what she remembers.
+    const saidBy = new Map();
+    for (const row of rows) {
+      if (row.role === "assistant") continue;
+      const id = String(row.userId || "");
+      if (!id) continue;
+      const terms = saidBy.get(id) || new Set();
+      for (const term of lexicalTerms(row.text || "")) terms.add(term);
+      saidBy.set(id, terms);
+    }
+    const oneSpeakerOverlap = (content) => {
+      const terms = lexicalTerms(content);
+      let best = 0;
+      for (const said of saidBy.values()) {
+        let count = 0;
+        for (const term of terms) if (said.has(term)) count++;
+        if (count > best) best = count;
+      }
+      return best;
+    };
     const fts = new Set();
     const match = recallQuery(rows);
     if (match)
@@ -115,9 +135,7 @@ export class MemoryManager {
     for (const m of candidates) {
       const local = here.has(m.session_id) || m.session_id === "__shared__";
       if (m.discretion === "secret" && !local) continue;
-      const overlap = [...lexicalTerms(m.content)].filter((t) =>
-        query.has(t),
-      ).length;
+      const overlap = oneSpeakerOverlap(m.content);
       const relevance = overlap + (fts.has(m.id) ? 2 : 0);
       const about = speakers.has(m.subject)
         ? 3
