@@ -2134,6 +2134,41 @@ test("一个词组或两个人拼起来，不会因为正在过的事而细看",
   assert.match(whole.reason, /正在过的事/);
 });
 
+test("两个人各说一个在意的词，不会因此细看", () => {
+  const now = Date.parse("2026-09-22T12:00:00+08:00");
+  const line = (userId, text, role = "user") => ({
+    userId,
+    role,
+    text,
+    relation: "unknown",
+    mentions: [],
+  });
+  const care = new Set(["烘焙", "天文"]);
+  const split = attend({
+    batch: [line("10001", "今天想烘焙"), line("10002", "聊聊天文")],
+    now,
+    curiosities: care,
+  });
+  assert.equal(split.look, false);
+  assert.doesNotMatch(split.reason, /在意的东西/);
+  const hers = attend({
+    batch: [
+      line("bot", "烘焙和天文", "assistant"),
+      line("10001", "今天好冷"),
+    ],
+    now,
+    interests: new Set(["烘焙"]),
+  });
+  assert.doesNotMatch(hers.reason, /在意的东西/);
+  const whole = attend({
+    batch: [line("10001", "烘焙和天文有人看吗？")],
+    now,
+    curiosities: care,
+  });
+  assert.equal(whole.look, true);
+  assert.match(whole.reason, /在意的东西/);
+});
+
 test("一个词组对上不算碰到她正在过的事", () => {
   const w = world();
   try {
