@@ -804,3 +804,100 @@ test("日记从今天已经留下的意思写起，并能把它当成来源", as
     seen.today.meetings[0].ref,
   );
 });
+
+test("好久没见到、而话曾经碰到她正在过的事的人，独处时能想起，并且只能回到那次的会话", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1", "一群");
+  w.open("group:2", "另一群");
+  w.mind.self.propose(
+    { kind: "intention", content: "想看流星雨", strength: 0.3 },
+    { origin: "solitude", time: w.now() },
+  );
+  const said = w.say("group:1", "10001", "今晚有流星雨", { name: "阿明" });
+  w.mind.experience(
+    {
+      choice: "silent",
+      appraisal: "他的话碰到了我想看的",
+      reason: "听到了",
+      topic: "",
+      targetMessageIds: [said.seq],
+      feelings: [],
+      bonds: [],
+    },
+    {
+      session: "group:1",
+      snapshot: {
+        batchIds: [said.seq],
+        messages: [
+          {
+            id: said.seq,
+            role: "user",
+            speaker: "10001",
+            name: "阿明",
+            text: "今晚有流星雨",
+            relation: "ambient",
+          },
+        ],
+      },
+      kind: "group",
+      spoke: false,
+      time: w.now(),
+    },
+  );
+  w.advance(4 * 24 * HOUR);
+  chat(w, "group:1", [
+    ["10002", "早"],
+    ["10002", "今天好热"],
+    ["10002", "下午开会"],
+    ["10002", "有点累"],
+    ["10002", "先这样"],
+    ["10002", "拜拜"],
+  ]);
+  w.advance(30 * MINUTE);
+  let seen;
+  w.answers.reflection = (data) => {
+    seen = data;
+    return {
+      thought: {
+        kind: "reconnection",
+        content: "阿明的话碰到过我想看的事，好几天没见了",
+        sources: [data.fromWish[0].ref],
+      },
+      outreach: { session: "group:2", text: "还想看流星雨吗", afterHours: 4 },
+    };
+  };
+  const first = await w.life.tick();
+  assert.equal(first.status, "written");
+  assert.equal(seen.fromWish[0].userId, "10001");
+  assert.equal(seen.fromWish[0].session, "group:1");
+  assert.equal(w.mind.thoughts.list()[0].outreach, "");
+  w.advance(2 * HOUR);
+  chat(w, "group:1", [
+    ["10002", "又来了"],
+    ["10002", "今天也热"],
+    ["10002", "会开完了"],
+    ["10002", "还是累"],
+    ["10002", "先走了"],
+    ["10002", "明天见"],
+  ]);
+  w.advance(30 * MINUTE);
+  w.answers.reflection = (data) => ({
+    thought: {
+      kind: "reconnection",
+      content: "想在原来的地方提一句流星雨",
+      sources: [data.fromWish[0].ref],
+    },
+    outreach: {
+      session: "group:1",
+      text: "流星雨那件事我还记着",
+      afterHours: 4,
+    },
+  });
+  const second = await w.life.tick();
+  assert.equal(second.status, "written");
+  const kept = w.mind.thoughts.list()[0];
+  assert.equal(kept.outreach, "流星雨那件事我还记着");
+  assert.equal(kept.outreach_session, "group:1");
+  assert.equal(w.sent.length, 0);
+});

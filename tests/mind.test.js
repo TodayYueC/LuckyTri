@@ -1034,6 +1034,13 @@ test("被问到是谁时，心和选择属于自己，经历仍然不能编造",
     prompts({ config: () => ({ generation: previousGeneration }) }).generation,
     PROMPTS.generation,
   );
+  const previousReflection = RETIRED_PROMPTS.reflection.find(
+    (item) => item.includes("meetings") && !item.includes("fromWish"),
+  );
+  assert.equal(
+    prompts({ config: () => ({ reflection: previousReflection }) }).reflection,
+    PROMPTS.reflection,
+  );
   assert.match(PROMPTS.daily, /正在为自己而活/);
   assert.match(PROMPTS.weekly, /正在为自己而活/);
   assert.match(PROMPTS.weekly, /不要编成已经做成/);
