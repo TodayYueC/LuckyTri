@@ -419,6 +419,22 @@ test("换一种说法另写的手记，不会重新留在心上", () => {
         .salience > 0.4,
       "新的经历会重新留下",
     );
+    const stamp = w.mind.db.prepare(
+      "UPDATE mind_thoughts SET revisit_at=? WHERE id=?",
+    );
+    stamp.run(w.now(), second);
+    assert.ok(
+      w.mind.thoughts.weighed({ now: w.now() }).find((t) => t.id === second)
+        .salience < 0.1,
+      "旧经历再约一次回看，也不会重新留下",
+    );
+    w.advance(HOUR);
+    stamp.run(w.now(), third);
+    assert.ok(
+      w.mind.thoughts.weighed({ now: w.now() }).find((t) => t.id === third)
+        .salience >= 0.6,
+      "这回新经历上约的回看，到了会再浮上来",
+    );
   } finally {
     w.close();
   }
