@@ -761,6 +761,75 @@ test("自我渐进生长：强度每次只变一点，新特质要跨天的经�
   );
 });
 
+test("换一种说法不会让一条线索重新留在心上", () => {
+  const w = world({ start: "2026-09-01T12:00:00+08:00" });
+  try {
+    w.open("group:1");
+    const said = w.say("group:1", "10001", "天文望远镜该怎么选", {
+      name: "阿明",
+    });
+    const made = w.mind.self.propose(
+      {
+        kind: "curiosity",
+        content: "我好奇天文望远镜该怎么选",
+        strength: 0.3,
+        sources: [said.seq],
+      },
+      { time: w.now() },
+    );
+    w.mind.self.propose(
+      { kind: "intention", content: "想把这杯茶喝完", strength: 0.35 },
+      { time: w.now() },
+    );
+    w.mind.self.propose(
+      { kind: "intention", content: "想把这本书看完", strength: 0.35 },
+      { time: w.now() },
+    );
+    const mark = w.mind.db.prepare(
+      "INSERT OR IGNORE INTO mind_days(day,created,lived,events,valence,arousal,looked,spoke,people) VALUES (?,?,1,0,NULL,NULL,1,0,0)",
+    );
+    for (let i = 0; i < 41; i++) {
+      mark.run(w.mind.days.key(w.now()), w.now());
+      if (i > 0 && i % 7 === 0)
+        w.mind.self.propose(
+          {
+            thread: made.thread,
+            content: `我好奇望远镜怎么选，第${i}次还在想`,
+            strength: 1,
+            sources: [said.seq],
+          },
+          { time: w.now() },
+        );
+      w.advance(24 * HOUR);
+    }
+    const stale = w.mind.self
+      .annotated({ now: w.now() })
+      .find((row) => row.thread === made.thread);
+    assert.equal(stale.strength, 0.3, "旧经历没有把强度养高");
+    assert.ok(stale.salience < 0.12, "换说法没有把淡出拨回去");
+    assert.equal(stale.faded, true);
+    const again = w.say("group:1", "10001", "我还是想选一台望远镜", {
+      name: "阿明",
+    });
+    w.mind.self.propose(
+      {
+        thread: made.thread,
+        content: "我还是好奇该怎么选望远镜",
+        strength: 1,
+        sources: [again.seq],
+      },
+      { time: w.now() },
+    );
+    const fresh = w.mind.self
+      .annotated({ now: w.now() })
+      .find((row) => row.thread === made.thread);
+    assert.ok(fresh.salience > 0.2, "新的经历会让它重新留下");
+    assert.ok(fresh.strength > stale.strength);
+  } finally {
+    w.close();
+  }
+});
+
 test("她在各群的样子要有经历支持；撤销一版后回到上一版", (t) => {
   const w = world();
   t.after(w.close);
