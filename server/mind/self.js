@@ -204,6 +204,22 @@ export class Self {
       prior = this.latest(time).find((row) => row.thread === input.thread);
       if (!prior) return { rejected: "线索不存在或已撤销" };
     }
+    const spent = new Set();
+    if (prior)
+      for (const row of this.history(prior.thread))
+        for (const source of row.sources || []) spent.add(source);
+    const fresh = sources.filter((source) => !spent.has(source));
+    const spoken = content || prior?.content || "";
+    // The same evidence cannot be spent again to make a thread stronger.
+    // An unchanged sentence is not a new version. A rewording can stay,
+    // at the strength the earlier evidence already earned.
+    if (
+      prior &&
+      action !== "close" &&
+      !fresh.length &&
+      spoken === prior.content
+    )
+      return { rejected: "没有新的经历" };
     // A revision that cites nothing new keeps the old provenance. Dropping
     // it would let a privately learned sentence travel into other rooms.
     const kept = sources.length || !prior ? sources : prior.sources || [];
@@ -216,12 +232,14 @@ export class Self {
       strength = prior.strength;
       status = "closed";
     } else if (prior) {
-      const wanted = Number.isFinite(Number(input?.strength))
-        ? clamp(input.strength)
-        : prior.strength + (sources.length ? 0.05 : 0);
-      strength = clamp(
-        prior.strength + clamp(wanted - prior.strength, -STEP, STEP),
-      );
+      const wanted = fresh.length
+        ? Number.isFinite(Number(input?.strength))
+          ? clamp(input.strength)
+          : prior.strength + 0.05
+        : prior.strength;
+      strength = fresh.length
+        ? clamp(prior.strength + clamp(wanted - prior.strength, -STEP, STEP))
+        : prior.strength;
       status =
         prior.kind === "trait" && (days.length < 2 || strength < 0.35)
           ? "emerging"
@@ -234,7 +252,6 @@ export class Self {
       status = kind === "trait" ? "emerging" : "active";
     }
     const id = randomUUID();
-    const spoken = content || prior?.content || "";
     const home = this.#home(spoken, input?.session);
     this.db
       .prepare(

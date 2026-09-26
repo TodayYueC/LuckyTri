@@ -673,17 +673,30 @@ test("自我渐进生长：强度每次只变一点，新特质要跨天的经�
   let thread = w.mind.self.history(created.thread).at(-1);
   assert.equal(thread.status, "emerging");
   assert(thread.strength <= 0.25);
+  const held = thread.strength;
+  assert.equal(
+    w.mind.self.propose(
+      {
+        thread: created.thread,
+        content: "我好像是个慢热的人",
+        strength: 1,
+        sources: [a.seq],
+      },
+      { time: w.now() + 1000 },
+    ).rejected,
+    "没有新的经历",
+  );
   w.mind.self.propose(
     {
       thread: created.thread,
-      content: "我好像是个慢热的人",
+      content: "我好像确实有点慢热",
       strength: 1,
       sources: [a.seq],
     },
-    { time: w.now() + 1000 },
+    { time: w.now() + 2000 },
   );
   thread = w.mind.self.history(created.thread).at(-1);
-  assert(thread.strength <= 0.4 + 1e-9, "一次最多变化 0.15");
+  assert.equal(thread.strength, held, "同一段经历不再把强度抬高");
   assert.equal(thread.status, "emerging", "同一天的经历不够");
   w.advance(26 * HOUR);
   const b = w.say("group:1", "bot", "熟了以后我话就多了");
