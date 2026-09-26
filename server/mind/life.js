@@ -861,18 +861,15 @@ export class Life {
       if (roots.length && !roots.includes(reach.session)) reach = null;
     }
     const place = this.placeOf(sources);
-    const rooted = this.sourcePlaces(sources).filter((id) =>
-      place.discretion === "private"
-        ? isPrivateSession(id)
-        : !isPrivateSession(id),
-    );
-    const sessions = rooted.length
-      ? rooted
-      : involved.filter((id) =>
-          place.discretion === "private"
-            ? isPrivateSession(id)
-            : !isPrivateSession(id),
-        );
+    const quiet = new Set(this.mind.meetings.privateRoots(sources));
+    const fits = (id) =>
+      quiet.size
+        ? quiet.has(id)
+        : place.discretion === "private"
+          ? isPrivateSession(id)
+          : !isPrivateSession(id);
+    const rooted = this.sourcePlaces(sources).filter(fits);
+    const sessions = rooted.length ? rooted : involved.filter(fits);
     const added = this.mind.thoughts.add({
       kind: thought.kind,
       content,
