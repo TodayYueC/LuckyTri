@@ -325,7 +325,7 @@ export class Life {
     return this.mind.self
       .active({ before: now, now, limit: 16 })
       .filter(
-        (t) => !open || !this.mind.meetings.privateRoots(t.sources).length,
+        (t) => !open || this.mind.meetings.stays(t, ""),
       )
       .map((t) => ({
         thread: t.thread,
@@ -340,8 +340,7 @@ export class Life {
       .annotated({ before: now, now })
       .find((t) => t.kind === "intention" && !t.faded);
     if (!thread) return null;
-    if (open && this.mind.meetings.privateRoots(thread.sources).length)
-      return null;
+    if (open && !this.mind.meetings.stays(thread, "")) return null;
     const trace = this.mind.meetings.trace(thread.thread, {
       before: now,
       since,
@@ -934,7 +933,7 @@ export class Life {
     const known = this.mind.self.latest(now);
     return (rows || []).filter((item) => {
       const row = known.find((thread) => thread.thread === item.thread);
-      return !!row && !this.mind.meetings.privateRoots(row.sources).length;
+      return !!row && this.mind.meetings.stays(row, "");
     });
   }
   // Where she is in her own story, kept short for the diary and solitude.
@@ -1042,7 +1041,7 @@ export class Life {
                     .latest(yesterday.created || end)
                     .find((item) => item.thread === t.thread);
                   return (
-                    row && !this.mind.meetings.privateRoots(row.sources).length
+                    row && this.mind.meetings.stays(row, "")
                   );
                 })
                 .slice(0, 12)

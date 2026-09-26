@@ -6,6 +6,8 @@ import {
   threadSalience,
   touches,
 } from "./salience.js";
+import { leaks } from "./guard.js";
+import { isPrivateSession } from "./memory.js";
 import {
   clamp,
   dayKey,
@@ -219,6 +221,8 @@ export class Self {
       status = kind === "trait" ? "emerging" : "active";
     }
     const id = randomUUID();
+    const spoken = content || prior?.content || "";
+    const home = this.#home(spoken, input?.session);
     this.db
       .prepare(
         "INSERT INTO mind_self(id,thread,created,kind,content,strength,status,sources,days,origin,session_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
@@ -228,14 +232,21 @@ export class Self {
         prior?.thread || id,
         time,
         prior?.kind || kind,
-        content || prior.content,
+        spoken,
         Math.round(strength * 100) / 100,
         status,
         JSON.stringify(kept),
         JSON.stringify(days),
         origin,
-        input?.session || null,
+        home,
       );
     return { id, thread: prior?.thread || id, action };
+  }
+  // Wording that matches something she learned in private stays in that room,
+  // even when she did not cite a source.
+  #home(content, requested) {
+    const hit = leaks([content], this.mind.meetings.privateSayings())[0];
+    if (hit?.session_id) return hit.session_id;
+    return isPrivateSession(requested) ? requested : null;
   }
 }

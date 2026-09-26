@@ -254,10 +254,7 @@ export class ChatSystem {
     const rows = seqs.map((seq) => bySeq.get(seq)).filter(Boolean);
     const affect = this.mind.affect.state(now, { nature, room: session });
     const interests = interestTerms(nature.interests || []);
-    const here = (thread) => {
-      const roots = this.mind.meetings.privateRoots(thread.sources);
-      return !roots.length || roots.includes(session);
-    };
+    const here = (thread) => this.mind.meetings.stays(thread, session);
     const livingFor = this.mind.self
       .annotated({ before: now, now })
       .find((thread) => thread.kind === "intention" && !thread.faded);
@@ -844,7 +841,7 @@ export class ChatSystem {
       }
     };
     const secrets = this.mind.memory.secretsOutside(session);
-    const privateFacts = this.mind.memory.privateOutside(session);
+    const privateFacts = this.mind.meetings.privateSayings(session);
     const check = (response) => {
       const issues = validateResponse(
         response,
