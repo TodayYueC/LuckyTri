@@ -86,6 +86,55 @@ test("安静下来后独处：留下有来源的手记，改变自我、面貌�
   assert.match((await w.life.tick()).reason, /太近/);
 });
 
+test("正在为自己而活的事可以改变心情、面貌，并计划一句主动的话", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1", "一群");
+  w.life.save({ proactive: true, minMessages: 1 });
+  const events = chat(w, "group:1", [
+    ["10001", "周五要面试了"],
+    ["bot", "你准备挺久了"],
+  ]);
+  const wish = w.mind.self.propose(
+    { kind: "intention", content: "想看流星雨", strength: 0.3 },
+    { origin: "solitude", time: w.now() },
+  );
+  w.advance(30 * MINUTE);
+  w.answers.reflection = (data) => {
+    assert.equal(data.livingFor.content, "想看流星雨");
+    assert.equal(data.livingFor.thread, wish.thread);
+    return {
+      thought: {
+        kind: "reflection",
+        content: "想看流星雨这件事还在，想告诉阿明",
+        sources: [`s:${wish.thread}`],
+        importance: 0.4,
+      },
+      faces: [
+        {
+          session: "group:1",
+          aspiration: "把想看的东西说出来",
+          sources: [`s:${wish.thread}`],
+        },
+      ],
+      mood: { feeling: "惦记", intensity: 0.3, valence: 0.2 },
+      outreach: { session: "group:1", text: "我还想看流星雨", afterHours: 4 },
+    };
+  };
+  const result = await w.life.tick();
+  assert.equal(result.status, "written");
+  const [thought] = w.mind.thoughts.list();
+  assert.deepEqual(thought.sources, [`s:${wish.thread}`]);
+  assert.equal(thought.outreach, "我还想看流星雨");
+  assert.equal(
+    w.mind.faces.current("group:1").aspiration,
+    "把想看的东西说出来",
+  );
+  assert.equal(w.mind.affect.state(w.now()).mood, "惦记");
+  assert.deepEqual(w.sent, []);
+  assert.ok(events[0].seq);
+});
+
 test("独处时她会读共享资料：按兴趣挑、一段段读下去，读后的想法有来源，私人资料不读", async (t) => {
   const w = world();
   t.after(w.close);
@@ -331,7 +380,9 @@ test("睡前写日记，和昨天的自己对照；每天留一份快照；夜�
         },
       ],
       chapter,
-      story: "我是从这个群开始认识大家的。",
+      story: data.livingFor
+        ? `我现在在为自己过：${data.livingFor.content}`
+        : "我是从这个群开始认识大家的。",
     };
   };
   const day = async (date, lines) => {
@@ -403,6 +454,10 @@ test("睡前写日记，和昨天的自己对照；每天留一份快照；夜�
   assert.equal(reviews.length, 1, "离上次回顾还不到间隔");
   assert.equal(inputs[2].story, "我是从这个群开始认识大家的。");
   assert.equal(inputs[2].chapter.title, "刚来的时候");
+  w.mind.self.propose(
+    { kind: "intention", content: "想自己把日子过完", strength: 0.3 },
+    { origin: "solitude", time: w.now() },
+  );
 
   chapter = {
     action: "continue",
@@ -415,15 +470,17 @@ test("睡前写日记，和昨天的自己对照；每天留一份快照；夜�
     ["bot", "我投爬山"],
   ]);
   assert.equal(reviews.length, 2);
+  assert.equal(reviews[1].livingFor.content, "想自己把日子过完");
   assert.equal(reviews[1].chapter.title, "刚来的时候");
   assert.ok(reviews[1].lastReview);
   assert.equal(w.life.chapters().length, 1);
   assert.equal(w.life.chapters()[0].title, "从不太会接话开始");
   assert.equal(w.life.chapterVersions(1).length, 2, "重新理解过去，旧版本保留");
-  assert.equal(
-    w.mind.periods.storyVersions().length,
-    1,
-    "没有翻篇时不重写我的来路",
+  assert.equal(w.mind.periods.storyVersions().length, 2);
+  assert.match(
+    w.mind.periods.story().content,
+    /想自己把日子过完/,
+    "她正在过的日子变了，来路会重写，不必翻篇",
   );
   const days = w.store.db
     .prepare("SELECT day FROM mind_snapshots ORDER BY day")

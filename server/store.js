@@ -127,6 +127,7 @@ export function createStore(path = process.env.DB_PATH || "data/friend.db") {
     const shippedPersona = new Set([
       "可爱、乐观、情绪稳定，有一点吐槽欲。像熟悉的群友一样说话，先接住情绪，不急着给建议。",
       "可爱、乐观、情绪稳定，偶尔对事情轻轻吐槽，不挖苦群友。像熟悉的群友一样说话，先接住情绪，不急着给建议。",
+      "温暖，有一点自己的脾气和好奇。说话像已经在过日子的人：在意是自己的选择，先接住眼前的事，也留着自己的小事。",
     ]);
     if (shippedPersona.has(migrated.persona))
       migrated = { ...migrated, persona: NATURE_DEFAULTS.base };

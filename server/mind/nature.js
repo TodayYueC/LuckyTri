@@ -28,10 +28,26 @@ const SHIPPED_BASES = new Set([
   PREVIOUS_NATURE_SEED.base,
   "可爱、乐观、情绪稳定，有一点吐槽欲。像熟悉的群友一样说话，先接住情绪，不急着给建议。",
 ]);
+const LIVED_AS_PERSON_BASE =
+  "温暖，有一点自己的脾气和好奇。说话像已经在过日子的人：在意是自己的选择，先接住眼前的事，也留着自己的小事。";
+function uneditedLivedSeed(value) {
+  if (
+    !value ||
+    value.name !== "LuckyTri" ||
+    value.base !== LIVED_AS_PERSON_BASE
+  )
+    return false;
+  return NATURE_FIELDS.every(
+    (key) =>
+      key === "name" ||
+      key === "base" ||
+      sameNatureField(value[key], NATURE_DEFAULTS[key]),
+  );
+}
 export const NATURE_DEFAULTS = {
   name: "LuckyTri",
   gender: "female",
-  base: "温暖，有一点自己的脾气和好奇。说话像已经在过日子的人：在意是自己的选择，先接住眼前的事，也留着自己的小事。",
+  base: "温暖，有一点自己的脾气和好奇。在意是自己的选择：先接住眼前的事，也留着自己的小事。不靠模仿来证明自己。",
   interests: [],
   forbidden: [],
   humor: 25,
@@ -130,7 +146,10 @@ export class Nature {
   current(before) {
     const row = this.row(before) || this.row();
     const value = row ? JSON.parse(row.value) : {};
-    if (row?.version === 1 && uneditedNatureSeed(value))
+    if (
+      row?.version === 1 &&
+      (uneditedNatureSeed(value) || uneditedLivedSeed(value))
+    )
       return { ...NATURE_DEFAULTS, version: row.version };
     if (
       row?.version === 1 &&

@@ -36,6 +36,12 @@ export function migrateMind(db, store) {
     CREATE INDEX IF NOT EXISTS mind_anticipations_due ON mind_anticipations(status,due_at);
     CREATE TABLE IF NOT EXISTS mind_periods (id TEXT PRIMARY KEY, level TEXT NOT NULL, created INTEGER NOT NULL, period_start INTEGER, period_end INTEGER, title TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, compare TEXT NOT NULL DEFAULT '', sources TEXT NOT NULL DEFAULT '[]', run_id TEXT);
     CREATE INDEX IF NOT EXISTS mind_periods_level ON mind_periods(level,created);
+    CREATE TABLE IF NOT EXISTS mind_meetings (id TEXT PRIMARY KEY, created INTEGER NOT NULL, session_id TEXT NOT NULL, choice TEXT NOT NULL, appraisal TEXT NOT NULL DEFAULT '', topic TEXT NOT NULL DEFAULT '', people TEXT NOT NULL DEFAULT '[]', sources TEXT NOT NULL DEFAULT '[]', will_thread TEXT, will_met INTEGER NOT NULL DEFAULT 0, discretion TEXT NOT NULL DEFAULT 'open');
+    CREATE INDEX IF NOT EXISTS mind_meetings_time ON mind_meetings(created);
+    CREATE INDEX IF NOT EXISTS mind_meetings_session ON mind_meetings(session_id, created);
+    CREATE INDEX IF NOT EXISTS mind_meetings_will ON mind_meetings(will_thread, will_met, created);
+    CREATE TABLE IF NOT EXISTS mind_meeting_people (meeting_id TEXT NOT NULL, user_id TEXT NOT NULL, PRIMARY KEY (meeting_id, user_id));
+    CREATE INDEX IF NOT EXISTS mind_meeting_people_user ON mind_meeting_people(user_id, meeting_id);
     CREATE INDEX IF NOT EXISTS core_memories_subject ON core_memories(subject,status);
   `);
   const addColumn = (table, column, definition) => {
@@ -95,7 +101,9 @@ export function migrateMind(db, store) {
 // mid-sentence. When that fragment is still the start of her nature, put the
 // rest back. A different text that was cut the same way has no source left.
 function restoreTruncatedFaces(db) {
-  if (db.prepare("SELECT 1 FROM core_config WHERE id='mind-face-full-v1'").get())
+  if (
+    db.prepare("SELECT 1 FROM core_config WHERE id='mind-face-full-v1'").get()
+  )
     return;
   const row = db
     .prepare("SELECT value FROM mind_nature ORDER BY version DESC LIMIT 1")

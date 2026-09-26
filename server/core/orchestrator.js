@@ -52,7 +52,7 @@ const OCCASIONS = {
   backlog:
     "这些是你刚才没细看的消息，现在回头看了一眼，已经隔了一会儿，不必每条都回。",
   outreach:
-    "这是你自己先前想说的一句（occasion.thought）。现在仍然合适就说这一句，不合适就 silent。不要改口说没人找你。",
+    "这是你自己先前想说的一句（occasion.thought），可能来自你正在为自己而活的事。现在仍然合适就说这一句，不合适就 silent。不要改口说没人找你，不要把留下对方当成对方的责任，不要把「我只是助手」当成收尾。",
   presence:
     "你待过的这个地方安静了一会儿。如果心里有一句真正想说的，就说这一句；没有就 silent。不要问在吗，不要说怎么不说话，不要索取陪伴。",
 };
@@ -254,6 +254,10 @@ export class ChatSystem {
     const rows = seqs.map((seq) => bySeq.get(seq)).filter(Boolean);
     const affect = this.mind.affect.state(now, { nature });
     const interests = interestTerms(nature.interests || []);
+    const livingFor = this.mind.self
+      .annotated({ before: now, now })
+      .find((thread) => thread.kind === "intention" && !thread.faded);
+    const living = interestTerms(livingFor ? [livingFor.content] : []);
     const curiosities = interestTerms(
       this.mind.self
         .active({ before: now, limit: 12 })
@@ -289,6 +293,7 @@ export class ChatSystem {
       energy: affect.energy,
       interests,
       curiosities,
+      living,
       closeness,
       pressure: this.mind.budget.pressure("conversation", now),
       initiative: nature.initiative,
