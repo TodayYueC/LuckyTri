@@ -565,6 +565,86 @@ test("一个词组对上不算碰到她正在过的事", () => {
   }
 });
 
+test("两个人的话拼在一起不算碰到，旁边的人也不算", () => {
+  const w = world();
+  try {
+    w.open("group:1");
+    w.mind.self.propose(
+      { kind: "intention", content: "想看流星雨", strength: 0.3 },
+      { origin: "solitude", time: w.now() },
+    );
+    const keep = (messages) =>
+      w.mind.experience(
+        {
+          choice: "silent",
+          appraisal: "听到他们在说",
+          reason: "听到了",
+          topic: "",
+          targetMessageIds: messages.map((m) => m.id),
+          feelings: [],
+          bonds: [],
+        },
+        {
+          session: "group:1",
+          snapshot: { batchIds: messages.map((m) => m.id), messages },
+          kind: "group",
+          spoke: false,
+          time: w.now(),
+        },
+      );
+    const line = (id, speaker, name, text) => ({
+      id,
+      role: "user",
+      speaker,
+      name,
+      text,
+      relation: "ambient",
+    });
+    keep([
+      line(1, "10001", "阿明", "天上有一颗流星"),
+      line(2, "10002", "小红", "这场星雨好大"),
+    ]);
+    assert.equal(
+      w.mind.db
+        .prepare("SELECT COUNT(*) n FROM mind_meetings WHERE will_met=1")
+        .get().n,
+      0,
+      "两句话拼起来的词不算碰到",
+    );
+    w.advance(MINUTE);
+    keep([
+      line(3, "10001", "阿明", "今晚有流星雨"),
+      line(4, "10002", "小红", "嗯"),
+    ]);
+    const row = w.mind.db
+      .prepare(
+        "SELECT will_people FROM mind_meetings WHERE will_met=1 ORDER BY created DESC LIMIT 1",
+      )
+      .get();
+    assert.deepEqual(JSON.parse(row.will_people), ["10001"]);
+    w.advance(MINUTE);
+    const cold = (userId) => {
+      const message = w.say("group:1", userId, "今天好冷", {
+        name: userId === "10001" ? "阿明" : "小红",
+      });
+      message.relation = "unknown";
+      const decision = w.system.gate(
+        "group:1",
+        [message],
+        [message],
+        w.now(),
+        w.mind.nature.current(),
+      );
+      w.mind.look("group:1", message.seq, w.now());
+      return decision.look;
+    };
+    assert.equal(cold("10001"), true);
+    assert.equal(cold("10002"), false, "只是在旁边的人不被拉回来细看");
+  } finally {
+    w.close();
+  }
+});
+
 test("别人的话碰到过她正在过的事之后，这个人再开口会被细看", () => {
   const w = world();
   try {

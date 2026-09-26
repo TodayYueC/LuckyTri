@@ -36,7 +36,7 @@ export function migrateMind(db, store) {
     CREATE INDEX IF NOT EXISTS mind_anticipations_due ON mind_anticipations(status,due_at);
     CREATE TABLE IF NOT EXISTS mind_periods (id TEXT PRIMARY KEY, level TEXT NOT NULL, created INTEGER NOT NULL, period_start INTEGER, period_end INTEGER, title TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, compare TEXT NOT NULL DEFAULT '', sources TEXT NOT NULL DEFAULT '[]', run_id TEXT);
     CREATE INDEX IF NOT EXISTS mind_periods_level ON mind_periods(level,created);
-    CREATE TABLE IF NOT EXISTS mind_meetings (id TEXT PRIMARY KEY, created INTEGER NOT NULL, session_id TEXT NOT NULL, choice TEXT NOT NULL, appraisal TEXT NOT NULL DEFAULT '', topic TEXT NOT NULL DEFAULT '', people TEXT NOT NULL DEFAULT '[]', sources TEXT NOT NULL DEFAULT '[]', will_thread TEXT, will_met INTEGER NOT NULL DEFAULT 0, discretion TEXT NOT NULL DEFAULT 'open');
+    CREATE TABLE IF NOT EXISTS mind_meetings (id TEXT PRIMARY KEY, created INTEGER NOT NULL, session_id TEXT NOT NULL, choice TEXT NOT NULL, appraisal TEXT NOT NULL DEFAULT '', topic TEXT NOT NULL DEFAULT '', people TEXT NOT NULL DEFAULT '[]', sources TEXT NOT NULL DEFAULT '[]', will_thread TEXT, will_met INTEGER NOT NULL DEFAULT 0, discretion TEXT NOT NULL DEFAULT 'open', will_people TEXT NOT NULL DEFAULT '[]');
     CREATE INDEX IF NOT EXISTS mind_meetings_time ON mind_meetings(created);
     CREATE INDEX IF NOT EXISTS mind_meetings_session ON mind_meetings(session_id, created);
     CREATE INDEX IF NOT EXISTS mind_meetings_will ON mind_meetings(will_thread, will_met, created);
@@ -58,6 +58,7 @@ export function migrateMind(db, store) {
   addColumn("mind_attention", "deferred", "INTEGER NOT NULL DEFAULT 0");
   addColumn("mind_thoughts", "resolved_at", "INTEGER");
   addColumn("mind_thoughts", "resolution", "TEXT NOT NULL DEFAULT ''");
+  addColumn("mind_meetings", "will_people", "TEXT NOT NULL DEFAULT '[]'");
   db.prepare(
     "UPDATE mind_runs SET status='interrupted',finished=? WHERE status='running'",
   ).run(Date.now());
