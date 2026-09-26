@@ -59,6 +59,35 @@ test("话没发出去，不算对这个人出了声", async (t) => {
   assert.equal(w.mind.bonds.person("10001", w.now()).lastTalkedAt, w.now());
 });
 
+test("第一句已经发出，后面失败仍算说上了", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("private:10001", "阿明");
+  let n = 0;
+  w.system.send = async () => {
+    n += 1;
+    if (n > 1) throw new Error("第二句失败");
+    return { message_id: "ok" };
+  };
+  const msg = w.say("private:10001", "10001", "在吗", { name: "阿明" });
+  w.answers.turn = (data) => ({
+    choice: "speak",
+    appraisal: "他在叫我",
+    targetMessageIds: data.context.batchIds,
+    bubbles: ["在的", "先这样"],
+    feelings: [],
+    bonds: [],
+  });
+  const trace = await w.hear("private:10001", msg);
+  assert.equal(trace.status, "error");
+  assert.equal(trace.sent.length, 1);
+  assert.equal(
+    w.mind.db.prepare("SELECT choice FROM mind_meetings").get()?.choice,
+    "speak",
+  );
+  assert.equal(w.mind.bonds.person("10001", w.now()).lastTalkedAt, w.now());
+});
+
 test("她不在的私聊，不会把公开的这一天关在外面", async (t) => {
   const w = world();
   t.after(w.close);

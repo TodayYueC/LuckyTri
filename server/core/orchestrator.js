@@ -783,7 +783,7 @@ export class ChatSystem {
           anchor,
         });
       } catch (error) {
-        land(false);
+        land(Array.isArray(trace.sent) && trace.sent.length > 0);
         trace.error = error.message;
         return finish("error", error.message);
       }
