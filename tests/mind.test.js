@@ -11,6 +11,7 @@ import { crisisSignal, leaks, secretRequest } from "../server/mind/guard.js";
 import {
   rhythmPhase,
   lifeDayKey,
+  lifeSpan,
   NATURE_DEFAULTS,
   PREVIOUS_NATURE_SEED,
   validateNature,
@@ -2547,6 +2548,100 @@ test("相遇留下意义，私下不外带；意志只在别人的话碰到时�
     assert.doesNotMatch((after.inner.with || []).join(" "), /我想看的/);
     assert.equal(after.inner.will, undefined);
     assert.equal(wish.thread.length > 0, true);
+  } finally {
+    w.close();
+  }
+});
+
+test("私下的打算可以写进她的日记，但不进别的房间，也不进回顾", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.open("private:7", "阿明");
+    const said = w.say("group:1", "10001", "周五见", { name: "阿明" });
+    w.mind.choose({
+      session: "group:1",
+      choice: "silent",
+      reason: "看了",
+      time: w.now(),
+    });
+    const added = w.mind.anticipations.add({
+      kind: "plan",
+      content: "私下问问他那件事",
+      due: "2026-09-22 12:00",
+      sources: [`m:${said.seq}`],
+      discretion: "private",
+      session: "private:7",
+      origin: "solitude",
+      time: w.now(),
+    });
+    assert.ok(added.id);
+    const day = lifeDayKey(
+      w.mind.nature.current(w.now()),
+      w.now(),
+      w.mind.timeZone(),
+    );
+    const span = lifeSpan(
+      w.mind.nature.current(w.now()),
+      day,
+      w.mind.timeZone(),
+    );
+    const full = w.mind.anticipations.today({
+      start: span.start,
+      end: span.end,
+    });
+    assert.match(JSON.stringify(full), /私下问问他那件事/);
+    const shared = w.mind.anticipations.today({
+      start: span.start,
+      end: span.end,
+      shareable: true,
+    });
+    assert.equal(JSON.stringify(shared).includes("私下问问他那件事"), false);
+    assert.match(
+      w.mind.anticipations
+        .due({ now: w.now() })
+        .map((a) => a.content)
+        .join(" "),
+      /私下问问他那件事/,
+    );
+    assert.equal(
+      w.mind.anticipations
+        .due({ now: w.now(), shareable: true })
+        .some((a) => /私下问问/.test(a.content)),
+      false,
+    );
+    w.mind.db
+      .prepare(
+        "INSERT INTO mind_diary(id,day,created,content,mood,compare,sources) VALUES (?,?,?,?,?,?,?)",
+      )
+      .run(
+        "d-plan",
+        day,
+        w.now(),
+        "今天想私下问问他那件事",
+        "平静",
+        "",
+        "[]",
+      );
+    assert.equal(
+      innerView(w.mind, { session: "group:1", kind: "group", now: w.now() + 1 })
+        .self.lastDiary,
+      undefined,
+    );
+    assert.match(
+      innerView(w.mind, {
+        session: "private:7",
+        kind: "private",
+        now: w.now() + 1,
+      }).self.lastDiary,
+      /私下问问/,
+    );
+    const line = w.life.diaryLine(
+      { day, content: "今天想私下问问他那件事", compare: "比昨天多了一件想做的事" },
+      w.now() + 1,
+    );
+    assert.match(line.content, /不带到回顾/);
+    assert.equal(line.private, true);
   } finally {
     w.close();
   }

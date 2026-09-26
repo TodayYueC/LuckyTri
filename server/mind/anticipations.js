@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { localClock } from "../core/conversation-cues.js";
 import { hasCredential } from "./guard.js";
 import { isPrivateSession } from "./memory.js";
+import { lifeSpan } from "./nature.js";
 import { DAY, evidence, parse, similar, text, zonedTime } from "./util.js";
 
 // What she is looking ahead to: promises she made, things she means to do,
@@ -75,6 +76,50 @@ export class Anticipations {
       a.recurrence !== "yearly" &&
       now > this.ends(a, a.due_at) + (GRACE[a.kind] ?? GRACE.event)
     );
+  }
+  // A private promise can be written in her diary. It cannot be carried out
+  // of that room, or into the story she retells everywhere.
+  concealed(a) {
+    return a.discretion !== "open" || isPrivateSession(a.session_id);
+  }
+  // Private rooms whose plans, promises, or dates the diary of `day` would see.
+  privateRooms(day, before = Date.now()) {
+    const nature = this.mind.nature.current(before);
+    const zone = this.mind.timeZone();
+    const span = lifeSpan(nature, day, zone);
+    if (!span || span.start > before) return [];
+    const end = Math.min(before, span.end);
+    const rooms = new Set();
+    for (const a of this.db
+      .prepare(
+        "SELECT * FROM mind_anticipations WHERE created<=? AND status!='revoked'",
+      )
+      .all(before)
+      .map(row)) {
+      if (!this.concealed(a) || !this.#onDay(a, span, end)) continue;
+      rooms.add(
+        a.session_id && isPrivateSession(a.session_id)
+          ? a.session_id
+          : `a:${a.id}`,
+      );
+    }
+    return [...rooms];
+  }
+  #onDay(a, span, before) {
+    const pending =
+      a.status === "pending" || (a.closed_at != null && a.closed_at > before);
+    if (
+      !pending &&
+      a.closed_at >= span.start &&
+      a.closed_at < span.end &&
+      a.closed_at <= before
+    )
+      return true;
+    if (a.recurrence === "yearly")
+      return this.day(this.occurrence(a, span.start)) === this.day(span.start);
+    if (a.due_at >= span.start && a.due_at < span.end) return true;
+    const lapse = this.ends(a, a.due_at) + (GRACE[a.kind] ?? GRACE.event);
+    return pending && lapse >= span.start && lapse < span.end;
   }
   revokedContents() {
     return this.db
@@ -224,7 +269,12 @@ export class Anticipations {
   }
   // Near enough to matter in a conversation: from the day before until a few
   // days after, and only where it belongs.
-  upcoming({ now = Date.now(), people = [], session = "", limit = 3 } = {}) {
+  upcoming({
+    now = Date.now(),
+    people = [],
+    session = "",
+    limit = 3,
+  } = {}) {
     const here = new Set(session ? this.mind.memory.scopes(session) : []);
     const present = new Set(people.map(String));
     const out = [];
@@ -247,9 +297,10 @@ export class Anticipations {
   }
   // What she might think about when alone: due soon, just past, or quietly
   // missed within the last week.
-  due({ now = Date.now(), limit = 5 } = {}) {
+  due({ now = Date.now(), limit = 5, shareable = false } = {}) {
     const out = [];
     for (const a of this.pending(now)) {
+      if (shareable && this.concealed(a)) continue;
       const due = this.occurrence(a, now);
       const after =
         a.recurrence === "yearly"
@@ -278,15 +329,17 @@ export class Anticipations {
     });
   }
   // The day's promises kept and missed, and the dates that fall on it.
-  today({ start, end }) {
+  today({ start, end, shareable = false }) {
+    const keep = (a) => !shareable || !this.concealed(a);
     const closed = this.db
       .prepare(
         "SELECT * FROM mind_anticipations WHERE closed_at>=? AND closed_at<? AND status IN ('done','missed','let_go') ORDER BY closed_at",
       )
       .all(start, end)
-      .map(row);
+      .map(row)
+      .filter(keep);
     const lapsedToday = this.pending(end).filter((a) => {
-      if (a.recurrence === "yearly") return false;
+      if (!keep(a) || a.recurrence === "yearly") return false;
       const at = this.ends(a, a.due_at) + (GRACE[a.kind] ?? GRACE.event);
       return at >= start && at < end;
     });
@@ -300,6 +353,7 @@ export class Anticipations {
       dates: this.pending(end)
         .filter(
           (a) =>
+            keep(a) &&
             a.recurrence === "yearly" &&
             this.day(this.occurrence(a, start)) === this.day(start),
         )
@@ -307,7 +361,10 @@ export class Anticipations {
       dueToday: this.pending(end)
         .filter(
           (a) =>
-            a.recurrence !== "yearly" && a.due_at >= start && a.due_at < end,
+            keep(a) &&
+            a.recurrence !== "yearly" &&
+            a.due_at >= start &&
+            a.due_at < end,
         )
         .map(line),
     };

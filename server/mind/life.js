@@ -1010,7 +1010,11 @@ export class Life {
       const chapter = this.chapterView(now);
       const anniversaries = this.mind.days.anniversaries(end);
       const expected = this.mind.anticipations.today({ start, end });
-      const open = this.mind.anticipations.due({ now: end, limit: 5 });
+      const open = this.mind.anticipations.due({
+        now: end,
+        limit: 5,
+        shareable: true,
+      });
       const ahead = Object.fromEntries(
         Object.entries({ ...expected, open }).filter(([, v]) => v.length),
       );
@@ -1304,6 +1308,7 @@ export class Life {
       const { kept, missed } = this.mind.anticipations.today({
         start,
         end: now,
+        shareable: true,
       });
       const anniversaries = this.mind.days.anniversaries(now);
       const line = (t) =>
