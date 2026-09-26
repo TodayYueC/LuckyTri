@@ -928,6 +928,89 @@ test("读后的话如果就是私下的原话，不进别的房间", () => {
   }
 });
 
+test("相遇的意思、约定和心情原因里的私下原话，不进别的房间", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.open("private:7", "阿明");
+    w.mind.memory.insert({
+      session: "private:7",
+      subject: "7",
+      content: "最近在准备考研",
+      discretion: "private",
+    });
+    const said = w.say("group:1", "10001", "今天好冷", { name: "阿明" });
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "他最近在准备考研",
+        reason: "听到了",
+        topic: "",
+        targetMessageIds: [said.seq],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [said.seq],
+          messages: [
+            {
+              id: said.seq,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: "今天好冷",
+              relation: "ambient",
+            },
+          ],
+        },
+        kind: "group",
+        spoke: false,
+        time: w.now(),
+      },
+    );
+    w.mind.anticipations.add({
+      kind: "plan",
+      content: "问问他最近在准备考研",
+      due: "2026-09-22 18:00",
+      sources: [`m:${said.seq}`],
+      session: "group:1",
+      origin: "solitude",
+      time: w.now(),
+    });
+    w.mind.affect.feel({
+      feeling: "担心",
+      intensity: 0.9,
+      valence: -0.3,
+      cause: "他最近在准备考研",
+      sources: [said.seq],
+      session: "group:1",
+      origin: "turn",
+      time: w.now(),
+    });
+    const group = innerView(w.mind, {
+      session: "group:1",
+      kind: "group",
+      people: ["10001"],
+      now: w.now() + 1,
+    });
+    const shown = JSON.stringify(group);
+    assert.doesNotMatch(shown, /考研/);
+    const room = JSON.stringify(
+      innerView(w.mind, {
+        session: "private:7",
+        kind: "private",
+        people: ["10001"],
+        now: w.now() + 1,
+      }),
+    );
+    assert.match(room, /考研/);
+  } finally {
+    w.close();
+  }
+});
+
 test("来路里对得上私下原话的句子，不写进后来的回顾", () => {
   const w = world();
   try {

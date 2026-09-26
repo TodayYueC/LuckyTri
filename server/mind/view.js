@@ -161,10 +161,21 @@ export function innerView(
   const will = shownLiving
     ? mind.meetings.trace(shownLiving.thread, { before: now, session })
     : null;
+  const cause =
+    affect.cause && mind.meetings.sayable(affect.cause, session)
+      ? text(affect.cause, 40)
+      : "";
+  const withLines = withWhom.filter((line) =>
+    mind.meetings.sayable(line, session),
+  );
+  const expectingLines = expecting.filter((line) =>
+    mind.meetings.sayable(line, session),
+  );
   return {
     self,
+    affect: cause ? affect : { ...affect, cause: "" },
     inner: {
-      state: `${affect.phaseLabel}，精力${affect.energyLabel}，心情${affect.mood}${affect.cause ? `（${text(affect.cause, 40)}）` : ""}${affect.lately ? `，${affect.lately}` : ""}`,
+      state: `${affect.phaseLabel}，精力${affect.energyLabel}，心情${affect.mood}${cause ? `（${cause}）` : ""}${affect.lately ? `，${affect.lately}` : ""}`,
       ...(persons.length ? { people: persons } : {}),
       ...(group ? { thisGroup: group.feel } : {}),
       ...(thoughts.length
@@ -175,13 +186,12 @@ export function innerView(
             ),
           }
         : {}),
-      ...(expecting.length ? { expecting } : {}),
-      ...(withWhom.length ? { with: withWhom } : {}),
+      ...(expectingLines.length ? { expecting: expectingLines } : {}),
+      ...(withLines.length ? { with: withLines } : {}),
       ...(will?.touched ? { will: will.text } : {}),
       ...(reminded.length ? { reminded } : {}),
       ...(room ? { room } : {}),
       ...(heard.length ? { heard } : {}),
     },
-    affect,
   };
 }
