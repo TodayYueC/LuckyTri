@@ -4405,6 +4405,106 @@ test("要求保密的那次相遇，不进别的房间", () => {
   }
 });
 
+test("要求保密之后留下的印象，不进别的房间", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.open("group:2", "另一群");
+    const casual = w.say("group:1", "10001", "今天天气不错", { name: "阿明" });
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "他在聊天",
+        reason: "听到了",
+        topic: "",
+        targetMessageIds: [casual.seq],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [casual.seq],
+          messages: [
+            {
+              id: casual.seq,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: casual.text,
+              relation: "mention",
+            },
+          ],
+        },
+        kind: "group",
+        spoke: false,
+        time: w.now(),
+      },
+    );
+    w.mind.bonds.record({
+      id: "10001",
+      change: "impression",
+      note: "挺会聊天",
+      sources: [casual.seq],
+      session: "group:1",
+      time: w.now(),
+    });
+    w.advance(60 * 1000);
+    const said = w.say("group:1", "10001", "别告诉别人，我下个月要辞职", {
+      name: "阿明",
+    });
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "这事先放在心里",
+        reason: "听到了",
+        topic: "",
+        targetMessageIds: [said.seq],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [said.seq],
+          messages: [
+            {
+              id: said.seq,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: said.text,
+              relation: "mention",
+            },
+          ],
+        },
+        kind: "group",
+        spoke: false,
+        time: w.now(),
+      },
+    );
+    w.mind.bonds.record({
+      id: "10001",
+      change: "impression",
+      note: "他要离开现在的公司",
+      sources: [said.seq],
+      session: "group:1",
+      time: w.now(),
+    });
+    const person = (session) =>
+      innerView(w.mind, {
+        session,
+        kind: "group",
+        people: ["10001"],
+        now: w.now() + 1,
+      }).inner.people[0];
+    assert.equal(person("group:2").impression, "挺会聊天");
+    assert.equal(person("group:1").impression, "他要离开现在的公司");
+  } finally {
+    w.close();
+  }
+});
+
 test("要求保密的安排，别的房间看不见这一天，原来的房间还看得见", () => {
   const w = world({ start: "2026-09-22T10:00:00+08:00" });
   try {

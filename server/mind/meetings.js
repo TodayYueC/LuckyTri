@@ -543,6 +543,28 @@ export class Meetings {
       )
       .all(...ids);
   }
+  // A message that belonged to a meeting she was asked to keep stays with
+  // that conversation, even when the later note does not repeat the words.
+  #quietSessions(seqs) {
+    if (!seqs.length) return [];
+    const present = this.db
+      .prepare(
+        `SELECT seq, session_id FROM core_events WHERE seq IN (${seqs.map(() => "?").join(",")})`,
+      )
+      .all(...seqs);
+    const sessionOf = new Map(present.map((row) => [row.seq, row.session_id]));
+    const rooms = [];
+    for (const row of this.db
+      .prepare(
+        "SELECT session_id, sources FROM mind_meetings WHERE discretion IN ('private','secret')",
+      )
+      .all()) {
+      const ids = parse(row.sources, []);
+      if (ids.some((id) => sessionOf.get(Number(id)) === row.session_id))
+        rooms.push(row.session_id);
+    }
+    return rooms;
+  }
   // Private rooms a citation rests on. Empty means the words are hers, or
   // they came from somewhere she can speak of openly.
   privateRoots(sources) {
@@ -560,6 +582,7 @@ export class Meetings {
         .all(...seqs);
       for (const row of found)
         if (isPrivateSession(row.session_id)) rooms.add(row.session_id);
+      for (const id of this.#quietSessions(seqs)) rooms.add(id);
     }
     for (const ref of refs) {
       const match = /^d:(\d{4}-\d{2}-\d{2})$/.exec(String(ref));
