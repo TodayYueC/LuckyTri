@@ -524,7 +524,11 @@ export class ChatSystem {
         session: preview?.viewSession || session,
         kind: privateChat ? "private" : "group",
         people,
-        cue: batch.map((m) => m.text || ""),
+        cue: batch.map((m) => ({
+          role: m.role,
+          userId: m.userId,
+          text: m.text || "",
+        })),
         now,
       });
       const snapshot = buildContext(

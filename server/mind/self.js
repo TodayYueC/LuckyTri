@@ -3,8 +3,9 @@ import {
   CORE_THREADS,
   THREAD_FADED,
   THREAD_FADING,
+  anyTouches,
+  cueList,
   threadSalience,
-  touches,
 } from "./salience.js";
 import { leaks } from "./guard.js";
 import { isPrivateSession } from "./memory.js";
@@ -155,10 +156,11 @@ export class Self {
     return this.annotated({ before, now }).filter((row) => row.faded);
   }
   // Faded threads that what is being said right now brings back to mind.
-  reminded({ before, now, cue, limit = 2 } = {}) {
-    if (!cue?.size) return [];
+  reminded({ before, now, cue, cues, limit = 2 } = {}) {
+    const sets = cueList(cue, cues);
+    if (!sets.length) return [];
     return this.dormant({ before, now })
-      .filter((row) => touches(row.content, cue))
+      .filter((row) => anyTouches(row.content, sets))
       .sort((a, b) => b.strength - a.strength)
       .slice(0, limit);
   }

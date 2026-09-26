@@ -70,3 +70,14 @@ export function touches(content, cue, need = 2) {
     if (cue.has(term) && ++shared >= need) return true;
   return false;
 }
+
+// One set, or one set per speaker. An empty list means nothing was said.
+export function cueList(cue, cues) {
+  if (Array.isArray(cues) && cues.length) return cues.filter((set) => set?.size);
+  if (cue?.size) return [cue];
+  return [];
+}
+
+export function anyTouches(content, cues, need = 2) {
+  return cueList(null, cues).some((cue) => touches(content, cue, need));
+}
