@@ -148,8 +148,9 @@ export class Meetings {
   // How often other people's words met this wish. Her appraisal does not count.
   // A private touch stays in that room. If she meets that person again with no
   // one else in the batch, whether she spoke is taken from that later meeting.
-  // A mixed batch does not count as having spoken to them. Words she later
-  // sends in a private chat with that person do count, and only in that chat.
+  // A mixed batch does not count as having spoken to them, unless she
+  // actually answered that person's words. Words she later sends in a private
+  // chat with that person do count, and only in that chat.
   // The count does not grow.
   trace(
     thread,
@@ -211,6 +212,14 @@ export class Meetings {
         session,
       );
       if (voiced) last = { choice: voiced.choice, created: voiced.created };
+      const addressed = this.#addressed(
+        ids,
+        last.created,
+        before,
+        inclusive,
+        session,
+      );
+      if (addressed) last = { choice: "speak", created: addressed.created };
     }
     const touched = hits.length;
     const when = elapsedLabel(last.created, before, this.mind.timeZone());
@@ -251,6 +260,41 @@ export class Meetings {
         } catch {
           return false;
         }
+      }) || null
+    );
+  }
+  // She answered that person's own words later. Being in the batch is not
+  // enough, and their calling her is not enough if she stayed quiet.
+  // A private reply does not follow her into another room.
+  #addressed(ids, after, before, inclusive, session) {
+    const compare = inclusive ? "<=" : "<";
+    const rows = this.db
+      .prepare(
+        `SELECT e.created, e.session_id, e.origin FROM mind_bond_events e
+         WHERE e.subject_kind='person'
+         AND e.subject_id IN (${ids.map(() => "?").join(",")})
+         AND e.change='interaction' AND e.created>? AND e.created${compare}?
+         AND e.id NOT IN (
+           SELECT target_id FROM mind_revocations WHERE target_kind='bond'
+         )
+         ORDER BY e.created DESC`,
+      )
+      .all(...ids, after, before);
+    const spoken = this.db.prepare(
+      "SELECT 1 FROM mind_choices WHERE session_id=? AND created=? AND choice!='silent' LIMIT 1",
+    );
+    return (
+      rows.find((row) => {
+        if (
+          session &&
+          isPrivateSession(row.session_id) &&
+          row.session_id !== session
+        )
+          return false;
+        if (row.origin === "group") return true;
+        if (row.origin === "direct")
+          return !!spoken.get(row.session_id, row.created);
+        return false;
       }) || null
     );
   }
