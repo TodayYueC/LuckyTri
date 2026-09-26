@@ -1096,6 +1096,35 @@ test("更强的私下小事不会让另一件仍在过的事从独处里消失",
     assert.ok(ming);
     assert.equal(ming.session, "group:1");
     assert.equal(ming.private, undefined);
+    for (const id of ["10002", "10003", "10004"])
+      w.mind.bonds.meet([{ userId: id, name: id }], "private:7", w.now() - 8 * 24 * 60 * 60 * 1000);
+    const examAt = w.now() - 8 * 24 * 60 * 60 * 1000 + 5000;
+    for (const id of ["10002", "10003", "10004"]) {
+      const line = w.say("private:7", id, "最近在准备考研", { name: id });
+      const hit = w.mind.meetings.keep(
+        { choice: "silent", appraisal: "他的话碰到了考研", topic: "" },
+        {
+          session: "private:7",
+          snapshot: {
+            batchIds: [line.seq],
+            messages: [
+              {
+                id: line.seq,
+                role: "user",
+                speaker: id,
+                name: id,
+                text: "最近在准备考研",
+              },
+            ],
+          },
+          time: examAt,
+        },
+      );
+      assert.equal(hit.willMet, true);
+    }
+    const crowded = w.mind.meetings.wishAway({ now: w.now() });
+    assert.ok(crowded.some((p) => p.userId === "10001"));
+    assert.ok(crowded.length <= 3);
   } finally {
     w.close();
   }
