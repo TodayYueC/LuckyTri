@@ -645,17 +645,8 @@ export class MemoryManager {
         const raw = value.summary.trim();
         const summary =
           raw && grounded(raw, said) ? applySpeakerNames(raw, names) : "";
-        db.prepare(
-          "INSERT OR IGNORE INTO core_stages VALUES (?,?,?,?,?,?)",
-        ).run(
-          randomUUID(),
-          session,
-          block[0].seq,
-          last,
-          now,
-          JSON.stringify({ summary, facts: value.facts.slice(0, 30) }),
-        );
         const privateChat = isPrivateSession(session);
+        const keptFacts = [];
         for (const f of value.facts.slice(0, 30)) {
           if (
             typeof f?.content !== "string" ||
@@ -683,10 +674,16 @@ export class MemoryManager {
           const secret =
             f.discretion === "secret" ||
             askedSecret(block, f.subject, Math.max(...f.sources));
+          const content = applySpeakerNames(f.content.trim(), names);
+          const discretion = secret
+            ? "secret"
+            : privateChat || f.discretion === "private"
+              ? "private"
+              : "open";
           const id = this.insert({
             session,
             subject: String(f.subject),
-            content: applySpeakerNames(f.content.trim(), names),
+            content,
             type: String(f.type || "event").slice(0, 20),
             confidence:
               f.certainty === "inferred"
@@ -700,12 +697,13 @@ export class MemoryManager {
               time: m.time,
               certainty: f.certainty || "unknown",
             })),
-            discretion: secret
-              ? "secret"
-              : privateChat || f.discretion === "private"
-                ? "private"
-                : "open",
+            discretion,
             time: now,
+          });
+          keptFacts.push({
+            subject: String(f.subject),
+            content,
+            discretion,
           });
           if (id)
             for (const ref of Array.isArray(f.supersedes) ? f.supersedes : []) {
@@ -714,6 +712,16 @@ export class MemoryManager {
                 this.supersede(old.id, id);
             }
         }
+        db.prepare(
+          "INSERT OR IGNORE INTO core_stages VALUES (?,?,?,?,?,?)",
+        ).run(
+          randomUUID(),
+          session,
+          block[0].seq,
+          last,
+          now,
+          JSON.stringify({ summary, facts: keptFacts }),
+        );
         this.anticipate(value.anticipations, {
           block,
           session,
