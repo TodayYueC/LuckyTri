@@ -605,6 +605,95 @@ test("别人的话碰到过她正在过的事之后，这个人再开口会被�
   }
 });
 
+test("相遇的意思按她过过的日子淡出，安静的日子磨不掉", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    const wish = w.mind.self.propose(
+      { kind: "intention", content: "想看流星雨", strength: 0.4 },
+      { origin: "solitude", time: w.now() },
+    );
+    const metAt = w.now();
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "他们聊到了我想看的",
+        reason: "听到了",
+        topic: "",
+        targetMessageIds: [1],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [1],
+          messages: [
+            {
+              id: 1,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: "今晚有流星雨",
+              relation: "ambient",
+            },
+          ],
+        },
+        kind: "group",
+        spoke: false,
+        time: metAt,
+      },
+    );
+    const view = (now) =>
+      innerView(w.mind, {
+        session: "group:1",
+        kind: "group",
+        people: ["10001"],
+        now,
+      });
+    const look = (now) => {
+      const message = {
+        seq: 9,
+        userId: "10001",
+        role: "user",
+        text: "今天好冷",
+        relation: "unknown",
+        time: now,
+      };
+      return w.system.gate(
+        "group:1",
+        [message],
+        [message],
+        now,
+        w.mind.nature.current(now),
+      );
+    };
+    const soon = metAt + MINUTE;
+    assert.match(view(soon).inner.with[0], /我想看的/);
+    assert.equal(look(soon).look, true);
+    const later = metAt + 80 * 86400000;
+    const insert = w.mind.db.prepare(
+      "INSERT INTO mind_days(day,created,lived,events) VALUES (?,?,?,3)",
+    );
+    const dayAfter = (n) => {
+      const [y, m, d] = "2026-09-22".split("-").map(Number);
+      return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+    };
+    for (let i = 1; i <= 70; i++) insert.run(dayAfter(i), later, 0);
+    assert.match(view(later).inner.with[0], /我想看的/);
+    assert.equal(look(later).look, true, "没过上的日子不让那次相遇淡掉");
+    w.mind.db.prepare("UPDATE mind_days SET lived=1").run();
+    assert.equal(view(later).inner.with, undefined);
+    assert.match(view(later).inner.will, /碰到过 1 次/);
+    assert.equal(look(later).look, false, "过了足够的日子，旧的碰到不再拉人");
+    assert.equal(wish.thread.length > 0, true);
+    assert.match(view(soon).inner.with[0], /我想看的/);
+    assert.equal(look(soon).look, true, "回到那时，这次相遇还在心上");
+  } finally {
+    w.close();
+  }
+});
+
 test("独处先读她正在为自己而活的事", () => {
   const w = world();
   try {

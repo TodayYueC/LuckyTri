@@ -22,6 +22,10 @@ const THREAD_GRACE = 3;
 export const THREAD_FADED = 0.12;
 export const THREAD_FADING = 0.2;
 export const THOUGHT_FADED = 0.1;
+// A meeting's meaning stays about as long as an unfinished thought. It is
+// not deleted; it only leaves what she is looking at now.
+export const MEETING_HALF_LIFE = 21;
+export const MEETING_FADED = 0.12;
 // A memory nobody has touched in this many lived days needs a strong cue.
 export const MEMORY_IDLE_DAYS = 45;
 // The strongest threads stay with her however quiet it gets.
@@ -51,6 +55,10 @@ export function thoughtSalience(thought, lived, now) {
   return round(
     base * 0.5 ** (lived.since(from) / (THOUGHT_HALF_LIFE[thought.kind] || 14)),
   );
+}
+
+export function meetingSalience(created, lived) {
+  return round(0.5 ** (lived.since(created) / MEETING_HALF_LIFE));
 }
 
 // Whether what is being said touches this content: two shared word pairs,
