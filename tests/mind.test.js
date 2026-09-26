@@ -1885,6 +1885,69 @@ test("被要求保密的话，整理记忆时也会记成秘密", async (t) => {
   assert.ok(stage.facts.some((f) => f.content === "下个月要辞职"));
 });
 
+test("撤销过的事，不会再写进这段记录", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1");
+  const old = w.mind.memory.insert({
+    session: "group:1",
+    subject: "10001",
+    content: "下个月要辞职",
+    time: w.now(),
+  });
+  w.mind.memory.revoke(old, "不再这么记");
+  const again = w.say("group:1", "10001", "我下个月要辞职了");
+  const moved = w.say("group:1", "10001", "我搬到上海了");
+  w.answers.memory = {
+    summary: "聊到辞职和搬家",
+    facts: [
+      {
+        subject: "10001",
+        content: "下个月要辞职",
+        type: "event",
+        confidence: 0.9,
+        importance: 0.8,
+        sources: [again.seq],
+        certainty: "self_report",
+      },
+      {
+        subject: "10001",
+        content: "住在上海",
+        type: "event",
+        confidence: 0.9,
+        importance: 0.6,
+        sources: [moved.seq],
+        certainty: "self_report",
+      },
+    ],
+    anticipations: [],
+    self: [],
+  };
+  await w.mind.memory.consolidate(
+    "group:1",
+    w.system.models.profile(),
+    "",
+    { calls: [] },
+    { force: true, models: w.system.models },
+  );
+  const stage = JSON.parse(
+    w.store.db.prepare("SELECT data FROM core_stages").get().data,
+  );
+  assert.equal(
+    stage.facts.some((f) => f.content === "下个月要辞职"),
+    false,
+  );
+  assert.ok(stage.facts.some((f) => f.content === "住在上海"));
+  assert.equal(
+    w.store.db
+      .prepare(
+        "SELECT 1 FROM core_memories WHERE content='下个月要辞职' AND status='confirmed'",
+      )
+      .get(),
+    undefined,
+  );
+});
+
 test("别人插话之后，他要求保密的事仍然是秘密", async (t) => {
   const w = world();
   t.after(w.close);
