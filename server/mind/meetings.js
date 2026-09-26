@@ -589,6 +589,8 @@ export class Meetings {
       if (sessions.some((id) => !isPrivateSession(id))) continue;
       for (const id of sessions) keep(id);
     }
+    for (const id of this.mind.anticipations?.privateRooms(day, before) || [])
+      ids.add(id);
     return [...ids];
   }
   withPerson(userId, { before = Date.now(), limit = 8 } = {}) {
