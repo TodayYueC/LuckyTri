@@ -52,6 +52,46 @@ test("她不在的会话，不会变成独处的经历", async (t) => {
     w.mind.self.active().some((item) => /南极/.test(item.content)),
     false,
   );
+  assert.equal(w.mind.memory.pending("group:1"), 1, "重新打开后的话仍待整理");
+  w.answers.memory = {
+    summary: "聊到面试",
+    facts: [
+      {
+        subject: "10001",
+        content: "搬到南极",
+        type: "event",
+        confidence: 0.9,
+        importance: 0.8,
+        sources: [missed.seq],
+        certainty: "self_report",
+      },
+    ],
+    self: [],
+  };
+  const before = w.calls.length;
+  await w.mind.memory.consolidate(
+    "group:1",
+    {},
+    "",
+    { calls: [] },
+    { force: true, models: w.system.models },
+  );
+  const memoryCall = w.calls.slice(before).find((call) => call.stage === "memory");
+  assert.ok(memoryCall);
+  assert.equal(
+    memoryCall.data.messages.some((m) => String(m.text).includes("南极")),
+    false,
+    "关掉时路过的话不会送去整理",
+  );
+  assert.ok(
+    memoryCall.data.messages.some((m) => String(m.text).includes("面试")),
+  );
+  assert.equal(
+    w.mind.db
+      .prepare("SELECT 1 FROM core_memories WHERE content LIKE '%南极%'")
+      .get(),
+    undefined,
+  );
 });
 
 test("安静下来后独处：留下有来源的手记，改变自我、面貌和对人的印象，不发任何消息", async (t) => {
