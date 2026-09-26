@@ -404,7 +404,9 @@ export class Bonds {
     if (note.session && isPrivateSession(note.session)) hidden.add(note.session);
     const sources = parse(note.sources, []);
     for (const row of this.mind.meetings.places(sources))
-      if (row.discretion === "private") hidden.add(row.session_id);
+      if (row.discretion === "private" || row.discretion === "secret")
+        hidden.add(row.session_id);
+    for (const id of this.mind.meetings.privateRoots(sources)) hidden.add(id);
     const seqs = messageSeqs(sources);
     if (seqs.length) {
       const found = this.db
