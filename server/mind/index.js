@@ -78,6 +78,7 @@ export class Mind {
     this.anticipations = new Anticipations(this);
     this.periods = new Periods(this);
     this.meetings = new Meetings(this);
+    this.days.reconcile();
   }
   timeZone() {
     return this.repo.config("life", {})?.timeZone || "Asia/Shanghai";

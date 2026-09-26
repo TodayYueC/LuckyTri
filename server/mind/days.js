@@ -1,5 +1,5 @@
 import { localClock } from "../core/conversation-cues.js";
-import { lifeDayKey, lifeDayStart } from "./nature.js";
+import { lifeDayKey, lifeDayStart, lifeSpan } from "./nature.js";
 import { DAY } from "./util.js";
 
 const MINUTE = 60000;
@@ -73,6 +73,27 @@ export class Days {
         events.people,
       );
     return true;
+  }
+  // Days written when any messages counted as a life are put back, once she
+  // did not look, speak, or sit with them.
+  reconcile(now = Date.now()) {
+    const nature = this.mind.nature.current(now);
+    const zone = this.mind.timeZone();
+    const clear = this.db.prepare(
+      "UPDATE mind_days SET lived=0 WHERE day=?",
+    );
+    let changed = 0;
+    for (const row of this.db
+      .prepare(
+        "SELECT day FROM mind_days WHERE lived=1 AND looked=0 AND spoke=0",
+      )
+      .all()) {
+      const span = lifeSpan(nature, row.day, zone);
+      if (!span || this.participated(span.start, span.end)) continue;
+      clear.run(row.day);
+      changed++;
+    }
+    return changed;
   }
   // She looked, spoke, or sat with the day. Other people's messages do not count.
   participated(start, end, { inclusive = false } = {}) {

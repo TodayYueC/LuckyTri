@@ -1,4 +1,5 @@
 import { localClock } from "../core/conversation-cues.js";
+import { zonedTime } from "./util.js";
 
 // Nature is the seed she is born with. It is the only part of her the owner
 // writes; everything else grows from experience.
@@ -216,6 +217,17 @@ export function lifeDayKey(nature, time, timeZone) {
     0,
     10,
   );
+}
+// The half-open interval of the life day named `day` (YYYY-MM-DD).
+export function lifeSpan(nature, day, timeZone) {
+  let cursor = zonedTime(`${day} 12:00`, timeZone);
+  if (!cursor) return null;
+  for (let i = 0; i < 4 && lifeDayKey(nature, cursor, timeZone) !== day; i++)
+    cursor += 6 * 3600000;
+  if (lifeDayKey(nature, cursor, timeZone) !== day) return null;
+  const start = lifeDayStart(nature, cursor, timeZone);
+  const end = lifeDayStart(nature, start + 26 * 3600000, timeZone);
+  return end > start ? { start, end } : null;
 }
 export function lifeDayStart(nature, time, timeZone) {
   const clock = localClock(time, timeZone);
