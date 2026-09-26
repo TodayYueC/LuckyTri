@@ -206,6 +206,9 @@ export function buildContext(
         .some((m) => String(m.speaker) === id && m.name && m.name !== name)
     )
       speakers.push({ id, name });
+  const addressedIds = batch
+    .filter((m) => m.relation === "direct")
+    .map((m) => m.seq);
   return {
     sessionId: session,
     watermark,
@@ -244,6 +247,14 @@ export function buildContext(
         }
       : {}),
     ...(speakers.length ? { speakers } : {}),
+    ...(addressedIds.length
+      ? {
+          addressed: {
+            messageIds: addressedIds,
+            note: "这些序号是在叫你。你可以不回，但不能说没人叫你，也不能把这句话当成在叫别人。",
+          },
+        }
+      : {}),
     conversation: conversationCues(kept, batchIds, now, policy.timeZone),
     batch,
     sourceRows: resolved.filter((m) => keptIds.has(m.seq)),

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { localClock } from "../core/conversation-cues.js";
+import { isNameCall } from "../core/name-call.js";
 import { replyPrompt, prompts } from "../core/persona-manager.js";
 import { estimateTokens, withFallback } from "../core/model-manager.js";
 import { agoLabel, elapsedLabel } from "./clock.js";
@@ -22,7 +23,7 @@ import {
 
 export const LIFE_DEFAULTS = {
   solitude: true,
-  proactive: false,
+  proactive: true,
   diary: true,
   reading: true,
   night: true,
@@ -177,6 +178,8 @@ export class Life {
     if (outreach) return outreach;
     const reason = this.eligible(now);
     if (!reason) return this.reflect();
+    const presence = await this.considerPresence(now);
+    if (presence) return presence;
     return { status: "skipped", reason };
   }
   // Direct messages that came in while she slept.
@@ -1336,6 +1339,81 @@ export class Life {
   }
   // Whether to say something first is her own turn; these are only the
   // limits a considerate person keeps.
+  // A room she was just in has gone quiet. She looks once and may say one
+  // thing of her own; silence is still a complete answer.
+  async considerPresence(now = this.now()) {
+    const s = this.settings();
+    if (!s.proactive || !this.online()) return null;
+    if (this.phase(now).key !== "awake") return null;
+    const quietFor = Math.max(s.idleMinutes, 1) * MINUTE;
+    const names = [
+      this.mind.nature.current(now).name,
+      ...String(this.repo.store.settings().aliases || "").split(/[,，]/),
+    ];
+    for (const session of this.living()) {
+      const id = session.id;
+      if (this.presenceCooling(id, now, s)) continue;
+      if (this.outreachPending(id)) continue;
+      const last = this.repo.recentEvents(id, 1, { simulated: false }).at(-1);
+      if (!last || now - last.time < quietFor) continue;
+      if (!this.wasHere(id, now, names)) continue;
+      this.busy = true;
+      let trace = null;
+      try {
+        trace = await this.chat.initiate(id, {
+          type: "presence",
+          data: { quietMinutes: Math.round((now - last.time) / MINUTE) },
+        });
+      } catch {
+        this.markPresence(id, now);
+        return {
+          status: "presence-error",
+          reason: "主动开口没有完成",
+          session: id,
+        };
+      } finally {
+        this.busy = false;
+      }
+      if (!trace) continue;
+      this.markPresence(id, now);
+      return {
+        status: `presence-${trace.status || "done"}`,
+        reason: trace.reason || "看了看要不要说",
+        session: id,
+      };
+    }
+    return null;
+  }
+  presenceCooling(session, now, s) {
+    const tried = this.repo.config("presence", {});
+    return !!(
+      tried[session] && now - tried[session] < s.proactiveIntervalHours * HOUR
+    );
+  }
+  markPresence(session, now) {
+    const tried = { ...this.repo.config("presence", {}), [session]: now };
+    this.repo.saveConfig("presence", tried);
+  }
+  outreachPending(session) {
+    return !!this.db
+      .prepare(
+        "SELECT 1 FROM mind_thoughts WHERE outreach_status='planned' AND hidden=0 AND status='open' AND outreach_session=? LIMIT 1",
+      )
+      .get(session);
+  }
+  wasHere(session, now, names) {
+    const since = now - 12 * HOUR;
+    return this.repo
+      .recentEvents(session, 80, { simulated: false })
+      .some((m) => {
+        if (m.time < since) return false;
+        if (m.role === "assistant") return true;
+        const mentions = (m.mentions || []).map(String);
+        if (m.accountId && mentions.includes(String(m.accountId))) return true;
+        if (String(m.text || "").includes("@我")) return true;
+        return isNameCall(m.text, names);
+      });
+  }
   async reachOut(now = this.now()) {
     const s = this.settings();
     if (!s.proactive || !this.online()) return null;

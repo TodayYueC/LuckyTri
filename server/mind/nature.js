@@ -4,6 +4,7 @@ import { localClock } from "../core/conversation-cues.js";
 // writes; everything else grows from experience.
 export const NATURE_DEFAULTS = {
   name: "LuckyTri",
+  gender: "female",
   base: "可爱、乐观、情绪稳定，偶尔对事情轻轻吐槽，不挖苦群友。像熟悉的群友一样说话，先接住情绪，不急着给建议。",
   interests: [],
   forbidden: [],
@@ -25,6 +26,7 @@ export const NATURE_DEFAULTS = {
 
 export const NATURE_FIELDS = Object.keys(NATURE_DEFAULTS);
 const TRAITS = ["humor", "sarcasm", "warmth", "activity", "initiative"];
+const GENDERS = new Set(["female", "male", "unspecified"]);
 const CLOCK = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 export function validateNature(input) {
@@ -35,6 +37,7 @@ export function validateNature(input) {
     value.name.length > 40
   )
     throw Error("名字无效");
+  if (!GENDERS.has(value.gender)) throw Error("性别无效");
   if (typeof value.base !== "string" || value.base.length > 30000)
     throw Error("天性正文无效");
   for (const key of ["interests", "forbidden", "bottomLines"]) {

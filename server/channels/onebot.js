@@ -190,8 +190,15 @@ export function normalize(event, { botMessageIds } = {}) {
   const safeSegments = segments.filter(
     (s) => s && typeof s === "object" && s.data && typeof s.data === "object",
   );
+  const atId = (segment) => {
+    const data = segment?.data || {};
+    const id = data.qq ?? data.user_id;
+    return id == null || id === "" ? "" : String(id);
+  };
   const atSelf = safeSegments.some(
-      (s) => s.type === "at" && String(s.data.qq) === String(event.self_id),
+      (s) =>
+        String(s.type || "").toLowerCase() === "at" &&
+        atId(s) === String(event.self_id),
     ),
     replyToBot = replyTarget(event, safeSegments, botMessageIds),
     media = {
@@ -210,7 +217,7 @@ export function normalize(event, { botMessageIds } = {}) {
       if (type === "text" && typeof s.data.text === "string")
         return s.data.text;
       if (type === "at")
-        return String(s.data.qq) === String(event.self_id) ? "" : "[提及成员]";
+        return atId(s) === String(event.self_id) ? "@我" : "[提及成员]";
       if (type === "image" && !isSticker(s)) return "[图片]";
       if (isSticker(s)) return "[表情]";
       if (["record", "video", "file", "json", "xml"].includes(type))

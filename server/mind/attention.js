@@ -42,6 +42,7 @@ export function attend({
   closeness = new Map(),
   pressure = 0,
   initiative = 25,
+  belongs = false,
   now = Date.now(),
 }) {
   const direct = batch.some((m) => m.relation === "direct");
@@ -103,14 +104,23 @@ export function attend({
   else if (unread >= 8) add(1.5, "攒了一些消息");
   if (lastLookAt && now - lastLookAt >= 10 * MINUTE && unread >= 3)
     add(1.5, "有一阵没看群了");
-  if (texts.every((t) => MEDIA_ONLY.test(t.trim()))) add(-2);
-  if (batch.every((m) => m.relation === "other")) add(-1.5);
+  const mediaOnly = texts.every((t) => MEDIA_ONLY.test(t.trim()));
+  const sideTalk =
+    batch.length > 0 && batch.every((m) => m.relation === "other");
+  if (mediaOnly) add(-2);
+  if (sideTalk) add(-1.5);
   const threshold =
     3 +
     (pressure > 0.7 ? 1.5 : 0) +
     (energy < 0.3 ? 1 : 0) +
     (phase === "sleepy" || phase === "waking" ? 0.5 : 0) -
-    (Number(initiative) - 25) / 50;
+    (Number(initiative) - 25) / 25;
+  // A room she already lives in is worth a real look, unless people are
+  // talking only to each other or the day is out of words.
+  if (belongs && !sideTalk && !mediaOnly && pressure < 1 && score < threshold) {
+    score = threshold;
+    reasons.push("这是我在的地方");
+  }
   const look = score >= threshold;
   return {
     look,

@@ -8,7 +8,12 @@ import { createStore } from "../server/store.js";
 import { ChatSystem } from "../server/core/orchestrator.js";
 import { attend } from "../server/mind/attention.js";
 import { crisisSignal, leaks, secretRequest } from "../server/mind/guard.js";
-import { rhythmPhase, NATURE_DEFAULTS } from "../server/mind/nature.js";
+import {
+  rhythmPhase,
+  NATURE_DEFAULTS,
+  validateNature,
+} from "../server/mind/nature.js";
+import { compilePersona } from "../server/core/persona-manager.js";
 import { world, HOUR, MINUTE } from "./helpers/world.js";
 
 test("作息：几点睡、几点醒、睡前犯困、刚醒迷糊", () => {
@@ -371,6 +376,69 @@ test("注意力没有骰子：同样的情况永远得到同样的注意力", ()
   assert(crisisSignal("我撑不下去了"));
   assert(!crisisSignal("笑死我了"));
   assert(!crisisSignal("饿死了想死你们"));
+  const room = {
+    batch: [
+      { userId: "1", text: "今天好冷", relation: "unknown", mentions: [] },
+    ],
+    now,
+    interests: new Set(),
+    belongs: true,
+  };
+  assert.equal(attend(room).look, true, "她在的地方会细看");
+  assert.match(attend(room).reason, /这是我在的地方/);
+  assert.equal(
+    attend({
+      ...room,
+      batch: [
+        { userId: "1", text: "你说得对", relation: "other", mentions: ["2"] },
+      ],
+    }).look,
+    false,
+    "两人私下说话仍然只扫一眼",
+  );
+  assert.equal(
+    attend({
+      batch: [{ userId: "1", text: "路过", relation: "unknown", mentions: [] }],
+      now,
+      initiative: 100,
+    }).look,
+    true,
+    "主动很高时会往前看",
+  );
+  assert.equal(
+    attend({
+      batch: [{ userId: "1", text: "路过", relation: "unknown", mentions: [] }],
+      now,
+      initiative: 25,
+    }).look,
+    false,
+  );
+});
+
+test("性别是天性的种子，没写过就是女", () => {
+  assert.equal(NATURE_DEFAULTS.gender, "female");
+  assert.equal(validateNature({ name: "LuckyTri", base: "" }).gender, "female");
+  assert.throws(
+    () => validateNature({ name: "LuckyTri", base: "", gender: "nope" }),
+    /性别/,
+  );
+  assert.match(compilePersona(NATURE_DEFAULTS), /你是女性/);
+  assert.match(
+    compilePersona({ ...NATURE_DEFAULTS, gender: "male" }),
+    /你是男性/,
+  );
+  assert.match(
+    compilePersona({ ...NATURE_DEFAULTS, gender: "unspecified" }),
+    /不要用固定/,
+  );
+  const w = world();
+  try {
+    assert.equal(w.mind.nature.current().gender, "female");
+    w.mind.nature.save({ ...w.mind.nature.current(), gender: "male" });
+    assert.equal(w.mind.nature.current().gender, "male");
+  } finally {
+    w.close();
+  }
 });
 
 test("Token 账本记下每次调用；预算用完时后台独处停下", async (t) => {

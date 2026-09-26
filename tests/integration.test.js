@@ -304,6 +304,8 @@ test(
       ws.once("error", j);
     });
     const sent = [];
+    const spoken = () =>
+      sent.filter((action) => String(action.action).startsWith("send_"));
     ws.on("message", (raw) => {
       const action = JSON.parse(raw);
       sent.push(action);
@@ -333,7 +335,7 @@ test(
     });
     assert.equal(memories[0].content, "喜欢冰拿铁");
     assert.equal(memories[0].status, "confirmed", "被要求记住的事直接记住");
-    assert.equal(sent.length, 0, "只是陈述，没有叫她，她只扫了一眼");
+    assert.equal(spoken().length, 0, "只是陈述，没有叫她，她只扫了一眼");
     ws.send(
       JSON.stringify({
         ...event,
@@ -344,10 +346,10 @@ test(
         ],
       }),
     );
-    await waitFor(() => sent.length === 1);
-    assert.equal(sent[0].action, "send_group_msg");
-    assert.equal(sent[0].params.group_id, 12345);
-    assert.deepEqual(sent[0].params.message, [
+    await waitFor(() => spoken().length === 1);
+    assert.equal(spoken()[0].action, "send_group_msg");
+    assert.equal(spoken()[0].params.group_id, 12345);
+    assert.deepEqual(spoken()[0].params.message, [
       { type: "text", data: { text: "记得呀，慢慢聊" } },
     ]);
     const turnPrompt = JSON.stringify(prompts.at(-1).messages);
@@ -363,8 +365,8 @@ test(
         ],
       }),
     );
-    await waitFor(() => sent.length === 2);
-    assert.deepEqual(sent[1].params.message, [
+    await waitFor(() => spoken().length === 2);
+    assert.deepEqual(spoken()[1].params.message, [
       { type: "text", data: { text: "可以呀，我再讲两句" } },
     ]);
     const mind = await waitFor(async () => {
@@ -412,7 +414,7 @@ test(
         /扫了一眼/.test(d.reason),
       ),
     );
-    assert.equal(sent.length, 2);
+    assert.equal(spoken().length, 2);
     assert.equal(
       (
         await request("/mind/revoke", "POST", {

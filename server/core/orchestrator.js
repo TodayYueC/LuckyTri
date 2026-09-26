@@ -52,7 +52,9 @@ const OCCASIONS = {
   backlog:
     "这些是你刚才没细看的消息，现在回头看了一眼，已经隔了一会儿，不必每条都回。",
   outreach:
-    "没有人在叫你。你想起了 occasion.thought 里的这件事，想看看要不要主动说一句。只在自然、具体、不打扰的时候开口，否则 silent。",
+    "这是你自己先前想说的一句（occasion.thought）。现在仍然合适就说这一句，不合适就 silent。不要改口说没人找你。",
+  presence:
+    "你待过的这个地方安静了一会儿。如果心里有一句真正想说的，就说这一句；没有就 silent。不要问在吗，不要说怎么不说话，不要索取陪伴。",
 };
 
 function isPrivateSession(session) {
@@ -274,6 +276,15 @@ export class ChatSystem {
         resolved
           .filter((m) => m.role === "assistant" && !m.referenceOnly)
           .at(-1)?.time || null,
+      belongs: (() => {
+        const spoke = resolved
+          .filter((m) => m.role === "assistant" && !m.referenceOnly)
+          .at(-1)?.time;
+        return (
+          !!(spoke && now - spoke < 6 * 60 * 60000) ||
+          !!this.mind.faces.current(session, now)
+        );
+      })(),
       phase: affect.phase,
       energy: affect.energy,
       interests,

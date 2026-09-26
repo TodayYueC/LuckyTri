@@ -11,8 +11,12 @@ export function messageEnvelope(m) {
     time: raw.time ? raw.time * 1000 : m.time || Date.now(),
     receivedAt: Date.now(),
     mentions: segments
-      .filter((s) => s.type === "at")
-      .map((s) => String(s.data?.qq)),
+      .filter((s) => String(s?.type || "").toLowerCase() === "at")
+      .map((s) => {
+        const id = s.data?.qq ?? s.data?.user_id;
+        return id == null || id === "" ? "" : String(id);
+      })
+      .filter(Boolean),
     replyId: String(segments.find((s) => s.type === "reply")?.data?.id || ""),
     attachments: segments
       .filter((s) =>
@@ -44,7 +48,8 @@ export function persistIncoming(repo, m) {
       : personName && personName !== native && !/^\d{4,20}$/.test(personName)
         ? personName.slice(0, 100)
         : "";
-  const placeholder = m.kind === "group" ? "未命名的群" : personName || "未命名的人";
+  const placeholder =
+    m.kind === "group" ? "未命名的群" : personName || "未命名的人";
   repo.db
     .prepare(
       `INSERT INTO sessions(id,name,kind) VALUES (?,?,?)

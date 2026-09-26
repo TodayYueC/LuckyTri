@@ -17,3 +17,6 @@ Thumbs.db
 
 # Local previews and isolated checkouts
 workspace/
+
+# Agent attachment drops, not part of the project
+.codex-remote-attachments/

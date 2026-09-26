@@ -78,6 +78,7 @@ function natureValue() {
   const { version: _version, ...value } = draft.value;
   return {
     ...value,
+    gender: value.gender || "female",
     interests: list(value.interests),
     forbidden: list(value.forbidden),
     bottomLines: list(value.bottomLines),
@@ -98,6 +99,7 @@ async function load() {
   ]);
   draft.value = {
     ...nature.nature,
+    gender: nature.nature.gender || "female",
     interests: nature.nature.interests.join("，"),
     forbidden: nature.nature.forbidden.join("\n"),
     bottomLines: nature.nature.bottomLines.join("\n"),
@@ -203,137 +205,153 @@ onMounted(load);
           </header>
 
           <fieldset class="nature-fields" :disabled="natureEdits.locked">
-          <div class="form-grid">
-            <label
-              >名字<input
-                v-model="draft.name"
-                name="name"
-                required
-                maxlength="40"
-            /></label>
-            <label>
-              别人会怎么叫 TA
-              <input
-                v-model="aliases"
-                name="aliases"
-                placeholder="用逗号分隔"
-              />
-              <small>群友叫 TA 的称呼，保存时一并写进全局设置</small>
-            </label>
-            <label class="wide">
-              天性
-              <textarea
-                v-model="draft.base"
-                name="base"
-                rows="6"
-                placeholder="TA 的背景、性格、兴趣和社交方式…"
-              ></textarea>
-            </label>
-          </div>
-
-          <fieldset class="traits">
-            <legend>性格刻度</legend>
-            <div v-for="t in TRAITS" :key="t.key" class="trait">
-              <div class="trait-head">
-                <b>{{ t.label }}</b>
-                <small class="muted">{{ describe(t) }}</small>
-              </div>
-              <input
-                v-model.number="draft[t.key]"
-                type="range"
-                min="0"
-                max="100"
-                :data-trait="t.key"
-                :aria-label="`${t.label}刻度`"
-              />
-              <input
-                v-model.number="draft[t.key]"
-                :name="t.key"
-                type="number"
-                min="0"
-                max="100"
-                class="trait-number"
-                :aria-label="t.label"
-              />
-            </div>
-            <label
-              >说话长度<input v-model="draft.length" name="length"
-            /></label>
-          </fieldset>
-
-          <fieldset class="rhythm-set">
-            <legend>作息</legend>
-            <label class="switch">
-              <input
-                v-model="draft.rhythm.enabled"
-                type="checkbox"
-                name="rhythmEnabled"
-              />
-              <span
-                >TA 会睡觉：睡着时不看群，被私聊或 @
-                会等醒来再看（危机消息除外）</span
-              >
-            </label>
-            <div class="rhythm-row">
-              <RhythmClock
-                v-model:sleep="draft.rhythm.sleep"
-                v-model:wake="draft.rhythm.wake"
-                :disabled="!draft.rhythm.enabled"
-                @update:sleep="dirty()"
-                @update:wake="dirty()"
-              />
-              <div class="stack tight times">
-                <label
-                  >几点睡<input
-                    v-model="draft.rhythm.sleep"
-                    type="time"
-                    name="sleep"
-                    step="900"
-                /></label>
-                <label
-                  >几点醒<input
-                    v-model="draft.rhythm.wake"
-                    type="time"
-                    name="wake"
-                    step="900"
-                /></label>
-                <small class="faint">拖动月亮和太阳，或直接输入时间。</small>
-              </div>
-            </div>
-          </fieldset>
-
-          <fieldset>
-            <legend>兴趣、边界与底线</legend>
-            <div class="stack tight">
+            <div class="form-grid">
               <label
-                >兴趣<input
-                  v-model="draft.interests"
-                  name="interests"
+                >名字<input
+                  v-model="draft.name"
+                  name="name"
+                  required
+                  maxlength="40"
+              /></label>
+              <label>
+                性别
+                <Select
+                  v-model="draft.gender"
+                  name="gender"
+                  aria-label="性别"
+                  :options="[
+                    { value: 'female', label: '女' },
+                    { value: 'male', label: '男' },
+                    { value: 'unspecified', label: '不指定' },
+                  ]"
+                />
+                <small
+                  >人称会进入 TA 对自己的理解。女是「她」，男是「他」。</small
+                >
+              </label>
+              <label>
+                别人会怎么叫 TA
+                <input
+                  v-model="aliases"
+                  name="aliases"
                   placeholder="用逗号分隔"
-              /></label>
-              <label
-                >社交边界<input v-model="draft.boundaries" name="boundaries"
-              /></label>
-              <label
-                >底线（每行一条）<textarea
-                  v-model="draft.bottomLines"
-                  name="bottomLines"
-                  rows="4"
+                />
+                <small>群友叫 TA 的称呼，保存时一并写进全局设置</small>
+              </label>
+              <label class="wide">
+                天性
+                <textarea
+                  v-model="draft.base"
+                  name="base"
+                  rows="6"
+                  placeholder="TA 的背景、性格、兴趣和社交方式…"
                 ></textarea>
               </label>
-              <label
-                >不想用的说法（每行一个）<textarea
-                  v-model="draft.forbidden"
-                  name="forbidden"
-                  rows="3"
-                ></textarea>
-              </label>
-              <small class="faint"
-                >凭据（密码、密钥、验证码）永远不会进入 TA
-                的心智，这一条写死在代码里。</small
-              >
             </div>
-          </fieldset>
+
+            <fieldset class="traits">
+              <legend>性格刻度</legend>
+              <div v-for="t in TRAITS" :key="t.key" class="trait">
+                <div class="trait-head">
+                  <b>{{ t.label }}</b>
+                  <small class="muted">{{ describe(t) }}</small>
+                </div>
+                <input
+                  v-model.number="draft[t.key]"
+                  type="range"
+                  min="0"
+                  max="100"
+                  :data-trait="t.key"
+                  :aria-label="`${t.label}刻度`"
+                />
+                <input
+                  v-model.number="draft[t.key]"
+                  :name="t.key"
+                  type="number"
+                  min="0"
+                  max="100"
+                  class="trait-number"
+                  :aria-label="t.label"
+                />
+              </div>
+              <label
+                >说话长度<input v-model="draft.length" name="length"
+              /></label>
+            </fieldset>
+
+            <fieldset class="rhythm-set">
+              <legend>作息</legend>
+              <label class="switch">
+                <input
+                  v-model="draft.rhythm.enabled"
+                  type="checkbox"
+                  name="rhythmEnabled"
+                />
+                <span
+                  >TA 会睡觉：睡着时不看群，被私聊或 @
+                  会等醒来再看（危机消息除外）</span
+                >
+              </label>
+              <div class="rhythm-row">
+                <RhythmClock
+                  v-model:sleep="draft.rhythm.sleep"
+                  v-model:wake="draft.rhythm.wake"
+                  :disabled="!draft.rhythm.enabled"
+                  @update:sleep="dirty()"
+                  @update:wake="dirty()"
+                />
+                <div class="stack tight times">
+                  <label
+                    >几点睡<input
+                      v-model="draft.rhythm.sleep"
+                      type="time"
+                      name="sleep"
+                      step="900"
+                  /></label>
+                  <label
+                    >几点醒<input
+                      v-model="draft.rhythm.wake"
+                      type="time"
+                      name="wake"
+                      step="900"
+                  /></label>
+                  <small class="faint">拖动月亮和太阳，或直接输入时间。</small>
+                </div>
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>兴趣、边界与底线</legend>
+              <div class="stack tight">
+                <label
+                  >兴趣<input
+                    v-model="draft.interests"
+                    name="interests"
+                    placeholder="用逗号分隔"
+                /></label>
+                <label
+                  >社交边界<input v-model="draft.boundaries" name="boundaries"
+                /></label>
+                <label
+                  >底线（每行一条）<textarea
+                    v-model="draft.bottomLines"
+                    name="bottomLines"
+                    rows="4"
+                  ></textarea>
+                </label>
+                <label
+                  >不想用的说法（每行一个）<textarea
+                    v-model="draft.forbidden"
+                    name="forbidden"
+                    rows="3"
+                  ></textarea>
+                </label>
+                <small class="faint"
+                  >凭据（密码、密钥、验证码）永远不会进入 TA
+                  的心智，这一条写死在代码里。</small
+                >
+              </div>
+            </fieldset>
           </fieldset>
 
           <details class="versions">
@@ -352,11 +370,7 @@ onMounted(load);
           <div class="save-bar">
             <button class="primary" :disabled="busy || natureEdits.locked">
               {{
-                natureEdits.locked
-                  ? "已交给 TA"
-                  : busy
-                    ? "保存中…"
-                    : "保存天性"
+                natureEdits.locked ? "已交给 TA" : busy ? "保存中…" : "保存天性"
               }}
             </button>
             <span class="faint" role="status">{{
@@ -453,8 +467,7 @@ onMounted(load);
             ><input v-model="settings.life.proactive" type="checkbox" /><span
               ><b>允许 TA 主动说话</b
               ><small
-                >只在 TA 心里有具体的人和事、对话已经安静、TA
-                醒着时才会考虑；说不说由 TA 决定，没有回应前不会再追。</small
+                >可以在自己待过、安静下来的地方考虑说一句，也可以在心里有具体的人和事时再联系。说不说由 TA 决定；冷的联系没有回应前不会再追。关掉之后就不再主动开口。</small>
               ></span
             ></label
           >
