@@ -35,13 +35,22 @@ export class Meetings {
     const living = this.mind.self
       .annotated({ before: time, now: time })
       .find((row) => row.kind === "intention" && !row.faded);
-    const said = interestTerms(heard.map((m) => m.text || ""));
     const wish = living ? interestTerms([living.content]) : new Set();
-    // One shared pair is not a meeting of her will, unless the wish itself
-    // has only one distinctive pair.
-    const willMet = living
-      ? touches(living.content, said, wish.size < 2 ? 1 : 2)
-      : false;
+    const need = wish.size < 2 ? 1 : 2;
+    // Each person's own words have to meet the wish. Two messages cannot
+    // be added together, and someone who only stood nearby is not credited.
+    const willPeople = living
+      ? [
+          ...new Set(
+            heard
+              .filter((m) =>
+                touches(living.content, interestTerms([m.text || ""]), need),
+              )
+              .map((m) => String(m.speaker)),
+          ),
+        ]
+      : [];
+    const willMet = willPeople.length > 0;
     if (!appraisal && !willMet) return null;
     const id = randomUUID();
     const choice = ["speak", "react", "decline", "silent"].includes(
@@ -51,7 +60,7 @@ export class Meetings {
       : "silent";
     this.db
       .prepare(
-        "INSERT INTO mind_meetings(id,created,session_id,choice,appraisal,topic,people,sources,will_thread,will_met,discretion) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO mind_meetings(id,created,session_id,choice,appraisal,topic,people,sources,will_thread,will_met,discretion,will_people) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
       )
       .run(
         id,
@@ -65,6 +74,7 @@ export class Meetings {
         willMet ? living.thread : null,
         willMet ? 1 : 0,
         isPrivateSession(session) ? "private" : "open",
+        JSON.stringify(willPeople),
       );
     const link = this.db.prepare(
       "INSERT INTO mind_meeting_people(meeting_id,user_id) VALUES (?,?)",
@@ -244,7 +254,7 @@ export class Meetings {
     return new Set(
       this.db
         .prepare(
-          `SELECT p.user_id, m.created FROM mind_meeting_people p
+          `SELECT p.user_id, m.created, m.will_people FROM mind_meeting_people p
            JOIN mind_meetings m ON m.id = p.meeting_id
            WHERE p.user_id IN (${ids.map(() => "?").join(",")})
              AND m.will_met = 1 AND m.will_thread = ? AND m.created < ?
@@ -255,7 +265,13 @@ export class Meetings {
              )`,
         )
         .all(...ids, thread, before, session)
-        .filter((row) => meetingSalience(row.created, lived) >= MEETING_FADED)
+        .filter((row) => {
+          if (meetingSalience(row.created, lived) < MEETING_FADED) return false;
+          const credited = parse(row.will_people, []);
+          // Rows written before speakers were credited individually.
+          if (!credited.length) return true;
+          return credited.map(String).includes(String(row.user_id));
+        })
         .map((row) => String(row.user_id)),
     );
   }
