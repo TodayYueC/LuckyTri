@@ -639,7 +639,10 @@ export class MemoryManager {
         throw Error("记忆整理格式无效");
       db.exec("BEGIN IMMEDIATE");
       try {
-        const summary = applySpeakerNames(value.summary, names);
+        const said = block.map((m) => m.text || "");
+        const raw = value.summary.trim();
+        const summary =
+          raw && grounded(raw, said) ? applySpeakerNames(raw, names) : "";
         db.prepare(
           "INSERT OR IGNORE INTO core_stages VALUES (?,?,?,?,?,?)",
         ).run(

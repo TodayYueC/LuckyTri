@@ -1755,6 +1755,30 @@ test("就算模型写出了别处的秘密，发出去之前也会被拦下重�
   assert.match(trace.validation.join(), /保密/);
 });
 
+test("阶段摘要的句尾必须来自这段原话", async () => {
+  const stage = async (summary, text) => {
+    const w = world();
+    try {
+      w.open("group:1");
+      w.say("group:1", "10001", text);
+      w.answers.memory = { summary, facts: [], anticipations: [], self: [] };
+      await w.mind.memory.consolidate(
+        "group:1",
+        w.system.models.profile(),
+        "",
+        { calls: [] },
+        { force: true, models: w.system.models },
+      );
+      const row = w.store.db.prepare("SELECT data FROM core_stages").get();
+      return JSON.parse(row.data).summary;
+    } finally {
+      w.close();
+    }
+  };
+  assert.equal(await stage("他下个月要结婚", "我下个月要辞职了"), "");
+  assert.equal(await stage("聊到辞职", "我下个月要辞职了"), "聊到辞职");
+});
+
 test("被要求保密的话，整理记忆时也会记成秘密", async (t) => {
   const w = world();
   t.after(w.close);

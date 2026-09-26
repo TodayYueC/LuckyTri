@@ -294,14 +294,15 @@ export class Life {
           )
           .get(r.session_id);
         const selfName = this.mind.nature.current(now).name;
+        const earlier = stage
+          ? text(parse(stage.data, {}).summary, 400)
+          : "";
         return {
           session: r.session_id,
           name: names.get(r.session_id).name,
           kind: names.get(r.session_id).kind,
           lastActive: elapsedLabel(r.t, now, this.mind.timeZone()),
-          ...(stage
-            ? { earlier: text(parse(stage.data, {}).summary, 400) }
-            : {}),
+          ...(earlier ? { earlier } : {}),
           messages: events.slice(-rows).map((m) => ({
             seq: m.seq,
             name: m.role === "assistant" ? selfName : m.name,
