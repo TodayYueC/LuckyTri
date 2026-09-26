@@ -1810,6 +1810,8 @@ test("整理记忆时，她自己说过的看法和承诺成为她的一部分�
         sources: [mine.seq],
       },
       { kind: "intention", content: "明天提醒他早起", sources: [mine.seq] },
+      { kind: "intention", content: "我想学烘焙" },
+      { kind: "interest", content: "我喜欢熬夜" },
       { kind: "view", content: "我讨厌早起", sources: [user.seq] },
     ],
   };
@@ -1822,6 +1824,21 @@ test("整理记忆时，她自己说过的看法和承诺成为她的一部分�
   );
   const threads = w.mind.self.active().map((t) => t.content);
   assert.deepEqual(threads.sort(), ["我觉得早起挺好", "明天提醒他早起"].sort());
+  const held = w.mind.self.active().find((t) => t.content === "我觉得早起挺好");
+  const drifted = w.mind.self.propose(
+    {
+      action: "revise",
+      thread: held.thread,
+      content: "我觉得早起很舒服",
+      sources: [mine.seq],
+    },
+    { valid: new Set([`m:${mine.seq}`]), origin: "memory", time: Date.now() },
+  );
+  assert.equal(drifted.rejected, "没有新的经历");
+  assert.equal(
+    w.mind.self.active().find((t) => t.thread === held.thread).content,
+    "我觉得早起挺好",
+  );
 });
 
 test("注意力没有骰子：同样的情况永远得到同样的注意力", () => {
