@@ -336,11 +336,12 @@ export class Life {
       }));
   }
   livingForView(now, { since = 0, open = false } = {}) {
-    const thread = this.mind.self
-      .annotated({ before: now, now })
-      .find((t) => t.kind === "intention" && !t.faded);
+    const thread = this.mind.self.living({
+      before: now,
+      now,
+      ...(open ? { room: "" } : {}),
+    });
     if (!thread) return null;
-    if (open && !this.mind.meetings.stays(thread, "")) return null;
     const trace = this.mind.meetings.trace(thread.thread, {
       before: now,
       since,

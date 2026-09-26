@@ -255,10 +255,11 @@ export class ChatSystem {
     const affect = this.mind.affect.state(now, { nature, room: session });
     const interests = interestTerms(nature.interests || []);
     const here = (thread) => this.mind.meetings.stays(thread, session);
-    const livingFor = this.mind.self
-      .annotated({ before: now, now })
-      .find((thread) => thread.kind === "intention" && !thread.faded);
-    const livingThread = livingFor && here(livingFor) ? livingFor : null;
+    const livingThread = this.mind.self.living({
+      before: now,
+      now,
+      room: session,
+    });
     const living = interestTerms(livingThread ? [livingThread.content] : []);
     const curiosities = interestTerms(
       this.mind.self

@@ -791,6 +791,101 @@ test("没有来源的小事如果就是私下的原话，不进别的房间", ()
   }
 });
 
+test("更强的私下小事不会把别的房间正在过的事挤掉", () => {
+  const w = world();
+  try {
+    w.open("private:7", "阿明");
+    w.open("group:1", "一群");
+    w.mind.memory.insert({
+      session: "private:7",
+      subject: "7",
+      content: "最近在准备考研",
+      discretion: "private",
+    });
+    const baked = w.mind.self.propose(
+      {
+        action: "new",
+        kind: "intention",
+        content: "我想自己学烘焙",
+        sources: [],
+      },
+      { time: w.now() },
+    );
+    const exam = w.mind.self.propose(
+      {
+        action: "new",
+        kind: "intention",
+        content: "他最近在准备考研",
+        sources: [],
+      },
+      { time: w.now() + 1000 },
+    );
+    assert.match(
+      innerView(w.mind, {
+        session: "group:1",
+        kind: "group",
+        now: w.now() + 2000,
+      }).self.livingFor,
+      /烘焙/,
+    );
+    assert.match(
+      innerView(w.mind, {
+        session: "private:7",
+        kind: "private",
+        now: w.now() + 2000,
+      }).self.livingFor,
+      /考研/,
+    );
+    assert.match(w.life.livingForView(w.now() + 2000).content, /考研/);
+    assert.match(
+      w.life.livingForView(w.now() + 2000, { open: true }).content,
+      /烘焙/,
+    );
+    const hear = (session, userId, text, time) => {
+      const message = w.say(session, userId, text, { name: "阿明" });
+      return w.mind.meetings.keep(
+        { choice: "silent", appraisal: "听到了", topic: "" },
+        {
+          session,
+          snapshot: {
+            batchIds: [message.seq],
+            messages: [
+              {
+                id: message.seq,
+                role: "user",
+                speaker: userId,
+                name: "阿明",
+                text,
+              },
+            ],
+          },
+          time,
+        },
+      );
+    };
+    const inGroup = hear("group:1", "10001", "我想学烘焙", w.now() + 3000);
+    assert.equal(inGroup.willMet, true);
+    assert.equal(
+      w.mind.db
+        .prepare("SELECT will_thread FROM mind_meetings WHERE id=?")
+        .get(inGroup.id).will_thread,
+      baked.thread,
+    );
+    const missed = hear("group:1", "10001", "最近在准备考研", w.now() + 4000);
+    assert.equal(missed.willMet, false);
+    const atHome = hear("private:7", "7", "最近在准备考研", w.now() + 5000);
+    assert.equal(atHome.willMet, true);
+    assert.equal(
+      w.mind.db
+        .prepare("SELECT will_thread FROM mind_meetings WHERE id=?")
+        .get(atHome.id).will_thread,
+      exam.thread,
+    );
+  } finally {
+    w.close();
+  }
+});
+
 test("私下相遇里的原话，在别的房间说出去之前会被拦住", async (t) => {
   const w = world();
   t.after(w.close);
