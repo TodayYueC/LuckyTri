@@ -2169,6 +2169,80 @@ test("两个人各说一个在意的词，不会因此细看", () => {
   assert.match(whole.reason, /在意的东西/);
 });
 
+test("两个人各说一半，不会把淡掉的意思勾起来", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    const metAt = w.now();
+    w.mind.db
+      .prepare(
+        "INSERT INTO mind_meetings(id,created,session_id,choice,appraisal,people,sources,discretion,will_people) VALUES (?,?,?,?,?,?,?,?,?)",
+      )
+      .run(
+        "bake-sky",
+        metAt,
+        "group:1",
+        "silent",
+        "他们在聊烘焙和天文",
+        '["10001"]',
+        "[1]",
+        "open",
+        "[]",
+      );
+    const later = metAt + 80 * 86400000;
+    const insert = w.mind.db.prepare(
+      "INSERT OR IGNORE INTO mind_days(day,created,lived,events) VALUES (?,?,?,1)",
+    );
+    for (let i = 1; i <= 70; i++)
+      insert.run(
+        new Date(Date.UTC(2026, 8, 22 + i)).toISOString().slice(0, 10),
+        later,
+        1,
+      );
+    const view = (cue) =>
+      innerView(w.mind, {
+        session: "group:1",
+        kind: "group",
+        people: ["10001", "10002"],
+        cue,
+        now: later,
+      });
+    const said = (reminded) => (reminded || []).join(" ");
+    assert.equal(
+      view([
+        { userId: "10001", role: "user", text: "今天烘焙" },
+        { userId: "10002", role: "user", text: "天文不错" },
+      ]).inner.reminded,
+      undefined,
+    );
+    assert.equal(
+      view([
+        { userId: "bot", role: "assistant", text: "烘焙和天文都想学" },
+        { userId: "10002", role: "user", text: "今天好冷" },
+      ]).inner.reminded,
+      undefined,
+    );
+    assert.match(
+      said(
+        view([{ userId: "10001", role: "user", text: "烘焙和天文都想学吗" }])
+          .inner.reminded,
+      ),
+      /烘焙和天文/,
+    );
+    assert.match(
+      said(
+        view([
+          { userId: "10001", role: "user", text: "今天烘焙" },
+          { userId: "10001", role: "user", text: "天文不错" },
+        ]).inner.reminded,
+      ),
+      /烘焙和天文/,
+    );
+  } finally {
+    w.close();
+  }
+});
+
 test("一个词组对上不算碰到她正在过的事", () => {
   const w = world();
   try {

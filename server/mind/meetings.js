@@ -5,7 +5,13 @@ import { agoLabel, elapsedLabel } from "./clock.js";
 import { leaks } from "./guard.js";
 import { isPrivateSession } from "./memory.js";
 import { lifeDayKey, lifeSpan } from "./nature.js";
-import { MEETING_FADED, meetingSalience, touches } from "./salience.js";
+import {
+  MEETING_FADED,
+  anyTouches,
+  cueList,
+  meetingSalience,
+  touches,
+} from "./salience.js";
 import { hasCredential, messageSeqs, parse, text } from "./util.js";
 
 // What a meeting meant, and whether the world actually touched what she is
@@ -306,8 +312,9 @@ export class Meetings {
   }
   // A faded meaning the current words actually meet. It is only remembered,
   // not written back, and it does not by itself make her look.
-  reminded({ session, now = Date.now(), cue, limit = 1 } = {}) {
-    if (!cue?.size) return [];
+  reminded({ session, now = Date.now(), cue, cues, limit = 1 } = {}) {
+    const sets = cueList(cue, cues);
+    if (!sets.length) return [];
     const lived = this.mind.days.lived(now);
     return this.db
       .prepare(
@@ -324,7 +331,7 @@ export class Meetings {
         (row) =>
           this.#visible(row, session) &&
           meetingSalience(row.created, lived) < MEETING_FADED &&
-          touches(row.appraisal, cue),
+          anyTouches(row.appraisal, sets),
       )
       .slice(0, limit)
       .map((row) => this.line(row, parse(row.people, []), now));

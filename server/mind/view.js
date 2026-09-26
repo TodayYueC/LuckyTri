@@ -7,6 +7,26 @@ import { DAY, text } from "./util.js";
 
 const FORGOTTEN = "（很久没想起了）";
 
+// One person's own words. Two people cannot be added together, and a line
+// she already said does not count. A bare string is one utterance.
+function speakerCues(cue) {
+  const groups = new Map();
+  let anon = 0;
+  for (const item of cue || []) {
+    if (item && typeof item === "object") {
+      if (item.role === "assistant") continue;
+      const id = String(item.userId || item.speaker || "");
+      if (!id) continue;
+      const texts = groups.get(id) || [];
+      texts.push(String(item.text || ""));
+      groups.set(id, texts);
+    } else groups.set(`\0${anon++}`, [String(item ?? "")]);
+  }
+  return [...groups.values()]
+    .map((texts) => interestTerms(texts))
+    .filter((terms) => terms.size);
+}
+
 const FEEDBACK = {
   too_long: "太长了",
   too_formal: "太端着",
@@ -47,24 +67,24 @@ export function innerView(
   const face = mind.faces.current(session, now);
   const threads = mind.self.active({ before: now, now, limit: 6 });
   const living = mind.self.living({ before: now, now, room: session });
-  const terms = interestTerms(cue);
+  const cues = speakerCues(cue);
   const carries = (thread) => mind.meetings.stays(thread, session);
   const visibleThreads = threads.filter(carries);
   const shownLiving = living && carries(living) ? living : null;
   const reminded = [
     ...mind.self
-      .reminded({ before: now, now, cue: terms, limit: 2 })
+      .reminded({ before: now, now, cues, limit: 2 })
       .filter(carries)
       .map((t) => `${SELF_KINDS[t.kind]}：${text(t.content, 80)}${FORGOTTEN}`),
     ...mind.thoughts
-      .reminded({ now, cue: terms, session, limit: 1 })
+      .reminded({ now, cues, session, limit: 1 })
       .filter((t) => mind.meetings.sayable(t.content, session))
       .map(
         (t) =>
           `${elapsedLabel(t.created, now, mind.timeZone())}想到：${text(t.content, 110)}${FORGOTTEN}`,
       ),
     ...mind.meetings
-      .reminded({ session, now, cue: terms, limit: 1 })
+      .reminded({ session, now, cues, limit: 1 })
       .filter((line) => mind.meetings.sayable(line, session))
       .map((line) => `${line}${FORGOTTEN}`),
   ];

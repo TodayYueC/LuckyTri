@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { THOUGHT_FADED, thoughtSalience, touches } from "./salience.js";
+import {
+  THOUGHT_FADED,
+  anyTouches,
+  cueList,
+  thoughtSalience,
+} from "./salience.js";
 import { HOUR, clamp, evidence, parse, text } from "./util.js";
 
 export const THOUGHT_KINDS = {
@@ -128,10 +133,13 @@ export class Thoughts {
     );
   }
   // Faded thoughts from this place that the conversation brings back.
-  reminded({ now = Date.now(), cue, session = "", limit = 1 } = {}) {
-    if (!cue?.size) return [];
+  reminded({ now = Date.now(), cue, cues, session = "", limit = 1 } = {}) {
+    const sets = cueList(cue, cues);
+    if (!sets.length) return [];
     return this.weighed({ now, session })
-      .filter((t) => t.salience < THOUGHT_FADED && touches(t.content, cue))
+      .filter(
+        (t) => t.salience < THOUGHT_FADED && anyTouches(t.content, sets),
+      )
       .slice(0, limit);
   }
   resolve(id, resolution = "", time = Date.now()) {
