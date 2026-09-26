@@ -138,6 +138,16 @@ export class Affect {
         "SELECT * FROM mind_affect WHERE created<=? AND created>? ORDER BY created",
       )
       .all(now, now - 2 * DAY);
+    // Solitude and the diary do not cite a message. Only the latest of each
+    // is a mood; earlier ones do not pile up and overturn her.
+    const latestBare = new Map();
+    const bare = (row) =>
+      parse(row.sources, []).length === 0 &&
+      (row.origin === "solitude" || row.origin === "daily");
+    for (const row of rows) if (bare(row)) latestBare.set(row.origin, row);
+    const felt = rows.filter(
+      (row) => !bare(row) || latestBare.get(row.origin) === row,
+    );
     let valence = base.valence;
     let arousal = base.arousal;
     let at = now - 2 * DAY;
@@ -161,7 +171,7 @@ export class Affect {
       batchV = 0;
       batchA = 0;
     };
-    for (const row of rows) {
+    for (const row of felt) {
       if (batchAt !== null && row.created !== batchAt) apply(batchAt);
       batchAt = row.created;
       batchV += row.valence * row.intensity;

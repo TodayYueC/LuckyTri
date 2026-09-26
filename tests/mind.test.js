@@ -108,6 +108,28 @@ test("心境由经历推动、随时间回落；一次经历不能把她推翻",
   );
 });
 
+test("几次没有来源的独处不会把心情叠过一次", () => {
+  const w = world();
+  try {
+    const base = w.mind.affect.state(w.now()).valence;
+    const start = w.now();
+    for (let i = 0; i < 3; i++)
+      w.mind.affect.feel({
+        feeling: "很低落",
+        intensity: 1,
+        valence: -1,
+        cause: "独处",
+        origin: "solitude",
+        time: start + i * HOUR,
+      });
+    const stacked = w.mind.affect.state(start + 2 * HOUR);
+    assert(Math.abs(stacked.valence - base) <= 0.35 + 1e-9);
+    assert.equal(stacked.mood, "很低落");
+  } finally {
+    w.close();
+  }
+});
+
 test("同一个 QQ 号在所有群和私聊里是同一个人；别扭会慢慢消散", (t) => {
   const w = world();
   t.after(w.close);
