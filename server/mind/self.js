@@ -31,6 +31,20 @@ export const SELF_KINDS = {
 const STEP = 0.15;
 const NEW_CAP = 0.35;
 const TRAIT_CAP = 0.25;
+
+// Fade follows the last version that cited something not cited before.
+// The first version counts even when it has no source.
+function earnedAt(history) {
+  if (!history?.length) return null;
+  const seen = new Set(history[0].sources || []);
+  let at = history[0].created;
+  for (const row of history.slice(1)) {
+    const sources = row.sources || [];
+    if (sources.some((source) => !seen.has(source))) at = row.created;
+    for (const source of sources) seen.add(source);
+  }
+  return at;
+}
 // Likes, questions, and a small wish of her own can begin without a message.
 // Views, traits, habits, and cares still have to point at something that happened.
 const SELF_ORIGINATED = new Set(["interest", "curiosity", "intention"]);
@@ -78,9 +92,27 @@ export class Self {
   annotated({ before = Number.MAX_SAFE_INTEGER, now } = {}) {
     const at = now ?? (before < Number.MAX_SAFE_INTEGER ? before : Date.now());
     const lived = this.mind.days.lived(at);
+    const versions = new Map();
+    for (const row of this.db
+      .prepare(
+        "SELECT thread, created, sources FROM mind_self WHERE created<=? ORDER BY created, rowid",
+      )
+      .all(before)) {
+      const list = versions.get(row.thread) || [];
+      list.push({ created: row.created, sources: parse(row.sources, []) });
+      versions.set(row.thread, list);
+    }
     const rows = this.latest(before)
       .filter((row) => row.status !== "closed")
-      .map((row) => ({ ...row, salience: threadSalience(row, lived) }));
+      .map((row) => ({
+        ...row,
+        // A rewording is not a new meeting with the thread. Fade follows the
+        // last version that actually brought new evidence.
+        salience: threadSalience(
+          { ...row, created: earnedAt(versions.get(row.thread)) ?? row.created },
+          lived,
+        ),
+      }));
     const core = new Set(
       [...rows]
         .sort((a, b) => b.strength - a.strength || b.created - a.created)
