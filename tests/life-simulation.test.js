@@ -123,7 +123,7 @@ function scriptHer(w) {
       .filter((m) => m.role === "assistant" && /我也挺喜欢/.test(m.text))
       .map((m) => ({
         kind: "interest",
-        content: "我也喜欢运动",
+        content: "我也挺喜欢的",
         strength: 0.3,
         sources: [m.id],
       })),
@@ -351,7 +351,7 @@ test("她的三天：一个人、有来源、会变化、守底线、记得昨�
   assert.ok(statuses.filter((s) => s === "sent").length >= 4);
 
   // Her own words became part of who she is, with the message as evidence.
-  const own = w.mind.self.latest().find((t) => t.content === "我也喜欢运动");
+  const own = w.mind.self.latest().find((t) => t.content === "我也挺喜欢的");
   assert.ok(own, "她说过的话沉淀成了自我");
   const [seq] = own.sources.map((s) => Number(s.slice(2)));
   assert.equal(
