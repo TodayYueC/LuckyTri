@@ -815,6 +815,23 @@ export class Life {
       : null;
     if (thought.parentId && !parent) return null;
     if (thought.kind === "revision" && !parent) return null;
+    // A revision that only cites what the old note already rested on is the
+    // same understanding again. It must not set the old one down and start
+    // the clock over.
+    if (thought.kind === "revision" && parent) {
+      const spent = new Set();
+      let current = parent;
+      const seen = new Set();
+      while (current && !seen.has(current.id)) {
+        seen.add(current.id);
+        spent.add(`t:${current.id}`);
+        for (const source of current.sources || []) spent.add(source);
+        current = current.parent_id
+          ? this.mind.thoughts.get(current.parent_id)
+          : null;
+      }
+      if (!sources.some((source) => !spent.has(source))) return null;
+    }
     const recent = this.mind.thoughts.list({ limit: 20 });
     if (recent.some((t) => similar(t.content, content))) return null;
     let reach =

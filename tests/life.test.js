@@ -334,6 +334,26 @@ test("旧想法被新经历修正时追加保存；引用不存在的来源或�
   };
   await w.life.tick();
   assert.equal(w.mind.thoughts.list().length, 2);
+  w.advance(2 * HOUR);
+  chat(
+    w,
+    "group:1",
+    Array.from({ length: 6 }, (_, i) => ["10001", `再说${i}`]),
+  );
+  w.advance(30 * MINUTE);
+  const current = w.mind.thoughts.list()[0];
+  w.answers.reflection = {
+    thought: {
+      kind: "revision",
+      content: "还是那件面试的事，换个说法",
+      sources: [first[0].seq, `t:${old.id}`],
+      parentId: current.id,
+      importance: 0.9,
+    },
+  };
+  await w.life.tick();
+  assert.equal(w.mind.thoughts.list().length, 2, "没有新经历的修正不另记");
+  assert.equal(w.mind.thoughts.get(current.id).status, "open", "旧的理解还在");
 });
 
 test("睡前写日记，和昨天的自己对照；每天留一份快照；夜里回顾时写自传，章节可以重写，旧版本还在", async (t) => {
