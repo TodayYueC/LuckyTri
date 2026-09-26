@@ -645,6 +645,61 @@ test("两个人的话拼在一起不算碰到，旁边的人也不算", () => {
   }
 });
 
+test("后来又见到这个人，出没出声按后来的那次算，次数不增加", () => {
+  const w = world();
+  try {
+    w.open("group:1");
+    w.mind.self.propose(
+      { kind: "intention", content: "想看流星雨", strength: 0.3 },
+      { origin: "solitude", time: w.now() },
+    );
+    const keep = (id, said, choice) =>
+      w.mind.experience(
+        {
+          choice,
+          appraisal: "听到了",
+          reason: "听到了",
+          topic: "",
+          targetMessageIds: [id],
+          feelings: [],
+          bonds: [],
+        },
+        {
+          session: "group:1",
+          snapshot: {
+            batchIds: [id],
+            messages: [
+              {
+                id,
+                role: "user",
+                speaker: "10001",
+                name: "阿明",
+                text: said,
+                relation: "ambient",
+              },
+            ],
+          },
+          kind: "group",
+          spoke: choice !== "silent",
+          time: w.now(),
+        },
+      );
+    keep(1, "今晚有流星雨", "silent");
+    w.advance(MINUTE);
+    keep(2, "今天好冷", "speak");
+    const will = innerView(w.mind, {
+      session: "group:1",
+      people: ["10001"],
+      now: w.now() + 1,
+    }).inner.will;
+    assert.match(will, /碰到过 1 次/);
+    assert.match(will, /后来那次出了声/);
+    assert.doesNotMatch(will, /没出声/);
+  } finally {
+    w.close();
+  }
+});
+
 test("别人的话碰到过她正在过的事之后，这个人再开口会被细看", () => {
   const w = world();
   try {
@@ -1482,15 +1537,13 @@ test("相遇留下意义，私下不外带；意志只在别人的话碰到时�
     assert.match(here.inner.with[0], /没出声/);
     assert.match(here.inner.will, /碰到过 1 次/);
     assert.match(here.inner.will, /没出声/);
-    assert.equal(
-      innerView(w.mind, {
-        session: "group:1",
-        people: ["7"],
-        now: w.now() + 1,
-      }).inner.with,
-      undefined,
-      "私下的相遇不进群",
-    );
+    const elsewhere = innerView(w.mind, {
+      session: "group:1",
+      people: ["7"],
+      now: w.now() + 1,
+    });
+    assert.equal(elsewhere.inner.with, undefined, "私下的相遇不进群");
+    assert.equal(elsewhere.inner.will, undefined, "私下的碰到不写进别的房间");
     assert.equal(
       innerView(w.mind, {
         session: "private:7",
@@ -1517,7 +1570,11 @@ test("相遇留下意义，私下不外带；意志只在别人的话碰到时�
       now: w.now() + 1,
     });
     assert.match(talked.inner.with.join(" "), /天气|流星雨|想看/);
-    assert.match(talked.inner.will, /碰到过 1 次/, "理解里提到不算被碰到");
+    assert.equal(
+      talked.inner.will,
+      undefined,
+      "自己的理解不算碰到，私下的那次也不进这个群",
+    );
     meet("group:1", 2, 7, "阿明", "今晚有流星雨", "speak", "又来一次");
     assert.equal(
       w.mind.db.prepare("SELECT COUNT(*) n FROM mind_meetings").get().n,
