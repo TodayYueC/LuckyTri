@@ -373,9 +373,9 @@ export class Life {
       lastTouched: elapsedLabel(t.created, now, this.mind.timeZone()),
     }));
   }
-  // People she has grown close to and not heard from in a while. Their last
-  // message is what she can point at when she thinks of them.
-  missingView(now) {
+  // People she has grown close to. Their last message is what she can
+  // point at when she thinks of them.
+  bondCards(list, now, { talk = false } = {}) {
     const living = new Set(this.living().map((s) => s.id));
     const lastSaid = this.db.prepare(
       "SELECT sources FROM mind_bond_events WHERE subject_kind='person' AND subject_id=? AND created<=? AND sources!='[]' ORDER BY created DESC LIMIT 1",
@@ -383,7 +383,7 @@ export class Life {
     const event = this.db.prepare(
       "SELECT seq,session_id,payload FROM core_events WHERE seq=?",
     );
-    return this.mind.bonds.missing({ now, limit: 3 }).map((p) => {
+    return list.map((p) => {
       const seq = evidence(parse(lastSaid.get(p.userId, now)?.sources, []))
         .filter((s) => s.startsWith("m:"))
         .map((s) => Number(s.slice(2)))
@@ -395,6 +395,9 @@ export class Life {
         name: p.name,
         feel: p.feel,
         lastSeen: agoLabel(now - p.seenAt),
+        ...(talk && p.lastTalkedAt
+          ? { lastTalked: agoLabel(now - p.lastTalkedAt) }
+          : {}),
         ...(p.impression ? { impression: p.impression } : {}),
         sessions: p.sessions.filter((s) => living.has(s)),
         ...(row ? { ref: `m:${row.seq}` } : {}),
@@ -403,6 +406,15 @@ export class Life {
           ? { lastSaid: text(said.text, 80) }
           : {}),
       };
+    });
+  }
+  missingView(now) {
+    return this.bondCards(this.mind.bonds.missing({ now, limit: 3 }), now);
+  }
+  // Close people she still sees, and has not talked with for a while.
+  quietView(now) {
+    return this.bondCards(this.mind.bonds.quiet({ now, limit: 3 }), now, {
+      talk: true,
     });
   }
   // Sessions a citation actually rests on. A thought that also lists a
@@ -595,6 +607,7 @@ export class Life {
         people: this.peopleIn(experiences, now),
         missing: this.missingView(now),
         fromWish: this.mind.meetings.wishAway({ now }),
+        quiet: this.quietView(now),
         ahead: this.mind.anticipations.due({ now, limit: 5 }),
         thoughts: thoughts.map((t) => ({
           id: t.id,
@@ -617,6 +630,7 @@ export class Life {
           (p) => !input.missing.some((m) => m.userId === p.userId),
         );
       if (!input.fromWish.length) delete input.fromWish;
+      if (!input.quiet?.length) delete input.quiet;
       if (!input.fading.length) delete input.fading;
       if (!input.ahead.length) delete input.ahead;
       if (!input.meetings.length) delete input.meetings;
@@ -672,6 +686,7 @@ export class Life {
           ...(input.livingFor ? [`s:${input.livingFor.thread}`] : []),
           ...(input.meetings || []).map((m) => m.ref),
           ...(input.fromWish || []).map((p) => p.ref),
+          ...(input.quiet || []).map((p) => p.ref).filter(Boolean),
           ...missing.map((p) => p.ref).filter(Boolean),
           ...ahead.map((a) => a.ref),
         ]);
@@ -685,6 +700,7 @@ export class Life {
             ...involved,
             ...missing.flatMap((p) => p.sessions),
             ...(input.fromWish || []).map((p) => p.session),
+            ...(input.quiet || []).flatMap((p) => p.sessions),
           ]),
           id,
           now,
