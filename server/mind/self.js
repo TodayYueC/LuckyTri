@@ -189,8 +189,11 @@ export class Self {
       prior = this.latest(time).find((row) => row.thread === input.thread);
       if (!prior) return { rejected: "线索不存在或已撤销" };
     }
+    // A revision that cites nothing new keeps the old provenance. Dropping
+    // it would let a privately learned sentence travel into other rooms.
+    const kept = sources.length || !prior ? sources : prior.sources || [];
     const days = [
-      ...new Set([...(prior?.days || []), ...this.days(sources, time)]),
+      ...new Set([...(prior?.days || []), ...this.days(kept, time)]),
     ].slice(-60);
     let strength;
     let status;
@@ -228,7 +231,7 @@ export class Self {
         content || prior.content,
         Math.round(strength * 100) / 100,
         status,
-        JSON.stringify(sources),
+        JSON.stringify(kept),
         JSON.stringify(days),
         origin,
         input?.session || null,
