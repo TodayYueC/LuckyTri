@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { sessionNativeId } from "../channels/session-key.js";
 import { interestTerms } from "./attention.js";
 import { agoLabel, elapsedLabel } from "./clock.js";
+import { leaks } from "./guard.js";
 import { isPrivateSession } from "./memory.js";
 import { lifeDayKey, lifeSpan } from "./nature.js";
 import { MEETING_FADED, meetingSalience, touches } from "./salience.js";
@@ -577,6 +578,12 @@ export class Meetings {
       .all())
       if (isPrivateSession(row.session_id)) keep(row.content, row.session_id);
     return out;
+  }
+  // A sentence may be shown here when it does not repeat wording learned elsewhere in private.
+  sayable(words, session) {
+    const value = String(words || "");
+    if (!value) return true;
+    return !leaks([value], this.privateSayings(session)).length;
   }
   // A private meeting, a private message, or a privately worded feeling from
   // that life day must not ride along in some other room's diary line. Her
