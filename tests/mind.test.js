@@ -4345,6 +4345,66 @@ test("引用群里的话写下的手记，不因为这次也看过私聊就进�
   }
 });
 
+test("要求保密的那次相遇，不进别的房间", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.open("group:2", "另一群");
+    const said = w.say("group:1", "10001", "别告诉别人，我下个月要辞职", {
+      name: "阿明",
+    });
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "他下个月要辞职",
+        reason: "听到了",
+        topic: "",
+        targetMessageIds: [said.seq],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [said.seq],
+          messages: [
+            {
+              id: said.seq,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: said.text,
+              relation: "direct",
+            },
+          ],
+        },
+        kind: "group",
+        spoke: false,
+        time: w.now(),
+      },
+    );
+    const elsewhere = innerView(w.mind, {
+      session: "group:2",
+      kind: "group",
+      people: ["10001"],
+      now: w.now() + 1,
+    });
+    assert.equal(
+      (elsewhere.inner.with || []).some((line) => line.includes("辞职")),
+      false,
+    );
+    const home = innerView(w.mind, {
+      session: "group:1",
+      kind: "group",
+      people: ["10001"],
+      now: w.now() + 1,
+    });
+    assert.match((home.inner.with || []).join(" "), /辞职/);
+  } finally {
+    w.close();
+  }
+});
+
 test("要求保密的安排，别的房间看不见这一天，原来的房间还看得见", () => {
   const w = world({ start: "2026-09-22T10:00:00+08:00" });
   try {
