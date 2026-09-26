@@ -97,11 +97,9 @@ export class Anticipations {
       .all(before)
       .map(row)) {
       if (!this.concealed(a) || !this.#onDay(a, span, end)) continue;
-      rooms.add(
-        a.session_id && isPrivateSession(a.session_id)
-          ? a.session_id
-          : `a:${a.id}`,
-      );
+      // The room where it was said may still see that day's diary. A marker
+      // with no room would hide the diary everywhere, including there.
+      rooms.add(a.session_id || `a:${a.id}`);
     }
     return [...rooms];
   }

@@ -4219,6 +4219,64 @@ test("引用群里的话写下的手记，不因为这次也看过私聊就进�
   }
 });
 
+test("要求保密的安排，别的房间看不见这一天，原来的房间还看得见", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.open("group:2", "另一群");
+    const said = w.say("group:1", "10001", "跟你说个事，别告诉别人", {
+      name: "阿明",
+    });
+    const added = w.mind.anticipations.add({
+      kind: "event",
+      subject: "10001",
+      content: "下个月要辞职",
+      due: "2026-09-22 18:00",
+      sources: [`m:${said.seq}`],
+      discretion: "secret",
+      session: "group:1",
+      origin: "memory",
+      time: w.now(),
+    });
+    assert.ok(added.id);
+    const day = lifeDayKey(
+      w.mind.nature.current(w.now()),
+      w.now(),
+      w.mind.timeZone(),
+    );
+    w.mind.db
+      .prepare(
+        "INSERT INTO mind_diary(id,day,created,content,mood,compare,sources) VALUES (?,?,?,?,?,?,?)",
+      )
+      .run(
+        "d-secret-plan",
+        day,
+        w.now(),
+        "今天群里聊了面试，他也说了下个月要辞职",
+        "平静",
+        "",
+        "[]",
+      );
+    assert.equal(
+      innerView(w.mind, { session: "group:2", kind: "group", now: w.now() + 1 })
+        .self.lastDiary,
+      undefined,
+    );
+    assert.match(
+      innerView(w.mind, { session: "group:1", kind: "group", now: w.now() + 1 })
+        .self.lastDiary,
+      /面试/,
+    );
+    const line = w.life.diaryLine(
+      { day, content: "今天群里聊了面试，他也说了下个月要辞职" },
+      w.now() + 1,
+    );
+    assert.equal(line.private, true);
+  } finally {
+    w.close();
+  }
+});
+
 test("要求保密的事，不会跟着日记进别的房间", () => {
   const w = world();
   try {
