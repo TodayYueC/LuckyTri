@@ -420,6 +420,10 @@ export class Life {
       : [];
     for (const ref of refs.filter((r) => r.startsWith("t:")))
       sessions.push(...(this.mind.thoughts.get(ref.slice(2))?.sessions || []));
+    for (const row of this.mind.meetings.places(
+      refs.filter((r) => r.startsWith("g:")),
+    ))
+      sessions.push(row.session_id);
     const hidden = sessions.find((s) => isPrivateSession(s));
     if (hidden) return { session: hidden, discretion: "private" };
     const places = [...new Set(sessions)];
