@@ -543,7 +543,8 @@ main {
 .at-chats main {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
+  /* The desktop workspace begins below the floating navigation. */
+  height: calc(100dvh - 104px);
   padding-bottom: 16px;
   overflow: hidden;
 }

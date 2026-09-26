@@ -5,6 +5,22 @@ import "./awake.mjs";
 import { livedWorld, serve } from "./helpers/ta-world.mjs";
 
 const w = await livedWorld();
+for (const content of [
+  "我想收集不同城市的地铁票根",
+  "我对海边冬天的颜色很好奇",
+  "我想学着做抹茶巴斯克蛋糕",
+  "周末想去旧书店翻冷门漫画",
+  "我偏爱雨停以后有风的傍晚",
+  "最近开始对胶片相机感兴趣",
+  "想给阳台养一盆薄荷试试看",
+  "我喜欢记录路边招牌的字体",
+]) {
+  const result = w.mind.self.propose(
+    { action: "new", kind: "interest", content },
+    { origin: "solitude", time: w.now() },
+  );
+  assert.ok(result.id, `测试主题“${content}”能写入自我线索`);
+}
 // Dense real-world layouts: many people and a migrated multi-page persona.
 for (let i = 0; i < 39; i++) {
   w.store.db
@@ -13,6 +29,24 @@ for (let i = 0; i < 39; i++) {
     )
     .run(`layout-${i}`, `测试群友 ${i}`, w.now(), w.now(), '["group:12345"]');
 }
+const publicGroupMessage = w.store.db
+  .prepare(
+    "SELECT seq FROM core_events WHERE session_id='group:12345' AND role='user' ORDER BY seq LIMIT 1",
+  )
+  .get();
+const groupFace = w.mind.faces.propose(
+  {
+    session: "group:12345",
+    role: "偶尔接话的那个",
+    sources: [publicGroupMessage.seq],
+  },
+  {
+    valid: new Set([`m:${publicGroupMessage.seq}`]),
+    origin: "solitude",
+    time: w.now(),
+  },
+);
+assert.ok(groupFace.id, "群聊面貌引用同一群的公开消息");
 w.store.db
   .prepare("UPDATE mind_faces SET content=? WHERE session_id='group:12345'")
   .run(
@@ -164,13 +198,36 @@ async function run() {
       .click();
 
     await page.locator(".star").first().waitFor();
-    assert.equal(await page.locator(".star").count(), 2);
+    assert.equal(await page.locator(".star").count(), 7);
+    const interest = page
+      .locator(".current")
+      .filter({ has: page.locator(".current-head h4", { hasText: "喜欢" }) });
+    const collapsedStars = await interest.locator(".star").count();
+    const expandFlecks = interest.getByRole("button", { name: /再看/ });
+    await expandFlecks.waitFor();
+    await expandFlecks.click();
+    assert.equal(collapsedStars, 6, "长线索分组默认只显示六枚");
+    assert.equal(
+      await interest.locator(".star").count(),
+      9,
+      "展开后能查看全部线索",
+    );
+    await interest.getByRole("button", { name: "收起线索" }).click();
+    assert.equal(
+      await interest.locator(".star").count(),
+      collapsedStars,
+      "长线索分组可以收回",
+    );
     await page.locator(".star").first().click();
     await page.locator(".thread-sheet .versions li").first().waitFor();
     await page.locator("[data-revoke-thread]").click();
     await confirm("界面测试");
     await page.waitForFunction(
-      () => document.querySelectorAll(".star").length === 1,
+      () => document.querySelectorAll(".star").length === 7,
+    );
+    await interest.getByRole("button", { name: /再看/ }).click();
+    await page.waitForFunction(
+      () => document.querySelectorAll(".star").length === 9,
     );
     assert.match(
       await page.locator(".set-aside").innerText(),
@@ -273,6 +330,21 @@ async function run() {
     await page.getByRole("button", { name: "那天的 TA" }).click();
     await page.getByText("这是 TA 留下快照的第一天").waitFor();
     await page.getByRole("tab", { name: /约定与期待/ }).click();
+    const selectedDay = await page
+      .locator(".calendar .cell.picked")
+      .boundingBox();
+    assert.ok(selectedDay, "日历有选中的日期");
+    assert.ok(
+      Math.abs(selectedDay.width - selectedDay.height) < 2,
+      "选中的日期保持方形，不继承详情卡片的高度",
+    );
+    assert.equal(
+      await page.locator(".calendar-wrap > .picked").evaluate((el) =>
+        getComputedStyle(el).minHeight,
+      ),
+      "220px",
+      "日历详情仍保留合适的最小高度",
+    );
     await page.getByRole("tab", { name: /清单/ }).click();
     const promise = page
       .locator(".ahead-item")

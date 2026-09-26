@@ -32,6 +32,14 @@ const pages = computed(() =>
   Math.max(1, Math.ceil(replies.value.length / PAGE)),
 );
 const faceOpen = ref(false);
+const policyDraft = ref<Record<string, any>>({});
+watch(
+  () => props.session?.policy,
+  (policy) => {
+    policyDraft.value = { ...(policy || {}) };
+  },
+  { immediate: true, deep: true },
+);
 watch(
   () => props.session?.id,
   () => {
@@ -140,6 +148,7 @@ function submit(event: Event) {
             class="stack tight"
             @submit.prevent="submit"
             @input="studio.dirty = true"
+            @change="studio.dirty = true"
           >
             <p class="faint">
               所有会话和独处都用模型库里的默认模型；其余已启用的模型按列表顺序做备用。她在这个聊天窗里用什么样子，由她自己从经历里决定。
@@ -148,7 +157,8 @@ function submit(event: Event) {
               <input
                 name="selectiveVision"
                 type="checkbox"
-                :checked="session.policy.selectiveVision"
+                v-model="policyDraft.selectiveVision"
+                @input.stop
               />节能看图：只在被 @ 或明确要求时，看这一条和附近的图
             </label>
             <details class="advanced-policy">
@@ -158,13 +168,13 @@ function submit(event: Event) {
                   >聚合窗口 ms<input
                     name="aggregateMs"
                     type="number"
-                    :value="session.policy.aggregateMs"
+                    v-model.number="policyDraft.aggregateMs"
                 /></label>
                 <label
                   >最长等待 ms<input
                     name="maxWaitMs"
                     type="number"
-                    :value="session.policy.maxWaitMs"
+                    v-model.number="policyDraft.maxWaitMs"
                 /></label>
                 <label
                   >近期原文条数（10–500）<input
@@ -172,33 +182,36 @@ function submit(event: Event) {
                     type="number"
                     min="10"
                     max="500"
-                    :value="session.policy.contextMessages"
+                    v-model.number="policyDraft.contextMessages"
                 /></label>
                 <label
                   >一轮总字数<input
                     name="maxReply"
                     type="number"
-                    :value="session.policy.maxReply"
+                    v-model.number="policyDraft.maxReply"
                 /></label>
                 <label class="check"
                   ><input
                     name="compaction"
                     type="checkbox"
-                    :checked="session.policy.compaction !== false"
+                    v-model="policyDraft.compaction"
+                    @input.stop
                   />上下文压缩：更早的聊天定期整理成分层摘要，越近越详细</label
                 >
                 <label class="check"
                   ><input
                     name="memory"
                     type="checkbox"
-                    :checked="session.policy.memory"
+                    v-model="policyDraft.memory"
+                    @input.stop
                   />长期记忆</label
                 >
                 <label class="check"
                   ><input
                     name="deepCheck"
                     type="checkbox"
-                    :checked="session.policy.deepCheck"
+                    v-model="policyDraft.deepCheck"
+                    @input.stop
                   />倾诉、纠正和危机时额外复审一次回复</label
                 >
               </div>

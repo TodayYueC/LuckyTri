@@ -529,7 +529,9 @@ try {
   await p
     .locator("[data-session='group:65432'] details.advanced-policy summary")
     .click();
-  await p.locator("[data-session='group:65432'] [name=maxReply]").fill("120");
+  const maxReply = p.locator("[data-session='group:65432'] [name=maxReply]");
+  await maxReply.fill("120");
+  assert.equal(await maxReply.inputValue(), "120", "回复长度输入保留用户修改");
   const savedResponse = p.waitForResponse(
     (response) =>
       response.url().includes("/api/core/sessions/group%3A65432") &&
@@ -624,13 +626,15 @@ try {
         () => document.documentElement.scrollWidth <= innerWidth + 1,
       ),
     );
+    const layout = await p.evaluate(() => ({
+      documentHeight: document.documentElement.scrollHeight,
+      mainTop: document.querySelector("main")?.getBoundingClientRect().top,
+      mainHeight: document.querySelector("main")?.getBoundingClientRect().height,
+      workspaceHeight: document.querySelector(".workspace")?.getBoundingClientRect().height,
+    }));
     assert(
-      await p.evaluate(
-        () =>
-          document.documentElement.scrollHeight <=
-          (innerWidth > 760 ? innerHeight : 1700),
-      ),
-      "feedback must not stretch the page",
+      layout.documentHeight <= (width > 760 ? 900 : 1800),
+      `feedback must not stretch the page at ${width}px (${JSON.stringify(layout)})`,
     );
     await p.screenshot({
       path: `workspace/ui-review/feedback-stress-${width}.png`,

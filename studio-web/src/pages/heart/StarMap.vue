@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { KIND_COLORS } from "../../plates/mind";
 import { liveMood } from "../../mood/useMood";
 import TaOrb from "../../components/ta/TaOrb.vue";
@@ -10,6 +10,8 @@ const props = defineProps<{
   activity?: string;
 }>();
 const emit = defineEmits<{ open: [thread: any] }>();
+const visibleLimit = 6;
+const expanded = ref<Record<string, boolean>>({});
 const groups = computed(() =>
   [...new Set(props.threads.map((t) => t.kind))].map((kind) => ({
     kind,
@@ -26,6 +28,14 @@ const closeCount = computed(
 );
 function stateOf(t: any) {
   return t.faded ? "暂时放远" : t.core ? "慢慢笃定" : "还在生长";
+}
+function visibleItems(group: (typeof groups.value)[number]) {
+  return expanded.value[group.kind]
+    ? group.items
+    : group.items.slice(0, visibleLimit);
+}
+function toggleGroup(kind: string) {
+  expanded.value = { ...expanded.value, [kind]: !expanded.value[kind] };
 }
 </script>
 
@@ -83,7 +93,7 @@ function stateOf(t: any) {
         </header>
         <div class="flecks">
           <button
-            v-for="thread in group.items"
+            v-for="thread in visibleItems(group)"
             :key="thread.thread"
             type="button"
             class="fleck star"
@@ -97,6 +107,20 @@ function stateOf(t: any) {
               ><b>{{ thread.content }}</b></span
             >
             <span class="fleck-arrow" aria-hidden="true">↗</span>
+          </button>
+          <button
+            v-if="group.items.length > visibleLimit"
+            type="button"
+            class="fleck-more"
+            :aria-expanded="Boolean(expanded[group.kind])"
+            @click="toggleGroup(group.kind)"
+          >
+            {{
+              expanded[group.kind]
+                ? "收起线索"
+                : `再看 ${group.items.length - visibleLimit} 枚光片`
+            }}
+            <span aria-hidden="true">{{ expanded[group.kind] ? "↑" : "↓" }}</span>
           </button>
         </div>
       </section>
@@ -468,6 +492,32 @@ function stateOf(t: any) {
 }
 .fleck.core {
   border-color: color-mix(in srgb, var(--tone) 35%, #fff);
+}
+.fleck-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 13px;
+  border: 1px dashed color-mix(in srgb, var(--tone) 35%, #fff);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--tone) 7%, #ffffffa6);
+  color: color-mix(in srgb, var(--tone) 68%, var(--ink));
+  font-size: 12px;
+  font-weight: 650;
+  transition:
+    transform 0.4s var(--spring),
+    background 0.25s,
+    border-color 0.25s;
+}
+.fleck-more:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--tone) 52%, #fff);
+  background: #ffffffd9;
+}
+.fleck-more:active {
+  transform: scale(0.98);
 }
 @keyframes scene-drift {
   to {
