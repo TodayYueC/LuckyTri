@@ -886,6 +886,68 @@ test("更强的私下小事不会把别的房间正在过的事挤掉", () => {
   }
 });
 
+test("更强的私下小事不会让另一件仍在过的事从独处里消失", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.open("private:7", "阿明");
+    w.mind.memory.insert({
+      session: "private:7",
+      subject: "7",
+      content: "最近在准备考研",
+      discretion: "private",
+    });
+    w.mind.bonds.meet([{ userId: "10001", name: "阿明" }], "group:1", w.now());
+    w.mind.self.propose(
+      {
+        action: "new",
+        kind: "intention",
+        content: "我想自己学烘焙",
+        sources: [],
+      },
+      { time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        action: "new",
+        kind: "intention",
+        content: "他最近在准备考研",
+        sources: [],
+      },
+      { time: w.now() + 1000 },
+    );
+    const said = w.say("group:1", "10001", "我想学烘焙", { name: "阿明" });
+    const kept = w.mind.meetings.keep(
+      { choice: "silent", appraisal: "他的话碰到了烘焙", topic: "" },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [said.seq],
+          messages: [
+            {
+              id: said.seq,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: "我想学烘焙",
+            },
+          ],
+        },
+        time: w.now() + 2000,
+      },
+    );
+    assert.equal(kept.willMet, true);
+    w.advance(8 * 24 * 60 * 60 * 1000);
+    const away = w.mind.meetings.wishAway({ now: w.now() });
+    const ming = away.find((p) => p.userId === "10001");
+    assert.ok(ming);
+    assert.equal(ming.session, "group:1");
+    assert.equal(ming.private, undefined);
+  } finally {
+    w.close();
+  }
+});
+
 test("私下相遇里的原话，在别的房间说出去之前会被拦住", async (t) => {
   const w = world();
   t.after(w.close);
