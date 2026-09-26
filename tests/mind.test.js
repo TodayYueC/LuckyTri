@@ -145,6 +145,47 @@ test("心里记下的印象不算来往，也不会把久别冲成重逢", () =>
     const back = w.mind.bonds.person("10001", w.now());
     assert.ok(back.closeness > noted.closeness, "真正再来往才会热回来");
     assert.equal(back.absentDays, 0);
+    const often = world();
+    try {
+      often.mind.bonds.meet(
+        [{ userId: "10002", name: "小红" }],
+        "group:1",
+        often.now(),
+      );
+      often.mind.bonds.record({
+        id: "10002",
+        change: "interaction",
+        session: "group:1",
+        time: often.now(),
+      });
+      often.mind.bonds.record({
+        id: "10002",
+        change: "closer",
+        note: "聊得来",
+        sources: [1],
+        session: "group:1",
+        time: often.now(),
+      });
+      const started = often.now();
+      for (let i = 1; i <= 8; i++) {
+        often.mind.bonds.record({
+          id: "10002",
+          change: "impression",
+          note: "还想着她",
+          sources: [1],
+          origin: "solitude",
+          time: started + i * 10 * 24 * HOUR,
+        });
+      }
+      const faded = often.mind.bonds.person(
+        "10002",
+        started + 80 * 24 * HOUR,
+      );
+      assert.ok(faded.absentDays >= 80, "隔几天记一次也不算说上话");
+      assert.ok(faded.closeness < 0.2, "隔几天记一次，久别仍然变淡");
+    } finally {
+      often.close();
+    }
   } finally {
     w.close();
   }

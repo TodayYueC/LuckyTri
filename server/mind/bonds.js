@@ -34,23 +34,27 @@ export const BOND_CHANGES = {
 };
 const START = { familiarity: 0, closeness: 0.15, trust: 0.5, tension: 0 };
 
-// Time apart: tension eases within a day or two; closeness and familiarity
-// only start to thin after weeks without contact.
-function drift(state, from, to) {
-  const gap = to - from;
-  state.tension = relax(state.tension, 0, gap, TENSION_HALF_LIFE);
-  const away = gap - ABSENCE_GRACE;
-  if (away <= 0) return;
+// Tension eases with the clock. Closeness and familiarity thin only after
+// weeks without a real conversation. A note in between does not restart that.
+function easeTension(state, from, to) {
+  if (!(to > from)) return;
+  state.tension = relax(state.tension, 0, to - from, TENSION_HALF_LIFE);
+}
+function easeCloseness(state, contactAt, from, to) {
+  if (contactAt == null || !(to > from)) return;
+  const start = Math.max(from, contactAt + ABSENCE_GRACE);
+  if (to <= start) return;
+  const elapsed = to - start;
   state.closeness = relax(
     state.closeness,
     Math.max(START.closeness, state.peakCloseness * 0.5),
-    away,
+    elapsed,
     CLOSENESS_HALF_LIFE,
   );
   state.familiarity = relax(
     state.familiarity,
     state.peakFamiliarity * 0.6,
-    away,
+    elapsed,
     FAMILIARITY_HALF_LIFE,
   );
 }
@@ -66,12 +70,17 @@ function foldEvents(rows) {
     peakFamiliarity: 0,
     firstMetAt: rows[0]?.created ?? null,
     lastTalkedAt: null,
+    lastContactAt: null,
     lastEventAt: null,
     notes: [],
   };
   let at = null;
+  let contactAt = null;
   for (const row of rows) {
-    if (at !== null) drift(state, at, row.created);
+    if (at !== null) {
+      easeTension(state, at, row.created);
+      easeCloseness(state, contactAt, at, row.created);
+    }
     at = row.created;
     state.lastEventAt = row.created;
     if (row.change === "interaction") {
@@ -121,6 +130,12 @@ function foldEvents(rows) {
     }
     state.peakCloseness = Math.max(state.peakCloseness, state.closeness);
     state.peakFamiliarity = Math.max(state.peakFamiliarity, state.familiarity);
+    // A note does not count as contact. Being called and staying quiet does not
+    // either. Other changes still mark the time closeness is measured from.
+    if (row.change !== "impression" && row.origin !== "noticed") {
+      contactAt = row.created;
+      state.lastContactAt = row.created;
+    }
   }
   return state;
 }
@@ -128,7 +143,16 @@ function foldEvents(rows) {
 // How it feels at `now`: the folded history, carried forward to this moment.
 function settle(folded, now) {
   const state = { ...folded };
-  if (state.lastEventAt !== null) drift(state, state.lastEventAt, now);
+  if (state.lastEventAt !== null)
+    easeTension(state, state.lastEventAt, now);
+  if (state.lastContactAt !== null)
+    easeCloseness(
+      state,
+      state.lastContactAt,
+      state.lastEventAt ?? state.lastContactAt,
+      now,
+    );
+  delete state.lastContactAt;
   delete state.lastEventAt;
   state.absentDays =
     state.lastTalkedAt === null
