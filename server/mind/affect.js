@@ -47,6 +47,18 @@ export class Affect {
   }) {
     const label = text(feeling, 16);
     if (!label) return null;
+    const cited = evidence(sources);
+    // The same messages cannot move her again after they already have.
+    if (cited.length) {
+      const spent = new Set();
+      for (const row of this.db
+        .prepare(
+          "SELECT sources FROM mind_affect WHERE created<=? AND created>? AND sources!='[]'",
+        )
+        .all(time, time - 2 * DAY))
+        for (const source of parse(row.sources, [])) spent.add(source);
+      if (cited.every((source) => spent.has(source))) return null;
+    }
     const i = clamp(intensity, 0, 1);
     const v = clamp(valence, -1, 1);
     const id = randomUUID();
@@ -62,7 +74,7 @@ export class Affect {
         v,
         clamp(arousal ?? i * 0.6, 0, 1),
         text(cause, 120),
-        JSON.stringify(evidence(sources)),
+        JSON.stringify(cited),
         session,
         origin,
       );
@@ -130,22 +142,33 @@ export class Affect {
     let arousal = base.arousal;
     let at = now - 2 * DAY;
     let last = null;
-    for (const row of rows) {
-      valence = relax(valence, base.valence, row.created - at, HALF_LIFE);
-      arousal = relax(arousal, base.arousal, row.created - at, HALF_LIFE);
+    // Several feelings from one moment are one experience. Together they
+    // still cannot move her further than a single feeling can.
+    let batchAt = null;
+    let batchV = 0;
+    let batchA = 0;
+    const apply = (when) => {
+      if (when === null) return;
+      valence = relax(valence, base.valence, when - at, HALF_LIFE);
+      arousal = relax(arousal, base.arousal, when - at, HALF_LIFE);
       valence = clamp(
-        valence + clamp(row.valence * row.intensity, -MAX_SHIFT, MAX_SHIFT),
+        valence + clamp(batchV, -MAX_SHIFT, MAX_SHIFT),
         -1,
         1,
       );
-      arousal = clamp(
-        arousal + (row.arousal - BASELINE.arousal) * row.intensity * 0.5,
-        0,
-        1,
-      );
-      at = row.created;
+      arousal = clamp(arousal + batchA, 0, 1);
+      at = when;
+      batchV = 0;
+      batchA = 0;
+    };
+    for (const row of rows) {
+      if (batchAt !== null && row.created !== batchAt) apply(batchAt);
+      batchAt = row.created;
+      batchV += row.valence * row.intensity;
+      batchA += (row.arousal - BASELINE.arousal) * row.intensity * 0.5;
       last = row;
     }
+    apply(batchAt);
     valence = relax(valence, base.valence, now - at, HALF_LIFE);
     arousal = relax(arousal, base.arousal, now - at, HALF_LIFE);
     const residual = last
