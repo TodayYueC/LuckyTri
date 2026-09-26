@@ -15,6 +15,26 @@ function chat(w, session, lines) {
   return events;
 }
 
+test("关掉时被叫到，不算她当时在场", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1", "一群");
+  w.life.save({ proactive: true });
+  w.store.db.prepare("UPDATE sessions SET enabled=0 WHERE id=?").run("group:1");
+  const missed = w.say("group:1", "10001", "LuckyTri，在吗", { name: "阿明" });
+  await w.hear("group:1", missed);
+  w.store.db.prepare("UPDATE sessions SET enabled=1 WHERE id=?").run("group:1");
+  const names = [w.mind.nature.current().name];
+  assert.equal(w.life.wasHere("group:1", w.now(), names), false);
+  w.advance(30 * MINUTE);
+  w.answers.turn = () => {
+    throw new Error("不该因为关掉时的招呼主动开口");
+  };
+  assert.equal(await w.life.considerPresence(w.now()), null);
+  w.say("group:1", "10001", "LuckyTri，回来了", { name: "阿明" });
+  assert.equal(w.life.wasHere("group:1", w.now(), names), true);
+});
+
 test("她不在时的话，重新打开后也不能当成听到的", async (t) => {
   const w = world();
   t.after(w.close);

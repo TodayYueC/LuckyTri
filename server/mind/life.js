@@ -1579,13 +1579,22 @@ export class Life {
       this.mind.nature.current(now).name,
       ...String(this.repo.store.settings().aliases || "").split(/[,，]/),
     ];
+    const aside = new Set(
+      this.db
+        .prepare("SELECT seq FROM mind_unlived")
+        .all()
+        .map((row) => row.seq),
+    );
     for (const session of this.living()) {
       const id = session.id;
       if (this.presenceCooling(id, now, s)) continue;
       if (this.outreachPending(id)) continue;
-      const last = this.repo.recentEvents(id, 1, { simulated: false }).at(-1);
+      const last = this.repo
+        .recentEvents(id, 40, { simulated: false })
+        .filter((m) => !aside.has(m.seq))
+        .at(-1);
       if (!last || now - last.time < quietFor) continue;
-      if (!this.wasHere(id, now, names)) continue;
+      if (!this.wasHere(id, now, names, aside)) continue;
       this.busy = true;
       let trace = null;
       try {
@@ -1630,12 +1639,20 @@ export class Life {
       )
       .get(session);
   }
-  wasHere(session, now, names) {
+  wasHere(session, now, names, aside = null) {
+    const skipped =
+      aside ||
+      new Set(
+        this.db
+          .prepare("SELECT seq FROM mind_unlived")
+          .all()
+          .map((row) => row.seq),
+      );
     const since = now - 12 * HOUR;
     return this.repo
       .recentEvents(session, 80, { simulated: false })
       .some((m) => {
-        if (m.time < since) return false;
+        if (m.time < since || skipped.has(m.seq)) return false;
         if (m.role === "assistant") return true;
         const mentions = (m.mentions || []).map(String);
         if (m.accountId && mentions.includes(String(m.accountId))) return true;
