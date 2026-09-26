@@ -40,6 +40,7 @@ export function attend({
   interests = new Set(),
   curiosities = new Set(),
   living = new Set(),
+  held = new Set(),
   closeness = new Map(),
   pressure = 0,
   initiative = 25,
@@ -117,6 +118,21 @@ export function attend({
     (energy < 0.3 ? 1 : 0) +
     (phase === "sleepy" || phase === "waking" ? 0.5 : 0) -
     (Number(initiative) - 25) / 25;
+  // Someone whose words already met what she is living for is worth reading
+  // again, even when this sentence does not repeat the wish. A private
+  // meeting does not follow her into another room; the caller only passes
+  // people visible here. Talking past each other, pictures, and an empty
+  // day still pass by.
+  const heldHere =
+    !mediaOnly &&
+    !sideTalk &&
+    batch.some(
+      (m) => m.role !== "assistant" && held.has(String(m.userId || "")),
+    );
+  if (heldHere) {
+    reasons.push("上次的话碰到了我正在过的事");
+    if (pressure < 1 && score < threshold) score = threshold;
+  }
   // A room she already lives in is worth a real look, unless people are
   // talking only to each other or the day is out of words.
   if (belongs && !sideTalk && !mediaOnly && pressure < 1 && score < threshold) {

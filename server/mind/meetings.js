@@ -200,6 +200,30 @@ export class Meetings {
       ...(row.will_met ? { touchedWill: true } : {}),
     };
   }
+  // People whose words already met what she is living for, and who can be
+  // seen from this room. A private meeting stays in that private conversation.
+  touchedPeople(session, userIds, before = Date.now()) {
+    const ids = [
+      ...new Set((userIds || []).map((id) => String(id || "")).filter(Boolean)),
+    ].slice(0, 12);
+    if (!ids.length) return new Set();
+    return new Set(
+      this.db
+        .prepare(
+          `SELECT DISTINCT p.user_id FROM mind_meeting_people p
+           JOIN mind_meetings m ON m.id = p.meeting_id
+           WHERE p.user_id IN (${ids.map(() => "?").join(",")})
+             AND m.will_met = 1 AND m.created < ?
+             AND (m.discretion != 'private' OR m.session_id = ?)
+             AND NOT EXISTS (
+               SELECT 1 FROM mind_revocations r
+               WHERE r.target_kind = 'meeting' AND r.target_id = m.id
+             )`,
+        )
+        .all(...ids, before, session)
+        .map((row) => String(row.user_id)),
+    );
+  }
   // Where a cited meeting belongs. A private one cannot be carried elsewhere.
   places(refs) {
     const ids = [
