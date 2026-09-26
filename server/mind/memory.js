@@ -700,13 +700,13 @@ export class MemoryManager {
             discretion,
             time: now,
           });
+          if (!id) continue;
           keptFacts.push({
             subject: String(f.subject),
             content,
             discretion,
           });
-          if (id)
-            for (const ref of Array.isArray(f.supersedes) ? f.supersedes : []) {
+          for (const ref of Array.isArray(f.supersedes) ? f.supersedes : []) {
               const old = refs.get(String(ref));
               if (old && String(old.subject) === String(f.subject))
                 this.supersede(old.id, id);
