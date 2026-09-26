@@ -15,6 +15,31 @@ function chat(w, session, lines) {
   return events;
 }
 
+test("关掉时路过的话，不算她度过的一天", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1", "一群");
+  w.store.db.prepare("UPDATE sessions SET enabled=0 WHERE id=?").run("group:1");
+  const missed = w.say("group:1", "10001", "我搬到南极了", { name: "阿明" });
+  await w.hear("group:1", missed);
+  const start = w.mind.days.start(w.now());
+  const day = w.mind.days.key(w.now());
+  assert.equal(w.mind.days.write(day, start, start + 24 * 3600000, w.now()), false);
+  assert.equal(
+    w.mind.db.prepare("SELECT 1 FROM mind_days WHERE day=?").get(day),
+    undefined,
+  );
+  w.store.db.prepare("UPDATE sessions SET enabled=1 WHERE id=?").run("group:1");
+  w.say("group:1", "10002", "周五要面试了", { name: "小红" });
+  assert.equal(w.mind.days.write(day, start, start + 24 * 3600000, w.now()), true);
+  const row = w.mind.db
+    .prepare("SELECT events, people, lived FROM mind_days WHERE day=?")
+    .get(day);
+  assert.equal(row.events, 1);
+  assert.equal(row.people, 1);
+  assert.equal(row.lived, 0);
+});
+
 test("关掉时被叫到，不算她当时在场", async (t) => {
   const w = world();
   t.after(w.close);
