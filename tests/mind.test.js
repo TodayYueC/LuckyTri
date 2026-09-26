@@ -2790,6 +2790,57 @@ test("私聊里的话、私下的印象和由此长成的线索，不跟着日�
       }).self.lastDiary,
       /私下告诉我/,
     );
+    const line = w.life.diaryLine(
+      {
+        day,
+        content: "今天他私下告诉我一件事",
+        mood: "平静",
+        compare: "比昨天更知道这件事",
+      },
+      at + 1,
+    );
+    assert.match(line.content, /不带到回顾/);
+    assert.equal(line.compare, undefined);
+    assert.equal(line.private, true);
+    assert.equal(
+      w.life.openThreads(
+        [{ thread: w.mind.self.active()[0].thread, content: "我会记得他只告诉我的那件事" }],
+        at + 1,
+      ).length,
+      0,
+    );
+    const open = w.life.diaryLine(
+      { day: "2020-01-01", content: "今天在群里说了夏天", compare: "和昨天差不多" },
+      at + 1,
+    );
+    assert.match(open.content, /夏天/);
+    assert.match(open.compare, /差不多/);
+    w.mind.self.propose(
+      {
+        action: "new",
+        kind: "view",
+        content: "那天的日记里有一件只属于私聊的事",
+        sources: [`d:${day}`],
+      },
+      { time: at },
+    );
+    const after = innerView(w.mind, {
+      session: "group:1",
+      kind: "group",
+      now: at + 2,
+    });
+    assert.equal(
+      (after.self.threads || []).some((t) => /只属于私聊/.test(t)),
+      false,
+    );
+    assert.match(
+      innerView(w.mind, {
+        session: "private:7",
+        kind: "private",
+        now: at + 2,
+      }).self.threads.join("\n"),
+      /只属于私聊/,
+    );
   } finally {
     w.close();
   }

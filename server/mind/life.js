@@ -918,6 +918,30 @@ export class Life {
       this.mind.timeZone(),
     );
   }
+  // A review can be rewritten into the story she carries everywhere, so a day
+  // whose words stay private does not travel there as text.
+  diaryLine(entry, now = this.now()) {
+    const closed = this.mind.meetings.privateBeyond(entry.day, "", now);
+    return {
+      ref: `d:${entry.day}`,
+      day: entry.day,
+      ...(entry.mood ? { mood: entry.mood } : {}),
+      content: closed
+        ? "这一天有留在私下的事，原文不带到回顾里。"
+        : text(entry.content, 400),
+      ...(!closed && entry.compare
+        ? { compare: text(entry.compare, 120) }
+        : {}),
+      ...(closed ? { private: true } : {}),
+    };
+  }
+  openThreads(rows, now = this.now()) {
+    const known = this.mind.self.latest(now);
+    return (rows || []).filter((item) => {
+      const row = known.find((thread) => thread.thread === item.thread);
+      return !!row && !this.mind.meetings.privateRoots(row.sources).length;
+    });
+  }
   // Where she is in her own story, kept short for the diary and solitude.
   chapterView(now, size = 120) {
     const chapter = this.mind.periods.current(now);
@@ -1287,13 +1311,7 @@ export class Life {
       const input = {
         dayOfLife: this.mind.days.dayOfLife(now),
         period: { from: first, to: diaries.at(-1)?.day },
-        diaries: diaries.map((d) => ({
-          ref: `d:${d.day}`,
-          day: d.day,
-          ...(d.mood ? { mood: d.mood } : {}),
-          content: text(d.content, 400),
-          ...(d.compare ? { compare: text(d.compare, 120) } : {}),
-        })),
+        diaries: diaries.map((d) => this.diaryLine(d, now)),
         ...(last
           ? {
               lastReview: {
@@ -1305,9 +1323,11 @@ export class Life {
         ...(change
           ? {
               changes: {
-                appeared: change.appeared.slice(0, 6).map(line),
-                faded: change.faded.slice(0, 6).map(line),
-                changed: change.changed
+                appeared: this.openThreads(change.appeared, now)
+                  .slice(0, 6)
+                  .map(line),
+                faded: this.openThreads(change.faded, now).slice(0, 6).map(line),
+                changed: this.openThreads(change.changed, now)
                   .slice(0, 6)
                   .map(
                     (t) =>
@@ -1352,9 +1372,11 @@ export class Life {
           : {}),
         ...(story ? { story: text(story.content, 600) } : {}),
         ...(anniversaries.length ? { anniversaries } : {}),
-        self: this.selfView(now).slice(0, 10),
-        ...(this.livingForView(now, { since: start })
-          ? { livingFor: this.livingForView(now, { since: start }) }
+        self: this.selfView(now, { open: true }).slice(0, 10),
+        ...(this.livingForView(now, { since: start, open: true })
+          ? {
+              livingFor: this.livingForView(now, { since: start, open: true }),
+            }
           : {}),
       };
       const result = await this.chat.models.call(

@@ -521,6 +521,12 @@ export class Meetings {
       for (const row of found)
         if (isPrivateSession(row.session_id)) rooms.add(row.session_id);
     }
+    for (const ref of refs) {
+      const match = /^d:(\d{4}-\d{2}-\d{2})$/.exec(String(ref));
+      if (!match) continue;
+      for (const id of this.#privateSessionsOn(match[1], Date.now()))
+        rooms.add(id);
+    }
     for (const ref of refs.filter((item) => String(item).startsWith("t:"))) {
       const owned = this.mind.thoughts.get(String(ref).slice(2))?.sessions || [];
       const open = owned.filter((id) => !isPrivateSession(id));
@@ -534,57 +540,56 @@ export class Meetings {
   // own room can still see it. Revoking the meeting releases only the
   // meeting; the words themselves still keep the line where they were said.
   privateBeyond(day, session, before = Date.now()) {
-    if (!day) return false;
+    return this.#privateSessionsOn(day, before).some((id) => id !== session);
+  }
+  // Private rooms that actually hold words from that life day.
+  #privateSessionsOn(day, before) {
+    if (!day) return [];
     const nature = this.mind.nature.current(before);
     const zone = this.mind.timeZone();
-    const elsewhere = (sessionId) =>
-      sessionId && sessionId !== session && isPrivateSession(sessionId);
-    if (
-      this.db
-        .prepare(
-          `SELECT created, session_id FROM mind_meetings m
-           WHERE discretion='private' AND appraisal!='' AND created<=?
-           AND NOT EXISTS (
-             SELECT 1 FROM mind_revocations r
-             WHERE r.target_kind='meeting' AND r.target_id=m.id
-           )`,
-        )
-        .all(before)
-        .some(
-          (row) =>
-            elsewhere(row.session_id) &&
-            lifeDayKey(nature, row.created, zone) === day,
-        )
-    )
-      return true;
+    const ids = new Set();
+    const keep = (sessionId) => {
+      if (sessionId && isPrivateSession(sessionId)) ids.add(sessionId);
+    };
+    for (const row of this.db
+      .prepare(
+        `SELECT created, session_id FROM mind_meetings m
+         WHERE discretion='private' AND appraisal!='' AND created<=?
+         AND NOT EXISTS (
+           SELECT 1 FROM mind_revocations r
+           WHERE r.target_kind='meeting' AND r.target_id=m.id
+         )`,
+      )
+      .all(before))
+      if (lifeDayKey(nature, row.created, zone) === day) keep(row.session_id);
     const span = this.#lifeSpan(day, nature, zone);
-    if (!span) return false;
+    if (!span) return [...ids];
     const end = Math.min(before, span.end - 1);
-    if (span.start > end) return false;
+    if (span.start > end) return [...ids];
     const hidden =
       "(session_id LIKE 'private:%' OR session_id LIKE '%:private:%' OR session_id LIKE '__private__%')";
-    const said = this.db
+    for (const row of this.db
       .prepare(
         `SELECT session_id FROM core_events WHERE time>=? AND time<=? AND time<? AND ${hidden} LIMIT 20`,
       )
-      .all(span.start, end, span.end);
-    if (said.some((row) => elsewhere(row.session_id))) return true;
-    const felt = this.db
+      .all(span.start, end, span.end))
+      keep(row.session_id);
+    for (const row of this.db
       .prepare(
         `SELECT session_id FROM mind_affect WHERE created>=? AND created<=? AND created<? AND IFNULL(cause,'')!='' AND ${hidden} LIMIT 20`,
       )
-      .all(span.start, end, span.end);
-    if (felt.some((row) => elsewhere(row.session_id))) return true;
-    return this.db
+      .all(span.start, end, span.end))
+      keep(row.session_id);
+    for (const row of this.db
       .prepare(
         "SELECT sessions FROM mind_thoughts WHERE created>=? AND created<=? AND hidden=0 LIMIT 20",
       )
-      .all(span.start, end)
-      .some((row) => {
-        const sessions = parse(row.sessions, []);
-        if (sessions.some((id) => !isPrivateSession(id))) return false;
-        return sessions.some((id) => elsewhere(id));
-      });
+      .all(span.start, end)) {
+      const sessions = parse(row.sessions, []);
+      if (sessions.some((id) => !isPrivateSession(id))) continue;
+      for (const id of sessions) keep(id);
+    }
+    return [...ids];
   }
   // The life day named `day`, as an inclusive start and an exclusive end.
   #lifeSpan(day, nature, zone) {
