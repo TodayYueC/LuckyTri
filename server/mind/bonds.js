@@ -372,6 +372,26 @@ export class Bonds {
       .sort((a, b) => b.closeness - a.closeness)
       .slice(0, limit);
   }
+  // Close people she still sees, and has not talked with for a while.
+  // Being around is not the same as having talked.
+  quiet({ now = Date.now(), limit = 3, days = 7, closeness = 0.35 } = {}) {
+    return this.db
+      .prepare(
+        "SELECT user_id FROM mind_people WHERE first_seen<=? ORDER BY last_seen DESC LIMIT 300",
+      )
+      .all(now)
+      .map((row) => this.person(row.user_id, now))
+      .filter(
+        (p) =>
+          p &&
+          p.lastTalkedAt &&
+          p.closeness >= closeness &&
+          (p.awayDays ?? 0) < 3 &&
+          (p.absentDays ?? 0) >= days,
+      )
+      .sort((a, b) => (b.absentDays ?? 0) - (a.absentDays ?? 0))
+      .slice(0, limit);
+  }
   groups(now = Date.now()) {
     return this.db
       .prepare(

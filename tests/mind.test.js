@@ -1772,6 +1772,7 @@ test("被问到是谁时，心和选择属于自己，经历仍然不能编造",
   assert.match(PROMPTS.reflection, /g:ID/);
   assert.match(PROMPTS.daily, /livingFor\.touched/);
   assert.match(PROMPTS.reflection, /livingFor\.touched/);
+  assert.match(PROMPTS.reflection, /quiet 是人还在你眼前/);
   assert.match(PROMPTS.weekly, /livingFor\.touched/);
   const previousTurn = RETIRED_PROMPTS.turn.find(
     (item) =>

@@ -841,6 +841,51 @@ test("日记从今天已经留下的意思写起，并能把它当成来源", as
   );
 });
 
+test("人还在眼前但好久没说上话，独处时能分清这不是好久不见", async (t) => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  t.after(w.close);
+  w.open("group:1", "一群");
+  w.life.save({ diary: false });
+  const said = [];
+  for (const text of ["一", "二", "三", "四", "五", "六"])
+    said.push(w.say("group:1", "10001", text, { name: "阿明" }));
+  w.mind.bonds.meet([{ userId: "10001", name: "阿明" }], "group:1", w.now());
+  w.mind.bonds.record({
+    id: "10001",
+    change: "interaction",
+    sources: [said[0].seq],
+    session: "group:1",
+    time: w.now(),
+  });
+  for (let i = 0; i < 5; i++)
+    w.mind.bonds.record({
+      id: "10001",
+      change: "closer",
+      note: "聊得来",
+      sources: [said[0].seq],
+      session: "group:1",
+      time: w.now(),
+    });
+  w.advance(8 * 24 * HOUR);
+  assert.equal(w.life.quietView(w.now()).length, 0);
+  assert.equal(w.life.missingView(w.now())[0].userId, "10001");
+  w.mind.bonds.meet([{ userId: "10001", name: "阿明" }], "group:1", w.now());
+  const quiet = w.life.quietView(w.now());
+  assert.equal(quiet[0].userId, "10001");
+  assert.match(quiet[0].lastTalked, /周前/);
+  assert.equal(w.life.missingView(w.now()).length, 0);
+  w.advance(30 * MINUTE);
+  let seen;
+  w.answers.reflection = (data) => {
+    seen = data;
+    return { skip: true };
+  };
+  const result = await w.life.tick();
+  assert.equal(result.status, "empty");
+  assert.equal(seen.quiet[0].userId, "10001");
+  assert.equal(seen.missing, undefined);
+});
+
 test("好久没见到、而话曾经碰到她正在过的事的人，独处时能想起，并且只能回到那次的会话", async (t) => {
   const w = world();
   t.after(w.close);
