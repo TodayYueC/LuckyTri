@@ -406,3 +406,28 @@ test("定时维护每小时删除一次 14 天前的处理记录", () => {
   system.close();
   store.db.close();
 });
+
+test("她不在时的话不会写进压缩摘要", async () => {
+  const { store, repo } = setup();
+  addSession(store);
+  repo.append(msg(1, { text: "南极秘密" }));
+  fill(repo, 69, 2);
+  repo.db.prepare("INSERT INTO mind_unlived(seq) VALUES (1)").run();
+  const compactor = new ContextCompactor(repo);
+  const calls = [];
+  const trace = { calls: [], steps: [] };
+  await compactor.compact(SESSION, { ...options(summarizer(calls)), trace });
+  assert.ok(calls.length);
+  assert.equal(
+    calls[0].data.messages.some((m) => m.text.includes("南极")),
+    false,
+  );
+  assert.ok(calls[0].data.messages.some((m) => m.text.includes("消息2")));
+  const view = compactor.forPrompt(SESSION);
+  assert.equal(
+    view.summaries.some((row) => String(row.summary).includes("南极")),
+    false,
+  );
+  assert.ok(view.coverage >= 30);
+  store.db.close();
+});
