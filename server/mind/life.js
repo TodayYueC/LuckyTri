@@ -321,20 +321,27 @@ export class Life {
         felt: labels[r.tag] || r.tag,
       }));
   }
-  selfView(now) {
-    return this.mind.self.active({ before: now, now, limit: 16 }).map((t) => ({
-      thread: t.thread,
-      kind: t.kind,
-      content: t.content,
-      strength: t.strength,
-      ...(t.status === "emerging" ? { emerging: true } : {}),
-    }));
+  selfView(now, { open = false } = {}) {
+    return this.mind.self
+      .active({ before: now, now, limit: 16 })
+      .filter(
+        (t) => !open || !this.mind.meetings.privateRoots(t.sources).length,
+      )
+      .map((t) => ({
+        thread: t.thread,
+        kind: t.kind,
+        content: t.content,
+        strength: t.strength,
+        ...(t.status === "emerging" ? { emerging: true } : {}),
+      }));
   }
-  livingForView(now, { since = 0 } = {}) {
+  livingForView(now, { since = 0, open = false } = {}) {
     const thread = this.mind.self
       .annotated({ before: now, now })
       .find((t) => t.kind === "intention" && !t.faded);
     if (!thread) return null;
+    if (open && this.mind.meetings.privateRoots(thread.sources).length)
+      return null;
     const trace = this.mind.meetings.trace(thread.thread, {
       before: now,
       since,
@@ -504,7 +511,7 @@ export class Life {
     }
     return count;
   }
-  peopleIn(experiences, now) {
+  peopleIn(experiences, now, { open = false } = {}) {
     const ids = [
       ...new Set(
         experiences.flatMap((e) =>
@@ -512,8 +519,12 @@ export class Life {
         ),
       ),
     ].slice(0, 8);
+    // A diary page can be quoted in other rooms, so it only receives notes
+    // that were already fit to say in the open. Solitude still sees the rest.
     return ids
-      .map((id) => this.mind.bonds.person(id, now))
+      .map((id) =>
+        this.mind.bonds.person(id, now, open ? { room: "group:__open__" } : {}),
+      )
       .filter(Boolean)
       .map((p) => ({
         userId: p.userId,
@@ -887,18 +898,16 @@ export class Life {
         .get(d);
       return tries.n >= 3 || (tries.last && now - tries.last < 3 * HOUR);
     };
-    const lived = (start, end) =>
-      this.db
-        .prepare(
-          `SELECT COUNT(*) n FROM core_events WHERE time>? AND time<=? AND ${LIVE}`,
-        )
-        .get(start, end).n >= 3;
     const start = this.dayStart(now);
-    if (bedtime && !has(day) && lived(start, now))
+    if (
+      bedtime &&
+      !has(day) &&
+      this.mind.days.participated(start, now, { inclusive: true })
+    )
       return { day, start, end: now };
     const yesterday = this.lifeDay(start - MINUTE);
     const before = this.dayStart(start - MINUTE);
-    if (!bedtime && !has(yesterday) && lived(before, start))
+    if (!bedtime && !has(yesterday) && this.mind.days.participated(before, start))
       return { day: yesterday, start: before, end: start };
     return null;
   }
@@ -967,6 +976,10 @@ export class Life {
           "SELECT day,content,compare FROM mind_diary WHERE day<? ORDER BY day DESC, created DESC LIMIT 1",
         )
         .get(day);
+      const earlierDiary =
+        lastDiary && !this.mind.meetings.privateBeyond(lastDiary.day, "", end)
+          ? text(lastDiary.content, 240)
+          : "";
       // Only the short account of her life and the chapter she is in, so
       // the diary does not grow with her age.
       const story = this.mind.periods.story(now);
@@ -1001,19 +1014,27 @@ export class Life {
               day: yesterday.day,
               mood: yesterday.affect?.mood,
               self: (yesterday.self || [])
+                .filter((t) => {
+                  const row = this.mind.self
+                    .latest(yesterday.created || end)
+                    .find((item) => item.thread === t.thread);
+                  return (
+                    row && !this.mind.meetings.privateRoots(row.sources).length
+                  );
+                })
                 .slice(0, 12)
                 .map(
                   (t) =>
                     `${SELF_KINDS[t.kind] || t.kind}：${t.content}（${t.strength}）`,
                 ),
-              ...(lastDiary ? { diary: text(lastDiary.content, 240) } : {}),
+              ...(earlierDiary ? { diary: earlierDiary } : {}),
             }
           : null,
-        self: this.selfView(now),
-        ...(this.livingForView(end, { since: start })
-          ? { livingFor: this.livingForView(end, { since: start }) }
+        self: this.selfView(now, { open: true }),
+        ...(this.livingForView(end, { since: start, open: true })
+          ? { livingFor: this.livingForView(end, { since: start, open: true }) }
           : {}),
-        people: this.peopleIn(experiences, now),
+        people: this.peopleIn(experiences, now, { open: true }),
         ...(story ? { story: text(story.content, 600) } : {}),
         ...(chapter ? { chapter } : {}),
         ...(anniversaries.length ? { anniversaries } : {}),

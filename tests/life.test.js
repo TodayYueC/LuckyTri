@@ -502,7 +502,7 @@ test("日记写失败不会每分钟重试", async (t) => {
   chat(w, "group:1", [
     ["10001", "a"],
     ["10002", "b"],
-    ["10001", "c"],
+    ["bot", "嗯"],
   ]);
   w.answers.daily = { diary: "" };
   w.at("2026-09-23T01:10:00+08:00");
@@ -719,6 +719,13 @@ function remember(w, session, event, appraisal) {
       time: w.now(),
     },
   );
+  w.mind.choose({
+    session,
+    choice: "silent",
+    appraisal,
+    reason: appraisal,
+    time: w.now(),
+  });
 }
 
 test("独处和日记能引用已经留下的意思；没发生的、撤销的、私下的不能被带到别处", async (t) => {

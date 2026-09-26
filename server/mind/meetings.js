@@ -3,9 +3,9 @@ import { sessionNativeId } from "../channels/session-key.js";
 import { interestTerms } from "./attention.js";
 import { agoLabel, elapsedLabel } from "./clock.js";
 import { isPrivateSession } from "./memory.js";
-import { lifeDayKey } from "./nature.js";
+import { lifeDayKey, lifeDayStart } from "./nature.js";
 import { MEETING_FADED, meetingSalience, touches } from "./salience.js";
-import { hasCredential, messageSeqs, parse, text } from "./util.js";
+import { hasCredential, messageSeqs, parse, text, zonedTime } from "./util.js";
 
 // What a meeting meant, and whether the world actually touched what she is
 // living for. Both are facts of that batch: her own wording cannot invent a
@@ -529,27 +529,73 @@ export class Meetings {
     }
     return [...rooms];
   }
-  // A private meeting from that life day must not ride along in some other
-  // room's diary line. Her own room can still see it.
+  // A private meeting, a private message, or a privately worded feeling from
+  // that life day must not ride along in some other room's diary line. Her
+  // own room can still see it. Revoking the meeting releases only the
+  // meeting; the words themselves still keep the line where they were said.
   privateBeyond(day, session, before = Date.now()) {
     if (!day) return false;
     const nature = this.mind.nature.current(before);
     const zone = this.mind.timeZone();
+    const elsewhere = (sessionId) =>
+      sessionId && sessionId !== session && isPrivateSession(sessionId);
+    if (
+      this.db
+        .prepare(
+          `SELECT created, session_id FROM mind_meetings m
+           WHERE discretion='private' AND appraisal!='' AND created<=?
+           AND NOT EXISTS (
+             SELECT 1 FROM mind_revocations r
+             WHERE r.target_kind='meeting' AND r.target_id=m.id
+           )`,
+        )
+        .all(before)
+        .some(
+          (row) =>
+            elsewhere(row.session_id) &&
+            lifeDayKey(nature, row.created, zone) === day,
+        )
+    )
+      return true;
+    const span = this.#lifeSpan(day, nature, zone);
+    if (!span) return false;
+    const end = Math.min(before, span.end - 1);
+    if (span.start > end) return false;
+    const hidden =
+      "(session_id LIKE 'private:%' OR session_id LIKE '%:private:%' OR session_id LIKE '__private__%')";
+    const said = this.db
+      .prepare(
+        `SELECT session_id FROM core_events WHERE time>=? AND time<=? AND time<? AND ${hidden} LIMIT 20`,
+      )
+      .all(span.start, end, span.end);
+    if (said.some((row) => elsewhere(row.session_id))) return true;
+    const felt = this.db
+      .prepare(
+        `SELECT session_id FROM mind_affect WHERE created>=? AND created<=? AND created<? AND IFNULL(cause,'')!='' AND ${hidden} LIMIT 20`,
+      )
+      .all(span.start, end, span.end);
+    if (felt.some((row) => elsewhere(row.session_id))) return true;
     return this.db
       .prepare(
-        `SELECT created, session_id FROM mind_meetings m
-         WHERE discretion='private' AND appraisal!='' AND created<=?
-         AND NOT EXISTS (
-           SELECT 1 FROM mind_revocations r
-           WHERE r.target_kind='meeting' AND r.target_id=m.id
-         )`,
+        "SELECT sessions FROM mind_thoughts WHERE created>=? AND created<=? AND hidden=0 LIMIT 20",
       )
-      .all(before)
-      .some(
-        (row) =>
-          row.session_id !== session &&
-          lifeDayKey(nature, row.created, zone) === day,
-      );
+      .all(span.start, end)
+      .some((row) => {
+        const sessions = parse(row.sessions, []);
+        if (sessions.some((id) => !isPrivateSession(id))) return false;
+        return sessions.some((id) => elsewhere(id));
+      });
+  }
+  // The life day named `day`, as an inclusive start and an exclusive end.
+  #lifeSpan(day, nature, zone) {
+    let cursor = zonedTime(`${day} 12:00`, zone);
+    if (!cursor) return null;
+    for (let i = 0; i < 4 && lifeDayKey(nature, cursor, zone) !== day; i++)
+      cursor += 6 * 3600000;
+    if (lifeDayKey(nature, cursor, zone) !== day) return null;
+    const start = lifeDayStart(nature, cursor, zone);
+    const end = lifeDayStart(nature, start + 26 * 3600000, zone);
+    return end > start ? { start, end } : null;
   }
   withPerson(userId, { before = Date.now(), limit = 8 } = {}) {
     return this.#open(

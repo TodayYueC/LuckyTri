@@ -54,21 +54,7 @@ export class Days {
         "SELECT COUNT(*) n, COALESCE(SUM(choice!='silent'),0) spoke FROM mind_choices WHERE created>=? AND created<?",
       )
       .get(start, end);
-    // Other people's messages are not a day she lived. She lived it if she
-    // looked, spoke, or actually spent the quiet time.
-    const present = !!(
-      choices.n ||
-      this.db
-        .prepare(
-          `SELECT 1 FROM core_events WHERE role='assistant' AND time>=? AND time<? AND ${LIVE}`,
-        )
-        .get(start, end) ||
-      this.db
-        .prepare(
-          "SELECT 1 FROM mind_runs WHERE started>=? AND started<? AND status IN ('written','empty','complete')",
-        )
-        .get(start, end)
-    );
+    const present = this.participated(start, end);
     if (!events.n && !felt.n && !present) return false;
     const round = (value) => Math.round(value * 100) / 100;
     this.db
@@ -87,6 +73,27 @@ export class Days {
         events.people,
       );
     return true;
+  }
+  // She looked, spoke, or sat with the day. Other people's messages do not count.
+  participated(start, end, { inclusive = false } = {}) {
+    const endOp = inclusive ? "<=" : "<";
+    return !!(
+      this.db
+        .prepare(
+          `SELECT 1 FROM mind_choices WHERE created>=? AND created${endOp}?`,
+        )
+        .get(start, end) ||
+      this.db
+        .prepare(
+          `SELECT 1 FROM core_events WHERE role='assistant' AND time>=? AND time${endOp}? AND ${LIVE}`,
+        )
+        .get(start, end) ||
+      this.db
+        .prepare(
+          `SELECT 1 FROM mind_runs WHERE started>=? AND started${endOp}? AND status IN ('written','empty','complete')`,
+        )
+        .get(start, end)
+    );
   }
   // Counts lived days after the day of a given moment, as known at `now`.
   lived(now = Date.now()) {
