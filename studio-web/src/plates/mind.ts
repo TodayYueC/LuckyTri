@@ -64,6 +64,7 @@ export const ORIGIN_LABELS: Record<string, string> = {
 
 export const RUN_LABELS: Record<string, string> = {
   solitude: "独处",
+  expression: "自己的念头",
   daily: "写日记",
   weekly: "回顾这段日子",
   night: "夜里整理",

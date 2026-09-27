@@ -31,6 +31,7 @@ const STAGE_OUTPUT = {
   generation: 4096,
   rewrite: 4096,
   reflection: 4096,
+  expression: 2048,
   daily: 6144,
   weekly: 6144,
   memory: 8192,

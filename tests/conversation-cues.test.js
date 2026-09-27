@@ -99,3 +99,21 @@ test("persona examples do not leak into effective context while identity and int
   assert(p.base.includes("今天这么累"));
   assert.equal(effective.warmth, 80);
 });
+
+test("自己发起的话不是补答历史的嗯，保留完整的新念头", () => {
+  const snapshot = {
+    persona: {},
+    initiative: { type: "presence" },
+    messages: [{ id: 1, role: "user", text: "嗯" }],
+  };
+  const decision = { choice: "speak", targetMessageIds: [1] };
+  assert.equal(replyFocus(snapshot, decision).kind, "initiative");
+  assert.deepEqual(
+    validateResponse(
+      { bubbles: ["我刚想到一个游戏角色的选择，想和你聊聊"] },
+      snapshot,
+      decision,
+    ),
+    [],
+  );
+});

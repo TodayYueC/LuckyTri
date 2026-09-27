@@ -47,7 +47,7 @@ async function remove(t: any) {
         <span class="eyebrow">THOUGHTS / 留给自己的话</span>
         <h2>有些念头，先放在心上。</h2>
         <p class="muted">
-          TA 只在有新的理解时才写。放下的事会留着原因，想法也会随着经历改变。
+          有些是聊天之后的理解，有些是还没想好要告诉谁的念头。可以分享，也可以先留给自己。
         </p>
       </div>
       <form
@@ -86,6 +86,12 @@ async function remove(t: any) {
         <p v-if="t.outreach" class="outreach">
           想主动说：{{ t.outreach }} ·
           {{ OUTREACH_STATUS[t.outreach_status] || t.outreach_status }}
+          <template v-if="t.outreach_reason"
+            ><br />因为：{{ t.outreach_reason }}</template
+          >
+          <template v-if="t.outreach_wait_reason"
+            ><br />{{ t.outreach_wait_reason }}；稍后重新决定。</template
+          >
         </p>
         <footer>
           <button

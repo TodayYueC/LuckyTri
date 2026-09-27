@@ -8,6 +8,7 @@ import { dayKey, parse, text } from "./util.js";
 
 const RUN_ACTIVITY = {
   solitude: "solitude",
+  expression: "solitude",
   daily: "diary",
   weekly: "review",
   night: "night",
@@ -69,19 +70,21 @@ export function mountMind(app, chat, life) {
       const affect = mind.affect.state(now, { nature });
       const names = sessionNames(db);
       const demo = Number(!!chat.store.settings().demo);
-      const said = db
+      const saidRows = db
         .prepare(
-          "SELECT session_id,time,payload FROM core_events WHERE role='assistant' AND COALESCE(json_extract(payload,'$.simulated'),0)=? ORDER BY seq DESC LIMIT 1",
+          "SELECT session_id,time,payload FROM core_events WHERE role='assistant' AND COALESCE(json_extract(payload,'$.simulated'),0)=? ORDER BY seq DESC LIMIT 20",
         )
-        .get(demo);
-      const words = said
-        ? {
-            text: text(parse(said.payload, {}).text, 120),
-            session: said.session_id,
-            sessionName: names.get(said.session_id) || said.session_id,
-            time: said.time,
-          }
-        : null;
+        .all(demo);
+      const recentWords = saidRows
+        .map((said) => ({
+          text: text(parse(said.payload, {}).text, 120),
+          session: said.session_id,
+          sessionName: names.get(said.session_id) || said.session_id,
+          time: said.time,
+        }))
+        .filter((item) => item.text.trim())
+        .slice(0, 3);
+      const words = recentWords[0] || null;
       const thought = mind.thoughts.latest(now);
       res.json({
         name: nature.name,
@@ -101,6 +104,7 @@ export function mountMind(app, chat, life) {
         },
         activity: activityOf({ db, life, now, affect, words, names }),
         lastWords: words,
+        recentWords,
         thought: thought
           ? {
               content: thought.content,
@@ -112,10 +116,11 @@ export function mountMind(app, chat, life) {
           .filter(
             (a) =>
               a.state === "pending" &&
+              String(a.content || "").trim() &&
               a.occurrence >= now - 86400000 &&
               a.occurrence <= now + 7 * 86400000,
           )
-          .slice(0, 3)
+          .slice(0, 5)
           .map((a) => ({
             id: a.id,
             kind: a.kind,

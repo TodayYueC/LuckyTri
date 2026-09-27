@@ -21,11 +21,13 @@ const TRAITS = [
   { key: "sarcasm", label: "毒舌", low: "不挖苦人", high: "嘴角一歪，会吐槽" },
   { key: "humor", label: "幽默", low: "认真", high: "眯眼笑，爱开玩笑" },
   { key: "activity", label: "活泼", low: "安安静静", high: "跳得更快" },
-  { key: "initiative", label: "主动", low: "等别人先开口", high: "身子往前探" },
+  { key: "initiative", label: "主动", low: "更喜欢独处", high: "更愿意分享" },
 ] as const;
 const PROMPT_NAMES: Record<string, string> = {
   system: "系统指令",
   turn: "看见与开口",
+  expression: "自己的念头",
+  initiative: "分享与发起",
   generation: "重新措辞",
   validation: "回复检查",
   memory: "记忆整理",
@@ -467,7 +469,8 @@ onMounted(load);
             ><input v-model="settings.life.proactive" type="checkbox" /><span
               ><b>允许 TA 主动说话</b
               ><small
-                >可以在自己待过、安静下来的地方考虑说一句，也可以在心里有具体的人和事时再联系。说不说由 TA 决定；冷的联系没有回应前不会再追。关掉之后就不再主动开口。</small>
+                >安静的时候，也能从自己的兴趣、念头和对人的感觉决定要不要先开口。不必等人提问，不催同一句话；对方没回应，也不等于以后不能分享新的事。关掉后停止主动联系。</small
+              >
               ></span
             ></label
           >
@@ -498,11 +501,22 @@ onMounted(load);
               min="1"
           /></label>
           <label
-            >两次主动联系至少间隔（小时）<input
-              v-model.number="settings.life.proactiveIntervalHours"
+            >安静时多久看看想不想聊（分钟）<input
+              v-model.number="settings.life.initiativeIntervalMinutes"
               type="number"
               min="1"
           /></label>
+          <label
+            >两次主动联系至少间隔（小时）<input
+              v-model.number="settings.life.proactiveIntervalHours"
+              type="number"
+              min="0"
+              step="0.1"
+          /></label>
+          <p class="faint wide">
+            主动联系间隔只在实际发出后计算，可设为
+            0；沉默不会占用发送间隔。想说的话会保留，临时忙碌后重新决定。没有新消息时也可独处，不需要攒够消息才能产生念头。
+          </p>
           <p class="faint wide">
             独处、日记和夜里整理也使用模型库里的默认模型，不再单独指定。
           </p>

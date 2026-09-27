@@ -1,9 +1,11 @@
 import { conversationalIssues, replyFocus } from "./conversation-cues.js";
 import { gentlePersona } from "./persona-manager.js";
+import { initiativeContext } from "./initiative-context.js";
 const norm = (s) => s.toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
 // The reviewer judges one reply; it needs the turn and its recent lead-in,
 // not the summaries, recall or the rest of the transcript.
 export function reviewContext(snapshot, decision = {}) {
+  if (snapshot.initiative) return initiativeContext(snapshot);
   const {
     persona: _persona,
     sourceRows: _sourceRows,
@@ -79,6 +81,15 @@ export function validateResponse(result, snapshot, decision, maxChars = 180) {
     .slice(-12)
     .map((m) => m.text);
   for (const text of result.bubbles) {
+    if (
+      snapshot.initiative &&
+      /(?:收到|看到|看见)你(?:们)?(?:刚刚?|刚才|又|发来|来找我)|你(?:们)?(?:刚刚?|刚才|这会儿).{0,8}(?:说|问|发|提|找我)|(?:刚刚?|刚才|这会儿)你(?:们)?.{0,8}(?:说|问|发|提|找我)|你(?:又来|来找我|发来(?:了)?消息)/.test(
+        text,
+      )
+    )
+      issues.push(
+        "本轮没有收到新消息，不能捏造对方刚说过、发过消息或来找你；若确实回忆旧事要用过去的时间",
+      );
     if ((snapshot.persona?.forbidden || []).some((w) => w && text.includes(w)))
       issues.push("使用人格禁用表达");
     if (

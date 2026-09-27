@@ -15,6 +15,7 @@ export function migrateCore(store) {
     CREATE INDEX IF NOT EXISTS core_traces_session_time ON core_traces(session_id,time DESC);
     CREATE INDEX IF NOT EXISTS core_traces_status_session ON core_traces(status,session_id);
     CREATE TABLE IF NOT EXISTS core_outbox (id TEXT PRIMARY KEY, trace_id TEXT, session_id TEXT, position INTEGER, text TEXT, status TEXT, platform_id TEXT, time INTEGER);
+    CREATE INDEX IF NOT EXISTS core_outbox_session_time ON core_outbox(session_id,time DESC);
     CREATE TABLE IF NOT EXISTS core_memories (id TEXT PRIMARY KEY, session_id TEXT, subject TEXT, content TEXT, type TEXT, confidence REAL, importance REAL, status TEXT, locked INTEGER DEFAULT 0, sources TEXT, created INTEGER, updated INTEGER, last_access INTEGER, expires INTEGER, version INTEGER DEFAULT 1);
     CREATE INDEX IF NOT EXISTS core_memories_scope ON core_memories(session_id,status);
     CREATE TABLE IF NOT EXISTS core_memory_versions (id INTEGER PRIMARY KEY, memory_id TEXT, time INTEGER, value TEXT);

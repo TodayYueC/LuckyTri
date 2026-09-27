@@ -10,6 +10,7 @@ export const STAGE_CATEGORY = {
   vision: "conversation",
   decision: "conversation",
   reflection: "inner",
+  expression: "inner",
   daily: "inner",
   weekly: "inner",
   memory: "upkeep",

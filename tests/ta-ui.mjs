@@ -218,7 +218,9 @@ async function run() {
       collapsedStars,
       "长线索分组可以收回",
     );
-    await page.locator(".star").first().click();
+    // Earlier solitude can make a care more salient than an interest. Test
+    // withdrawal in the group being counted, not whichever ranks first now.
+    await interest.locator(".star").first().click();
     await page.locator(".thread-sheet .versions li").first().waitFor();
     await page.locator("[data-revoke-thread]").click();
     await confirm("界面测试");

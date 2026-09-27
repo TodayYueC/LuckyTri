@@ -137,6 +137,7 @@
 .notes {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
   gap: var(--gap);
   margin: 8px 0 28px;
 }
@@ -180,8 +181,30 @@
 }
 .note > p,
 .note > ul {
-  max-height: 154px;
+  max-height: 248px;
   overflow: auto;
+}
+.recent-list {
+  display: grid;
+  gap: 11px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.recent-list li {
+  padding-bottom: 10px;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--glass-edge) 70%, transparent);
+}
+.recent-list li:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.recent-list .quote {
+  margin-bottom: 3px;
+}
+.note.ahead > ul {
+  max-height: 248px;
 }
 .note li {
   display: grid;
