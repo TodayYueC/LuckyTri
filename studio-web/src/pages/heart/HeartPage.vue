@@ -39,6 +39,8 @@ const history = ref<any[]>([]);
 const threads = computed(() =>
   (self.value?.threads || []).filter((t: any) => t.status !== "closed"),
 );
+const listVisibleLimit = 4;
+const expandedGroups = ref<Record<string, boolean>>({});
 const closed = computed(() =>
   (self.value?.threads || []).filter((t: any) => t.status === "closed"),
 );
@@ -58,6 +60,19 @@ function tag(t: any) {
   if (t.faded) return "在远方：很久没被触及";
   if (t.fading) return "慢慢淡出";
   return SELF_STATUS[t.status] || t.status;
+}
+
+function visibleGroupThreads(group: (typeof groups.value)[number]) {
+  return expandedGroups.value[group.kind]
+    ? group.threads
+    : group.threads.slice(0, listVisibleLimit);
+}
+
+function toggleGroup(kind: string) {
+  expandedGroups.value = {
+    ...expandedGroups.value,
+    [kind]: !expandedGroups.value[kind],
+  };
 }
 
 async function load() {
@@ -159,13 +174,18 @@ onMounted(load);
       </template>
 
       <section v-else-if="view === 'list'" class="thread-groups">
-        <div v-for="g in groups" :key="g.kind" class="card thread-group">
+        <div
+          v-for="g in groups"
+          :key="g.kind"
+          class="card thread-group"
+          :data-thread-kind="g.kind"
+        >
           <h2>
             <i :style="{ background: KIND_COLORS[g.kind] }"></i>{{ g.label }} ·
             {{ g.threads.length }}
           </h2>
           <button
-            v-for="t in g.threads"
+            v-for="t in visibleGroupThreads(g)"
             :key="t.thread"
             class="thread"
             :class="{ faded: t.faded, core: t.core }"
@@ -184,6 +204,20 @@ onMounted(load);
                 · 此刻的分量 {{ percent(t.salience) }}</template
               ></small
             >
+          </button>
+          <button
+            v-if="g.threads.length > listVisibleLimit"
+            type="button"
+            class="thread-more"
+            :aria-expanded="Boolean(expandedGroups[g.kind])"
+            @click="toggleGroup(g.kind)"
+          >
+            {{
+              expandedGroups[g.kind]
+                ? "收起线索"
+                : `再看 ${g.threads.length - listVisibleLimit} 条线索`
+            }}
+            <span aria-hidden="true">{{ expandedGroups[g.kind] ? "↑" : "↓" }}</span>
           </button>
         </div>
         <Empty
@@ -311,6 +345,7 @@ onMounted(load);
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: var(--gap);
+  align-items: start;
 }
 .thread-group {
   display: grid;
@@ -352,6 +387,32 @@ onMounted(load);
 .thread small {
   color: var(--ink-soft);
   font-size: 12px;
+}
+.thread-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 13px;
+  border: 1px dashed #ffffffd0;
+  border-radius: 16px;
+  background: linear-gradient(120deg, #ffffff9c, #ffffff4d);
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 650;
+  transition:
+    transform 0.4s var(--spring),
+    background 0.25s,
+    border-color 0.25s;
+}
+.thread-more:hover {
+  transform: translateY(-2px);
+  border-color: #fff;
+  background: #ffffffcf;
+}
+.thread-more:active {
+  transform: scale(0.98);
 }
 .fold summary {
   display: grid;
