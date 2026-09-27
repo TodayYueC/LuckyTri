@@ -13,6 +13,7 @@ import { Days } from "./days.js";
 import { Anticipations } from "./anticipations.js";
 import { Periods } from "./periods.js";
 import { Meetings } from "./meetings.js";
+import { Continuity } from "./continuity.js";
 import { innerView } from "./view.js";
 import { clamp, dayKey, parse, text } from "./util.js";
 
@@ -78,6 +79,7 @@ export class Mind {
     this.anticipations = new Anticipations(this);
     this.periods = new Periods(this);
     this.meetings = new Meetings(this);
+    this.continuity = new Continuity(this);
     this.days.reconcile();
   }
   timeZone() {
@@ -228,7 +230,8 @@ export class Mind {
         time,
       });
     }
-    if (!deferTalk) this.settleTalk(turn, { session, snapshot, kind, spoke, time });
+    if (!deferTalk)
+      this.settleTalk(turn, { session, snapshot, kind, spoke, time });
   }
   // Whether this turn became a conversation. A choice to speak that never
   // leaves does not count as having spoken.
@@ -240,6 +243,7 @@ export class Mind {
       kind = "group",
       spoke = false,
       withheld = false,
+      sent = [],
       time = Date.now(),
     },
   ) {
@@ -275,7 +279,12 @@ export class Mind {
           time,
         });
     }
-    this.meetings.keep(turn, { session, snapshot, time });
+    this.meetings.keep(turn, {
+      session,
+      snapshot,
+      sent: spoke ? sent : [],
+      time,
+    });
   }
   revoke(kind, id, reason = "") {
     const note = text(reason, 200);

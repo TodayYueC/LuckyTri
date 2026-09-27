@@ -15,6 +15,7 @@ import { agoLabel } from "./clock.js";
 import { hasCredential, secretRequest } from "./guard.js";
 import { MEMORY_IDLE_DAYS, grounded } from "./salience.js";
 import { DAY, clamp, similar, text } from "./util.js";
+import { recallIntent } from "./continuity.js";
 
 const RECALL_CONFIDENCE = 0.5;
 const RECALL_LIMIT = 12;
@@ -189,15 +190,46 @@ export class MemoryManager {
         why: fts.has(m.id) ? "fts" : about ? "subject" : "related",
       });
     }
-    scored.sort((a, b) => b.score - a.score);
-    const selected = scored.slice(0, RECALL_LIMIT);
+    scored.sort((a, b) => b.score - a.score || b.m.created - a.m.created);
+    const selected = [];
+    if (recallIntent(rows)) {
+      // An explicit question about our past needs a range of places and
+      // aspects, not twelve local events with almost identical scores.
+      const elsewhere = scored.filter(
+        (item) =>
+          !item.local &&
+          item.m.discretion === "open" &&
+          speakers.has(String(item.m.subject)),
+      );
+      const covered = new Set();
+      for (const item of elsewhere) {
+        const key = `${item.m.subject}:${item.m.session_id}`;
+        if (covered.has(key)) continue;
+        selected.push(item);
+        covered.add(key);
+        if (selected.length === 4) break;
+      }
+      const kinds = new Set(selected.map((item) => item.m.type));
+      for (const item of elsewhere) {
+        if (selected.length >= 4) break;
+        if (selected.includes(item) || kinds.has(item.m.type)) continue;
+        selected.push(item);
+        kinds.add(item.m.type);
+      }
+    }
+    selected.push(
+      ...scored
+        .filter((item) => !selected.includes(item))
+        .slice(0, RECALL_LIMIT - selected.length),
+    );
     if (touch) {
       const access = db.prepare(
         "UPDATE core_memories SET last_access=? WHERE id=?",
       );
       // A weak overlap does not count as remembering. Only a real cue, the
       // person speaking, or a locked memory starts the quiet stretch again.
-      for (const { m, strong } of selected) if (strong) access.run(cutoff, m.id);
+      for (const { m, strong } of selected)
+        if (strong) access.run(cutoff, m.id);
     }
     return selected.map(({ m, local, why }) => {
       const age = cutoff - Number(m.created || cutoff);
@@ -434,11 +466,7 @@ export class MemoryManager {
           certainty: "self_report",
         },
       ],
-      discretion: quiet
-        ? "secret"
-        : privateChat
-          ? "private"
-          : "open",
+      discretion: quiet ? "secret" : privateChat ? "private" : "open",
       time: Number(message.time) || Date.now(),
     });
     if (id) this.repo.store.revision++;
@@ -549,7 +577,13 @@ export class MemoryManager {
             m.seq >= first - 6 &&
             secretRequest(m.text),
         ) || askedSecret(block, subject, last);
-      if (!grounded(a.content, cited.map((m) => m.text || ""))) continue;
+      if (
+        !grounded(
+          a.content,
+          cited.map((m) => m.text || ""),
+        )
+      )
+        continue;
       const result = this.mind.anticipations.add({
         kind,
         subject,
@@ -670,7 +704,13 @@ export class MemoryManager {
             )
           )
             continue;
-          if (!grounded(f.content, sources.map((m) => m.text || ""))) continue;
+          if (
+            !grounded(
+              f.content,
+              sources.map((m) => m.text || ""),
+            )
+          )
+            continue;
           const secret =
             f.discretion === "secret" ||
             askedSecret(block, f.subject, Math.max(...f.sources));
@@ -707,10 +747,10 @@ export class MemoryManager {
             discretion,
           });
           for (const ref of Array.isArray(f.supersedes) ? f.supersedes : []) {
-              const old = refs.get(String(ref));
-              if (old && String(old.subject) === String(f.subject))
-                this.supersede(old.id, id);
-            }
+            const old = refs.get(String(ref));
+            if (old && String(old.subject) === String(f.subject))
+              this.supersede(old.id, id);
+          }
         }
         db.prepare(
           "INSERT OR IGNORE INTO core_stages VALUES (?,?,?,?,?,?)",

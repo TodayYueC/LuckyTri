@@ -93,6 +93,10 @@ export function persistReply(repo, m, text, platformId, time = Date.now()) {
     mentions: [],
     attachments: [],
     simulated: !!m.simulated,
+    ...(m.traceId ? { traceId: m.traceId } : {}),
+    ...(Array.isArray(m.replyTargetIds)
+      ? { replyTargetIds: m.replyTargetIds }
+      : {}),
   };
   repo.append(msg);
   repo.db

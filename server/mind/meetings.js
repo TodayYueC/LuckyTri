@@ -22,7 +22,7 @@ export class Meetings {
     this.mind = mind;
     this.db = mind.db;
   }
-  keep(turn, { session, snapshot, time = Date.now() } = {}) {
+  keep(turn, { session, snapshot, sent = [], time = Date.now() } = {}) {
     const batch = (snapshot?.messages || []).filter((m) =>
       (snapshot?.batchIds || []).includes(m.id),
     );
@@ -67,16 +67,36 @@ export class Meetings {
       : [];
     const willMet = willPeople.length > 0;
     const quiet = heard.some((m) => secretRequest(String(m.text || "")));
-    if (!appraisal && !willMet) return null;
+    const actualWords = sent
+      .filter(
+        (line) =>
+          typeof line === "string" && line.trim() && !hasCredential(line),
+      )
+      .slice(0, 3);
+    if (!appraisal && !willMet && !actualWords.length) return null;
     const id = randomUUID();
     const choice = ["speak", "react", "decline", "silent"].includes(
       turn?.choice,
     )
       ? turn.choice
       : "silent";
+    const targets = new Set(turn.targetMessageIds || []);
+    const exchange = actualWords.length
+      ? {
+          they: heard
+            .filter((m) => targets.has(m.id) && !hasCredential(m.text))
+            .map((m) => ({
+              speaker: String(m.speaker),
+              ref: `m:${m.id}`,
+              time: m.time || time,
+              text: text(m.text, 300),
+            })),
+          iSaid: actualWords.map((line) => text(line, 500)),
+        }
+      : null;
     this.db
       .prepare(
-        "INSERT INTO mind_meetings(id,created,session_id,choice,appraisal,topic,people,sources,will_thread,will_met,discretion,will_people) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO mind_meetings(id,created,session_id,choice,appraisal,topic,people,sources,will_thread,will_met,discretion,will_people,exchange) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
       )
       .run(
         id,
@@ -91,6 +111,7 @@ export class Meetings {
         willMet ? 1 : 0,
         isPrivateSession(session) ? "private" : quiet ? "secret" : "open",
         JSON.stringify(willPeople),
+        JSON.stringify(exchange),
       );
     const link = this.db.prepare(
       "INSERT INTO mind_meeting_people(meeting_id,user_id) VALUES (?,?)",
@@ -111,7 +132,8 @@ export class Meetings {
       .all(...args);
   }
   #visible(row, session) {
-    const concealed = row.discretion === "private" || row.discretion === "secret";
+    const concealed =
+      row.discretion === "private" || row.discretion === "secret";
     return !(concealed && row.session_id !== session);
   }
   #bound(inclusive) {
@@ -377,7 +399,9 @@ export class Meetings {
       ...(row.discretion === "private" || row.discretion === "secret"
         ? { private: true }
         : {}),
-      ...(row.will_met && this.#touchStill(row, now) ? { touchedWill: true } : {}),
+      ...(row.will_met && this.#touchStill(row, now)
+        ? { touchedWill: true }
+        : {}),
     };
   }
   // People whose own words met the wish she is still living for, and whom she
@@ -474,7 +498,10 @@ export class Meetings {
           if (meetingSalience(row.created, lived) < MEETING_FADED) return false;
           const credited = parse(row.will_people, []);
           // Rows written before speakers were credited individually.
-          if (credited.length && !credited.map(String).includes(String(row.user_id)))
+          if (
+            credited.length &&
+            !credited.map(String).includes(String(row.user_id))
+          )
             return false;
           return this.#stillMeets(row, wish.content);
         })
@@ -547,20 +574,34 @@ export class Meetings {
   // that conversation, even when the later note does not repeat the words.
   #quietSessions(seqs) {
     if (!seqs.length) return [];
-    const present = this.db
-      .prepare(
-        `SELECT seq, session_id FROM core_events WHERE seq IN (${seqs.map(() => "?").join(",")})`,
-      )
-      .all(...seqs);
-    const sessionOf = new Map(present.map((row) => [row.seq, row.session_id]));
+    const present = new Map(
+      this.db
+        .prepare(
+          `SELECT seq,session_id,time FROM core_events WHERE seq IN (${seqs.map(() => "?").join(",")})`,
+        )
+        .all(...seqs)
+        .map((row) => [row.seq, row]),
+    );
+    const requested = new Set(seqs);
     const rooms = [];
     for (const row of this.db
       .prepare(
-        "SELECT session_id, sources FROM mind_meetings WHERE discretion IN ('private','secret')",
+        "SELECT session_id, sources, created FROM mind_meetings WHERE discretion IN ('private','secret')",
       )
       .all()) {
-      const ids = parse(row.sources, []);
-      if (ids.some((id) => sessionOf.get(Number(id)) === row.session_id))
+      const ids = messageSeqs(parse(row.sources, []));
+      if (
+        ids.some((id) => {
+          if (!requested.has(id)) return false;
+          const event = present.get(id);
+          // A removed source stays private. A reused sequence now belonging to
+          // a later event cannot seal that unrelated event into the old room.
+          return (
+            !event ||
+            (event.session_id === row.session_id && event.time <= row.created)
+          );
+        })
+      )
         rooms.push(row.session_id);
     }
     return rooms;
@@ -591,7 +632,8 @@ export class Meetings {
         rooms.add(id);
     }
     for (const ref of refs.filter((item) => String(item).startsWith("t:"))) {
-      const owned = this.mind.thoughts.get(String(ref).slice(2))?.sessions || [];
+      const owned =
+        this.mind.thoughts.get(String(ref).slice(2))?.sessions || [];
       const open = owned.filter((id) => !isPrivateSession(id));
       if (!open.length)
         for (const id of owned) if (isPrivateSession(id)) rooms.add(id);

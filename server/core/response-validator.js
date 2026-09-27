@@ -31,6 +31,9 @@ export function reviewContext(snapshot, decision = {}) {
   const recent = new Set(messages.slice(-30).map((m) => m.id));
   return {
     ...rest,
+    ...(snapshot.inner?.continuity
+      ? { continuity: snapshot.inner.continuity }
+      : {}),
     messages: messages.filter((m) => focus.has(m.id) || recent.has(m.id)),
   };
 }
@@ -80,7 +83,22 @@ export function validateResponse(result, snapshot, decision, maxChars = 180) {
     .filter((m) => m.role === "assistant")
     .slice(-12)
     .map((m) => m.text);
+  const continuity = snapshot.inner?.continuity;
+  const sharedElsewhere =
+    continuity?.requested &&
+    continuity.people.some((person) =>
+      person.places.some((place) => !place.current),
+    );
   for (const text of result.bubbles) {
+    if (
+      sharedElsewhere &&
+      /(?:不能|不算|不能因此).{0,24}(?:共同经历|共同相处)|(?:从来|从没|完全).{0,8}(?:没聊过|不记得|没相处过|没有共同经历)|(?:没在|没有在).{0,8}(?:别的|其他|其它).{0,8}群.{0,8}(?:聊|相处)|只有.{0,8}(?:这段|这次)私聊.{0,8}(?:经历|记录)/.test(
+        text,
+      )
+    )
+      issues.push(
+        "已核实和同一个人在其他地方真正说过话，换到私聊不会抹掉共同经历；依据 continuity 中具体的旧事回应，不把公开相处说成别的实例或不能算共同经历",
+      );
     if (
       snapshot.initiative &&
       /(?:收到|看到|看见)你(?:们)?(?:刚刚?|刚才|又|发来|来找我)|你(?:们)?(?:刚刚?|刚才|这会儿).{0,8}(?:说|问|发|提|找我)|(?:刚刚?|刚才|这会儿)你(?:们)?.{0,8}(?:说|问|发|提|找我)|你(?:又来|来找我|发来(?:了)?消息)/.test(
