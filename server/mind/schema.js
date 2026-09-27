@@ -63,6 +63,7 @@ export function migrateMind(db, store) {
   addColumn("mind_thoughts", "outreach_retry_at", "INTEGER");
   addColumn("mind_thoughts", "outreach_reason", "TEXT NOT NULL DEFAULT ''");
   addColumn("mind_thoughts", "outreach_draft", "TEXT NOT NULL DEFAULT '[]'");
+  addColumn("mind_meetings", "exchange", "TEXT NOT NULL DEFAULT 'null'");
   addColumn(
     "mind_thoughts",
     "outreach_wait_reason",

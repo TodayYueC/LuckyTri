@@ -188,6 +188,7 @@ export function innerView(
     .open({ now, limit: 3, session })
     .filter((t) => mind.meetings.sayable(t.content, session));
   const heard = feedback(mind, session, now);
+  const continuity = mind.continuity.recall({ session, people, cue, now });
   const expecting = mind.anticipations
     .upcoming({ now, people, session, limit: 3 })
     .map((a) => a.text);
@@ -216,6 +217,7 @@ export function innerView(
     inner: {
       state: `${affect.phaseLabel}，精力${affect.energyLabel}，心情${affect.mood}${cause ? `（${cause}）` : ""}${affect.lately ? `，${affect.lately}` : ""}`,
       ...(persons.length ? { people: persons } : {}),
+      ...(continuity ? { continuity } : {}),
       ...(group ? { thisGroup: group.feel } : {}),
       ...(thoughts.length
         ? {

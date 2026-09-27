@@ -69,10 +69,13 @@ A regular turn aims to combine context understanding, feeling, the choice to spe
 | --- | --- | --- |
 | Recent context | Original messages, speakers, replies, attachments, and topics | Read per conversation; context can be cleared |
 | Long-term memory | Facts, preferences, events, and plans about people | Keeps sources, confidence, importance, and discretion; can be updated, merged, locked, or revoked |
+| Shared encounters | Actual interactions with the same person across groups and private chat, with times and both sides' words | Uses account identity; recalls relevant episodes when asked and keeps confirmed replies independently |
 | Self-threads | Interests, views, traits, habits, care, and curiosity | Form gradually from experience; changes without verifiable sources are rejected |
 | Inner notes | Later thoughts, unfinished topics, and revisions | New experience may add to or challenge an earlier note without erasing history |
 | Relationships and faces | Familiarity, closeness, trust, and ways of being in each group | Change gradually through real interaction; impressions are not conversations, and silence is not speech |
 | A life | Lived days, diaries, reviews, chapters, reading, and anticipation | Runs on a local clock, keeps versions, and supports replay |
+
+Moving to private chat does not erase a shared group encounter. Questions about the past bring in identity, places, times, and verifiable episodes, with retrieval space reserved for that person's public memories from other groups. Source evidence takes precedence over an earlier mistaken denial or subjective impression. New encounter records keep only replies actually delivered, never drafts, overheard exchanges between other people, or failed sends. Ordinary conversation carries compact identity continuity without treating old messages as new arrivals. Other people's private conversations and explicitly secret content retain their boundaries.
 
 Explicit requests for secrecy restrict retrieval and sharing. Private sources, cross-session recall, and pre-send checks also respect boundaries. **These are engineering measures that reduce accidental disclosure, not a formal guarantee of confidentiality.** Local databases may contain chat text and model credentials. When a remote model is used, context sent to that model also goes to the configured provider. Choose providers accordingly and avoid entering sensitive information that should not be processed by a third party.
 

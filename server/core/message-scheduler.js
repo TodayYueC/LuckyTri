@@ -42,7 +42,17 @@ export async function deliver(
             "UPDATE core_outbox SET status='confirmed',platform_id=? WHERE id=?",
           )
           .run(String(result?.message_id || ""), ids[i]);
-        persistReply(repo, message, bubbles[i], result?.message_id, now());
+        persistReply(
+          repo,
+          {
+            ...message,
+            traceId: trace.id,
+            replyTargetIds: trace.decision?.targetMessageIds || [],
+          },
+          bubbles[i],
+          result?.message_id,
+          now(),
+        );
         sent.push(bubbles[i]);
       } catch (e) {
         repo.db

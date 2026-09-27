@@ -14,6 +14,12 @@ export function maxBubbles(choice) {
   return choice === "speak" ? 3 : 1;
 }
 
+export function recallWording(snapshot) {
+  if (snapshot.initiative || !snapshot.inner?.continuity?.requested)
+    return null;
+  return "这轮在问以前的相处或对他的印象。先从 inner.continuity.people 里各人的 sharedMoments 或 memories 里挑一两件确实记得的小事，像熟人回想那样回答；不只围着私聊最近的亲近称呼作答，群里真正发生的相处也属于你们。谈印象时，具体小事加自己当时的感觉就够了，不写人物分析、心理标签或关系总结，不推断对方比自己以为的更敏感、正在学着成长等。通常一两句短话，有必要才分两小条；不逐项评价、不用最后一段总结自己怎么看他，也不解释连续记忆的技术原理。知道什么就说什么，不为亲近而编造。";
+}
+
 // One look at the conversation: what it means to her, how it moves her, and
 // whether and how she answers. Comes back as a single model call.
 export async function takeTurn(
@@ -63,6 +69,7 @@ export async function takeTurn(
         : {}),
       ...(imageGuide ? { imageGuide } : {}),
       ...(extra.pressure ? { pressure: extra.pressure } : {}),
+      ...(recallWording(snapshot) ? { guidance: recallWording(snapshot) } : {}),
     },
     trace,
     images,
@@ -161,5 +168,7 @@ export function wordingNotes(turn, snapshot) {
     return "只写一个极短的反应，比如 hh、？、好耶、啊这，不超过 6 个字。";
   if (turn.choice === "decline")
     return "用一句自己的话说现在不想聊这个，可以带一点情绪，但不攻击人。";
-  return replyFocus(snapshot, turn).instruction;
+  return [replyFocus(snapshot, turn).instruction, recallWording(snapshot)]
+    .filter(Boolean)
+    .join("\n");
 }

@@ -753,6 +753,7 @@ export class ChatSystem {
             kind: roomKind,
             spoke: choice !== "silent",
             withheld: !spoke && turn.choice !== "silent",
+            sent: trace.sent || [],
             time: now,
           },
         );
@@ -932,6 +933,7 @@ export class ChatSystem {
     const focus = replyFocus(snapshot, turn).kind;
     const needsDeepCheck = (response) =>
       !!snapshot.initiative ||
+      !!snapshot.inner?.continuity?.requested ||
       (policy.deepCheck &&
         c.pressure < 0.85 &&
         (turn.crisis?.clear ||
