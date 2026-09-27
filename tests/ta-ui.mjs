@@ -234,6 +234,25 @@ async function run() {
       /你撤销过的 · 1/,
     );
 
+    await page.getByRole("tab", { name: "线索清单", exact: true }).click();
+    const interestList = page.locator(
+      ".thread-group[data-thread-kind='interest']",
+    );
+    assert.equal(
+      await interestList.locator(".thread").count(),
+      4,
+      "线索清单每类默认只展示四条",
+    );
+    await interestList.getByRole("button", { name: /再看/ }).click();
+    const fullInterestCount = await interestList.locator(".thread").count();
+    assert.ok(fullInterestCount > 4, "展开后可查看这一类的全部线索");
+    await interestList.getByRole("button", { name: "收起线索" }).click();
+    assert.equal(
+      await interestList.locator(".thread").count(),
+      4,
+      "线索清单可以重新收起",
+    );
+
     await open("#heart/notes");
     await page.locator(".note-card").first().waitFor();
     await page
