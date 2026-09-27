@@ -33,6 +33,34 @@ export function mountCore(app, system) {
       time: row?.time || null,
     });
   });
+  app.get("/api/core/usage", (req, res) => {
+    const row = repo.db
+      .prepare(
+        `SELECT COUNT(*) calls,
+                COALESCE(SUM(input),0) input,
+                COALESCE(SUM(cached),0) cached,
+                COALESCE(SUM(output),0) output,
+                COALESCE(SUM(estimated),0) estimatedCalls,
+                MIN(time) since,
+                COALESCE(SUM(CASE WHEN estimated=0 THEN input+output ELSE 0 END),0) reportedTokens,
+                COALESCE(SUM(CASE WHEN estimated>0 THEN input+output ELSE 0 END),0) estimatedTokens
+         FROM mind_usage`,
+      )
+      .get();
+    const input = Number(row.input) || 0;
+    const output = Number(row.output) || 0;
+    res.json({
+      total: input + output,
+      input,
+      output,
+      cached: Number(row.cached) || 0,
+      calls: Number(row.calls) || 0,
+      estimatedCalls: Number(row.estimatedCalls) || 0,
+      reportedTokens: Number(row.reportedTokens) || 0,
+      estimatedTokens: Number(row.estimatedTokens) || 0,
+      since: row.since == null ? null : Number(row.since),
+    });
+  });
   app.get("/api/core/state", (req, res) =>
     res.json({
       models: normalizeModels(storedModels(repo)).map(publicModel),

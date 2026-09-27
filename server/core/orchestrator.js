@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { parseSessionKey } from "../channels/session-key.js";
 import { replyFocus } from "./conversation-cues.js";
+import { initiativeContext, initiativeSnapshot } from "./initiative-context.js";
 import { Repository } from "./repository.js";
 import {
   ModelManager,
@@ -54,7 +55,7 @@ const OCCASIONS = {
   outreach:
     "这是你自己先前想说的一句（occasion.thought），可能来自你正在为自己而活的事。现在仍然合适就说这一句，不合适就 silent。occasion.returned 是你写下这句话之后又见到的人；人已经出现了，就按现在的情况决定，不要假装还没见过。不要改口说没人找你，不要把留下对方当成对方的责任，不要把「我只是助手」当成收尾。",
   presence:
-    "你待过的这个地方安静了一会儿。如果心里有一句真正想说的，就说这一句；没有就 silent。不要问在吗，不要说怎么不说话，不要索取陪伴。",
+    "你自己在这里待了一会儿。不是等待一个必须回答的问题；看看自己的兴趣、念头、心情和对人的感觉，此刻想不想说点什么，由你选择。",
 };
 
 function isPrivateSession(session) {
@@ -352,6 +353,8 @@ export class ChatSystem {
     } = {},
   ) {
     let occasion = planned;
+    const ownInitiative =
+      !batch.length && ["presence", "outreach"].includes(planned?.type);
     const simulatedTurn =
       !replay && (simulated || !!preview || batch.some((m) => m.simulated));
     const live = !replay && !simulatedTurn;
@@ -489,39 +492,44 @@ export class ChatSystem {
       // Replays exclude mutable memory so later corrections cannot leak into
       // the past; her inner state is folded as of the replayed moment.
       const memories =
-        policy.memory && !replay
+        policy.memory && !replay && !ownInitiative
           ? this.mind.memory.retrieve(session, batch, now, {
               people,
               touch: live,
             })
           : [];
-      const knowledge = replay
-        ? this.knowledge.retrieve(session, batch, now)
-        : await this.knowledge.retrieveWithEmbed(session, batch, now);
+      const knowledge = ownInitiative
+        ? []
+        : replay
+          ? this.knowledge.retrieve(session, batch, now)
+          : await this.knowledge.retrieveWithEmbed(session, batch, now);
       const summaryView =
-        !simulatedTurn && policy.compaction !== false
+        !ownInitiative && !simulatedTurn && policy.compaction !== false
           ? this.compactor.forPrompt(session, {
               before: replay ? batch[0].seq : Number.MAX_SAFE_INTEGER,
               timeZone: policy.timeZone,
             })
           : { summaries: [], coverage: 0, start: 0 };
-      const stages = policy.memory
-        ? this.repo.db
-            .prepare(
-              "SELECT first_seq,last_seq,data FROM core_stages WHERE session_id=? AND last_seq<=? ORDER BY last_seq DESC LIMIT 5",
-            )
-            .all(
-              session,
-              summaryView.summaries.length ? summaryView.start - 1 : watermark,
-            )
-            .map((s) => ({
-              first_seq: s.first_seq,
-              last_seq: s.last_seq,
-              summary: JSON.parse(s.data).summary,
-              reliability:
-                "未核实的阶段线索，不是人物事实；冲突时以原文和记忆为准",
-            }))
-        : [];
+      const stages =
+        policy.memory && !ownInitiative
+          ? this.repo.db
+              .prepare(
+                "SELECT first_seq,last_seq,data FROM core_stages WHERE session_id=? AND last_seq<=? ORDER BY last_seq DESC LIMIT 5",
+              )
+              .all(
+                session,
+                summaryView.summaries.length
+                  ? summaryView.start - 1
+                  : watermark,
+              )
+              .map((s) => ({
+                first_seq: s.first_seq,
+                last_seq: s.last_seq,
+                summary: JSON.parse(s.data).summary,
+                reliability:
+                  "未核实的阶段线索，不是人物事实；冲突时以原文和记忆为准",
+              }))
+          : [];
       const view = this.mind.view({
         session: preview?.viewSession || session,
         kind: privateChat ? "private" : "group",
@@ -533,36 +541,40 @@ export class ChatSystem {
         })),
         now,
       });
-      const snapshot = buildContext(
-        this.repo,
-        session,
-        watermark,
-        model,
-        policy,
-        batchIds,
-        memories,
-        nature,
-        now,
-        {
-          knowledge,
-          stages,
-          simulated: simulatedTurn,
-          summaries: summaryView.summaries,
-          coverage: summaryView.coverage,
-          summaryStart: summaryView.start,
-          self: view.self,
-          inner: view.inner,
-          nameOf: (id) => this.mind.bonds.name(id),
-          resolved,
-        },
-      );
+      const snapshot = ownInitiative
+        ? initiativeSnapshot(session, window, nature, now, policy.timeZone)
+        : buildContext(
+            this.repo,
+            session,
+            watermark,
+            model,
+            policy,
+            batchIds,
+            memories,
+            nature,
+            now,
+            {
+              knowledge,
+              stages,
+              simulated: simulatedTurn,
+              summaries: summaryView.summaries,
+              coverage: summaryView.coverage,
+              summaryStart: summaryView.start,
+              self: view.self,
+              inner: view.inner,
+              nameOf: (id) => this.mind.bonds.name(id),
+              resolved,
+            },
+          );
       const visionModel = model.vision
         ? model
         : this.fallbackFor(null, model).find((item) => item.vision) || model;
       const direct = snapshot.batch.some((m) => m.relation === "direct");
-      const media = visionInputs(snapshot, visionModel, {
-        selective: !!policy.selectiveVision,
-      });
+      const media = ownInitiative
+        ? { images: [], unavailable: [] }
+        : visionInputs(snapshot, visionModel, {
+            selective: !!policy.selectiveVision,
+          });
       const early = classifyVision(
         this.repo.db,
         snapshot.sessionId,
@@ -678,13 +690,21 @@ export class ChatSystem {
             ...occasion.data,
           }
         : undefined;
+      if (["presence", "outreach"].includes(occasion?.type)) {
+        snapshot.initiative = occasionData;
+        trace.snapshot = initiativeContext(snapshot);
+      }
       let turn;
       try {
         turn = normalizeTurn(
           await takeTurn(
             models,
             model,
-            replyPrompt(nature, prompt, "turn"),
+            replyPrompt(
+              nature,
+              prompt,
+              snapshot.initiative ? "initiative" : "turn",
+            ),
             snapshot,
             trace,
             {
@@ -702,8 +722,16 @@ export class ChatSystem {
       } catch (error) {
         if (!isFormatError(error)) throw error;
         trace.steps.push("回合输出格式异常，按直接对话兜底");
+        if (["presence", "outreach"].includes(occasion?.type))
+          return finish("error", "主动判断没有整理好，愿望保留，稍后重新决定");
         turn = normalizeTurn(
-          { choice: direct ? "speak" : "silent", reason: "没能整理好想法" },
+          {
+            choice:
+              direct && !["presence", "outreach"].includes(occasion?.type)
+                ? "speak"
+                : "silent",
+            reason: "没能整理好想法",
+          },
           snapshot,
           trace,
         );
@@ -851,15 +879,21 @@ export class ChatSystem {
     const outdated = () => !c.replay && !c.preview && !isCurrent();
     const fallbackText = turn.crisis?.clear
       ? "你现在还好吗？身边有人能陪着你吗？"
-      : ["嗯", "好", "行", "收到"].find(
-          (text) =>
-            !(nature.forbidden || []).some((word) => text.includes(word)) &&
-            !snapshot.messages
-              .filter((m) => m.role === "assistant")
-              .slice(-12)
-              .some((m) => m.text === text),
-        ) || "嗯";
-    const generationPrompt = replyPrompt(nature, prompt, "generation");
+      : snapshot.initiative
+        ? ""
+        : ["嗯", "好", "行", "收到"].find(
+            (text) =>
+              !(nature.forbidden || []).some((word) => text.includes(word)) &&
+              !snapshot.messages
+                .filter((m) => m.role === "assistant")
+                .slice(-12)
+                .some((m) => m.text === text),
+          ) || "嗯";
+    const generationPrompt = replyPrompt(
+      nature,
+      prompt,
+      snapshot.initiative ? "initiative" : "generation",
+    );
     const makeResponse = async (issues = []) => {
       try {
         const raw = await generate(
@@ -875,6 +909,7 @@ export class ChatSystem {
         return normalizeResponse(raw, turn, fallbackText);
       } catch (error) {
         if (!isFormatError(error)) throw error;
+        if (snapshot.initiative) throw error;
         trace.steps.push("模型回复格式异常，已使用本地短句兜底");
         return { bubbles: [fallbackText], reason: "本地短句兜底" };
       }
@@ -896,13 +931,14 @@ export class ChatSystem {
     };
     const focus = replyFocus(snapshot, turn).kind;
     const needsDeepCheck = (response) =>
-      policy.deepCheck &&
-      c.pressure < 0.85 &&
-      (turn.crisis?.clear ||
-        ["feeling", "vent", "repair"].includes(focus) ||
-        (!c.direct &&
-          (response.bubbles.join("").length > 60 ||
-            snapshot.batch.some((m) => m.relation === "unresolved"))));
+      !!snapshot.initiative ||
+      (policy.deepCheck &&
+        c.pressure < 0.85 &&
+        (turn.crisis?.clear ||
+          ["feeling", "vent", "repair"].includes(focus) ||
+          (!c.direct &&
+            (response.bubbles.join("").length > 60 ||
+              snapshot.batch.some((m) => m.relation === "unresolved")))));
     const deepCheck = async (response) => {
       try {
         const checked = await models.call(
@@ -925,12 +961,19 @@ export class ChatSystem {
                 : snapshot.unavailableImages?.length
                   ? "本轮图片没有读取成功，回复不应包含具体画面细节。"
                   : undefined,
+            ...(snapshot.initiative
+              ? {
+                  task: "本轮没有收到新消息，是自己先形成念头再分享。逐项检查：有没有捏造对方刚说过或发过消息；有没有把旧消息当成当前提问而补答；有没有把自己的念头换成另一件事；有没有捏造亲历。expression.words 是已有草稿，保留其核心是合格的，不要求提供新事实。只有具体错误才给 issues。",
+                }
+              : {}),
           },
           trace,
         );
         if (typeof checked.ok !== "boolean" || !Array.isArray(checked.issues)) {
           trace.steps.push("回复复审结果格式异常，已按本地校验继续");
-          return [];
+          return snapshot.initiative
+            ? ["主动消息的语境核对结果无效，草稿保留"]
+            : [];
         }
         return checked.ok
           ? []
@@ -941,7 +984,9 @@ export class ChatSystem {
         trace.steps.push(
           `回复复审暂不可用，已按本地校验继续：${error.message}`,
         );
-        return [];
+        return snapshot.initiative
+          ? ["主动消息的事实与内容核对暂未完成，草稿保留，稍后重新决定"]
+          : [];
       }
     };
     if (outdated()) return staleExit();
@@ -969,6 +1014,10 @@ export class ChatSystem {
     }
     trace.response = response;
     if (issues.length) {
+      if (snapshot.initiative) {
+        trace.validation = issues;
+        return finish("error", "想说的话还没整理好，愿望保留，稍后重新决定");
+      }
       // Checks protect the words; they must not erase a decision to speak.
       trace.validation = issues;
       trace.steps.push("回复两次生成仍未通过校验，使用本地安全短句");

@@ -12,6 +12,7 @@ export const THOUGHT_KINDS = {
   revision: "重新理解",
   unfinished: "仍放在心上",
   reconnection: "久别想起",
+  expression: "自己的念头",
 };
 
 function row(value) {
@@ -20,6 +21,7 @@ function row(value) {
         ...value,
         sessions: parse(value.sessions, []),
         sources: parse(value.sources, []),
+        outreach_draft: parse(value.outreach_draft, []),
       }
     : null;
 }
@@ -41,6 +43,8 @@ export class Thoughts {
     revisitHours = 0,
     outreach = "",
     outreachSession = null,
+    outreachAfterHours,
+    outreachReason = "",
     runId = null,
     time = Date.now(),
   }) {
@@ -48,7 +52,7 @@ export class Thoughts {
     const hours = Number(revisitHours);
     this.db
       .prepare(
-        "INSERT INTO mind_thoughts(id,created,kind,content,sessions,sources,parent_id,importance,revisit_at,status,hidden,outreach,outreach_session,outreach_status,run_id) VALUES (?,?,?,?,?,?,?,?,?,'open',0,?,?,?,?)",
+        "INSERT INTO mind_thoughts(id,created,kind,content,sessions,sources,parent_id,importance,revisit_at,status,hidden,outreach,outreach_session,outreach_status,run_id,outreach_at,outreach_reason) VALUES (?,?,?,?,?,?,?,?,?,'open',0,?,?,?,?,?,?)",
       )
       .run(
         id,
@@ -66,6 +70,15 @@ export class Thoughts {
         outreach ? outreachSession : null,
         outreach ? "planned" : "none",
         runId,
+        outreach
+          ? time +
+              Math.min(
+                8760,
+                Math.max(0, Number(outreachAfterHours ?? revisitHours) || 0),
+              ) *
+                HOUR
+          : null,
+        text(outreachReason, 300),
       );
     return id;
   }
@@ -137,9 +150,7 @@ export class Thoughts {
     const sets = cueList(cue, cues);
     if (!sets.length) return [];
     return this.weighed({ now, session })
-      .filter(
-        (t) => t.salience < THOUGHT_FADED && anyTouches(t.content, sets),
-      )
+      .filter((t) => t.salience < THOUGHT_FADED && anyTouches(t.content, sets))
       .slice(0, limit);
   }
   resolve(id, resolution = "", time = Date.now()) {
@@ -185,15 +196,53 @@ export class Thoughts {
   }
   setOutreach(id, status) {
     this.db
-      .prepare("UPDATE mind_thoughts SET outreach_status=? WHERE id=?")
+      .prepare(
+        "UPDATE mind_thoughts SET outreach_status=?,outreach_wait_reason='',outreach_retry_at=NULL WHERE id=?",
+      )
       .run(status, id);
+  }
+  planOutreach(id, { session, words, reason, time }) {
+    const current = this.get(id);
+    if (!current || current.outreach_status !== "none") return false;
+    const draft = words
+      .filter((s) => typeof s === "string" && s.trim())
+      .slice(0, 3)
+      .map((s) => text(s, 180));
+    if (!session || !draft.length) return false;
+    this.db
+      .prepare(
+        "UPDATE mind_thoughts SET sessions=?,outreach=?,outreach_session=?,outreach_status='planned',outreach_at=?,outreach_reason=?,outreach_draft=? WHERE id=? AND outreach_status='none'",
+      )
+      .run(
+        // An independent thought is not owned by its first audience. Keep its
+        // origin scope; outreach_session records where she chose to share it.
+        JSON.stringify(
+          current.kind === "expression"
+            ? current.sessions
+            : [...new Set([...current.sessions, session])],
+        ),
+        draft.join("\n"),
+        session,
+        time,
+        text(reason, 300),
+        JSON.stringify(draft),
+        id,
+      );
+    return true;
+  }
+  deferOutreach(id, reason, retryAt) {
+    this.db
+      .prepare(
+        "UPDATE mind_thoughts SET outreach_status='planned',outreach_wait_reason=?,outreach_retry_at=? WHERE id=?",
+      )
+      .run(text(reason, 300), retryAt, id);
   }
   dueOutreach(now = Date.now()) {
     return this.db
       .prepare(
-        "SELECT * FROM mind_thoughts WHERE outreach_status='planned' AND hidden=0 AND status='open' AND outreach!='' AND COALESCE(revisit_at,created)<=? ORDER BY importance DESC, created LIMIT 5",
+        "SELECT * FROM mind_thoughts WHERE outreach_status='planned' AND hidden=0 AND status='open' AND outreach!='' AND COALESCE(outreach_at,revisit_at,created)<=? AND COALESCE(outreach_retry_at,0)<=? ORDER BY importance DESC, created LIMIT 5",
       )
-      .all(now)
+      .all(now, now)
       .map(row);
   }
 }

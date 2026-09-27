@@ -32,6 +32,12 @@ export function localClock(time, timeZone = "Asia/Shanghai") {
 }
 const ellipsis = /…|\.{3,}|。{3,}/u;
 export function replyFocus(snapshot, decision) {
+  if (snapshot.initiative)
+    return {
+      kind: "initiative",
+      instruction:
+        "这是自己想发起的一段话，不是补答最后一条历史消息。保留自己的动机和自然语气；结合最新情况，不催回复，不泄露私下的事。",
+    };
   const targets = snapshot.messages.filter((m) =>
     decision.targetMessageIds?.includes(m.id),
   );

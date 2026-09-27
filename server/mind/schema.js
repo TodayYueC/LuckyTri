@@ -59,6 +59,15 @@ export function migrateMind(db, store) {
   addColumn("mind_attention", "deferred", "INTEGER NOT NULL DEFAULT 0");
   addColumn("mind_thoughts", "resolved_at", "INTEGER");
   addColumn("mind_thoughts", "resolution", "TEXT NOT NULL DEFAULT ''");
+  addColumn("mind_thoughts", "outreach_at", "INTEGER");
+  addColumn("mind_thoughts", "outreach_retry_at", "INTEGER");
+  addColumn("mind_thoughts", "outreach_reason", "TEXT NOT NULL DEFAULT ''");
+  addColumn("mind_thoughts", "outreach_draft", "TEXT NOT NULL DEFAULT '[]'");
+  addColumn(
+    "mind_thoughts",
+    "outreach_wait_reason",
+    "TEXT NOT NULL DEFAULT ''",
+  );
   addColumn("mind_meetings", "will_people", "TEXT NOT NULL DEFAULT '[]'");
   db.prepare(
     "UPDATE mind_runs SET status='interrupted',finished=? WHERE status='running'",

@@ -151,14 +151,20 @@ test("关掉时路过的话，不算她度过的一天", async (t) => {
   await w.hear("group:1", missed);
   const start = w.mind.days.start(w.now());
   const day = w.mind.days.key(w.now());
-  assert.equal(w.mind.days.write(day, start, start + 24 * 3600000, w.now()), false);
+  assert.equal(
+    w.mind.days.write(day, start, start + 24 * 3600000, w.now()),
+    false,
+  );
   assert.equal(
     w.mind.db.prepare("SELECT 1 FROM mind_days WHERE day=?").get(day),
     undefined,
   );
   w.store.db.prepare("UPDATE sessions SET enabled=1 WHERE id=?").run("group:1");
   w.say("group:1", "10002", "周五要面试了", { name: "小红" });
-  assert.equal(w.mind.days.write(day, start, start + 24 * 3600000, w.now()), true);
+  assert.equal(
+    w.mind.days.write(day, start, start + 24 * 3600000, w.now()),
+    true,
+  );
   const row = w.mind.db
     .prepare("SELECT events, people, lived FROM mind_days WHERE day=?")
     .get(day);
@@ -176,11 +182,7 @@ test("她不在时的说话方式，回来后也不当成这个地方的样子",
     "INSERT INTO messages(event_id,session_id,user_id,name,text,time,role,is_demo) VALUES (?,?,?,?,?,?,?,0)",
   );
   for (let i = 0; i < 18; i++) {
-    const msg = w.say(
-      "group:1",
-      String(10001 + (i % 3)),
-      `明天第${i}组一起去`,
-    );
+    const msg = w.say("group:1", String(10001 + (i % 3)), `明天第${i}组一起去`);
     await w.hear("group:1", msg);
     insert.run(
       msg.eventId,
@@ -261,7 +263,10 @@ test("她不在时记下的称呼，不会套到后来听到的话上", async (t
     String(m.text).includes("周五要面试了"),
   );
   assert.equal(heard?.name, "阿明");
-  assert.equal(speakerNames(w.store.db, ["private:10001"]).get("10001"), "阿明");
+  assert.equal(
+    speakerNames(w.store.db, ["private:10001"]).get("10001"),
+    "阿明",
+  );
 });
 
 test("她不在时的话，重新打开后也不能当成听到的", async (t) => {
@@ -315,9 +320,7 @@ test("她不在时的话，重新打开后也不能当成听到的", async (t) =
   assert.notEqual(w.mind.affect.state(w.now()).mood, "惊讶");
   assert.equal(
     w.mind.db
-      .prepare(
-        "SELECT 1 FROM mind_bond_events WHERE note LIKE '%南极%'",
-      )
+      .prepare("SELECT 1 FROM mind_bond_events WHERE note LIKE '%南极%'")
       .get(),
     undefined,
   );
@@ -384,7 +387,9 @@ test("她不在的会话，不会变成独处的经历", async (t) => {
     { calls: [] },
     { force: true, models: w.system.models },
   );
-  const memoryCall = w.calls.slice(before).find((call) => call.stage === "memory");
+  const memoryCall = w.calls
+    .slice(before)
+    .find((call) => call.stage === "memory");
   assert.ok(memoryCall);
   assert.equal(
     memoryCall.data.messages.some((m) => String(m.text).includes("南极")),
@@ -609,7 +614,7 @@ test("独处时她会读共享资料：按兴趣挑、一段段读下去，读�
   assert(!seen.some((r) => r?.title === "私人日记"), "私人资料不进入她的阅读");
 });
 
-test("独处时又有了新对话：想好的仍然留下，只是不再打算在那里主动开口，心情也不因此改变", async (t) => {
+test("独处时又有了新对话：愿望保留，发送前按最新情况重新决定，心情不被旧理解覆盖", async (t) => {
   const w = world();
   t.after(w.close);
   w.open("group:1");
@@ -637,7 +642,11 @@ test("独处时又有了新对话：想好的仍然留下，只是不再打算�
   assert.match(result.reason, /新对话/);
   const [thought] = w.mind.thoughts.list();
   assert.equal(thought.content, "他还在等面试结果", "付出过的想法不白费");
-  assert.equal(thought.outreach, "", "那里已经有了新动静，不再打算主动开口");
+  assert.equal(
+    thought.outreach,
+    "结果出来了吗",
+    "新动静不能直接抹掉愿望，实际发送前再判断",
+  );
   assert.notEqual(w.mind.affect.state(w.now()).mood, "挂心");
 
   // A new nature makes her a different seed: that one thought does not count.
@@ -647,6 +656,11 @@ test("独处时又有了新对话：想好的仍然留下，只是不再打算�
     Array.from({ length: 6 }, (_, i) => ["10001", `又聊${i}`]),
   );
   w.advance(2 * HOUR);
+  w.answers.turn = {
+    choice: "silent",
+    reason: "已经拿到 offer 了，不用再问结果",
+  };
+  assert.equal((await w.life.reachOut()).status, "outreach-declined");
   w.answers.reflection = () => {
     w.mind.nature.save({ ...w.mind.nature.current(), warmth: 90 });
     return {
@@ -1003,7 +1017,7 @@ test("日记写失败不会每分钟重试", async (t) => {
   assert.equal(w.stages().filter((s) => s === "daily").length, 1);
 });
 
-test("主动联系交给她自己的意愿：条件都满足才考虑，她可以不说，没回应前不再追发", async (t) => {
+test("主动联系交给她自己的意愿：没回应作为语境，重复追问由她决定不说", async (t) => {
   const w = world({ start: "2026-09-22T10:00:00+08:00" });
   t.after(w.close);
   w.open("private:10001", "阿明");
@@ -1032,7 +1046,7 @@ test("主动联系交给她自己的意愿：条件都满足才考虑，她可�
     data.occasion?.type === "outreach"
       ? {
           appraisal: "想起他的面试",
-          choice: decided,
+          choice: data.occasion.initiative?.awaitingReply ? "silent" : decided,
           reason: "想问问他",
           bubbles: [data.occasion.planned],
         }
@@ -1065,7 +1079,7 @@ test("主动联系交给她自己的意愿：条件都满足才考虑，她可�
   w.advance(30 * HOUR);
   await w.life.reachOut(w.now());
   assert.equal(w.sent.length, 1);
-  assert.equal(w.mind.thoughts.list()[0].outreach_status, "skipped");
+  assert.equal(w.mind.thoughts.list()[0].outreach_status, "declined");
 
   // After he answers, she may think of him again — and still choose not to say it.
   w.say("private:10001", "10001", "过啦！");
@@ -1168,14 +1182,11 @@ test("待过的地方安静下来，她会看一次要不要说，不出声之�
   };
   const first = await w.life.tick();
   assert.equal(first.status, "presence-silent");
-  assert.equal(
-    w.calls.find((c) => c.stage === "turn").data.occasion.type,
-    "presence",
-  );
-  assert.equal(w.calls.filter((c) => c.stage === "turn").length, 1);
+  assert.equal(w.calls.filter((c) => c.stage === "expression").length, 1);
+  assert.equal(w.calls.filter((c) => c.stage === "turn").length, 0);
   w.advance(MINUTE);
   await w.life.tick();
-  assert.equal(w.calls.filter((c) => c.stage === "turn").length, 1);
+  assert.equal(w.calls.filter((c) => c.stage === "expression").length, 1);
   assert.equal(w.sent.length, 0);
 });
 
@@ -1440,7 +1451,11 @@ test("从没说过话、人还在眼前的亲近的人，独处和房间里都�
     const quiet = w.life.quietView(w.now());
     assert.equal(quiet[0]?.userId, "10001");
     assert.equal(quiet[0].lastTalked, undefined, "没有说过话就不写上次说上话");
-    assert.equal(w.life.missingView(w.now()).length, 0, "人还在眼前，不是好久不见");
+    assert.equal(
+      w.life.missingView(w.now()).length,
+      0,
+      "人还在眼前，不是好久不见",
+    );
     const later = here().find((p) => p.id === "10001");
     assert.ok(later, "人在眼前时，这种亲近仍然在");
     assert.match(later.feel, /还没怎么说过话/);

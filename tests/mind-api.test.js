@@ -109,6 +109,73 @@ test("presence：睡着的时候就是睡着", async (t) => {
   assert.equal(body.activity.kind, "asleep");
 });
 
+test("presence：展示最近三条有效发言，隐藏空白等待事项", async (t) => {
+  const w = world();
+  const api = await serve(w);
+  t.after(async () => {
+    await api.close();
+    w.close();
+  });
+  w.open("private:10001", "阿明");
+  w.say("private:10001", "bot", "第三条", { name: "Lucky" });
+  w.say("private:10001", "bot", "   ", { name: "Lucky" });
+  w.say("private:10001", "bot", "第二条", { name: "Lucky" });
+  w.say("private:10001", "bot", "第一条", { name: "Lucky" });
+  const insertAnticipation = w.system.repo.db.prepare(
+    "INSERT INTO mind_anticipations(id,created,kind,content,due_at,origin,status) VALUES (?,?,?,?,?,?,?)",
+  );
+  for (let i = 0; i < 6; i++)
+    insertAnticipation.run(
+      `ahead-${i}`,
+      w.now(),
+      "event",
+      `事项 ${i + 1}`,
+      w.now() + (i + 1) * HOUR,
+      "test",
+      "pending",
+    );
+  insertAnticipation.run(
+    "empty-ahead",
+    w.now(),
+    "event",
+    "   ",
+    w.now() + HOUR,
+    "test",
+    "pending",
+  );
+  const { body } = await api.get("/mind/presence");
+  assert.deepEqual(
+    body.recentWords.map((item) => item.text),
+    ["第一条", "第二条", "第三条"],
+  );
+  assert.equal(body.lastWords.text, "第一条", "旧字段继续指向最近一条发言");
+  assert.equal(body.expecting.length, 5, "首页展示最多五件有效等待事项");
+  assert.ok(body.expecting.every((item) => item.content.trim()));
+});
+
+test("模型用量接口：累计持久账本并区分精确值与估算值", async (t) => {
+  const w = world();
+  const api = await serve(w);
+  t.after(async () => {
+    await api.close();
+    w.close();
+  });
+  const insert = w.system.repo.db.prepare(
+    "INSERT INTO mind_usage(time,category,stage,session_id,input,cached,output,estimated) VALUES (?,?,?,?,?,?,?,?)",
+  );
+  insert.run(w.now(), "conversation", "turn", "private:1", 100, 30, 40, 0);
+  insert.run(w.now() + 1, "conversation", "rewrite", "private:1", 20, 0, 10, 1);
+  const { body } = await api.get("/core/usage");
+  assert.equal(body.total, 170);
+  assert.equal(body.input, 120);
+  assert.equal(body.output, 50);
+  assert.equal(body.cached, 30, "缓存量作为输入子项单独报告");
+  assert.equal(body.calls, 2);
+  assert.equal(body.estimatedCalls, 1);
+  assert.equal(body.reportedTokens, 140);
+  assert.equal(body.estimatedTokens, 30);
+});
+
 test("today：今天的选择、心情和独处按时间排在一起", async (t) => {
   const w = world();
   const api = await serve(w);

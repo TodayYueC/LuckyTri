@@ -1,5 +1,6 @@
 import { replyFocus } from "./conversation-cues.js";
 import { wordingNotes } from "./turn.js";
+import { initiativeContext } from "./initiative-context.js";
 
 // Puts an already chosen answer into words again: used when the turn came
 // back without words or the first draft failed a check.
@@ -29,7 +30,7 @@ export async function generate(
     issues.length ? "rewrite" : "generation",
     prompt,
     {
-      context,
+      context: snapshot.initiative ? initiativeContext(snapshot) : context,
       decision: {
         choice: decision.choice || "speak",
         reason: decision.reason,

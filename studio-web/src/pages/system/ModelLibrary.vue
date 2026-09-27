@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from "vue";
-import { toast } from "../../api";
+import { computed, onMounted, reactive, ref, watch } from "vue";
+import { api, toast } from "../../api";
 import { ask } from "../../dialog";
 import { reload, studio } from "../../stores/studio";
 import { deleteModel, saveModels, testSavedModel } from "../../plates/models";
@@ -28,6 +28,9 @@ const busy = ref(false);
 const testing = ref(false);
 const picker = ref(false);
 const testResult = ref("");
+const tokenUsage = ref<any>(null);
+const usageBusy = ref(false);
+const usageError = ref("");
 const draft = reactive<any>(blank());
 if (modelList.value[0])
   Object.assign(draft, modelList.value[0], { apiKey: "" });
@@ -198,6 +201,29 @@ function effortName(value: string) {
     return value === "none" ? "关闭" : "开启";
   return `${effortLabels.value[value] || value} / ${value}`;
 }
+
+function formatCount(value: number) {
+  return new Intl.NumberFormat("zh-CN").format(Number(value) || 0);
+}
+
+async function loadUsage() {
+  if (usageBusy.value) return;
+  usageBusy.value = true;
+  try {
+    tokenUsage.value = await api("/core/usage");
+    usageError.value = "";
+  } catch (error) {
+    usageError.value = (error as Error).message;
+  } finally {
+    usageBusy.value = false;
+  }
+}
+
+onMounted(() => void loadUsage());
+watch(
+  () => studio.tick,
+  () => void loadUsage(),
+);
 
 async function discardDraft() {
   if (!studio.dirty) return true;
@@ -645,6 +671,60 @@ async function testModel() {
       </Empty>
     </section>
 
+    <section class="card usage-panel" aria-labelledby="token-usage-title">
+      <div class="usage-intro">
+        <div>
+          <span class="eyebrow">TOKEN LEDGER · 累计用量</span>
+          <h2 id="token-usage-title">一路聊到现在</h2>
+          <p>统计本机账本记录的模型调用；缓存 Token 已包含在输入量里。</p>
+        </div>
+        <div class="usage-total">
+          <strong>{{ formatCount(tokenUsage?.total) }}</strong>
+          <span>累计 Token</span>
+        </div>
+      </div>
+      <div class="usage-detail">
+        <div class="usage-stat">
+          <span>输入</span>
+          <b>{{ formatCount(tokenUsage?.input) }}</b>
+        </div>
+        <div class="usage-stat">
+          <span>输出</span>
+          <b>{{ formatCount(tokenUsage?.output) }}</b>
+        </div>
+        <div class="usage-stat cache-stat">
+          <span>缓存命中 <small>（输入子项）</small></span>
+          <b>{{ formatCount(tokenUsage?.cached) }}</b>
+        </div>
+        <div class="usage-stat">
+          <span>调用次数</span>
+          <b>{{ formatCount(tokenUsage?.calls) }}</b>
+        </div>
+      </div>
+      <div class="usage-foot">
+        <small v-if="tokenUsage?.since">
+          从
+          {{ new Date(tokenUsage.since).toLocaleDateString("zh-CN") }} 开始记录
+          · {{ formatCount(tokenUsage.reportedTokens) }} 为模型返回用量
+          <template v-if="tokenUsage.estimatedCalls">
+            · {{ formatCount(tokenUsage.estimatedCalls) }} 次调用按文本估算
+          </template>
+        </small>
+        <small v-else-if="usageError" class="usage-error">{{
+          usageError
+        }}</small>
+        <small v-else>还没有模型调用记录。</small>
+        <button
+          type="button"
+          class="usage-refresh"
+          :disabled="usageBusy"
+          @click="loadUsage"
+        >
+          {{ usageBusy ? "更新中…" : "刷新统计 ↻" }}
+        </button>
+      </div>
+    </section>
+
     <Sheet
       :open="picker"
       title="选择模型"
@@ -720,6 +800,98 @@ async function testModel() {
       transparent 47%
     ),
     var(--surface);
+}
+.usage-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 18px;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      ellipse at 100% 0,
+      color-mix(in srgb, var(--glow-a) 25%, transparent),
+      transparent 42%
+    ),
+    radial-gradient(
+      ellipse at 0 100%,
+      color-mix(in srgb, var(--glow-b) 20%, transparent),
+      transparent 46%
+    ),
+    var(--surface);
+}
+.usage-intro {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+}
+.usage-intro h2 {
+  margin: 5px 0 4px;
+  font-size: 22px;
+  letter-spacing: -0.04em;
+}
+.usage-intro p,
+.usage-foot small {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.usage-total {
+  display: grid;
+  justify-items: end;
+  flex: none;
+}
+.usage-total strong {
+  color: var(--accent);
+  font: 700 clamp(28px, 4vw, 42px) var(--font-display);
+  letter-spacing: -0.055em;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+.usage-total span {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.usage-detail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.usage-stat {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid rgb(255 255 255 / 0.78);
+  border-radius: 18px;
+  background: rgb(255 255 255 / 0.36);
+  box-shadow: inset 0 1px 0 white;
+}
+.usage-stat span {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+.usage-stat span small {
+  font-size: 10px;
+}
+.usage-stat b {
+  overflow: hidden;
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+}
+.usage-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.usage-error {
+  color: var(--danger) !important;
+}
+.usage-refresh {
+  color: var(--accent);
+  font-size: 12px;
 }
 .shelf-head {
   display: flex;
@@ -907,8 +1079,23 @@ legend {
   .library {
     grid-template-columns: minmax(0, 1fr);
   }
+  .usage-panel {
+    grid-column: auto;
+  }
   .shelf {
     position: static;
+  }
+}
+@media (max-width: 620px) {
+  .usage-intro {
+    align-items: start;
+    flex-direction: column;
+  }
+  .usage-total {
+    justify-items: start;
+  }
+  .usage-detail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

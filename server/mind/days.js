@@ -79,9 +79,7 @@ export class Days {
   reconcile(now = Date.now()) {
     const nature = this.mind.nature.current(now);
     const zone = this.mind.timeZone();
-    const clear = this.db.prepare(
-      "UPDATE mind_days SET lived=0 WHERE day=?",
-    );
+    const clear = this.db.prepare("UPDATE mind_days SET lived=0 WHERE day=?");
     let changed = 0;
     for (const row of this.db
       .prepare(
@@ -101,7 +99,7 @@ export class Days {
     return !!(
       this.db
         .prepare(
-          `SELECT 1 FROM mind_choices WHERE created>=? AND created${endOp}?`,
+          `SELECT 1 FROM mind_choices WHERE created>=? AND created${endOp}? AND (choice!='silent' OR COALESCE(occasion,'') NOT IN ('presence','outreach'))`,
         )
         .get(start, end) ||
       this.db
@@ -111,7 +109,7 @@ export class Days {
         .get(start, end) ||
       this.db
         .prepare(
-          `SELECT 1 FROM mind_runs WHERE started>=? AND started${endOp}? AND status IN ('written','empty','complete')`,
+          `SELECT 1 FROM mind_runs WHERE started>=? AND started${endOp}? AND (status IN ('written','complete') OR (status='empty' AND (summary IS NULL OR COALESCE(json_extract(summary,'$.freshMessages'),0)>0)))`,
         )
         .get(start, end)
     );

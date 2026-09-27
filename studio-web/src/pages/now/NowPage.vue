@@ -43,6 +43,11 @@ const LEDGER = [
   { id: "upkeep", label: "整理记忆" },
 ];
 const p = computed(() => presence.data);
+const recentWords = computed(() => {
+  const rows = p.value?.recentWords?.filter((item) => item.text?.trim()) || [];
+  if (rows.length) return rows.slice(0, 3);
+  return p.value?.lastWords ? [p.value.lastWords] : [];
+});
 const zone = computed(
   () =>
     p.value?.clock?.timeZone ||
@@ -109,6 +114,9 @@ const counts = computed(() => {
 });
 const usage = computed(() => overview.value?.budget?.usage || {});
 const limits = computed(() => overview.value?.budget?.limits || {});
+const expecting = computed(() =>
+  (p.value?.expecting || []).filter((item) => item.content?.trim()).slice(0, 5),
+);
 
 function share(id: string) {
   const limit = limits.value[id];
@@ -187,18 +195,15 @@ watch(() => [studio.tick, studio.pulse], load);
     <section class="notes">
       <article class="note words">
         <span class="eyebrow">TA 最近说</span>
-        <template v-if="p?.lastWords">
-          <p class="quote">“{{ p.lastWords.text }}”</p>
-          <small
-            >{{
-              placeName({
-                name: p.lastWords.sessionName,
-                id: p.lastWords.session,
-              })
-            }}
-            · {{ ago(p.lastWords.time, p.now) }}</small
-          >
-        </template>
+        <ul v-if="recentWords.length" class="recent-list">
+          <li v-for="(word, i) in recentWords" :key="`${word.time}-${i}`">
+            <p class="quote">“{{ word.text }}”</p>
+            <small
+              >{{ placeName({ name: word.sessionName, id: word.session }) }} ·
+              {{ ago(word.time, p?.now) }}</small
+            >
+          </li>
+        </ul>
         <p v-else class="muted">TA 还没在哪里开过口。</p>
       </article>
       <article class="note thought">
@@ -229,8 +234,8 @@ watch(() => [studio.tick, studio.pulse], load);
       </article>
       <article class="note ahead">
         <span class="eyebrow">在等的事</span>
-        <ul v-if="p?.expecting?.length" class="list">
-          <li v-for="a in p.expecting" :key="a.id">
+        <ul v-if="expecting.length" class="list">
+          <li v-for="a in expecting" :key="a.id">
             <b>{{ a.when }}</b>
             <span>{{ a.name ? `${a.name}：` : "" }}{{ a.content }}</span>
             <small>{{ ANTICIPATION_LABELS[a.kind] || a.kind }}</small>

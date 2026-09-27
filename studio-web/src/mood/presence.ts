@@ -53,6 +53,12 @@ export interface Presence {
     sessionName: string;
     time: number;
   } | null;
+  recentWords?: {
+    text: string;
+    session: string;
+    sessionName: string;
+    time: number;
+  }[];
   thought: { content: string; when?: string } | null;
   will: { content: string; touched?: number; lastSpoke?: boolean } | null;
   meaning: { text: string; when?: string; spoke?: boolean } | null;

@@ -9,6 +9,8 @@ import { isPrivateSession } from "./memory.js";
 import { lifeDayKey, lifeDayStart, rhythmPhase } from "./nature.js";
 import { SELF_KINDS } from "./self.js";
 import { THOUGHT_KINDS } from "./thoughts.js";
+import { Initiative } from "./initiative.js";
+import { OwnVoice } from "./own-voice.js";
 import {
   DAY,
   HOUR,
@@ -31,7 +33,8 @@ export const LIFE_DEFAULTS = {
   intervalMinutes: 90,
   minMessages: 6,
   chapterDays: 7,
-  proactiveIntervalHours: 24,
+  proactiveIntervalHours: 0,
+  initiativeIntervalMinutes: 30,
   modelId: "",
   timeZone: "Asia/Shanghai",
 };
@@ -53,6 +56,8 @@ export class Life {
     this.online = online;
     this.busy = false;
     this.closed = false;
+    this.initiative = new Initiative(this);
+    this.ownVoice = new OwnVoice(this);
   }
   settings() {
     return { ...LIFE_DEFAULTS, ...this.repo.config("life", {}) };
@@ -67,10 +72,16 @@ export class Life {
       ["intervalMinutes", 10, 10080],
       ["minMessages", 0, 10000],
       ["chapterDays", 1, 365],
-      ["proactiveIntervalHours", 1, 8760],
+      ["initiativeIntervalMinutes", 1, 10080],
     ])
       if (!Number.isInteger(next[key]) || next[key] < min || next[key] > max)
         throw Error(`${key} 超出范围`);
+    if (
+      !Number.isFinite(next.proactiveIntervalHours) ||
+      next.proactiveIntervalHours < 0 ||
+      next.proactiveIntervalHours > 8760
+    )
+      throw Error("proactiveIntervalHours 超出范围");
     next.modelId = "";
     this.repo.saveConfig(
       "life",
@@ -98,7 +109,7 @@ export class Life {
   lifeDay(now = this.now()) {
     return lifeDayKey(this.mind.nature.current(now), now, this.mind.timeZone());
   }
-  living() {
+  living({ memory = true } = {}) {
     return this.db
       .prepare(
         "SELECT id,name,kind FROM sessions WHERE enabled=1 AND archived=0",
@@ -107,7 +118,7 @@ export class Life {
       .filter(
         (s) =>
           this.chat.enabled(s.id, { simulated: false }) &&
-          this.chat.policy(s.id).memory !== false,
+          (!memory || this.chat.policy(s.id).memory !== false),
       );
   }
   profile() {
@@ -177,7 +188,16 @@ export class Life {
     const outreach = await this.reachOut(now);
     if (outreach) return outreach;
     const reason = this.eligible(now);
-    if (!reason) return this.reflect();
+    if (!reason) {
+      const reflection = await this.reflect();
+      // A wish for now is not silently turned into a wish for the next tick.
+      const contact = await this.reachOut(this.now());
+      if (contact) return { ...contact, reflection };
+      const presence = await this.considerPresence(this.now());
+      return presence && presence.status !== "presence-silent"
+        ? { ...presence, reflection }
+        : { ...reflection, ...(presence ? { expression: presence } : {}) };
+    }
     const presence = await this.considerPresence(now);
     if (presence) return presence;
     return { status: "skipped", reason };
@@ -257,12 +277,16 @@ export class Life {
       this.mind.reading.unreadCount() > 0;
     // Something she was waiting for has come near, or just went by.
     const ahead = this.mind.anticipations.newlyDue(last?.started || 0, now);
+    const timeToSelf =
+      now - recent >= Math.max(s.idleMinutes, s.intervalMinutes) * MINUTE &&
+      this.initiative.contacts(now).length > 0;
     if (
-      (s.minMessages === 0 || fresh < s.minMessages) &&
+      (fresh === 0 || fresh < s.minMessages) &&
       !revisit &&
       !feedback &&
       !shelf &&
-      !ahead
+      !ahead &&
+      !timeToSelf
     )
       return fresh ? "新经历还不多" : "没有新的经历";
     return null;
@@ -294,9 +318,7 @@ export class Life {
           )
           .get(r.session_id);
         const selfName = this.mind.nature.current(now).name;
-        const earlier = stage
-          ? text(parse(stage.data, {}).summary, 400)
-          : "";
+        const earlier = stage ? text(parse(stage.data, {}).summary, 400) : "";
         return {
           session: r.session_id,
           name: names.get(r.session_id).name,
@@ -336,9 +358,7 @@ export class Life {
   selfView(now, { open = false } = {}) {
     return this.mind.self
       .active({ before: now, now, limit: 16 })
-      .filter(
-        (t) => !open || this.mind.meetings.stays(t, ""),
-      )
+      .filter((t) => !open || this.mind.meetings.stays(t, ""))
       .map((t) => ({
         thread: t.thread,
         kind: t.kind,
@@ -605,10 +625,12 @@ export class Life {
     let status = "empty";
     let reason = "没有新的理解";
     let summary = null;
+    let freshMessages = 0;
     try {
       const nature = this.mind.nature.current(now);
       const version = nature.version;
       const experiences = this.experiences(since, now);
+      freshMessages = experiences.reduce((n, e) => n + e.messages.length, 0);
       const thoughts = this.mind.thoughts.open({ now, limit: 10 });
       const chunk = s.reading ? this.mind.reading.next(now) : null;
       const chapter = this.chapterView(now);
@@ -624,6 +646,7 @@ export class Life {
           phase: phaseLabel,
         }))(this.mind.affect.state(now, { nature })),
         self: this.selfView(now),
+        initiative: { contacts: this.initiative.contacts(now) },
         ...(livingFor ? { livingFor } : {}),
         fading: this.fadingView(now),
         faces: this.faceView(experiences, now),
@@ -692,7 +715,11 @@ export class Life {
         reason = this.closed
           ? "服务停止了，这次想法不作数"
           : "天性改了，这次想法不作数";
-      } else if (result?.skip === true && !result.mood) {
+      } else if (
+        result?.skip === true &&
+        !result.mood &&
+        !result.outreach?.text
+      ) {
         if (chunk)
           this.mind.reading.record(chunk, result?.readingNote || "", id, now);
         status = chunk ? "written" : "empty";
@@ -707,6 +734,10 @@ export class Life {
           ...input.feedback.map((f) => f.ref),
           ...(chunk ? [`r:${chunk.id}`] : []),
           ...(input.livingFor ? [`s:${input.livingFor.thread}`] : []),
+          ...input.self.map((s) => `s:${s.thread}`),
+          ...input.initiative.contacts.flatMap((c) =>
+            [...c.recent, ...c.thoughts].map((m) => m.ref),
+          ),
           ...(input.meetings || []).map((m) => m.ref),
           ...(input.fromWish || []).map((p) => p.ref),
           ...(input.quiet || []).map((p) => p.ref).filter(Boolean),
@@ -724,13 +755,13 @@ export class Life {
             ...missing.flatMap((p) => p.sessions),
             ...(input.fromWish || []).map((p) => p.session),
             ...(input.quiet || []).flatMap((p) => p.sessions),
+            ...input.initiative.contacts.map((c) => c.session),
+            ...ahead.map((a) => a.session).filter(Boolean),
           ]),
           id,
           now,
-          outreach:
-            s.proactive && !stirred.has(result?.outreach?.session)
-              ? result?.outreach
-              : null,
+          // New messages are considered at delivery, not a reason to erase a wish.
+          outreach: s.proactive ? result?.outreach : null,
         });
         const applied = result?.skip
           ? { self: 0, faces: 0, bonds: 0 }
@@ -760,6 +791,15 @@ export class Life {
           });
         summary = {
           thought: noted,
+          ...(noted && this.mind.thoughts.get(noted)?.outreach
+            ? {
+                outreach: {
+                  session: this.mind.thoughts.get(noted).outreach_session,
+                  reason: this.mind.thoughts.get(noted).outreach_reason,
+                  at: this.mind.thoughts.get(noted).outreach_at,
+                },
+              }
+            : {}),
           ...applied,
           ...(chunk ? { read: chunk.title } : {}),
           ...(stirred.size ? { interrupted: [...stirred] } : {}),
@@ -798,7 +838,7 @@ export class Life {
     } finally {
       trace.reason = reason;
       this.chat.finishQuietly(trace, status === "error" ? "error" : "complete");
-      this.end(id, status, reason, trace, summary);
+      this.end(id, status, reason, trace, { ...summary, freshMessages });
       this.busy = false;
     }
     return { status, reason, runId: id };
@@ -815,12 +855,30 @@ export class Life {
       outreach,
     },
   ) {
+    let reach =
+      outreach &&
+      typeof outreach.text === "string" &&
+      outreach.text.trim() &&
+      reachable.has(outreach.session) &&
+      !hasCredential(outreach.text)
+        ? outreach
+        : null;
+    // Wanting to say something does not require inventing a new revelation.
+    if ((!thought || typeof thought !== "object") && reach)
+      thought = {
+        kind: "reconnection",
+        content: reach.reason || `想说：${reach.text}`,
+        sources: reach.sources || [],
+      };
     if (!thought || typeof thought !== "object") return null;
     const content = text(thought.content, 600);
     if (!content || hasCredential(content)) return null;
-    const cited = evidence(thought.sources);
+    const cited = evidence([
+      ...(Array.isArray(thought.sources) ? thought.sources : []),
+      ...(Array.isArray(reach?.sources) ? reach.sources : []),
+    ]);
     const sources = cited.filter((x) => valid.has(x));
-    if (!sources.length) return null;
+    if (!sources.length && (cited.length || !reach)) return null;
     const parent = thought.parentId
       ? thoughts.find((t) => t.id === thought.parentId) ||
         this.mind.thoughts.get(thought.parentId)
@@ -845,21 +903,26 @@ export class Life {
       if (!sources.some((source) => !spent.has(source))) return null;
     }
     const recent = this.mind.thoughts.list({ limit: 20 });
-    if (recent.some((t) => similar(t.content, content))) return null;
-    let reach =
-      outreach &&
-      typeof outreach.text === "string" &&
-      outreach.text.trim() &&
-      reachable.has(outreach.session) &&
-      !/寂寞|孤独|不理我|好久没找我|怎么不回|一直等你/.test(outreach.text)
-        ? outreach
-        : null;
+    const repeated = recent.some((t) => similar(t.content, content));
+    if (repeated && !reach) return null;
+    if (
+      reach &&
+      recent.some(
+        (t) =>
+          t.outreach_session === reach.session &&
+          ["planned", "sending", "uncertain"].includes(t.outreach_status) &&
+          similar(t.outreach, reach.text),
+      )
+    )
+      return null;
     // Anything grounded in a private room stays there, including a planned
     // sentence. A private message counts the same as a private meeting.
     if (reach) {
       const roots = this.mind.meetings.privateRoots(sources);
       if (roots.length && !roots.includes(reach.session)) reach = null;
     }
+    if (!sources.length && !reach) return null;
+    if (repeated && !reach) return null;
     const place = this.placeOf(sources);
     const quiet = new Set(this.mind.meetings.privateRoots(sources));
     const fits = (id) =>
@@ -869,19 +932,29 @@ export class Life {
           ? isPrivateSession(id)
           : !isPrivateSession(id);
     const rooted = this.sourcePlaces(sources).filter(fits);
-    const sessions = rooted.length ? rooted : involved.filter(fits);
+    const sessions = [
+      ...new Set([
+        ...(rooted.length ? rooted : involved.filter(fits)),
+        ...(reach ? [reach.session] : []),
+      ]),
+    ];
     const added = this.mind.thoughts.add({
       kind: thought.kind,
-      content,
+      content:
+        repeated && reach
+          ? text(`想说：${reach.text}。${reach.reason || ""}`, 600)
+          : content,
       sessions,
       sources,
       parentId: parent?.id || null,
       importance: clamp(thought.importance ?? 0.5),
-      revisitHours: reach
-        ? Math.max(1, Number(reach.afterHours) || 6)
-        : Math.min(720, Number(thought.revisitHours) || 0),
+      revisitHours: Math.min(720, Number(thought.revisitHours) || 0),
       outreach: reach ? text(reach.text, 120) : "",
       outreachSession: reach?.session || null,
+      outreachAfterHours: reach
+        ? Math.max(0, Number(reach.afterHours) || 0)
+        : undefined,
+      outreachReason: reach?.reason || "",
       runId: id,
       time: now,
     });
@@ -928,7 +1001,11 @@ export class Life {
       return { day, start, end: now };
     const yesterday = this.lifeDay(start - MINUTE);
     const before = this.dayStart(start - MINUTE);
-    if (!bedtime && !has(yesterday) && this.mind.days.participated(before, start))
+    if (
+      !bedtime &&
+      !has(yesterday) &&
+      this.mind.days.participated(before, start)
+    )
       return { day: yesterday, start: before, end: start };
     return null;
   }
@@ -946,9 +1023,7 @@ export class Life {
       this.mind.meetings.privateBeyond(entry.day, "", now) ||
       !this.mind.meetings.sayable(entry.content, "");
     const compare =
-      !closed &&
-      entry.compare &&
-      this.mind.meetings.sayable(entry.compare, "")
+      !closed && entry.compare && this.mind.meetings.sayable(entry.compare, "")
         ? text(entry.compare, 120)
         : "";
     return {
@@ -1086,9 +1161,7 @@ export class Life {
                   const row = this.mind.self
                     .latest(yesterday.created || end)
                     .find((item) => item.thread === t.thread);
-                  return (
-                    row && this.mind.meetings.stays(row, "")
-                  );
+                  return row && this.mind.meetings.stays(row, "");
                 })
                 .slice(0, 12)
                 .map(
@@ -1380,7 +1453,9 @@ export class Life {
                 appeared: this.openThreads(change.appeared, now)
                   .slice(0, 6)
                   .map(line),
-                faded: this.openThreads(change.faded, now).slice(0, 6).map(line),
+                faded: this.openThreads(change.faded, now)
+                  .slice(0, 6)
+                  .map(line),
                 changed: this.openThreads(change.changed, now)
                   .slice(0, 6)
                   .map(
@@ -1571,71 +1646,61 @@ export class Life {
   async considerPresence(now = this.now()) {
     const s = this.settings();
     if (!s.proactive || !this.online()) return null;
-    if (this.phase(now).key !== "awake") return null;
-    const quietFor = Math.max(s.idleMinutes, 1) * MINUTE;
-    const names = [
-      this.mind.nature.current(now).name,
-      ...String(this.repo.store.settings().aliases || "").split(/[,，]/),
-    ];
-    const aside = new Set(
-      this.db
-        .prepare("SELECT seq FROM mind_unlived")
-        .all()
-        .map((row) => row.seq),
-    );
-    for (const session of this.living()) {
-      const id = session.id;
-      if (this.presenceCooling(id, now, s)) continue;
-      if (this.outreachPending(id)) continue;
-      const last = this.repo
-        .recentEvents(id, 40, { simulated: false })
-        .filter((m) => !aside.has(m.seq))
-        .at(-1);
-      if (!last || now - last.time < quietFor) continue;
-      if (!this.wasHere(id, now, names, aside)) continue;
-      this.busy = true;
-      let trace = null;
-      try {
-        trace = await this.chat.initiate(id, {
-          type: "presence",
-          data: { quietMinutes: Math.round((now - last.time) / MINUTE) },
-        });
-      } catch {
-        this.markPresence(id, now);
-        return {
-          status: "presence-error",
-          reason: "主动开口没有完成",
-          session: id,
-        };
-      } finally {
-        this.busy = false;
-      }
-      if (!trace) continue;
-      this.markPresence(id, now);
-      return {
-        status: `presence-${trace.status || "done"}`,
-        reason: trace.reason || "看了看要不要说",
-        session: id,
-      };
+    if (this.phase(now).key === "asleep") return null;
+    if (!this.mind.budget.allows("inner", now)) return null;
+    const last = this.repo.config("own-voice", {}).attemptedAt;
+    if (last && now - last < s.initiativeIntervalMinutes * MINUTE) return null;
+    const contacts = this.initiative.contacts(now, { ready: true });
+    if (!contacts.length) return null;
+    this.repo.saveConfig("own-voice", { attemptedAt: now });
+    this.busy = true;
+    let formed;
+    try {
+      formed = await this.ownVoice.form(now);
+    } finally {
+      this.busy = false;
     }
-    return null;
+    if (!formed.note?.share)
+      return {
+        status:
+          formed.status === "error" ? "presence-error" : "presence-silent",
+        reason: formed.reason,
+      };
+    // The thought already exists. Only now do we choose where it might fit;
+    // someone else's last question cannot become its reason for existing.
+    const contact =
+      contacts.find((c) => c.kind === formed.note.audience) || contacts[0];
+    this.mind.thoughts.planOutreach(formed.note.id, {
+      session: contact.session,
+      words: formed.note.words,
+      reason: formed.note.reason,
+      time: now,
+    });
+    const result = await this.reachOut(this.now());
+    return result
+      ? {
+          ...result,
+          status:
+            result.status === "outreach-declined"
+              ? "presence-silent"
+              : result.status.replace(/^outreach-/, "presence-"),
+        }
+      : {
+          status: "presence-deferred",
+          reason: "念头已留下，等待合适的交流空隙",
+          session: contact.session,
+        };
   }
   presenceCooling(session, now, s) {
     const tried = this.repo.config("presence", {});
     return !!(
-      tried[session] && now - tried[session] < s.proactiveIntervalHours * HOUR
+      tried[session] &&
+      now - tried[session] < s.initiativeIntervalMinutes * MINUTE
     );
   }
   markPresence(session, now) {
     const tried = { ...this.repo.config("presence", {}), [session]: now };
     this.repo.saveConfig("presence", tried);
-  }
-  outreachPending(session) {
-    return !!this.db
-      .prepare(
-        "SELECT 1 FROM mind_thoughts WHERE outreach_status='planned' AND hidden=0 AND status='open' AND outreach_session=? LIMIT 1",
-      )
-      .get(session);
   }
   wasHere(session, now, names, aside = null) {
     const skipped =
@@ -1646,11 +1711,22 @@ export class Life {
           .all()
           .map((row) => row.seq),
       );
-    const since = now - 12 * HOUR;
+    const lived = this.db
+      .prepare(
+        "SELECT 1 FROM core_events WHERE session_id=? AND seq NOT IN (SELECT seq FROM mind_unlived) AND COALESCE(json_extract(payload,'$.simulated'),0)=0 AND (role='assistant' OR ?=1) LIMIT 1",
+      )
+      .get(session, +isPrivateSession(session));
+    if (lived) return true;
+    if (
+      this.db
+        .prepare("SELECT 1 FROM mind_meetings WHERE session_id=? LIMIT 1")
+        .get(session)
+    )
+      return true;
     return this.repo
       .recentEvents(session, 80, { simulated: false })
       .some((m) => {
-        if (m.time < since || skipped.has(m.seq)) return false;
+        if (skipped.has(m.seq)) return false;
         if (m.role === "assistant") return true;
         const mentions = (m.mentions || []).map(String);
         if (m.accountId && mentions.includes(String(m.accountId))) return true;
@@ -1661,12 +1737,14 @@ export class Life {
   async reachOut(now = this.now()) {
     const s = this.settings();
     if (!s.proactive || !this.online()) return null;
-    if (this.phase(now).key !== "awake") return null;
+    if (this.phase(now).key === "asleep") return null;
     for (const t of this.mind.thoughts.dueOutreach(now)) {
       const session = t.outreach_session;
       const block = this.outreachBlocked(session, now, s);
       if (block) {
-        this.mind.thoughts.setOutreach(t.id, "skipped");
+        if (block.permanent) this.mind.thoughts.setOutreach(t.id, "skipped");
+        else
+          this.mind.thoughts.deferOutreach(t.id, block.reason, block.retryAt);
         continue;
       }
       this.mind.thoughts.setOutreach(t.id, "sending");
@@ -1674,13 +1752,39 @@ export class Life {
       try {
         const returned = this.returnedSince(t, now);
         const trace = await this.chat.initiate(session, {
-          type: "outreach",
+          type: t.kind === "expression" ? "presence" : "outreach",
           data: {
             thought: t.content,
             planned: t.outreach,
+            wantedBecause: t.outreach_reason,
+            expression: {
+              ref: `t:${t.id}`,
+              origin:
+                t.kind === "expression" ? "self_expression" : "earlier_wish",
+              formedAt: t.created,
+              thought: t.content,
+              words: t.outreach_draft?.length ? t.outreach_draft : [t.outreach],
+              reason: t.outreach_reason,
+              sources: t.sources,
+              sourceMaterial: this.initiative.sourceMaterial(t, now),
+            },
+            initiative: this.initiative.context(session, now),
             ...(returned.length ? { returned } : {}),
           },
         });
+        if (!trace) {
+          this.mind.thoughts.deferOutreach(
+            t.id,
+            "对话忙着，稍后重新看看",
+            now + MINUTE,
+          );
+          return {
+            status: "outreach-deferred",
+            reason: "愿望保留，等待对话空隙",
+            session,
+          };
+        }
+        this.markPresence(session, now);
         const uncertain =
           trace &&
           this.db
@@ -1688,9 +1792,30 @@ export class Life {
               "SELECT 1 FROM core_outbox WHERE trace_id=? AND status='uncertain'",
             )
             .get(trace.id);
+        if (
+          ["error", "stale"].includes(trace.status) &&
+          !trace.sent?.length &&
+          !uncertain &&
+          !this.db
+            .prepare(
+              "SELECT 1 FROM core_outbox WHERE trace_id=? AND status IN ('sending','confirmed') LIMIT 1",
+            )
+            .get(trace.id)
+        ) {
+          this.mind.thoughts.deferOutreach(
+            t.id,
+            trace.reason || "调用失败，稍后重新决定",
+            this.now() + (trace.status === "stale" ? 1 : 15) * MINUTE,
+          );
+          return {
+            status: "outreach-deferred",
+            reason: "尚未发送，想说的话仍保留",
+            session,
+          };
+        }
         const status = uncertain
           ? "uncertain"
-          : trace?.status === "sent"
+          : trace?.status === "sent" || trace?.sent?.length
             ? "sent"
             : trace?.status === "silent"
               ? "declined"
@@ -1702,6 +1827,25 @@ export class Life {
           session,
         };
       } catch {
+        // Retry only when no delivery could have happened. An ambiguous
+        // network acknowledgement must never produce duplicate QQ messages.
+        const maybeSent = this.db
+          .prepare(
+            "SELECT 1 FROM core_outbox WHERE session_id=? AND time>=? AND status IN ('sending','confirmed','uncertain') LIMIT 1",
+          )
+          .get(session, now);
+        if (!maybeSent) {
+          this.mind.thoughts.deferOutreach(
+            t.id,
+            "调用未完成，稍后重新决定",
+            now + 15 * MINUTE,
+          );
+          return {
+            status: "outreach-deferred",
+            reason: "调用未完成，想说的话仍保留",
+            session,
+          };
+        }
         this.mind.thoughts.setOutreach(t.id, "uncertain");
         return {
           status: "outreach-uncertain",
@@ -1760,32 +1904,6 @@ export class Life {
     return out;
   }
   outreachBlocked(session, now, s) {
-    if (!session || !this.chat.enabled(session, { simulated: false }))
-      return "会话不可用";
-    const last = this.repo
-      .recentEvents(session, 1, { simulated: false })
-      .at(-1);
-    if (!last) return "没有来往";
-    if (now - last.time < 3 * HOUR) return "对话还没安静下来";
-    const lastUser = this.repo
-      .recentEvents(session, 1, { simulated: false, role: "user" })
-      .at(-1);
-    if (
-      /别.*(?:找|发|联系)|不要.*(?:找|联系)|不用回|别回/.test(
-        lastUser?.text || "",
-      )
-    )
-      return "对方说过不想被打扰";
-    const sentByLife = this.db
-      .prepare(
-        "SELECT MAX(o.time) t FROM core_outbox o JOIN core_traces tr ON tr.id=o.trace_id WHERE o.session_id=? AND o.status IN ('sending','confirmed','uncertain') AND json_extract(tr.data,'$.path')='outreach'",
-      )
-      .get(session).t;
-    if (sentByLife && now - sentByLife < s.proactiveIntervalHours * HOUR)
-      return "刚主动联系过";
-    // An unanswered outreach is never followed by another one.
-    if (sentByLife && (!lastUser || lastUser.time < sentByLife))
-      return "上次主动说的话还没有回应";
-    return null;
+    return this.initiative.blocked(session, now, s);
   }
 }
