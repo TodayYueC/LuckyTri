@@ -86,7 +86,7 @@ export function readiness(
       done: tokenConfigured,
       detail: tokenConfigured
         ? "已配置"
-        : "在「系统 → 连接 QQ」中生成并写入配置，或在 .env 中填写 ONEBOT_TOKEN",
+        : "在本机 .env 中填写 ONEBOT_TOKEN，然后重启 LuckyTri",
       tab: "setup",
     },
     {
@@ -94,8 +94,8 @@ export function readiness(
       name: "QQ 连接",
       done: online,
       detail: online
-        ? "NapCat 反向 WebSocket 已连接"
-        : "在 NapCat 网络配置中添加 WebSocket 客户端",
+        ? "OneBot 11 反向 WebSocket 已连接"
+        : "在接入端配置 OneBot 11 反向 WebSocket 客户端",
       tab: "settings",
     },
     {

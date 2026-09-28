@@ -3,7 +3,6 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tokenEqual } from "./http.js";
 import { mountStudio } from "./studio/settings.js";
-import { mountQqSetup } from "./studio/qq.js";
 import { mountManagement } from "./studio/management.js";
 import { mountCore } from "./core/api.js";
 import { mountKnowledge } from "./knowledge/api.js";
@@ -40,7 +39,6 @@ export function createApp({ store, chatSystem, runtime, life }) {
     next();
   });
   mountStudio(app, store, runtime);
-  mountQqSetup(app, store);
   mountManagement(app, store, chatSystem);
   mountCore(app, chatSystem);
   mountMind(app, chatSystem, life || new Life(chatSystem));

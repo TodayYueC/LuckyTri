@@ -278,8 +278,8 @@
       <article>
         <h1>LuckyTri · 从零上手教程</h1>
         <p>
-          LuckyTri 在本机思考和回复。NapCat 负责 QQ 登录与收发。模型 API
-          是单独的外部服务。QQ 扫码和安全确认在 QQ 或 NapCat 窗口完成。
+          LuckyTri 在本机运行，通过独立的 OneBot 11 接入端收发 QQ 消息；模型 API
+          由你自行配置。LuckyTri 不包含或管理 QQ 接入端。
         </p>
         <h2 id="step-1">1. 启动</h2>
         <p>需要 Node.js 24 或更高版本。在项目目录执行：</p>
@@ -397,7 +397,7 @@ LLM_API_KEY=
             </tr>
             <tr>
               <td>ONEBOT_TOKEN</td>
-              <td>NapCat 连接 <code>/onebot/v11/ws</code></td>
+              <td>OneBot 11 接入端连接 <code>/onebot/v11/ws</code></td>
             </tr>
             <tr>
               <td>LLM_API_KEY</td>
@@ -412,8 +412,8 @@ LLM_API_KEY=
         <p>
           页面第一次取数据时会弹出窗口要求输入
           <code>ADMIN_TOKEN</code>。令牌只留在当前标签页。修改
-          <code>.env</code> 后必须重启。不要把 <code>ADMIN_TOKEN</code> 填进
-          NapCat，也不要把 <code>ONEBOT_TOKEN</code> 当成管理台密码。
+          <code>.env</code> 后必须重启。不要把 <code>ADMIN_TOKEN</code> 填给 QQ
+          接入端，也不要把 <code>ONEBOT_TOKEN</code> 当成管理台密码。
         </p>
         <h2 id="step-3">3. 先在模拟模式试聊</h2>
         <p>默认开启模拟模式，消息不会发到 QQ。</p>
@@ -460,28 +460,22 @@ LLM_API_KEY=
           TA 参加真实 QQ。
         </p>
         <h2 id="step-5">5. 接入 QQ</h2>
-        <p>打开「系统 → 连接 QQ」。</p>
+        <p>
+          打开「系统 → 连接
+          QQ」。该页面显示连接状态、地址和官方仓库链接。接入端需要自行安装和管理；如果选择
+          NapCat，请从
+          <a href="https://github.com/NapNeko/NapCatQQ">NapCat 官方仓库</a>
+          查阅其安装和使用说明。LuckyTri 不下载、配置或启动 NapCat。
+        </p>
         <ol>
           <li>
-            点「使用内置安装器」。本机已有 QQ 时使用内置 Shell 包准备
-            NapCat；没有检测到 QQ 时使用 Windows OneKey
-            包。需要新版本时再检查更新。
+            在本机 <code>.env</code> 中设置
+            <code>ONEBOT_TOKEN</code>，修改后重启 LuckyTri。
           </li>
-          <li>选择 NapCat 根目录。</li>
-          <li>点「生成连接配置」。已有配置会在原目录留下备份。</li>
           <li>
-            点「启动 NapCat 并登录 QQ」，按窗口提示扫码。二维码也会写到 NapCat
-            目录的 <code>cache/qrcode.png</code>。
+            在接入端自己的网络设置里添加 OneBot 11 反向 WebSocket 客户端：
           </li>
         </ol>
-        <p>
-          小号需要已经在目标群里。LuckyTri 不保存 QQ
-          密码。右侧「还差哪一步」列出接入检查，每一项的「去处理」会直接带你到对应的位置。
-        </p>
-        <p>
-          只有接入助手无法识别目录时，才到 NapCat 的网络配置里新建 WebSocket
-          客户端：
-        </p>
         <table>
           <thead>
             <tr>
@@ -512,10 +506,17 @@ LLM_API_KEY=
             </tr>
           </tbody>
         </table>
+        <ol start="3">
+          <li>
+            在接入端完成 QQ 登录。小号需要已加入目标群；LuckyTri 不保存 QQ
+            密码。
+          </li>
+        </ol>
         <p>
-          这里的 <code>3210</code> 是 LuckyTri 的端口。NapCat 和 LuckyTri
+          这里的 <code>3210</code> 是 LuckyTri 的端口。接入端和 LuckyTri
           不在同一台机器或放在容器里时，<code>127.0.0.1</code>
-          指向各自环境，需要另行改地址，并先配置 <code>ADMIN_TOKEN</code>。
+          指向各自环境，需要改成 LuckyTri 的实际地址，并先配置
+          <code>ADMIN_TOKEN</code>。
         </p>
         <p>
           QQ
@@ -625,7 +626,7 @@ npm start
             <tr>
               <td>QQ 未连接</td>
               <td>
-                NapCat 是否登录，URL、端口、路径和
+                接入端是否登录，URL、端口、路径和
                 <code>ONEBOT_TOKEN</code> 是否一致
               </td>
             </tr>

@@ -71,7 +71,6 @@ export function createStore(path = process.env.DB_PATH || "data/friend.db") {
     apiKey: "",
     memoryEnabled: true,
     memoryCandidates: true,
-    napcatRoot: "",
     onebotToken: "",
     providerPreset: "custom",
     reasoningEffort: "none",

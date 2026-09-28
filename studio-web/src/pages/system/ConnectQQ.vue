@@ -1,26 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import { toast } from "../../api";
+import { computed } from "vue";
 import { go, studio } from "../../stores/studio";
 import type { Page } from "../../router";
-import Select from "../../components/ui/Select.vue";
-import {
-  checkNapCatUpdate,
-  configureQq,
-  installNapCat,
-  launchNapCat,
-  pickNapCatFolder,
-  prepareQqToken,
-  qqSetup,
-} from "../../plates/connect";
 
 const emit = defineEmits<{ open: [sub: string] }>();
-const setup = ref<any>(null);
-const busy = ref(false);
-const root = ref("");
-const updateText = ref("");
-const account = ref("");
 const online = computed(() => Boolean(studio.health.connection?.online));
+const tokenConfigured = computed(() =>
+  Boolean(studio.health.connection?.tokenConfigured),
+);
+const wsUrl = computed(
+  () =>
+    `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/onebot/v11/ws`,
+);
 const FIX: Record<string, [Page | "", string]> = {
   token: ["", "connect"],
   qq: ["", "connect"],
@@ -30,168 +21,67 @@ const FIX: Record<string, [Page | "", string]> = {
   persona: ["nature", ""],
 };
 
-async function run(fn: () => Promise<void>) {
-  if (busy.value) return;
-  busy.value = true;
-  try {
-    await fn();
-  } catch (error) {
-    toast((error as Error).message, true);
-  } finally {
-    busy.value = false;
-  }
-}
-
-async function load() {
-  setup.value = await qqSetup();
-  root.value = setup.value.root || "";
-}
-
-async function install(latest = false) {
-  const result = await installNapCat(latest);
-  root.value = result.root;
-  await load();
-  toast("安装器已处理");
-}
-
-async function checkUpdate() {
-  const update = await checkNapCatUpdate();
-  updateText.value = update.message || JSON.stringify(update);
-}
-
-async function pick() {
-  const result = await pickNapCatFolder();
-  root.value = result.root;
-}
-
-async function configure() {
-  await prepareQqToken();
-  await configureQq({ root: root.value, accountId: account.value });
-  await load();
-  toast("已写入 OneBot 反向连接");
-}
-
-async function launch() {
-  await launchNapCat(root.value);
-  toast("已尝试启动 NapCat");
-}
-
 function fix(id: string) {
   const [page, sub] = FIX[id] || ["", "connect"];
   if (page) go(page);
   else emit("open", sub);
 }
-
-onMounted(load);
 </script>
 
 <template>
   <div class="connect">
-    <section v-if="setup" class="card steps" :aria-busy="busy">
+    <section class="card connection">
       <div class="card-head">
         <div>
-          <span class="eyebrow">连接 QQ</span>
-          <h2>QQ 接入助手</h2>
+          <span class="eyebrow">ONEBOT 11</span>
+          <h2>连接 QQ</h2>
           <p>
-            LuckyTri 自动写入 OneBot 反向连接并启动 NapCat；QQ 登录仍由 QQ
-            自己扫码确认。
+            LuckyTri 接收标准 OneBot 11 反向 WebSocket
+            连接。接入端由你独立安装和管理。
           </p>
         </div>
-        <span class="pill"
-          ><span class="dot" :class="{ off: !online }"></span
-          >{{ online ? "QQ 已连接" : "等待 QQ" }}</span
-        >
+        <span class="pill">
+          <span class="dot" :class="{ off: !online }"></span>
+          {{ online ? "QQ 已连接" : "等待连接" }}
+        </span>
       </div>
-      <p v-if="busy" role="status" class="notice">正在处理，请稍候…</p>
-      <fieldset :disabled="busy" class="qq-steps">
-        <article class="step">
-          <span class="num">1</span>
-          <div>
-            <b>准备 QQ 通道</b>
-            <p class="muted">
-              项目已内置官方 NapCat 包
-              {{ setup.bundledInstaller?.version || "" }}。
-            </p>
-            <div class="row">
-              <button
-                id="installNapcat"
-                type="button"
-                @click="run(() => install(false))"
-              >
-                使用内置安装器
-              </button>
-              <button
-                id="checkNapcatUpdate"
-                type="button"
-                @click="run(checkUpdate)"
-              >
-                检查更新
-              </button>
-            </div>
-            <small id="napcatUpdateResult" class="faint">{{
-              updateText
-            }}</small>
-          </div>
-        </article>
-        <article class="step">
-          <span class="num">2</span>
-          <div>
-            <b>选择安装目录并自动配置</b>
-            <div class="row path">
-              <input
-                id="napcatRoot"
-                v-model="root"
-                placeholder="选择或粘贴 NapCat 根目录"
-              />
-              <button id="pickNapcat" type="button" @click="run(pick)">
-                选择目录
-              </button>
-            </div>
-            <div class="row">
-              <button
-                id="configureNapcat"
-                type="button"
-                class="primary"
-                @click="run(configure)"
-              >
-                生成连接配置
-              </button>
-              <Select
-                v-if="setup.installation?.accountFiles?.length"
-                id="napcatAccount"
-                v-model="account"
-                aria-label="登录账号"
-                :options="[
-                  { value: '', label: '默认配置（下次登录适用）' },
-                  ...setup.installation.accountFiles.map((a: any) => ({
-                    value: a.id,
-                    label: a.name || a.id,
-                  })),
-                ]"
-              />
-            </div>
-          </div>
-        </article>
-        <article class="step">
-          <span class="num">3</span>
-          <div>
-            <b>启动并扫码登录</b>
-            <p class="muted">
-              NapCat 启动后在弹出的窗口里扫码；连上以后右上角会显示「QQ
-              已连接」。
-            </p>
-            <button
-              id="launchNapcat"
-              type="button"
-              class="primary"
-              :disabled="!root"
-              @click="run(launch)"
-            >
-              启动 NapCat 并登录 QQ
-            </button>
-          </div>
-        </article>
-      </fieldset>
+
+      <div class="connection-details">
+        <div class="detail">
+          <span>反向 WebSocket 地址</span>
+          <code>{{ wsUrl }}</code>
+        </div>
+        <div class="detail">
+          <span>连接令牌</span>
+          <strong>{{ tokenConfigured ? "已配置" : "尚未配置" }}</strong>
+        </div>
+      </div>
+
+      <ol class="instructions">
+        <li>
+          在本机 <code>.env</code> 中设置 <code>ONEBOT_TOKEN</code>，修改后重启
+          LuckyTri。
+        </li>
+        <li>
+          自行选择 OneBot 11 接入端，在其设置中启用反向 WebSocket
+          客户端，填写上方地址和相同令牌，消息格式选择数组。
+        </li>
+        <li>
+          在接入端完成 QQ
+          登录。连接成功后，本页状态会更新；新会话仍需在「对话」中开启参与。
+        </li>
+      </ol>
+
+      <a
+        class="official-link"
+        href="https://github.com/NapNeko/NapCatQQ"
+        target="_blank"
+        rel="noopener noreferrer"
+        >前往 NapCat 官方仓库 ↗</a
+      >
+      <p class="muted note">
+        NapCat 是独立项目。LuckyTri 不提供其安装包、下载、配置或启动功能。
+      </p>
     </section>
 
     <section class="card checklist">
@@ -200,10 +90,10 @@ onMounted(load);
           <span class="eyebrow">就绪检查</span>
           <h2>还差哪一步</h2>
         </div>
-        <span class="chip"
-          >{{ studio.health.readiness?.completed ?? 0 }} /
-          {{ studio.health.readiness?.total ?? 0 }}</span
-        >
+        <span class="chip">
+          {{ studio.health.readiness?.completed ?? 0 }} /
+          {{ studio.health.readiness?.total ?? 0 }}
+        </span>
       </div>
       <ol class="checks">
         <li
@@ -228,47 +118,59 @@ onMounted(load);
 <style scoped>
 .connect {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr);
+  grid-template-columns: minmax(0, 1.25fr) minmax(290px, 0.9fr);
   gap: var(--gap);
   align-items: start;
 }
-.qq-steps {
+.connection {
   display: grid;
-  gap: 12px;
-  margin: 0;
-  padding: 0;
-  border: none;
+  gap: 20px;
 }
-.step {
+.connection-details {
+  display: grid;
+  gap: 10px;
+}
+.detail {
   display: flex;
-  gap: 14px;
-  padding: 16px;
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--surface-strong) 70%, transparent);
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 13px 16px;
   border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-strong) 70%, transparent);
 }
-.step > div {
-  flex: 1;
-  display: grid;
-  gap: 8px;
-  min-width: 0;
+.detail code {
+  overflow-wrap: anywhere;
 }
-.num {
+.instructions {
   display: grid;
-  place-items: center;
-  flex: none;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
+  gap: 11px;
+  padding-left: 22px;
+  margin: 0;
+  line-height: 1.65;
+}
+.official-link {
+  display: inline-flex;
+  width: fit-content;
+  padding: 10px 16px;
+  border-radius: 999px;
   background: var(--accent);
   color: var(--accent-ink);
+  text-decoration: none;
   font-weight: 700;
+  transition:
+    transform 180ms ease,
+    filter 180ms ease;
 }
-.path input {
-  flex: 1 1 220px;
+.official-link:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.05);
 }
-#napcatAccount {
-  width: auto;
+.note {
+  margin: -8px 0 0;
+  font-size: 12px;
 }
 .checks {
   display: grid;

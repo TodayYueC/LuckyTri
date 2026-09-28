@@ -24,9 +24,13 @@ const effortLabels = computed(
 );
 const modelList = ref(studio.core.models.map((m: any) => ({ ...m })));
 const index = ref(modelList.value.length ? 0 : -1);
+const expandedSavedVendor = ref(
+  modelList.value.length ? modelVendor(modelList.value[0]) : "",
+);
 const busy = ref(false);
 const testing = ref(false);
 const picker = ref(false);
+const catalogSearch = ref("");
 const testResult = ref("");
 const tokenUsage = ref<any>(null);
 const usageBusy = ref(false);
@@ -47,6 +51,36 @@ const groups = computed(() => {
     }
     group.models.push(item);
   }
+  return rows;
+});
+const filteredGroups = computed(() => {
+  const query = catalogSearch.value.trim().toLocaleLowerCase();
+  if (!query) return groups.value;
+  return groups.value
+    .map((group) => ({
+      ...group,
+      models: group.models.filter((item: any) =>
+        [group.vendor, item.label, item.model, item.summary]
+          .filter(Boolean)
+          .join(" ")
+          .toLocaleLowerCase()
+          .includes(query),
+      ),
+    }))
+    .filter((group) => group.models.length);
+});
+const savedGroups = computed(() => {
+  const rows: { vendor: string; models: { model: any; index: number }[] }[] =
+    [];
+  modelList.value.forEach((model: any, modelIndex: number) => {
+    const vendor = modelVendor(model);
+    let group = rows.find((row) => row.vendor === vendor);
+    if (!group) {
+      group = { vendor, models: [] };
+      rows.push(group);
+    }
+    group.models.push({ model, index: modelIndex });
+  });
   return rows;
 });
 const customPreset = computed(() =>
@@ -127,6 +161,35 @@ function blank() {
     isDefault: false,
     enabled: true,
   };
+}
+
+function modelVendor(model: any) {
+  const providerLabels: Record<string, string> = {
+    "volcengine-coding-plan": "火山方舟 Coding Plan",
+    "opencode-go": "OpenCode Go",
+    "opencode-zen": "OpenCode Zen",
+    deepseek: "DeepSeek",
+    openai: "OpenAI",
+    bedrock: "亚马逊 Bedrock",
+    qwen: "通义千问",
+    moonshot: "Kimi",
+    kimi: "Kimi",
+    zhipu: "智谱 GLM",
+    glm: "智谱 GLM",
+    mimo: "小米 MiMo",
+    siliconflow: "SiliconFlow",
+    openrouter: "OpenRouter",
+  };
+  return (
+    String(model?.vendor || "").trim() ||
+    providerLabels[String(model?.provider || "").toLowerCase()] ||
+    String(model?.provider || "自定义供应商")
+  );
+}
+
+function toggleSavedVendor(vendor: string, event: Event) {
+  const details = event.currentTarget as HTMLDetailsElement;
+  expandedSavedVendor.value = details.open ? vendor : "";
 }
 
 function presetFields(preset: any) {
@@ -249,6 +312,7 @@ async function select(i: number) {
       studio.core.models.some((saved: any) => saved.id === m.id),
   );
   index.value = modelList.value.findIndex((m: any) => m.id === next.id);
+  expandedSavedVendor.value = modelVendor(next);
   Object.assign(draft, blank(), next, { apiKey: "" });
   testResult.value = "";
 }
@@ -263,6 +327,9 @@ async function openPicker() {
     index.value = 0;
     Object.assign(draft, blank(), modelList.value[0], { apiKey: "" });
   }
+  const selected = modelList.value[index.value] || modelList.value[0];
+  expandedSavedVendor.value = selected ? modelVendor(selected) : "";
+  catalogSearch.value = "";
   picker.value = true;
 }
 
@@ -278,6 +345,7 @@ function choosePreset(preset: any) {
   };
   modelList.value.push(row);
   index.value = modelList.value.length - 1;
+  expandedSavedVendor.value = modelVendor(row);
   Object.assign(draft, row);
   testResult.value = "";
   picker.value = false;
@@ -357,10 +425,12 @@ async function remove() {
   testResult.value = "";
   if (!modelList.value.length) {
     index.value = -1;
+    expandedSavedVendor.value = "";
     Object.assign(draft, blank());
     return;
   }
   index.value = 0;
+  expandedSavedVendor.value = modelVendor(modelList.value[0]);
   Object.assign(draft, blank(), modelList.value[0], { apiKey: "" });
 }
 
@@ -396,36 +466,52 @@ async function testModel() {
       </p>
       <div class="rows">
         <p v-if="!modelList.length" class="muted">还没有模型。</p>
-        <button
-          v-for="(m, i) in modelList"
-          :key="m.id"
-          class="entity-row"
-          :class="{ selected: index === i }"
-          @click="select(i)"
+        <details
+          v-for="group in savedGroups"
+          :key="group.vendor"
+          class="saved-vendor"
+          :open="expandedSavedVendor === group.vendor"
+          :data-saved-vendor="group.vendor"
+          @toggle="toggleSavedVendor(group.vendor, $event)"
         >
-          <span
-            class="badge"
-            :style="{ '--hue': hueOf(m.label || m.model || m.id) }"
-            >{{
-              String(m.label || m.model || "?")
-                .slice(0, 1)
-                .toUpperCase()
-            }}</span
-          >
-          <span class="who">
-            <b>{{ m.label || m.model }}</b>
-            <small
-              >{{ m.provider || "自定义供应商"
-              }}{{
-                m.enabled === false
-                  ? " · 已关闭"
-                  : m.isDefault
-                    ? " · 默认"
-                    : " · 备用"
-              }}</small
+          <summary>
+            <span>{{ group.vendor }}</span>
+            <small>{{ group.models.length }} 个模型</small>
+          </summary>
+          <div class="vendor-models">
+            <button
+              v-for="entry in group.models"
+              :key="entry.model.id"
+              class="entity-row"
+              :class="{ selected: index === entry.index }"
+              @click="select(entry.index)"
             >
-          </span>
-        </button>
+              <span
+                class="badge"
+                :style="{
+                  '--hue': hueOf(
+                    entry.model.label || entry.model.model || entry.model.id,
+                  ),
+                }"
+                >{{
+                  String(entry.model.label || entry.model.model || "?")
+                    .slice(0, 1)
+                    .toUpperCase()
+                }}</span
+              >
+              <span class="who">
+                <b>{{ entry.model.label || entry.model.model }}</b>
+                <small>{{
+                  entry.model.enabled === false
+                    ? "已关闭"
+                    : entry.model.isDefault
+                      ? "默认模型"
+                      : "备用模型"
+                }}</small>
+              </span>
+            </button>
+          </div>
+        </details>
       </div>
     </aside>
 
@@ -734,11 +820,30 @@ async function testModel() {
     >
       <div class="model-picker">
         <p class="muted">
-          常见厂商预设会填入对应参数。OpenRouter 提供 GPT-6
-          预设和自选模型；自选模型只预填 API 地址，其余按模型信息填写。
+          先选供应商，再挑具体模型；支持搜索。火山方舟 Coding Plan
+          已预填套餐专用接口与型号参数，请勿换成普通推理 API 地址。
         </p>
-        <section v-for="group in groups" :key="group.vendor" class="vendor">
-          <h3>{{ group.vendor }}</h3>
+        <label class="catalog-search">
+          <span>搜索模型或供应商</span>
+          <input
+            v-model="catalogSearch"
+            type="search"
+            placeholder="例如：火山方舟、Kimi K3、DeepSeek"
+          />
+        </label>
+        <details
+          v-for="group in filteredGroups"
+          :key="group.vendor"
+          class="vendor"
+          :data-vendor="group.vendor"
+        >
+          <summary class="vendor-summary">
+            <span class="vendor-name">
+              <b>{{ group.vendor }}</b>
+              <small>{{ group.models.length }} 个预设</small>
+            </span>
+            <span class="vendor-chevron" aria-hidden="true">⌄</span>
+          </summary>
           <div class="presets">
             <button
               v-for="item in group.models"
@@ -756,7 +861,10 @@ async function testModel() {
               <small>{{ item.summary }}</small>
             </button>
           </div>
-        </section>
+        </details>
+        <p v-if="!filteredGroups.length" class="muted search-empty">
+          没有找到匹配的模型预设。
+        </p>
         <button
           v-if="customPreset"
           type="button"
@@ -913,8 +1021,56 @@ async function testModel() {
   max-height: 520px;
   overflow: auto;
 }
+.saved-vendor {
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.68);
+  border-radius: 17px;
+  background: rgb(255 255 255 / 0.2);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.72);
+}
+.saved-vendor > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 13px;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  list-style: none;
+}
+.saved-vendor > summary::-webkit-details-marker,
+.vendor-summary::-webkit-details-marker {
+  display: none;
+}
+.saved-vendor > summary::after {
+  color: var(--accent);
+  content: "⌄";
+  font-size: 15px;
+  transition: transform 0.24s var(--spring);
+}
+.saved-vendor[open] > summary {
+  border-bottom: 1px solid rgb(255 255 255 / 0.6);
+  background: rgb(255 255 255 / 0.25);
+}
+.saved-vendor[open] > summary::after {
+  transform: rotate(180deg);
+}
+.saved-vendor > summary small {
+  margin-left: auto;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 500;
+}
+.vendor-models {
+  display: grid;
+  gap: 6px;
+  padding: 7px;
+}
 .entity-row {
   display: flex;
+  width: 100%;
   align-items: center;
   gap: 10px;
   padding: 11px 12px;
@@ -1032,14 +1188,100 @@ legend {
   display: grid;
   gap: 16px;
 }
-.vendor h3 {
-  margin-bottom: 8px;
-  font-size: 14px;
+.catalog-search {
+  display: grid;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 600;
+}
+.catalog-search input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 13px;
+  border: 1px solid rgb(255 255 255 / 0.85);
+  border-radius: 14px;
+  outline: none;
+  background: rgb(255 255 255 / 0.62);
+  color: var(--ink);
+  box-shadow: inset 0 1px 0 white;
+  backdrop-filter: blur(14px) saturate(1.4);
+}
+.catalog-search input:focus {
+  border-color: color-mix(in srgb, var(--accent) 42%, white);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.vendor {
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.72);
+  border-radius: 21px;
+  background:
+    radial-gradient(
+      ellipse at 100% 0,
+      color-mix(in srgb, var(--glow-a) 13%, transparent),
+      transparent 48%
+    ),
+    rgb(255 255 255 / 0.23);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.78);
+  backdrop-filter: blur(18px) saturate(1.35);
+}
+.vendor-summary {
+  display: flex;
+  min-height: 62px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 17px;
+  cursor: pointer;
+  list-style: none;
+  transition: background-color 0.2s;
+}
+.vendor-summary:hover {
+  background: rgb(255 255 255 / 0.34);
+}
+.vendor-name {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+.vendor-name b {
+  font-size: 13px;
+}
+.vendor-name small {
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+.vendor-chevron {
+  color: var(--accent);
+  font-size: 20px;
+  line-height: 1;
+  transition: transform 0.28s var(--spring);
+}
+.vendor[open] .vendor-chevron {
+  transform: rotate(180deg);
+}
+.vendor[open] .presets {
+  animation: vendor-reveal 0.24s var(--spring) both;
+}
+@keyframes vendor-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.search-empty {
+  margin: 0;
 }
 .presets {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 8px;
+  padding: 0 12px 12px;
 }
 .preset-card {
   display: grid;

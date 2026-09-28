@@ -37,6 +37,20 @@ try {
     headless: true,
   });
   const p = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  async function openPreset(id) {
+    const card = p.locator(`[data-preset="${id}"]`);
+    const group = card.locator("xpath=ancestor::details[1]");
+    if ((await group.count()) && !(await group.evaluate((element) => element.open)))
+      await group.locator("summary").click();
+    return card;
+  }
+  async function selectFirstSavedModel() {
+    const row = p.locator(".entity-row").first();
+    const group = row.locator("xpath=ancestor::details[1]");
+    if (!(await group.evaluate((element) => element.open)))
+      await group.locator("summary").click();
+    await row.click();
+  }
   const errors = [];
   mkdirSync("workspace/ui-review", { recursive: true });
   p.on("pageerror", (e) => errors.push(e.message));
@@ -212,11 +226,12 @@ try {
   await p.locator(".page-system").waitFor();
   await navigate("models");
   await p.locator("#addModel").click();
+  await openPreset("deepseek-flash");
   assert.equal(
     await p.locator("[data-preset=deepseek-flash] b").innerText(),
     "DeepSeek V4.1 Flash",
   );
-  await p.locator("[data-preset=deepseek-flash]").click();
+  await (await openPreset("deepseek-flash")).click();
   await p.locator("#modelForm [name=model]").fill("test-model");
   await p.locator("#modelForm .primary").click();
   await p.waitForTimeout(300);
@@ -227,13 +242,13 @@ try {
   // One model editor owns connection and capacity; unsaved new models are discarded.
   assert.equal(await p.locator("#settings").count(), 0);
   await p.locator("#addModel").click();
-  await p.locator("[data-preset=deepseek-flash]").click();
+  await (await openPreset("deepseek-flash")).click();
   await p.locator("[name=label]").fill("未保存模型");
-  await p.locator(".entity-row").first().click();
+  await selectFirstSavedModel();
   await confirmDialog();
   assert.equal(await p.locator(".entity-row").count(), 1);
   await p.locator("#addModel").click();
-  await p.locator("[data-preset=gpt-6-sol]").click();
+  await (await openPreset("gpt-6-sol")).click();
   assert.equal(await p.locator("[name=label]").inputValue(), "GPT-6 Sol");
   assert.equal(await p.locator("[name=maxInputTokens]").inputValue(), "272000");
   await p.locator("[name=contextWindow]").selectOption("1050000");
@@ -242,11 +257,11 @@ try {
     await p.locator("[name=maxOutputTokens]").inputValue(),
     "128000",
   );
-  await p.locator(".entity-row").first().click();
+  await selectFirstSavedModel();
   await confirmDialog();
   assert.equal(await p.locator(".entity-row").count(), 1);
   await p.locator("#addModel").click();
-  await p.locator('[data-preset="kimi-k2.6"]').click();
+  await (await openPreset("kimi-k2.6")).click();
   await p.locator("[name=label]").fill("界面测试模型");
   await p.locator("#modelForm .primary").click();
   await p.waitForTimeout(300);
@@ -263,20 +278,20 @@ try {
   await p.waitForTimeout(300);
   assert.equal(await p.locator(".entity-row").count(), 1);
   await p.locator("#addModel").click();
-  await p.locator('[data-preset="opencode-go-grok-4.7"]').waitFor();
-  await p.locator('[data-preset="opencode-zen-qwen3.8-flash"]').waitFor();
+  await (await openPreset("opencode-go-grok-4.7")).waitFor();
+  await (await openPreset("opencode-zen-qwen3.8-flash")).waitFor();
   assert.equal(await p.locator('[data-preset^="opencode-go-"]').count(), 7);
   assert.equal(await p.locator('[data-preset^="opencode-zen-"]').count(), 12);
-  await p.locator('[data-preset="opencode-zen-space-bunny-free"]').waitFor();
+  await (await openPreset("opencode-zen-space-bunny-free")).waitFor();
   assert.equal(await p.locator('[data-preset*="muse-spark"]').count(), 0);
-  await p.locator('[data-preset="openrouter"]').click();
+  await (await openPreset("openrouter")).click();
   assert.equal(await p.locator('[name="provider"]').inputValue(), "openrouter");
   assert.equal(
     await p.locator('[name="baseUrl"]').inputValue(),
     "https://openrouter.ai/api/v1",
   );
   assert.equal(await p.locator('[name="model"]').inputValue(), "");
-  await p.locator(".entity-row").first().click();
+  await selectFirstSavedModel();
   await confirmDialog();
   await p.locator("#addModel").click();
   for (const id of [
@@ -285,8 +300,8 @@ try {
     "openrouter-gpt-6-luna",
     "openrouter-glm-5.3-flash",
   ])
-    await p.locator(`[data-preset="${id}"]`).waitFor();
-  await p.locator('[data-preset="openrouter-gpt-6-astra"]').click();
+    await (await openPreset(id)).waitFor();
+  await (await openPreset("openrouter-gpt-6-astra")).click();
   assert.equal(await p.locator('[name="provider"]').inputValue(), "openrouter");
   assert.equal(
     await p.locator('[name="model"]').inputValue(),
@@ -296,10 +311,10 @@ try {
     await p.locator('[name="contextWindow"]').inputValue(),
     "1050000",
   );
-  await p.locator(".entity-row").first().click();
+  await selectFirstSavedModel();
   await confirmDialog();
   await p.locator("#addModel").click();
-  await p.locator('[data-preset="openrouter-glm-5.3-flash"]').click();
+  await (await openPreset("openrouter-glm-5.3-flash")).click();
   assert.equal(
     await p.locator('[name="model"]').inputValue(),
     "z-ai/glm-5.3-flash",
@@ -309,7 +324,7 @@ try {
     "1310720",
   );
   assert.equal(await p.locator('[name="vision"]').isChecked(), true);
-  await p.locator(".entity-row").first().click();
+  await selectFirstSavedModel();
   await confirmDialog();
   await p.locator("#testModel").click();
   await p.getByText("请先配置模型 API Key", { exact: true }).waitFor();
@@ -386,8 +401,12 @@ try {
   await p.setViewportSize({ width: 1440, height: 1000 });
   await navigate("connect");
   await p.getByRole("heading", { name: "还差哪一步" }).waitFor();
-  await p.getByRole("heading", { name: "QQ 接入助手" }).waitFor();
-  await p.getByRole("button", { name: "生成连接配置" }).isEnabled();
+  await p.getByRole("heading", { name: "连接 QQ" }).waitFor();
+  assert.equal(
+    await p.getByRole("link", { name: /NapCat 官方仓库/ }).getAttribute("href"),
+    "https://github.com/NapNeko/NapCatQQ",
+  );
+  assert.equal(await p.getByRole("button", { name: "生成连接配置" }).count(), 0);
   await p.goto(base + "/guide.html");
   await p
     .getByRole("heading", {
