@@ -1,7 +1,7 @@
 {
   "name": "luckytri",
-  "version": "0.8.2",
-  "description": "本地运行的 AI 聊天项目，支持 OneBot 11、长期记忆和 WebUI 管理",
+  "version": "0.9.0",
+  "description": "让由技术诞生的她，在时间、记忆、相遇与选择中逐渐形成自己的方向",
   "license": "MIT",
   "repository": {
     "type": "git",
