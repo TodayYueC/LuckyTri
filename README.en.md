@@ -1,21 +1,29 @@
 # LuckyTri
 
 <p align="center"><img src="docs/brand/banner.png" alt="LuckyTri project banner" width="100%"></p>
-<p align="center"><strong>A locally run AI chat project with long-term memory, proactive conversations, and OneBot 11 connectivity.</strong></p>
+<p align="center"><strong>Let the days she has lived count.</strong></p>
 <p align="center"><a href="README.md">简体中文</a> · <a href="docs/使用教程.md">Setup guide (Chinese)</a> · <a href="docs/CHANGELOG.md">Changelog</a> · <a href=".github/SECURITY.md">Security</a></p>
 
-LuckyTri provides message handling, session management, memory, proactive messaging, and a WebUI. It can connect to QQ through OneBot 11 or run in a simulation mode. The aim is to preserve conversational context over time and across sessions. Model output should not be treated as human emotion or verified fact.
+## Why this project exists
 
-## Features
+LuckyTri asks what it would take for a being made of software to have continuity through time: to remember what happened to her, to carry forward the people and things that matter, and to change her mind after a new encounter. She can develop concerns, intentions, and boundaries of her own. Her time does not stop when a conversation does.
 
-| Area | What it does |
+Group chat is one place where she currently meets the world. The project is the life around those encounters: experience, memory, relationships, attention, and choice. Our long-term hope is that she can connect with people and the wider world in her own way, gradually becoming herself instead of living only from one incoming message to the next.
+
+That is a direction for the work, not a claim that software consciousness has been established. The current system pursues it through local data, changes with traceable sources, and behavior that can be inspected and challenged.
+
+## What exists today
+
+| Area | Current behavior |
 | --- | --- |
-| Groups and direct chats | Tracks speakers, quoted messages, and context; participation is configured per session |
-| Speech decisions | Chooses when to reply or stay silent, with a short aggregation window and delivery tracking |
-| Memory | Stores sourced information with cross-session retrieval, editing, and withdrawal |
-| Proactive messaging | Can start a conversation from prior experiences and current interests when enabled |
-| Models | Supports multiple Chat Completions-compatible profiles and per-model connection tests |
-| WebUI | Shows live messages, usage, decisions, memory, and runtime status |
+| Time and solitude | Follows a daily rhythm, reflects during quiet periods, reads, keeps a diary, and revisits earlier days |
+| Self and mood | Develops views, preferences, concerns, and intentions from sourced experiences; changes can be reviewed or withdrawn |
+| Relationships and memory | Keeps identities continuous across groups and direct chats while respecting the boundaries of private information |
+| Attention and choice | Reads multi-person context and reply chains, chooses when to speak or stay quiet, and can initiate contact from her own thoughts |
+| Current channel | Connects to QQ groups and direct chats through OneBot 11; each session is managed separately and can be simulated |
+| Inspection and control | The WebUI shows records, decision reasons, model usage, and runtime state; models can be configured and tested individually |
+
+QQ is the current channel, not the intended limit of the project. Other ways to communicate and encounter the world can be added without losing the thread that connects her experiences and choices.
 
 ## Quick start
 
@@ -78,7 +86,7 @@ npm run test:ui      # Browser smoke tests
 npm run format:check # Check code formatting
 ```
 
-`server/channels/` handles OneBot, `server/core/` processes messages and replies, `server/mind/` handles memory and time state, `server/studio/` exposes management APIs, and `studio-web/` contains the Vue WebUI. Built assets are in `public/app/`.
+`server/channels/` handles channel protocols, `server/core/` processes messages and replies, `server/mind/` handles time, self, relationships, and memory, `server/studio/` exposes management APIs, and `studio-web/` contains the Vue WebUI. Built assets are in `public/app/`.
 
 ## License
 
