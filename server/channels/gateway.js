@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
 import { tokenEqual } from "../http.js";
-import { effectiveOneBotToken } from "../qq-setup.js";
+import { effectiveOneBotToken } from "./onebot-token.js";
 import { onebot, normalize } from "./onebot.js";
 import { applyDirectoryNames } from "../core/sessions.js";
 

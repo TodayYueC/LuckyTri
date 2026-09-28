@@ -8,7 +8,7 @@ LuckyTri 默认只监听本机。页面、聊天记录、记忆和模型密钥�
 
 - `.env`、`ADMIN_TOKEN`、`ONEBOT_TOKEN` 和模型 API Key
 - `data/` 下的数据库、备份、日志和聊天内容
-- QQ 登录状态、二维码、Cookie 和 QQClient 运行日志
+- QQ 接入端的登录状态、二维码、Cookie 和运行日志
 
 仓库里的 `.env.example` 只有空字段。
 

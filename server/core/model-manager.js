@@ -144,7 +144,8 @@ function thinkingStyle(profile) {
 function quietStage(profile, stage) {
   return (
     QUIET_STAGES.has(stage) &&
-    (thinkingStyle(profile) === "mimo" || profile.apiProtocol === "anthropic")
+    (["mimo", "volcengine"].includes(thinkingStyle(profile)) ||
+      profile.apiProtocol === "anthropic")
   );
 }
 // Short verdicts do not need a 128K output reservation; oversized ceilings only
@@ -207,6 +208,13 @@ function applyGenerationControls(
     body.thinking = { type: off ? "disabled" : "enabled" };
   } else if (style === "kimi-effort") {
     if (!off) body.reasoning_effort = profile.reasoningEffort;
+  } else if (style === "volcengine") {
+    // Coding Plan's Responses endpoint accepts reasoning.effort. Keep sampling
+    // parameters out of these reasoning models; "none" uses minimal effort.
+    body.reasoning_effort =
+      off || QUIET_STAGES.has(stage)
+        ? "minimal"
+        : profile.reasoningEffort || "medium";
   } else if (style === "qwen" || style === "qwen-effort") {
     body.enable_thinking = !off;
     if (style === "qwen-effort" && !off)

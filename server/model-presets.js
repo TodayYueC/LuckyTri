@@ -42,6 +42,8 @@ const BEDROCK = "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1";
 const OPENROUTER = "https://openrouter.ai/api/v1";
 const OPENCODE_GO = "https://opencode.ai/zen/go/v1";
 const OPENCODE_ZEN = "https://opencode.ai/zen/v1";
+const VOLCENGINE_CODING_PLAN =
+  "https://ark.cn-beijing.volces.com/api/coding/v3";
 const GPT_EFFORTS = ["none", "low", "medium", "high", "xhigh", "max"];
 const ASTRA_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 
@@ -134,6 +136,157 @@ const OPENCODE_GO_MODELS = [
   }),
 );
 
+// Volcengine's Coding Plan catalog is intentionally separate from its normal
+// inference API: only the /api/coding/v3 endpoint consumes Coding Plan quota.
+function codingPlanModel({
+  model,
+  label,
+  context,
+  output,
+  vision = false,
+  summary = "",
+}) {
+  // Kimi K2.8 Preview advertises a 1M output ceiling. Reserve a practical
+  // 64K response budget here so the nearly 1M input window remains usable by
+  // LuckyTri; model-stage output limits are smaller for ordinary conversations.
+  const maxOutputTokens = Math.min(
+    output,
+    model === "kimi-k2.8-preview" ? 65536 : output,
+  );
+  const contextWindow = context;
+  return {
+    id: `volcengine-coding-plan-${model}`,
+    vendor: "火山方舟 Coding Plan",
+    label,
+    summary:
+      summary ||
+      `Coding Plan 专属 Responses 接口 · 上下文 ${context.toLocaleString("en-US")} · 官方最大输出 ${output.toLocaleString("en-US")}${vision ? " · 支持图片理解" : " · 文本模型"}。默认中等推理；Kimi K2.8 Preview 在 LuckyTri 中预留 64K 输出预算以保留长上下文。`,
+    provider: "volcengine-coding-plan",
+    baseUrl: VOLCENGINE_CODING_PLAN,
+    model,
+    apiProtocol: "responses",
+    ...limits(contextWindow, maxOutputTokens),
+    ...shared,
+    vision,
+    thinkingStyle: "volcengine",
+    tokenField: "max_completion_tokens",
+    reasoningEfforts: ["none", "minimal", "low", "medium", "high"],
+    reasoningEffort: "medium",
+    // Reasoning models may reject sampling parameters. The Responses API uses
+    // reasoning.effort; the "none" choice maps to minimal reasoning.
+    omitSampling: true,
+    temperature: 1,
+    topP: 1,
+    timeoutMs: 120000,
+  };
+}
+
+const VOLCENGINE_CODING_PLAN_MODELS = [
+  codingPlanModel({
+    model: "ark-code-latest",
+    label: "方舟自动路由（ark-code-latest）",
+    context: 256000,
+    output: 32768,
+    vision: true,
+    summary:
+      "控制台管理的动态模型入口；实际使用哪一个模型由 Coding Plan 控制台选择，切换通常数分钟后生效。支持图片理解。",
+  }),
+  codingPlanModel({
+    model: "doubao-seed-evolving",
+    label: "Doubao Seed Evolving",
+    context: 1024000,
+    output: 262144,
+    vision: true,
+  }),
+  codingPlanModel({
+    model: "doubao-seed-2.1-pro",
+    label: "Doubao Seed 2.1 Pro",
+    context: 1024000,
+    output: 262144,
+    vision: true,
+  }),
+  codingPlanModel({
+    model: "doubao-seed-2.1-lite",
+    label: "Doubao Seed 2.1 Lite",
+    context: 1024000,
+    output: 256000,
+    vision: true,
+  }),
+  codingPlanModel({
+    model: "doubao-seed-2.0-mini",
+    label: "Doubao Seed 2.0 Mini",
+    context: 256000,
+    output: 128000,
+    vision: true,
+  }),
+  codingPlanModel({
+    model: "minimax-m3",
+    label: "MiniMax M3",
+    context: 1024000,
+    output: 131072,
+    vision: true,
+  }),
+  codingPlanModel({
+    model: "glm-5.3",
+    label: "GLM 5.3",
+    context: 1024000,
+    output: 131072,
+  }),
+  codingPlanModel({
+    model: "glm-latest",
+    label: "GLM 最新别名（glm-latest）",
+    context: 1024000,
+    output: 131072,
+  }),
+  codingPlanModel({
+    model: "glm-5.3-flash",
+    label: "GLM 5.3 Flash",
+    context: 1024000,
+    output: 131072,
+    vision: true,
+  }),
+  codingPlanModel({
+    model: "deepseek-v4.1-flash",
+    label: "DeepSeek V4.1 Flash",
+    context: 1024000,
+    output: 393216,
+    vision: true,
+  }),
+  codingPlanModel({
+    model: "deepseek-v4-flash",
+    label: "DeepSeek V4 Flash",
+    context: 1024000,
+    output: 393216,
+  }),
+  codingPlanModel({
+    model: "deepseek-v4-pro",
+    label: "DeepSeek V4 Pro",
+    context: 1024000,
+    output: 393216,
+  }),
+  codingPlanModel({
+    model: "kimi-k2.7-code",
+    label: "Kimi K2.7 Code",
+    context: 256000,
+    output: 32768,
+    vision: true,
+  }),
+  codingPlanModel({
+    model: "kimi-k2.8-preview",
+    label: "Kimi K2.8 Preview",
+    context: 1024000,
+    output: 1024000,
+    vision: true,
+  }),
+  codingPlanModel({
+    model: "kimi-k3",
+    label: "Kimi K3",
+    context: 1024000,
+    output: 131072,
+    vision: true,
+  }),
+];
+
 export const EFFORT_LABELS = {
   none: "关闭",
   minimal: "极低",
@@ -145,6 +298,7 @@ export const EFFORT_LABELS = {
 };
 
 export const MODEL_CATALOG = [
+  ...VOLCENGINE_CODING_PLAN_MODELS,
   {
     id: "deepseek-flash",
     vendor: "DeepSeek",
@@ -727,6 +881,11 @@ export const MODEL_PRESETS = {
     label: "OpenRouter",
     baseUrl: OPENROUTER,
     model: "",
+  },
+  "volcengine-coding-plan": {
+    label: "火山方舟 Coding Plan",
+    baseUrl: VOLCENGINE_CODING_PLAN,
+    model: "ark-code-latest",
   },
 };
 
