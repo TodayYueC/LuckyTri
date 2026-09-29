@@ -1023,6 +1023,56 @@ test("自己后来写下的念头，会让正在过的那一件回到她真正�
   }
 });
 
+test("为自己写过的念头淡了以后，那条愿望仍按她想过的日子留在心上", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    const thoughtAt = w.now() + 50 * 86400000;
+    w.mind.thoughts.add({
+      kind: "expression",
+      content: "这条蒙玩线到了真正要开始的那一步。",
+      time: thoughtAt,
+    });
+    const later = w.now() + 90 * 86400000;
+    const insert = w.mind.db.prepare(
+      "INSERT INTO mind_days(day,created,lived,events) VALUES (?,?,?,3)",
+    );
+    const dayAfter = (n) => {
+      const [y, m, d] = "2026-09-22".split("-").map(Number);
+      return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+    };
+    for (let i = 1; i <= 90; i++) insert.run(dayAfter(i), later, 1);
+    assert.equal(
+      w.mind.thoughts.open({ now: later }).some((t) => /蒙玩/.test(t.content)),
+      false,
+      "那条念头本身已经淡了",
+    );
+    const living = w.mind.self.living({ now: later });
+    assert.match(living.content, /蒙玩/);
+    assert.equal(living.faded, false);
+    assert.doesNotMatch(living.content, /轻松日常的gal/);
+  } finally {
+    w.close();
+  }
+});
+
 test("已经裂开的同一愿望，被碰到的次数仍算一件事", () => {
   const w = world();
   try {

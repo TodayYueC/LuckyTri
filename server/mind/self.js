@@ -107,20 +107,24 @@ export class Self {
       list.push({ created: row.created, sources: parse(row.sources, []) });
       versions.set(row.thread, list);
     }
+    const notes = this.#lifeNotes(before);
     const rows = this.latest(before)
       .filter((row) => row.status !== "closed")
-      .map((row) => ({
-        ...row,
+      .map((row) => {
         // A rewording is not a new meeting with the thread. Fade follows the
-        // last version that actually brought new evidence.
-        salience: threadSalience(
-          {
-            ...row,
-            created: earnedAt(versions.get(row.thread)) ?? row.created,
-          },
-          lived,
-        ),
-      }));
+        // last version that actually brought new evidence. A later note she
+        // wrote to herself about this wish is also living it.
+        let at = earnedAt(versions.get(row.thread)) ?? row.created;
+        if (row.kind === "intention" && ownLife(row.content)) {
+          for (const note of notes)
+            if (note.created > at && aboutLife(row.content, note.content))
+              at = note.created;
+        }
+        return {
+          ...row,
+          salience: threadSalience({ ...row, created: at }, lived),
+        };
+      });
     // One core seat belongs to the wish she is living. Stronger duties
     // keep the remaining seats; they do not fade her own life out of view.
     const reserved = this.#preferLived(
@@ -176,6 +180,16 @@ export class Self {
     return [...pool].sort(
       (a, b) => b.salience - a.salience || b.created - a.created,
     )[0];
+  }
+  // Notes she wrote to herself. Hidden ones do not count; resolved ones
+  // still do, because she did think them.
+  #lifeNotes(before) {
+    return this.db
+      .prepare(
+        `SELECT created, content FROM mind_thoughts
+         WHERE created<=? AND kind IN ('expression','unfinished') AND hidden=0`,
+      )
+      .all(before);
   }
   // Open threads that are the same wish as this one, including itself.
   // History stays split; reading treats them as one life.
