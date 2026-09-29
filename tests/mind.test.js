@@ -5237,6 +5237,52 @@ test("被问到是谁时，心和选择属于自己，经历仍然不能编造",
   );
 });
 
+test("还在前面的约定排在已经过期的前面，旧的别人的安排不占满名额", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    const said = w.say("group:1", "10001", "我记一下这些事", { name: "阿明" });
+    const early = Date.parse("2026-09-20T10:00:00+08:00");
+    for (const [due, content] of [
+      ["2026-09-21", "去买菜"],
+      ["2026-09-22", "回家整理相册"],
+      ["2026-09-23", "看一场比赛直播"],
+    ])
+      w.mind.anticipations.add({
+        kind: "event",
+        subject: "10001",
+        session: "group:1",
+        content,
+        due,
+        sources: [`m:${said.seq}`],
+        time: early,
+      });
+    w.at("2026-09-27T12:00:00+08:00");
+    w.mind.anticipations.add({
+      kind: "event",
+      subject: "10001",
+      session: "group:1",
+      content: "还要撑两天才放假",
+      due: "2026-09-28",
+      sources: [`m:${said.seq}`],
+      time: w.now(),
+    });
+    const shown = w.mind.anticipations.due({ now: w.now(), limit: 2 });
+    assert.equal(shown.length, 2);
+    assert.match(shown[0].content, /撑两天/);
+    assert.equal(shown[0].lapsed, undefined);
+    assert.match(shown[1].content, /看一场比赛/, "过期的里最近的先");
+    assert.equal(shown[1].lapsed, true);
+    const all = w.mind.anticipations.due({ now: w.now(), limit: 5 });
+    assert.deepEqual(
+      all.map((item) => item.content),
+      ["还要撑两天才放假", "看一场比赛直播", "回家整理相册", "去买菜"],
+    );
+  } finally {
+    w.close();
+  }
+});
+
 test("没有玩过就不说玩过：亲历的说法被拦，问、想、否定和别人的不拦", () => {
   for (const claim of [
     "这作玩过，结局那段是真的绷不住",
