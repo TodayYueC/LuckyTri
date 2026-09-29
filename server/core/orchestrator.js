@@ -263,6 +263,8 @@ export class ChatSystem {
       room: session,
     });
     const living = interestTerms(livingThread ? [livingThread.content] : []);
+    const wishRows = this.mind.meetings.ownWishes(session, now);
+    const wishes = wishRows.map((row) => interestTerms([row.content]));
     const curiosities = interestTerms(
       this.mind.self
         .active({ before: now, limit: 12 })
@@ -279,6 +281,18 @@ export class ChatSystem {
         this.mind.bonds.person(m.userId, now)?.closeness || 0,
       ]),
     );
+    const speakers = rows
+      .filter((m) => m.role !== "assistant")
+      .map((m) => m.userId);
+    const held = new Set();
+    for (const row of wishRows)
+      for (const id of this.mind.meetings.touchedPeople(
+        session,
+        speakers,
+        now,
+        row.thread,
+      ))
+        held.add(id);
     const decision = attend({
       batch: rows,
       unread: seqs.length,
@@ -301,12 +315,8 @@ export class ChatSystem {
       interests,
       curiosities,
       living,
-      held: this.mind.meetings.touchedPeople(
-        session,
-        rows.filter((m) => m.role !== "assistant").map((m) => m.userId),
-        now,
-        livingThread?.thread || "",
-      ),
+      wishes,
+      held,
       closeness,
       pressure: this.mind.budget.pressure("conversation", now),
       initiative: nature.initiative,

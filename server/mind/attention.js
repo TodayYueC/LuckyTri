@@ -59,6 +59,7 @@ export function attend({
   interests = new Set(),
   curiosities = new Set(),
   living = new Set(),
+  wishes = [],
   held = new Set(),
   closeness = new Map(),
   pressure = 0,
@@ -117,7 +118,10 @@ export function attend({
   // Two people cannot be added together, and her own line does not count.
   // A wish or a curiosity needs two distinctive pairs, or one when that
   // set only has one. An interest needs one.
-  const meets = (terms, need) => {
+  const lives = [];
+  for (const set of wishes || []) if (set?.size) lives.push(set);
+  if (living?.size && !lives.includes(living)) lives.push(living);
+  const meets = (terms, need, { named = false } = {}) => {
     if (!terms?.size) return false;
     const required = terms.size < need ? 1 : need;
     const groups = new Map();
@@ -132,14 +136,15 @@ export function attend({
     }
     for (const texts of groups.values()) {
       const said = interestTerms(texts);
-      if (terms === living && namesProject(living, said)) return true;
+      if (named && namesProject(terms, said)) return true;
       let shared = 0;
       for (const term of said)
         if (terms.has(term) && ++shared >= required) return true;
     }
     return false;
   };
-  if (meets(living, 2)) add(2, "聊到了我正在过的事");
+  if (lives.some((terms) => meets(terms, 2, { named: true })))
+    add(2, "聊到了我正在过的事");
   else if (meets(interests, 1) || meets(curiosities, 2))
     add(2, "聊到了我在意的东西");
   if (batch.some((m) => (closeness.get(String(m.userId)) || 0) >= 0.45))
@@ -159,11 +164,11 @@ export function attend({
     (energy < 0.3 ? 1 : 0) +
     (phase === "sleepy" || phase === "waking" ? 0.5 : 0) -
     (Number(initiative) - 25) / 25;
-  // Someone whose words already met what she is living for is worth reading
-  // again, even when this sentence does not repeat the wish. A private
-  // meeting does not follow her into another room; the caller only passes
-  // people visible here. Talking past each other, pictures, and an empty
-  // day still pass by.
+  // Someone whose words already met a wish she is still living is worth
+  // reading again, even when this sentence does not repeat the wish. A
+  // private meeting does not follow her into another room; the caller
+  // only passes people visible here. Talking past each other, pictures,
+  // and an empty day still pass by.
   const heldHere =
     !mediaOnly &&
     !sideTalk &&
