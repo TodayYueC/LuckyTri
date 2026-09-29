@@ -1981,7 +1981,12 @@ export class Life {
     if (last && now - last < s.initiativeIntervalMinutes * MINUTE) return null;
     const contacts = this.initiative.contacts(now, { ready: true });
     if (!contacts.length) return null;
-    this.repo.saveConfig("own-voice", { attemptedAt: now });
+    const resting = this.ownVoice.resting(now);
+    this.repo.saveConfig("own-voice", {
+      ...this.repo.config("own-voice", {}),
+      attemptedAt: now,
+    });
+    if (resting) return { status: "presence-silent", reason: resting };
     this.busy = true;
     let formed;
     try {

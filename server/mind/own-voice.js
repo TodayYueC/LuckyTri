@@ -1,10 +1,14 @@
 import { localClock } from "../core/conversation-cues.js";
 import { replyPrompt, prompts } from "../core/persona-manager.js";
 import { withFallback } from "../core/model-manager.js";
-import { evidence, hasCredential, text } from "./util.js";
+import { HOUR, evidence, hasCredential, text } from "./util.js";
 import { isPrivateSession } from "./memory.js";
 import { sameRecentTheme } from "./novelty.js";
 import { ownLife, sameSelf } from "./salience.js";
+
+// After this many notes in a row that only take up her own last note, another
+// one has to pick up something new or it is not kept.
+const STREAK = 3;
 
 // Form a thought before choosing an audience. No transcript, unanswered
 // question or destination is supplied here: those belong to delivery, not
@@ -13,6 +17,51 @@ export class OwnVoice {
   constructor(life) {
     this.life = life;
     this.mind = life.mind;
+  }
+  // What has come into her life since `after` that this loop did not write
+  // itself: thoughts from solitude, night memory or a review, and threads
+  // those revised. Her own expression write-backs are not new.
+  arrived(after, until) {
+    const thoughts = this.mind.db
+      .prepare(
+        "SELECT id FROM mind_thoughts WHERE created>? AND created<=? AND kind!='expression' AND hidden=0",
+      )
+      .all(after, until)
+      .map((row) => `t:${row.id}`);
+    const threads = this.mind.db
+      .prepare(
+        "SELECT DISTINCT thread FROM mind_self WHERE created>? AND created<=? AND origin!='expression'",
+      )
+      .all(after, until)
+      .map((row) => `s:${row.thread}`);
+    return new Set([...thoughts, ...threads]);
+  }
+  // How many of her newest notes only took up the one before. A note is
+  // anchored when it cites something that arrived after the previous note.
+  circling(now) {
+    const notes = this.mind.thoughts
+      .list({ before: now + 1, limit: 40, hidden: false })
+      .filter((t) => t.kind === "expression");
+    let run = 0;
+    for (let i = 0; i + 1 < notes.length; i++) {
+      const note = notes[i];
+      const previous = notes[i + 1];
+      if (note.created - previous.created > 24 * HOUR) break;
+      const arrived = this.arrived(previous.created, note.created);
+      if (note.sources.some((ref) => arrived.has(ref))) break;
+      run++;
+    }
+    return { run, latest: notes[0] || null };
+  }
+  // Going round again with nothing new is not a reason to ask her: she has
+  // written several notes that only continue her last one, and nothing she
+  // could take up has come in since.
+  resting(now) {
+    const { run } = this.circling(now);
+    if (run < STREAK) return null;
+    const { circling } = this.material(now);
+    if (circling?.fresh.length) return null;
+    return `连着 ${run} 条念头都只在接自己上一条，还没有新的东西可接`;
   }
   material(now) {
     const nature = this.mind.nature.current(now);
@@ -50,7 +99,21 @@ export class OwnVoice {
     const { mood, energyLabel, phaseLabel } = this.mind.affect.state(now, {
       nature,
     });
+    // Only what she can see counts as something she could take up. A note
+    // she was shown and did not take up is not offered again until more
+    // arrives.
+    const { run, latest } = this.circling(now);
+    const since = Math.max(
+      latest?.created ?? 0,
+      this.life.repo.config("own-voice", {}).circledAt ?? 0,
+    );
+    const arrived = run >= 2 ? this.arrived(since, now) : new Set();
+    const fresh = [
+      ...threads.map((s) => `s:${s.thread}`),
+      ...notes.map((t) => `t:${t.id}`),
+    ].filter((ref) => arrived.has(ref));
     return {
+      ...(run >= 2 ? { circling: { notes: run, fresh } } : {}),
       clock: localClock(now, this.mind.timeZone()),
       mood: { feeling: mood, energy: energyLabel, phase: phaseLabel },
       interests: nature.interests || [],
@@ -116,9 +179,16 @@ export class OwnVoice {
           sources.some((s) => !valid.has(s))
         )
           throw Error("自己的念头含有无效来源或敏感内容，未保存");
-        const repeated = input.recentExpressions.some((t) =>
-          sameRecentTheme(t.content, content),
-        );
+        // Several notes in a row already went round without taking anything
+        // new up. Another one that still does not is not kept.
+        const drifting =
+          (input.circling?.notes ?? 0) >= STREAK &&
+          !sources.some((ref) => input.circling.fresh.includes(ref));
+        const repeated =
+          drifting ||
+          input.recentExpressions.some((t) =>
+            sameRecentTheme(t.content, content),
+          );
         const surfaceEcho = input.recentExpressions.some(
           (t) => t.said && sameRecentTheme(t.said, words.join("\n")),
         );
@@ -153,7 +223,14 @@ export class OwnVoice {
             echoed = linked;
           }
         }
-        if (repeated) reason = "这个念头已经留过，不重复制造新的愿望";
+        if (drifting) {
+          life.repo.saveConfig("own-voice", {
+            ...life.repo.config("own-voice", {}),
+            circledAt: now,
+          });
+          reason =
+            "连着几条念头都只在接自己上一条，这一条也没接住新的东西，不留";
+        } else if (repeated) reason = "这个念头已经留过，不重复制造新的愿望";
         else {
           const noteId = this.mind.thoughts.add({
             kind: "expression",
