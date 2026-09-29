@@ -3157,6 +3157,74 @@ test("别人的话碰到过另一件仍在过的愿望之后，这个人再开�
   }
 });
 
+test("另一件仍在过的愿望被碰到，也会回到她眼前", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    w.mind.thoughts.add({
+      kind: "expression",
+      content: "Celeste那条线还在我想打的单子里。",
+      time: w.now() + 2000,
+    });
+    const said = w.say("group:1", "10001", "今晚完全蒙玩，不看评分不看讨论页", {
+      name: "阿明",
+    });
+    w.mind.meetings.keep(
+      { choice: "silent", appraisal: "听到他们在说蒙玩", topic: "" },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [said.seq],
+          messages: [
+            {
+              id: said.seq,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: said.text,
+            },
+          ],
+        },
+        time: w.now() + 3000,
+      },
+    );
+    const now = w.now() + 4000;
+    assert.match(w.mind.self.living({ now }).content, /轻松日常的gal/);
+    const will = innerView(w.mind, {
+      session: "group:1",
+      people: ["10001"],
+      now,
+    }).inner.will;
+    assert.match(will, /蒙玩/);
+    assert.match(will, /碰到过 1 次/);
+    const view = w.life.livingForView(now);
+    assert.match(view.content, /轻松日常的gal/);
+    assert.equal(view.touched, undefined);
+    assert.equal(view.also.length, 1);
+    assert.match(view.also[0].content, /蒙玩/);
+    assert.equal(view.also[0].touched, 1);
+  } finally {
+    w.close();
+  }
+});
+
 test("一个词组或两个人拼起来，不会因为正在过的事而细看", () => {
   const now = Date.parse("2026-09-22T12:00:00+08:00");
   const wish = interestTerms(["想看流星雨"]);
@@ -4276,9 +4344,13 @@ test("被问到是谁时，心和选择属于自己，经历仍然不能编造",
   assert.match(PROMPTS.daily, /g:ID/);
   assert.match(PROMPTS.reflection, /g:ID/);
   assert.match(PROMPTS.daily, /livingFor\.touched/);
+  assert.match(PROMPTS.daily, /livingFor\.also/);
   assert.match(PROMPTS.reflection, /livingFor\.touched/);
+  assert.match(PROMPTS.reflection, /livingFor\.also/);
+  assert.match(PROMPTS.turn, /另一件仍在过的愿望/);
   assert.match(PROMPTS.reflection, /quiet 是人还在你眼前/);
   assert.match(PROMPTS.weekly, /livingFor\.touched/);
+  assert.match(PROMPTS.weekly, /livingFor\.also/);
   const previousTurn = RETIRED_PROMPTS.turn.find(
     (item) =>
       item.includes("像真实的人一样") && item.includes("self.livingFor"),

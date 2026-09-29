@@ -132,15 +132,18 @@ export function mountMind(app, chat, life) {
         will: (() => {
           const living = life.livingForView(now);
           if (!living) return null;
-          const trace = mind.meetings.trace(living.thread, {
-            before: now,
-            inclusive: true,
-          });
+          const trace = living.thread
+            ? mind.meetings.trace(living.thread, {
+                before: now,
+                inclusive: true,
+              })
+            : null;
           return {
-            content: living.content,
-            ...(trace.touched
+            ...(living.content ? { content: living.content } : {}),
+            ...(trace?.touched
               ? { touched: trace.touched, lastSpoke: trace.lastSpoke }
               : {}),
+            ...(living.also ? { also: living.also } : {}),
           };
         })(),
         meaning: (() => {

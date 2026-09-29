@@ -633,6 +633,55 @@ export class Meetings {
           this.stays(row, session),
       );
   }
+  // Touches on wishes still present. livingFor first, then another own
+  // wish that was actually met. Split wordings of the same wish count once.
+  traces({
+    session,
+    before = Date.now(),
+    since = 0,
+    inclusive = false,
+    limit = 2,
+  } = {}) {
+    const scoped = session !== undefined;
+    const living = this.mind.self.living({
+      before,
+      now: before,
+      ...(scoped ? { room: session } : {}),
+    });
+    const rows = scoped
+      ? this.ownWishes(session, before)
+      : this.mind.self
+          .annotated({ before, now: before })
+          .filter(
+            (row) =>
+              row.kind === "intention" && !row.faded && ownLife(row.content),
+          );
+    const ordered = [
+      ...(living ? [living] : []),
+      ...rows.filter((row) => row.thread !== living?.thread),
+    ];
+    const clustered = new Set();
+    const out = [];
+    for (const wish of ordered) {
+      if (clustered.has(wish.thread) || out.length >= limit) continue;
+      for (const id of this.#willThreads(wish.thread, before))
+        clustered.add(id);
+      const hit = this.trace(wish.thread, {
+        before,
+        since,
+        inclusive,
+        ...(session ? { session } : {}),
+      });
+      if (!hit.touched) continue;
+      out.push({
+        thread: wish.thread,
+        content: wish.content,
+        living: wish.thread === living?.thread,
+        ...hit,
+      });
+    }
+    return out;
+  }
   // The last day the world actually met this wish. Reading only; a later
   // wording that those words no longer meet does not inherit the day.
   livedAt(thread, before = Date.now()) {

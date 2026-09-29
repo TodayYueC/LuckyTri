@@ -206,9 +206,12 @@ export function innerView(
     now,
     limit: 2,
   });
-  const will = shownLiving
-    ? mind.meetings.trace(shownLiving.thread, { before: now, session })
-    : null;
+  const wills = mind.meetings.traces({ session, before: now, limit: 2 });
+  const will = wills
+    .map((row) =>
+      row.living ? row.text : `${text(row.content, 28)}：${row.text}`,
+    )
+    .join("；");
   const stood = mind.meetings.stood({
     session,
     people,
@@ -244,7 +247,7 @@ export function innerView(
         : {}),
       ...(expectingLines.length ? { expecting: expectingLines } : {}),
       ...(withLines.length ? { with: withLines } : {}),
-      ...(will?.touched ? { will: will.text } : {}),
+      ...(will ? { will } : {}),
       ...(stood.length ? { stood } : {}),
       ...(reminded.length ? { reminded } : {}),
       ...(room ? { room } : {}),

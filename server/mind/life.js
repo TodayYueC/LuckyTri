@@ -386,16 +386,27 @@ export class Life {
       now,
       ...(open ? { room: "" } : {}),
     });
-    if (!thread) return null;
-    const trace = this.mind.meetings.trace(thread.thread, {
+    const rows = this.mind.meetings.traces({
+      ...(open ? { session: "" } : {}),
       before: now,
       since,
       inclusive: true,
+      limit: 3,
     });
+    const also = rows
+      .filter((row) => !thread || row.thread !== thread.thread)
+      .map((row) => ({
+        content: text(row.content, 80),
+        touched: row.touched,
+      }));
+    if (!thread && !also.length) return null;
+    if (!thread) return { also };
+    const mine = rows.find((row) => row.thread === thread.thread);
     return {
       thread: thread.thread,
       content: text(thread.content, 80),
-      ...(trace.touched ? { touched: trace.touched } : {}),
+      ...(mine?.touched ? { touched: mine.touched } : {}),
+      ...(also.length ? { also } : {}),
     };
   }
   faceView(experiences, now) {
