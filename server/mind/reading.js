@@ -40,12 +40,8 @@ export class Reading {
     if (cont) return cont;
     const nature = this.mind.nature.current(now);
     const threads = this.mind.self.annotated({ before: now, now });
-    const living = interestTerms(
-      threads
-        .filter((t) => t.kind === "intention" && !t.faded)
-        .slice(0, 1)
-        .map((t) => t.content),
-    );
+    const livingRow = this.mind.self.living({ before: now, now });
+    const living = interestTerms(livingRow ? [livingRow.content] : []);
     const wants = interestTerms([
       ...(nature.interests || []),
       ...threads

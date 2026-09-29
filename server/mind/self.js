@@ -6,6 +6,7 @@ import {
   anyTouches,
   cueList,
   echoes,
+  ownLife,
   sameSelf,
   threadSalience,
 } from "./salience.js";
@@ -134,7 +135,8 @@ export class Self {
       .sort((a, b) => b.salience - a.salience || b.created - a.created);
   }
   // The one wish she is living. In a room, a stronger wish that does not
-  // belong there does not erase the next wish that does.
+  // belong there does not erase the next wish that does. A duty about
+  // how she will treat someone stays a thread; it does not take this seat.
   living({ before = Number.MAX_SAFE_INTEGER, now, room } = {}) {
     const at = now ?? (before < Number.MAX_SAFE_INTEGER ? before : Date.now());
     return (
@@ -142,8 +144,23 @@ export class Self {
         (row) =>
           row.kind === "intention" &&
           !row.faded &&
+          ownLife(row.content) &&
           (room === undefined || this.mind.meetings.stays(row, room)),
       ) || null
+    );
+  }
+  // Open threads that are the same wish as this one, including itself.
+  // History stays split; reading treats them as one life.
+  sameThreads(row, { before = Number.MAX_SAFE_INTEGER } = {}) {
+    if (!row?.thread) return [];
+    const kind = row.kind || "intention";
+    const content = row.content || "";
+    return this.latest(before).filter(
+      (other) =>
+        other.status !== "closed" &&
+        other.kind === kind &&
+        (other.thread === row.thread ||
+          (content && sameSelf(other.content, content))),
     );
   }
   active({ before, limit = 40, now } = {}) {

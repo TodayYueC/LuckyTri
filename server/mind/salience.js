@@ -117,3 +117,14 @@ export function sameSelf(a, b) {
   const longer = Math.max(left.size, right.size);
   return shared >= 2 && shared / shorter >= 0.6 && shared / longer >= 0.22;
 }
+
+// A wish she is living for herself: something she wants to do or become.
+// Advice, a promise about how she will treat someone, and watching over
+// another person's state stay as threads; they do not take livingFor.
+export function ownLife(content) {
+  const text = String(content || "");
+  if (/^(?:我)?(?:会|愿意|想)?(?:建议|劝|提醒|鼓励)/.test(text)) return false;
+  return /(?:希望成为|想.{0,6}(?:看|学|玩|打|去|读|写|找|把|自己)|打算(?:开|玩|看|学|去)|决定(?:开|玩|看|学)|更想)/.test(
+    text,
+  );
+}

@@ -880,6 +880,140 @@ test("同一愿望换一种说法仍是一条线索；喝茶和看书不会被�
   }
 });
 
+test("更强的对别人的承诺，不会占走她正在为自己过的那一件", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      { kind: "intention", content: "想看流星雨", strength: 0.3 },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.db
+      .prepare(
+        "INSERT INTO mind_self(id,thread,created,kind,content,strength,status,sources,days,origin,session_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+      )
+      .run(
+        "duty-1",
+        "duty-1",
+        w.now() + 1,
+        "intention",
+        "我会留意他的疲惫，但不替他安排生活。",
+        0.55,
+        "active",
+        "[]",
+        "[]",
+        "solitude",
+        null,
+      );
+    const view = innerView(w.mind, {
+      session: "group:1",
+      now: w.now() + 2,
+    });
+    assert.equal(view.self.livingFor, "想看流星雨");
+    assert.ok(
+      w.mind.self
+        .active({ now: w.now() + 2 })
+        .some((row) => /疲惫/.test(row.content)),
+      "对别人的承诺仍是一条线索",
+    );
+  } finally {
+    w.close();
+  }
+});
+
+test("已经裂开的同一愿望，被碰到的次数仍算一件事", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    const plant = (id, content, time) =>
+      w.mind.db
+        .prepare(
+          "INSERT INTO mind_self(id,thread,created,kind,content,strength,status,sources,days,origin,session_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        )
+        .run(
+          id,
+          id,
+          time,
+          "intention",
+          content,
+          0.3,
+          "active",
+          "[]",
+          "[]",
+          "solitude",
+          null,
+        );
+    plant("wish-old", "想看流星雨", w.now());
+    plant("wish-new", "我想在夜里看一场流星雨", w.now() + 1);
+    const living = w.mind.self.living({ now: w.now() + 2 });
+    assert.ok(living);
+    assert.equal(
+      w.mind.self.sameThreads(living, { before: w.now() + 2 }).length,
+      2,
+    );
+    const said = w.say("group:1", "10001", "今晚有流星雨", { name: "阿明" });
+    w.mind.db
+      .prepare(
+        "INSERT INTO mind_meetings(id,created,session_id,choice,appraisal,topic,people,sources,will_thread,will_met,discretion,will_people,exchange,reason) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      )
+      .run(
+        "meet-old",
+        w.now() + 3,
+        "group:1",
+        "silent",
+        "听到了",
+        "",
+        JSON.stringify(["10001"]),
+        JSON.stringify([said.seq]),
+        "wish-old",
+        1,
+        "open",
+        JSON.stringify(["10001"]),
+        "null",
+        "",
+      );
+    w.mind.db
+      .prepare(
+        "INSERT INTO mind_meeting_people(meeting_id,user_id) VALUES (?,?)",
+      )
+      .run("meet-old", "10001");
+    const will = innerView(w.mind, {
+      session: "group:1",
+      people: ["10001"],
+      now: w.now() + 4,
+    }).inner.will;
+    assert.match(will, /碰到过 1 次/);
+    const tea = {
+      thread: "tea-1",
+      kind: "intention",
+      content: "想把这杯茶喝完",
+    };
+    w.mind.db
+      .prepare(
+        "INSERT INTO mind_self(id,thread,created,kind,content,strength,status,sources,days,origin,session_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+      )
+      .run(
+        "tea-1",
+        "tea-1",
+        w.now() + 5,
+        "intention",
+        "想把这杯茶喝完",
+        0.3,
+        "active",
+        "[]",
+        "[]",
+        "solitude",
+        null,
+      );
+    assert.equal(
+      w.mind.self.sameThreads(tea, { before: w.now() + 6 }).length,
+      1,
+    );
+  } finally {
+    w.close();
+  }
+});
+
 test("选择的理由回到下次相遇；私下的不进群，回放看不到后来的", () => {
   const w = world({ start: "2026-09-22T10:00:00+08:00" });
   try {
@@ -1327,7 +1461,7 @@ test("没有来源的小事如果就是私下的原话，不进别的房间", ()
       {
         action: "new",
         kind: "intention",
-        content: "他最近在准备考研",
+        content: "想把最近在准备考研这件事看完",
         sources: [],
       },
       { time: w.now() },
@@ -1410,7 +1544,7 @@ test("更强的私下小事不会把别的房间正在过的事挤掉", () => {
       {
         action: "new",
         kind: "intention",
-        content: "他最近在准备考研",
+        content: "想把最近在准备考研这件事看完",
         sources: [],
       },
       { time: w.now() + 1000 },
@@ -1763,7 +1897,7 @@ test("更强的私下小事不会让另一件仍在过的事从独处里消失",
       {
         action: "new",
         kind: "intention",
-        content: "他最近在准备考研",
+        content: "想把最近在准备考研这件事看完",
         sources: [],
       },
       { time: w.now() + 1000 },
@@ -2449,7 +2583,7 @@ test("私下的心情原因和在意不进别的房间", () => {
     w.mind.self.propose(
       {
         kind: "intention",
-        content: "住址在南区河边",
+        content: "想把住址在南区河边看完",
         sources: [`g:${meeting}`],
         strength: 0.3,
       },
@@ -2819,11 +2953,11 @@ test("一个词组对上不算碰到她正在过的事", () => {
       { origin: "solitude", time: w.now() },
     );
     w.mind.self.propose(
-      { kind: "intention", content: "烘焙", strength: 0.3 },
+      { kind: "intention", content: "想看海", strength: 0.3 },
       { origin: "solitude", time: w.now() },
     );
     w.advance(MINUTE);
-    meet(3, "今天吃烘焙");
+    meet(3, "今天看海");
     assert.equal(
       w.mind.db
         .prepare(

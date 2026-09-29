@@ -4,7 +4,7 @@ import { withFallback } from "../core/model-manager.js";
 import { evidence, hasCredential, text } from "./util.js";
 import { isPrivateSession } from "./memory.js";
 import { sameRecentTheme } from "./novelty.js";
-import { sameSelf } from "./salience.js";
+import { ownLife, sameSelf } from "./salience.js";
 
 // Form a thought before choosing an audience. No transcript, unanswered
 // question or destination is supplied here: those belong to delivery, not
@@ -22,13 +22,10 @@ export class OwnVoice {
       .filter((s) =>
         ["interest", "curiosity", "view", "intention"].includes(s.kind),
       )
-      // Older summaries sometimes called advice to someone else an intention.
-      // Keep the record, but do not treat it as a project she wants to pursue.
-      .filter(
-        (s) =>
-          s.kind !== "intention" ||
-          !/^(?:我)?(?:会|愿意|想)?(?:建议|劝|提醒|鼓励)/.test(s.content),
-      )
+      // Older summaries sometimes called advice or a duty to someone else
+      // an intention. Keep the record, but do not treat it as a life she
+      // is living.
+      .filter((s) => s.kind !== "intention" || ownLife(s.content))
       .slice(0, 12);
     const notes = this.mind.thoughts
       .open({ now, limit: 40 })
