@@ -283,3 +283,145 @@ test("只有时间过去也能独处，再看旧念头，但不会每分钟循�
   await w.life.tick();
   assert.equal(w.calls.filter((c) => c.stage === "reflection").length, 2);
 });
+
+const circle = (w, count = 4) => {
+  const lines = [
+    "先想想角色怎么选",
+    "再往前推一点选择的代价",
+    "接着上一条再推一层",
+    "还是同一件事再想想别的写法",
+    "同一条线再绕一圈",
+  ];
+  return Array.from({ length: count }, (_, i) =>
+    w.mind.thoughts.add({
+      kind: "expression",
+      content: lines[i],
+      sources: [],
+      time: w.now() - (count - i) * 30 * MINUTE,
+    }),
+  );
+};
+
+test("连着几条念头只在接自己上一条，没有新东西就不再问她", async (t) => {
+  const w = setup(t, { solitude: false });
+  w.say("private:10001", "10001", "晚点聊");
+  w.advance(5 * HOUR);
+  circle(w);
+  assert.equal(w.life.ownVoice.circling(w.now()).run, 3);
+  const result = await w.life.tick();
+  assert.equal(result.status, "presence-silent");
+  assert.match(result.reason, /只在接自己上一条/);
+  assert.equal(
+    w.calls.filter((c) => c.stage === "expression").length,
+    0,
+    "没有新东西时不再花一次调用",
+  );
+});
+
+test("念头接住了新东西就断开打转；她自己写回线索不算新东西", (t) => {
+  const w = setup(t, { solitude: false });
+  w.advance(5 * HOUR);
+  const [a, b] = circle(w, 2);
+  assert.equal(w.life.ownVoice.circling(w.now()).run, 1);
+  const seen = w.mind.thoughts.add({
+    kind: "reflection",
+    content: "阿明今天说他也在想角色的选择",
+    time: w.now() - 20 * MINUTE,
+  });
+  const anchored = w.mind.thoughts.add({
+    kind: "expression",
+    content: "阿明的话让我想到角色为什么会犹豫",
+    sources: [`t:${seen}`],
+    time: w.now() - 10 * MINUTE,
+  });
+  assert.equal(w.life.ownVoice.circling(w.now()).run, 0, "接住新手记就断开");
+  const wish = w.mind.self.propose(
+    { kind: "interest", content: "我喜欢有自己坚持的角色", strength: 0.3 },
+    { origin: "solitude", time: w.now() - 40 * MINUTE },
+  );
+  const later = w.mind.thoughts.add({
+    kind: "expression",
+    content: "再想想坚持的角色",
+    sources: [`s:${wish.thread}`],
+    time: w.now() - 5 * MINUTE,
+  });
+  assert.equal(
+    w.life.ownVoice.circling(w.now()).run,
+    1,
+    "那条线索比上一条念头早，不是这之后才来的",
+  );
+  assert.ok(a && b && anchored && later);
+  w.mind.self.propose(
+    { thread: wish.thread, content: "我喜欢有自己坚持的角色，尤其在犹豫时" },
+    { origin: "expression", time: w.now() - 2 * MINUTE },
+  );
+  assert.equal(
+    w.life.ownVoice.arrived(w.now() - 3 * MINUTE, w.now()).size,
+    0,
+    "自己写回线索不算新东西",
+  );
+});
+
+test("念头打转时只把新来的东西给她，没接住就不留，接住了才留", async (t) => {
+  const w = setup(t, { solitude: false });
+  w.say("private:10001", "10001", "晚点聊");
+  w.advance(5 * HOUR);
+  circle(w);
+  const kept = () =>
+    w.mind.thoughts
+      .list({ before: w.now() + 1, hidden: false })
+      .filter((n) => n.kind === "expression").length;
+  const before = kept();
+  const first = w.mind.thoughts.add({
+    kind: "reflection",
+    content: "阿明今天说他最近也在想角色的选择",
+    time: w.now(),
+  });
+  w.advance(MINUTE);
+  let shown = null;
+  w.answers.expression = (data) => {
+    shown = data;
+    return {
+      note: "还是想再推一推角色那条线",
+      share: false,
+      words: [],
+      reason: "想接着想",
+      audience: "either",
+      sources: [],
+    };
+  };
+  const drifted = await w.life.tick();
+  assert.equal(drifted.status, "presence-silent");
+  assert.equal(shown.circling.notes, 3);
+  assert.deepEqual(shown.circling.fresh, [`t:${first}`]);
+  assert.equal(kept(), before, "没接住新东西，不留下");
+  assert.ok(w.life.repo.config("own-voice", {}).circledAt);
+
+  w.advance(31 * MINUTE);
+  shown = null;
+  const still = await w.life.tick();
+  assert.equal(still.status, "presence-silent");
+  assert.equal(shown, null, "已经给她看过了，没有更新的东西就不再问");
+
+  const second = w.mind.thoughts.add({
+    kind: "reflection",
+    content: "阿明后来又补了一句他为什么在意这件事",
+    time: w.now(),
+  });
+  w.advance(31 * MINUTE);
+  w.answers.expression = (data) => {
+    shown = data;
+    return {
+      note: "阿明补的那句让我想到，角色的坚持也许来自他在意的东西",
+      share: false,
+      words: [],
+      reason: "接着他的话想",
+      audience: "either",
+      sources: [`t:${second}`],
+    };
+  };
+  await w.life.tick();
+  assert.deepEqual(shown.circling.fresh, [`t:${second}`]);
+  assert.equal(kept(), before + 1, "接住了新东西才留下");
+  assert.equal(w.life.ownVoice.circling(w.now()).run, 0);
+});

@@ -5183,6 +5183,15 @@ test("被问到是谁时，心和选择属于自己，经历仍然不能编造",
     prompts({ config: () => ({ reflection: previousReflection }) }).reflection,
     PROMPTS.reflection,
   );
+  assert.match(PROMPTS.expression, /circling\.fresh/);
+  const previousExpression = RETIRED_PROMPTS.expression.find(
+    (item) => !item.includes("circling"),
+  );
+  assert.ok(previousExpression);
+  assert.equal(
+    prompts({ config: () => ({ expression: previousExpression }) }).expression,
+    PROMPTS.expression,
+  );
   assert.match(PROMPTS.daily, /正在为自己而活/);
   assert.match(PROMPTS.weekly, /正在为自己而活/);
   assert.match(PROMPTS.weekly, /不要编成已经做成/);
