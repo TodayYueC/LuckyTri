@@ -27,6 +27,15 @@ export function interestTerms(values) {
   return terms;
 }
 
+// A Latin or numeric token long enough to be a title, a name, or a work.
+// One Chinese pair is still just a pair; saying the name is meeting it.
+export function projectTerms(terms) {
+  const named = new Set();
+  for (const term of terms || [])
+    if (/^[a-z0-9]{3,}$/.test(term)) named.add(term);
+  return named;
+}
+
 // Whether she actually reads this batch or lets it go by. No dice: the
 // same situation always gets the same attention, and every skipped message
 // stays unread so the next real look still sees it.
@@ -118,7 +127,8 @@ export function attend({
     }
     return false;
   };
-  if (meets(living, 2)) add(2, "聊到了我正在过的事");
+  if (meets(living, 2) || meets(projectTerms(living), 1))
+    add(2, "聊到了我正在过的事");
   else if (meets(interests, 1) || meets(curiosities, 2))
     add(2, "聊到了我在意的东西");
   if (batch.some((m) => (closeness.get(String(m.userId)) || 0) >= 0.45))
