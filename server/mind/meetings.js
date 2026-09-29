@@ -63,7 +63,7 @@ export class Meetings {
       bySpeaker.set(id, texts);
     }
     const hits = [];
-    for (const wish of this.#ownWishes(session, time)) {
+    for (const wish of this.ownWishes(session, time)) {
       const people = [...bySpeaker.entries()]
         .filter(([, texts]) => meetsLife(wish.content, interestTerms(texts)))
         .map(([id]) => id);
@@ -622,7 +622,7 @@ export class Meetings {
   // Own wishes still present in this room. The current livingFor is
   // among them when it belongs here; it is not the only one that can
   // be met.
-  #ownWishes(session, time) {
+  ownWishes(session, time) {
     return this.mind.self
       .annotated({ before: time, now: time })
       .filter(
