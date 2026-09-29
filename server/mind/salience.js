@@ -34,10 +34,18 @@ export const CORE_THREADS = 2;
 
 const round = (value) => Math.round(value * 1000) / 1000;
 
+// An opinion the nightly memory step picked out of one chat is not yet who she
+// is. It stays only as long as it keeps coming back: each new piece of
+// evidence renews it, and one that never recurs fades like a passing thought.
+export const PASSING_VIEW_HALF_LIFE = 21;
+
 export function threadSalience(row, lived) {
   const idle = lived.since(row.created);
   const settled = row.kind === "trait" && (row.days?.length || 0) >= 5 ? 2 : 1;
-  const half = (THREAD_HALF_LIFE[row.kind] || 60) * settled;
+  const passing = row.kind === "view" && row.origin === "memory";
+  const half = passing
+    ? PASSING_VIEW_HALF_LIFE
+    : (THREAD_HALF_LIFE[row.kind] || 60) * settled;
   return round(
     Number(row.strength || 0) *
       0.5 ** (Math.max(0, idle - THREAD_GRACE) / half),

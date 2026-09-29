@@ -22,6 +22,8 @@ const RECALL_LIMIT = 12;
 const RECALL_TERMS = 64;
 const FTS_CANDIDATES = 200;
 const BLOCK_USERS = 40;
+// One stretch of talk adds at most this many views to who she is.
+const MEMORY_VIEWS_PER_BLOCK = 2;
 const SENSITIVE = /密码|验证码|密钥|身份证|银行卡|api.?key|token/i;
 const DISCRETIONS = new Set(["open", "private", "secret"]);
 
@@ -769,18 +771,24 @@ export class MemoryManager {
           privateChat,
           now,
         });
-        // What she herself said and meant becomes part of who she is.
+        // What she herself said and meant becomes part of who she is. Her
+        // opinions about topics are not: one stretch of talk can add only a
+        // couple of views, and the rest stays in the summary.
         const valid = new Set(
           block.filter((m) => m.role === "assistant").map((m) => `m:${m.seq}`),
         );
+        let views = 0;
         for (const note of (Array.isArray(value.self) ? value.self : []).slice(
           0,
           6,
-        ))
+        )) {
+          if (note?.kind === "view" && ++views > MEMORY_VIEWS_PER_BLOCK)
+            continue;
           this.mind?.self.propose(
             { ...note, action: "new", session },
             { valid, origin: "memory", time: now },
           );
+        }
         db.prepare(
           "INSERT INTO core_cursors VALUES (?,?) ON CONFLICT(session_id) DO UPDATE SET seq=excluded.seq",
         ).run(session, last);
