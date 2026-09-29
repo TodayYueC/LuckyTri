@@ -10,6 +10,7 @@ import {
   anyTouches,
   cueList,
   meetingSalience,
+  meetsLife,
   ownLife,
   touches,
 } from "./salience.js";
@@ -47,8 +48,6 @@ export class Meetings {
       now: time,
       room: session,
     });
-    const wish = living ? interestTerms([living.content]) : new Set();
-    const need = wish.size < 2 ? 1 : 2;
     // Each person's own words have to meet the wish, across the messages
     // they sent in this batch. Two people cannot be added together, and
     // someone who only stood nearby is not credited.
@@ -63,7 +62,7 @@ export class Meetings {
     const willPeople = living
       ? [...bySpeaker.entries()]
           .filter(([, texts]) =>
-            touches(living.content, interestTerms(texts), need),
+            meetsLife(living.content, interestTerms(texts)),
           )
           .map(([id]) => id)
       : [];
@@ -662,9 +661,8 @@ export class Meetings {
     }
     const named = parse(row.will_people, []);
     const who = named.length ? named.map(String) : [...bySpeaker.keys()];
-    const need = interestTerms([content]).size < 2 ? 1 : 2;
     return who.some((id) =>
-      touches(content, interestTerms(bySpeaker.get(id) || []), need),
+      meetsLife(content, interestTerms(bySpeaker.get(id) || [])),
     );
   }
   // Where a cited meeting belongs. A private one cannot be carried elsewhere.

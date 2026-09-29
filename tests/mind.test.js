@@ -3030,6 +3030,94 @@ test("一个词组对上不算碰到她正在过的事", () => {
   }
 });
 
+test("点出愿望里的作品名，就算碰到正在过的事", () => {
+  const w = world();
+  try {
+    w.open("group:1");
+    const wish =
+      "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里";
+    w.mind.self.propose(
+      { kind: "intention", content: wish, strength: 0.3 },
+      { origin: "solitude", time: w.now() },
+    );
+    const said = w.say("group:1", "10001", "今晚打Celeste", { name: "阿明" });
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "听到了",
+        reason: "听到了",
+        topic: "",
+        targetMessageIds: [said.seq],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [said.seq],
+          messages: [
+            {
+              id: said.seq,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: "今晚打Celeste",
+              relation: "ambient",
+            },
+          ],
+        },
+        kind: "group",
+        spoke: false,
+        time: w.now(),
+      },
+    );
+    assert.equal(
+      w.mind.db
+        .prepare("SELECT COUNT(*) n FROM mind_meetings WHERE will_met=1")
+        .get().n,
+      1,
+    );
+    assert.match(
+      innerView(w.mind, {
+        session: "group:1",
+        people: ["10001"],
+        now: w.now() + 1,
+      }).inner.will,
+      /碰到过 1 次/,
+    );
+    const named = attend({
+      batch: [
+        {
+          userId: "10001",
+          role: "user",
+          text: "今晚打Celeste",
+          relation: "unknown",
+          mentions: [],
+        },
+      ],
+      now: w.now(),
+      living: interestTerms([wish]),
+    });
+    assert.match(named.reason, /正在过的事/);
+    const pair = attend({
+      batch: [
+        {
+          userId: "10001",
+          role: "user",
+          text: "天上有流星吗？",
+          relation: "unknown",
+          mentions: [],
+        },
+      ],
+      now: w.now(),
+      living: interestTerms(["想看流星雨"]),
+    });
+    assert.doesNotMatch(pair.reason, /正在过的事/);
+  } finally {
+    w.close();
+  }
+});
+
 test("两个人的话拼在一起不算碰到，旁边的人也不算", () => {
   const w = world();
   try {

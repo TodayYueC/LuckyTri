@@ -1,4 +1,4 @@
-import { interestTerms } from "./attention.js";
+import { interestTerms, projectTerms } from "./attention.js";
 import { similar } from "./util.js";
 
 // How long each kind of thing stays with her without being lived again, as
@@ -121,6 +121,17 @@ export function sameSelf(a, b) {
 // A wish she is living for herself: something she wants to do or become.
 // Advice, a promise about how she will treat someone, and watching over
 // another person's state stay as threads; they do not take livingFor.
+// Whether someone's own words met this wish. Two distinctive pairs, or
+// one when the wish only has one; naming a title or work in it is enough.
+// A single Chinese pair is still not a meeting.
+export function meetsLife(content, cue) {
+  const wish = interestTerms([content]);
+  if (!wish.size || !cue?.size) return false;
+  if (touches(content, cue, wish.size < 2 ? 1 : 2)) return true;
+  for (const term of projectTerms(wish)) if (cue.has(term)) return true;
+  return false;
+}
+
 export function ownLife(content) {
   const text = String(content || "");
   if (/^(?:我)?(?:会|愿意|想)?(?:建议|劝|提醒|鼓励)/.test(text)) return false;
