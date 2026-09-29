@@ -25,6 +25,7 @@ import {
 import { RETIRED_PROMPTS } from "../server/core/retired-prompts.js";
 import { innerView } from "../server/mind/view.js";
 import { diffSnapshots, snapshotLiving } from "../server/mind/index.js";
+import { leftLife } from "../server/mind/salience.js";
 import { validateResponse } from "../server/core/response-validator.js";
 import { world, HOUR, MINUTE } from "./helpers/world.js";
 
@@ -1493,6 +1494,62 @@ test("自己后来写下的念头，会让正在过的那一件回到她真正�
         .livingFor,
       living.content,
     );
+  } finally {
+    w.close();
+  }
+});
+
+test("写下把愿望放下的念头，不再把正在过的钉在那一件上", () => {
+  const wish = "决定开新游戏，完全蒙玩，不看评分不看讨论页";
+  assert.equal(
+    leftLife(wish, "蒙玩线封了以后，这件事就算定下来了。"),
+    true,
+  );
+  assert.equal(
+    leftLife(
+      "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+      "蒙玩线封了以后，这件事就算定下来了。",
+    ),
+    false,
+  );
+  assert.equal(leftLife(wish, "这条蒙玩线到了真正要开始的那一步。"), false);
+  assert.equal(leftLife(wish, "封面上写着今晚开新游戏。"), false);
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      { kind: "intention", content: wish, strength: 0.35 },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    w.mind.thoughts.add({
+      kind: "expression",
+      content: "这条蒙玩线到了真正要开始的那一步。",
+      time: w.now() + 2000,
+    });
+    assert.match(w.mind.self.living({ now: w.now() + 2500 }).content, /蒙玩/);
+    w.mind.thoughts.add({
+      kind: "expression",
+      content: "蒙玩线封了以后，这件事就算定下来了。也许不用这么急。",
+      time: w.now() + 3000,
+    });
+    const living = w.mind.self.living({ now: w.now() + 4000 });
+    assert.match(living.content, /轻松日常的gal/);
+    assert.doesNotMatch(living.content, /蒙玩/);
+    w.mind.thoughts.add({
+      kind: "expression",
+      content: "今晚继续蒙玩，不看评分不看讨论页。",
+      time: w.now() + 5000,
+    });
+    assert.match(w.mind.self.living({ now: w.now() + 6000 }).content, /蒙玩/);
   } finally {
     w.close();
   }
