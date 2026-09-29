@@ -6,6 +6,7 @@ import { Repository } from "./repository.js";
 import {
   ModelManager,
   backupModels,
+  isTransientModelFailure,
   storedModels,
   withFallback,
 } from "./model-manager.js";
@@ -111,6 +112,11 @@ export class ChatSystem {
     this.fetchImage = fetchImage;
     this.loadVisionImages = loadImages;
     this.clearEpoch = new Map();
+    // A model service that was out of reach for a moment should not leave
+    // someone who spoke to her directly without an answer until they write
+    // again: a few later tries, then it is left as it is.
+    this.retryDelays = [30000, 120000];
+    this.retried = new Map();
     this.tracePruneDue = 0;
     this.backlogChecked = new Map();
     this.queue = new ConversationManager((id, batch) =>
@@ -152,6 +158,35 @@ export class ChatSystem {
       [settings.name, settings.aliases, settings.enabled, settings.demo],
       this.clearEpoch.get(session) || 0,
     ]);
+  }
+  // Ask again later for a batch that was spoken to her directly, when the model
+  // service was only briefly unavailable. Not for a missing balance or a
+  // rejected request, and not when she has already answered since.
+  retryAfterOutage(session, batch, error, trace) {
+    if (!batch.length || !isTransientModelFailure(error)) return false;
+    const now = this.now();
+    for (const [key, entry] of this.retried)
+      if (now - entry.at > 60 * 60000) this.retried.delete(key);
+    const key = `${session}:${batch[0].seq}`;
+    const tried = this.retried.get(key)?.count ?? 0;
+    if (tried >= this.retryDelays.length) return false;
+    this.retried.set(key, { count: tried + 1, at: now });
+    const delay = this.retryDelays[tried];
+    const last = batch.at(-1).seq;
+    trace.steps.push(
+      `模型服务暂时不可用，${Math.round(delay / 1000)} 秒后再试（第 ${tried + 1} 次）`,
+    );
+    this.queue.retryLater(
+      session,
+      batch,
+      delay,
+      () =>
+        this.enabled(session, { simulated: false }) &&
+        !this.repo
+          .eventsAfter(session, last, { simulated: false })
+          .some((m) => m.role === "assistant"),
+    );
+    return true;
   }
   fallbackFor(_policy, primary, trace) {
     const chain = [];
@@ -839,12 +874,16 @@ export class ChatSystem {
       } catch (error) {
         land(Array.isArray(trace.sent) && trace.sent.length > 0);
         trace.error = error.message;
+        if (live && !trace.sent?.length && (privateChat || gate?.direct))
+          this.retryAfterOutage(session, batch, error, trace);
         return finish("error", error.message);
       }
       land(Array.isArray(spoken?.sent) && spoken.sent.length > 0);
       return spoken;
     } catch (e) {
       trace.error = e.message;
+      if (live && !trace.sent?.length && (privateChat || gate?.direct))
+        this.retryAfterOutage(session, batch, e, trace);
       return finish("error", e.message);
     } finally {
       // Previews and demos are disposable by design: they never advance

@@ -773,6 +773,16 @@ function requestFailure(error, entry, profile) {
   }
   return error;
 }
+// The service was briefly out of reach: a timeout, a dropped connection, a rate
+// limit, a server error, or the pause that follows repeated failures. Trying
+// again a little later can work. A missing balance, a bad key or a rejected
+// request cannot.
+export function isTransientModelFailure(error) {
+  if (!error || error instanceof SyntaxError) return false;
+  if (error.circuitOpen || error.timeout || error.networkFailure) return true;
+  if (RETRYABLE_STATUS.has(Number(error.status))) return true;
+  return isTransientNetworkError(error) || isTimeoutError(error);
+}
 export function shouldFallback(error) {
   if (!error || error instanceof SyntaxError) return false;
   if (error.circuitOpen || error.timeout || error.networkFailure) return true;
