@@ -293,8 +293,11 @@ export class Anticipations {
   }
   // What she might think about when alone: due soon, just past, or quietly
   // missed within the last week.
+  // What is still ahead comes first, soonest first. What already lapsed comes
+  // after it, the most recent first, so a week-old plan of someone else does
+  // not take the places from what is near now.
   due({ now = Date.now(), limit = 5, shareable = false } = {}) {
-    const out = [];
+    const found = [];
     for (const a of this.pending(now)) {
       if (shareable && this.concealed(a)) continue;
       const due = this.occurrence(a, now);
@@ -303,18 +306,29 @@ export class Anticipations {
           ? 0
           : (GRACE[a.kind] ?? GRACE.event) + 7 * DAY;
       if (now < this.opens(due) || now >= this.ends(a, due) + after) continue;
-      out.push({
-        ref: `a:${a.id}`,
-        kind: ANTICIPATION_KINDS[a.kind],
-        ...(a.subject ? { who: this.who(a), userId: a.subject } : {}),
-        content: a.content,
-        when: this.relative(due, now, a.due_precision),
-        ...(this.lapsed(a, now) ? { lapsed: true } : {}),
-        ...(a.recurrence === "yearly" ? { yearly: true } : {}),
+      const lapsed = this.lapsed(a, now);
+      found.push({
+        due,
+        lapsed,
+        item: {
+          ref: `a:${a.id}`,
+          kind: ANTICIPATION_KINDS[a.kind],
+          ...(a.subject ? { who: this.who(a), userId: a.subject } : {}),
+          content: a.content,
+          when: this.relative(due, now, a.due_precision),
+          ...(lapsed ? { lapsed: true } : {}),
+          ...(a.recurrence === "yearly" ? { yearly: true } : {}),
+        },
       });
-      if (out.length >= limit) break;
     }
-    return out;
+    return found
+      .sort(
+        (a, b) =>
+          Number(a.lapsed) - Number(b.lapsed) ||
+          (a.lapsed ? b.due - a.due : a.due - b.due),
+      )
+      .slice(0, limit)
+      .map((entry) => entry.item);
   }
   // Something she was looking ahead to has come close, or just passed.
   newlyDue(since, now = Date.now()) {
