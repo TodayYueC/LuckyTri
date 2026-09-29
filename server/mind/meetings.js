@@ -683,9 +683,9 @@ export class Meetings {
     }
     return out;
   }
-  // The last day this wish was lived: the world met it, or she spoke it.
-  // Reading only; a later wording that those words no longer meet does
-  // not inherit the day. Silent meetings do not count as her speaking.
+  // The last day this wish was lived: the world met it, she answered, or
+  // she sent a planned line about it. Reading only. Silent meetings and
+  // unsent drafts do not count as her speaking.
   livedAt(thread, before = Date.now()) {
     if (!thread) return null;
     const wish = this.#wishAt(thread, before);
@@ -718,12 +718,31 @@ export class Meetings {
          ORDER BY created DESC`,
       )
       .all(before);
+    const keep = (at) => {
+      if (at != null && (latest == null || at > latest)) latest = at;
+    };
     for (const row of spoken) {
-      if (latest != null && row.created <= latest) break;
       const exchange = parse(row.exchange, null);
       const said = (exchange?.iSaid || []).join("\n");
-      if (said && aboutLife(wish.content, said)) return row.created;
+      if (said && aboutLife(wish.content, said)) {
+        keep(row.created);
+        break;
+      }
     }
+    const sent = this.db
+      .prepare(
+        `SELECT COALESCE(outreach_at, created) AS created, outreach
+         FROM mind_thoughts
+         WHERE outreach_status='sent' AND hidden=0 AND outreach!=''
+           AND COALESCE(outreach_at, created)<=?
+         ORDER BY COALESCE(outreach_at, created) DESC`,
+      )
+      .all(before);
+    for (const row of sent)
+      if (aboutLife(wish.content, row.outreach)) {
+        keep(row.created);
+        break;
+      }
     return latest;
   }
   // Already-split wordings of the same wish still count as one life.

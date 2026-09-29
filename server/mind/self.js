@@ -113,8 +113,8 @@ export class Self {
       .map((row) => {
         // A rewording is not a new meeting with the thread. Fade follows the
         // last version that actually brought new evidence. A later note she
-        // wrote to herself, a meeting that met this wish, or words she
-        // herself spoke about it, are also living it.
+        // wrote to herself, a meeting that met this wish, words she spoke
+        // about it, or a line she later sent about it, are also living it.
         let at = earnedAt(versions.get(row.thread)) ?? row.created;
         if (row.kind === "intention" && ownLife(row.content)) {
           for (const note of notes)
@@ -167,20 +167,36 @@ export class Self {
       at,
     );
   }
-  // Among her own wishes, the one she has been writing to herself about.
-  // No such note: the one still most present. Duties never enter this list.
+  // Among her own wishes, the one her latest note or sent line is about.
+  // A later send about another wish takes this seat from an earlier note.
+  // Planned drafts do not. No such line: the one still most present.
+  // Duties never enter this list.
   #preferLived(candidates, now) {
     if (!candidates.length) return null;
     const notes = this.mind.thoughts
       .open({ now, limit: 8 })
       .filter((t) => t.kind === "expression" || t.kind === "unfinished");
-    const held = notes.length
-      ? candidates.filter((row) =>
-          notes.some((note) => aboutLife(row.content, note.content)),
-        )
-      : [];
-    const pool = held.length ? held : candidates;
-    return [...pool].sort(
+    const lines = [];
+    for (const note of notes) {
+      if (note.outreach_status === "sent" && note.outreach)
+        lines.push({
+          text: note.outreach,
+          at: note.outreach_at ?? note.created,
+          spoken: true,
+        });
+      lines.push({ text: note.content, at: note.created, spoken: false });
+    }
+    lines.sort((a, b) => b.at - a.at || Number(b.spoken) - Number(a.spoken));
+    for (const line of lines) {
+      const held = candidates.filter((row) =>
+        aboutLife(row.content, line.text),
+      );
+      if (held.length)
+        return [...held].sort(
+          (a, b) => b.salience - a.salience || b.created - a.created,
+        )[0];
+    }
+    return [...candidates].sort(
       (a, b) => b.salience - a.salience || b.created - a.created,
     )[0];
   }
