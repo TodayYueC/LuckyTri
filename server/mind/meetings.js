@@ -745,6 +745,29 @@ export class Meetings {
       }
     return latest;
   }
+  // Lines she actually sent in a meeting, newest first. Silent meetings
+  // do not count. Used to let livingFor follow what she just said.
+  recentSaid(before = Date.now(), limit = 8) {
+    const hidden = `AND NOT EXISTS (
+           SELECT 1 FROM mind_revocations r
+           WHERE r.target_kind='meeting' AND r.target_id=m.id
+         )`;
+    return this.db
+      .prepare(
+        `SELECT created, exchange FROM mind_meetings m
+         WHERE created<=? AND choice!='silent' AND exchange IS NOT NULL
+         AND exchange!='null' ${hidden}
+         ORDER BY created DESC LIMIT ?`,
+      )
+      .all(before, limit)
+      .flatMap((row) => {
+        const exchange = parse(row.exchange, null);
+        const said = (exchange?.iSaid || [])
+          .filter((line) => typeof line === "string" && line.trim())
+          .join("\n");
+        return said ? [{ text: said, at: row.created, spoken: true }] : [];
+      });
+  }
   // Already-split wordings of the same wish still count as one life.
   #willThreads(thread, before) {
     const wish = this.#wishAt(thread, before);
