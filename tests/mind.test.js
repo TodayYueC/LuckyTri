@@ -30,7 +30,11 @@ import {
 import { RETIRED_PROMPTS } from "../server/core/retired-prompts.js";
 import { innerView } from "../server/mind/view.js";
 import { diffSnapshots, snapshotLiving } from "../server/mind/index.js";
-import { leftLife } from "../server/mind/salience.js";
+import {
+  THREAD_FADED,
+  leftLife,
+  threadSalience,
+} from "../server/mind/salience.js";
 import { validateResponse } from "../server/core/response-validator.js";
 import { world, HOUR, MINUTE } from "./helpers/world.js";
 
@@ -3510,6 +3514,100 @@ test("整理记忆时，她自己说过的看法和承诺成为她的一部分�
     w.mind.self.active().find((t) => t.thread === held.thread).content,
     "我觉得早起挺好",
   );
+});
+
+test("一段聊天里的看法最多收两条，其余留在总结里；她自己的习惯和答应的事不受这个上限", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1");
+  w.say("group:1", "10001", "聊聊最近的事");
+  const lines = [
+    "我觉得早起挺好",
+    "我认为奶茶太甜",
+    "我觉得周末下雨很舒服",
+    "我认为地铁比公交快",
+    "我说话习惯先想一想再回",
+    "明天提醒他带伞",
+  ].map((text) => w.say("group:1", "bot", text));
+  w.answers.memory = {
+    summary: "聊了很多杂事",
+    facts: [],
+    self: [
+      { kind: "view", content: lines[0].text, sources: [lines[0].seq] },
+      { kind: "view", content: lines[1].text, sources: [lines[1].seq] },
+      { kind: "view", content: lines[2].text, sources: [lines[2].seq] },
+      { kind: "view", content: lines[3].text, sources: [lines[3].seq] },
+      { kind: "habit", content: lines[4].text, sources: [lines[4].seq] },
+      { kind: "intention", content: lines[5].text, sources: [lines[5].seq] },
+    ],
+  };
+  await w.mind.memory.consolidate(
+    "group:1",
+    {},
+    "",
+    { calls: [] },
+    { force: true, models: w.system.models, now: w.now() },
+  );
+  const held = w.mind.self.active().map((row) => row.content);
+  assert.deepEqual(
+    held.filter((text) => /觉得|认为/.test(text)).sort(),
+    [lines[0].text, lines[1].text].sort(),
+    "只收前两条看法",
+  );
+  assert.ok(held.includes(lines[4].text), "说话习惯照收");
+  assert.ok(held.includes(lines[5].text), "答应的事照收");
+});
+
+test("只在一次聊天里冒出来的看法很快淡去，别处再证实的、她自己想过的不受影响", () => {
+  const lived = { since: () => 40 };
+  const base = { kind: "view", strength: 0.35, created: 0 };
+  const passing = threadSalience({ ...base, origin: "memory" }, lived);
+  const reflected = threadSalience({ ...base, origin: "solitude" }, lived);
+  assert.ok(passing < THREAD_FADED, "夜里整理出来的话题看法已经淡出");
+  assert.ok(reflected > THREAD_FADED * 2, "她自己想过的看法仍在心上");
+  assert.equal(
+    threadSalience({ ...base, kind: "habit", origin: "memory" }, lived),
+    threadSalience({ ...base, kind: "habit", origin: "solitude" }, lived),
+    "只有看法按这个更快的节奏淡去",
+  );
+  const w = world();
+  try {
+    w.open("group:1");
+    const first = w.say("group:1", "bot", "我觉得早起挺好，起来做点自己的事");
+    const thread = w.mind.self.propose(
+      { kind: "view", content: first.text, sources: [first.seq] },
+      { valid: new Set([`m:${first.seq}`]), origin: "memory", time: w.now() },
+    );
+    w.advance(20 * 86400000);
+    const again = w.say(
+      "group:1",
+      "bot",
+      "我还是觉得早起挺好，起来做点自己的事",
+    );
+    w.mind.self.propose(
+      {
+        action: "revise",
+        thread: thread.thread,
+        content: again.text,
+        sources: [again.seq],
+      },
+      { valid: new Set([`m:${again.seq}`]), origin: "memory", time: w.now() },
+    );
+    const row = w.mind.self
+      .latest(w.now())
+      .find((item) => item.thread === thread.thread);
+    assert.equal(row.content, again.text, "别的聊天里再说到，写回同一条线索");
+    assert.ok(row.sources.includes(`m:${again.seq}`));
+  } finally {
+    w.close();
+  }
+});
+
+test("记忆整理的提示分清话题的判断和她自己的样子", () => {
+  const memory = replyPrompt(NATURE_DEFAULTS, PROMPTS, "memory");
+  assert.match(memory, /self 与话题/);
+  assert.match(memory, /最多收 2 条看法/);
+  assert.match(memory, /已经写在 summary 里/);
 });
 
 test("注意力没有骰子：同样的情况永远得到同样的注意力", () => {

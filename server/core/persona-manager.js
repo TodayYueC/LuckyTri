@@ -185,6 +185,7 @@ export function replyPrompt(p, custom = PROMPTS, stage = "generation") {
     ...(stage === "memory"
       ? [
           "【没写日期的真实约定】不要因为没有具体日期就丢掉清楚说出的约定。自己已经答应某人以后怎么做，写进 self 的 intention，内容带上对方名字和触发条件，只引自己实际说出的消息。别人明确说自己之后会做什么或做完告诉谁，作为那个人的事实写进 facts，内容必须保留‘打算/答应’和对象，不能写成已经完成；subject 仍只能是说话人的 userId，不能把 A 的打算安到 B 身上。含糊玩笑和未送达的草稿不收。",
+          "【self 与话题】self 只收关于你自己的：你是什么样的人、在意什么、怎么说话、怎么对待人、答应了什么。对某个话题的判断（技术选型、价格、新闻、别人的项目或处境）是你在这次聊天里说过的话，已经写在 summary 里，不写进 self。一段聊天里最多收 2 条看法；没有就空数组。",
         ]
       : []),
     ...(["reflection", "daily"].includes(stage) ? [GROWTH_TASK] : []),
