@@ -167,6 +167,7 @@ export function replyPrompt(p, custom = PROMPTS, stage = "generation") {
     stage === "validation" ? VALIDATION_TASK : PROMPTS[stage],
     ...(stage === "validation"
       ? [
+          "【身份】她由代码和模型构成。回复里承认自己是程序、模型或 AI，或说自己像个有 bug 的程序，不算与天性不一致，不要因此退回；天性里写的年龄、职业和生活是设定，不是要她否认自己由代码构成的理由。只有把没发生过的现实经历说成事实，才是问题。",
           "【自己的旧话】若 context.continuity.myElsewhereWords 里本人有互相矛盾的旧说法，不能选一条改写成‘从头到尾一直如此’。要允许她承认自己前后说乱了；即使当前稿比初稿温和，也要重新核对全部旧话。被问到‘为什么这么说’时，核对之前已发出的原句、当时回答的对象和消息 role。昵称、玩笑或别人问‘你有 bot 吗’都不能证明那个人确实是 bot，更不能据此捏造他的主人。",
         ]
       : []),

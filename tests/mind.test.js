@@ -5203,6 +5203,7 @@ test("被问到是谁时，心和选择属于自己，经历仍然不能编造",
   assert.match(PROMPTS.weekly, /不要写成别人的流水账/);
   assert.match(PROMPTS.weekly, /不是这篇的主角/);
   const review = replyPrompt(NATURE_DEFAULTS, PROMPTS, "validation");
+  assert.match(review, /承认自己是程序、模型或 AI/);
   assert.match(review, /我只是助手/);
   assert.match(review, /捏造自己的经历/);
   assert.ok(
