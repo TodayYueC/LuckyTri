@@ -144,6 +144,7 @@ export class Meetings {
   recall({
     session,
     people = [],
+    cue = [],
     now = Date.now(),
     limit = 2,
     inclusive = false,
@@ -168,11 +169,37 @@ export class Meetings {
       );
     take(this.#open(`m.session_id=? AND ${bound}`, [session, now]));
     const lived = this.mind.days.lived(now);
+    const currentWords = interestTerms(
+      cue
+        .filter((line) => line?.role === "user")
+        .map((line) => line.text || ""),
+    );
     return rows
-      .filter((row) => meetingSalience(row.created, lived) >= MEETING_FADED)
+      .filter((row) => {
+        if (meetingSalience(row.created, lived) < MEETING_FADED) return false;
+        if (row.session_id === session || !currentWords.size) return true;
+        // A remembered appraisal is an old interpretation, not evidence of
+        // what today's speaker just said. Cross-room cues need actual words.
+        const exchange = parse(row.exchange, null);
+        return exchange?.they?.some(
+          (line) =>
+            people.map(String).includes(String(line.speaker)) &&
+            touches(line.text || "", currentWords, 2),
+        );
+      })
       .sort((a, b) => b.created - a.created)
       .slice(0, limit)
-      .map((row) => this.line(row, people, now));
+      .map((row) => {
+        const exchange = parse(row.exchange, null);
+        const said = exchange?.they?.find((line) =>
+          people.map(String).includes(String(line.speaker)),
+        );
+        if (!said) return this.line(row, people, now);
+        const reply = exchange?.iSaid?.[0];
+        const name = this.mind.bonds.name(said?.speaker) || "对方";
+        const when = elapsedLabel(row.created, now, this.mind.timeZone());
+        return `${when}${row.session_id === session ? "" : "在别处"}，${name}说「${text(said?.text, 60)}」${reply ? `，我回「${text(reply, 60)}」` : ""}`;
+      });
   }
   line(row, people, now) {
     const ids = parse(row.people, []);

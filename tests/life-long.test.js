@@ -487,7 +487,7 @@ test(`她的 ${DAYS} 天：会淡去也会想起，久别会变淡，等的事�
   assert.ok(exam, "整理记忆时记下了他的考试");
   assert.match(
     marks.eve.snapshot.inner.expecting.join(),
-    /阿明：考高数（明天）/,
+    /阿明计划：考高数（明天，结果未确认）/,
   );
   assert.equal(marks.eveInGroup, undefined, "私聊里知道的事不带进群里");
   assert.equal(w.mind.anticipations.get(exam.id).status, "done");

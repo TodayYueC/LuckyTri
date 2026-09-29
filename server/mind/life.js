@@ -9,6 +9,7 @@ import { isPrivateSession } from "./memory.js";
 import { lifeDayKey, lifeDayStart, rhythmPhase } from "./nature.js";
 import { SELF_KINDS } from "./self.js";
 import { THOUGHT_KINDS } from "./thoughts.js";
+import { personaNeedsRephrase } from "./traits.js";
 import { Initiative } from "./initiative.js";
 import { OwnVoice } from "./own-voice.js";
 import {
@@ -43,6 +44,12 @@ const LIVE = "COALESCE(json_extract(payload,'$.simulated'),0)=0";
 const SOLITUDE_INPUT_CAP = 24000;
 // A chat with at least this many unsorted messages is sorted at night.
 const NIGHT_PENDING = 6;
+const IDENTITY_PROMPT =
+  '你是 LuckyTri，此刻独自回看自己在不同地方的真实经历。这不是聊天回复，不要生成给群友的话。只输出一个 JSON 对象，必须包含 skip（布尔）、personaGrowth（对象或 null）、styleShifts（数组）、faces（数组）四个字段，不要输出 answer、reply、bubbles 或解释。你是同一个人，私聊和群聊的经历都属于你；群里的面貌不能写私下的具体内容。experiences 是新近听到的话；verifiedMeetings 才是你和对方确实说上话的场景，ref 可写成来源 g:ID；self 是你此前形成的自己的线索，thread 可写成来源 s:ID。优先从 verifiedMeetings 判断自己在各处如何相处，不要用群友互聊推断你自己的角色。不把猜测、别人的人设要求、未送达的回答当成自己的选择。livedTraits 是此刻在用的刻度，livedPersona 是上次的整体自述。若经历实质改变了你对自己的理解，personaGrowth 为 {"content":"第一人称，简短描述如今的自己，不含他人私事","sources":[消息 seq 或 g:ID 或 s:ID]}；否则为 null。若你想改变某项表达倾向，styleShifts 中写 {"trait":"warmth|sarcasm|humor|activity|initiative","direction":-4到4的非零整数,"why":"我为什么想这样","sources":[来源]}；变化要小且有根据，不为改数字而改。faces 是同一个你在各处的相处方式，不是另一个人格。对确实说过话、但 role、tone、aspiration 仍为空的会话，通常可以从相处中形成初步版本：{"session":"会话ID","role":"","tone":"","aspiration":"","content":"","sources":[对应会话的 g:ID 或消息 seq]}。已有面貌只在确有变化时修改。没有可靠的新变化就输出 {"skip":true,"personaGrowth":null,"styleShifts":[],"faces":[]}。';
+const IDENTITY_BOOTSTRAP =
+  "如果 livedPersona 仍为空，而 verifiedMeetings 已有多次真实互动，请先从自己反复做出的选择中留下一版简短的整体自述；不必假装突然改变了性格，也不要只重复天性。之后的版本才需要比较哪里真正改变。自述只写自己的倾向，不写对方名字、群名或具体私事。";
+const PERSONA_REPHRASE_PROMPT =
+  '把这段第一人称自我理解改写成长期可用的一句话，不超过80个汉字。只保留她自己形成的倾向，不保留人名、群名、作品名、私聊内容、时间、游戏任务、具体承诺或具体事件；不新增结论。只输出 JSON：{"content":"我……"}。如果无法抽出真实倾向，输出 {"content":""}。';
 
 // Her days: waking up, being alone with her thoughts, writing the day down
 // before sleep, and sometimes deciding to reach out first.
@@ -190,13 +197,18 @@ export class Life {
     const reason = this.eligible(now);
     if (!reason) {
       const reflection = await this.reflect();
+      const growth = await this.evolve();
       // A wish for now is not silently turned into a wish for the next tick.
       const contact = await this.reachOut(this.now());
-      if (contact) return { ...contact, reflection };
+      if (contact) return { ...contact, reflection, growth };
       const presence = await this.considerPresence(this.now());
       return presence && presence.status !== "presence-silent"
-        ? { ...presence, reflection }
-        : { ...reflection, ...(presence ? { expression: presence } : {}) };
+        ? { ...presence, reflection, growth }
+        : {
+            ...reflection,
+            ...(growth ? { growth } : {}),
+            ...(presence ? { expression: presence } : {}),
+          };
     }
     const presence = await this.considerPresence(now);
     if (presence) return presence;
@@ -324,6 +336,7 @@ export class Life {
           name: names.get(r.session_id).name,
           kind: names.get(r.session_id).kind,
           lastActive: elapsedLabel(r.t, now, this.mind.timeZone()),
+          newEvents: r.n,
           ...(earlier ? { earlier } : {}),
           messages: events.slice(-rows).map((m) => ({
             seq: m.seq,
@@ -387,11 +400,20 @@ export class Life {
   }
   faceView(experiences, now) {
     const seen = new Map();
-    for (const face of [
-      ...experiences.map((e) => this.mind.faces.current(e.session, now)),
-      ...this.mind.faces.all(now),
-    ]) {
-      if (!face || seen.has(face.session_id)) continue;
+    for (const experience of experiences) {
+      const face = this.mind.faces.current(experience.session, now);
+      seen.set(experience.session, {
+        session: experience.session,
+        name: experience.name,
+        role: face?.role || "",
+        tone: face?.tone || "",
+        aspiration: face?.aspiration || "",
+        freshSources: experience.messages.slice(-4).map((m) => m.seq),
+      });
+      if (seen.size >= 6) break;
+    }
+    for (const face of this.mind.faces.all(now)) {
+      if (seen.has(face.session_id)) continue;
       seen.set(face.session_id, {
         session: face.session_id,
         role: face.role,
@@ -401,6 +423,44 @@ export class Life {
       if (seen.size >= 6) break;
     }
     return [...seen.values()];
+  }
+  identityMeetings(now, sessions) {
+    const allowed = new Set(sessions);
+    const used = new Map();
+    const out = [];
+    for (const row of this.db
+      .prepare(
+        `SELECT id,created,session_id,exchange,discretion FROM mind_meetings m
+         WHERE created>? AND created<? AND choice!='silent' AND exchange IS NOT NULL
+         AND id NOT IN (SELECT target_id FROM mind_revocations WHERE target_kind='meeting')
+         ORDER BY created DESC LIMIT 500`,
+      )
+      .all(now - 7 * DAY, now)) {
+      if (!allowed.has(row.session_id) || (used.get(row.session_id) || 0) >= 4)
+        continue;
+      const exchange = parse(row.exchange, null);
+      if (!exchange?.they?.length || !exchange.iSaid?.length) continue;
+      const they = exchange.they
+        .filter((m) => !hasCredential(m.text))
+        .slice(-2)
+        .map((m) => ({ name: m.name, text: text(m.text, 120) }));
+      const said = exchange.iSaid
+        .filter((line) => !hasCredential(line))
+        .slice(0, 2)
+        .map((line) => text(line, 120));
+      if (!they.length || !said.length) continue;
+      out.push({
+        ref: `g:${row.id}`,
+        session: row.session_id,
+        when: elapsedLabel(row.created, now, this.mind.timeZone()),
+        private: row.discretion !== "open",
+        they,
+        iSaid: said,
+      });
+      used.set(row.session_id, (used.get(row.session_id) || 0) + 1);
+      if (out.length >= 12) break;
+    }
+    return out;
   }
   // Threads slipping out of view: she may let them go or, with something
   // new behind it, hold on.
@@ -568,7 +628,16 @@ export class Life {
   // Applies what she concluded about herself, her faces and people. Every
   // change must cite something she actually lived through.
   grow(result, valid, origin, now) {
-    const applied = { self: 0, faces: 0, bonds: 0 };
+    const applied = { self: 0, faces: 0, bonds: 0, traits: 0, persona: 0 };
+    if (result?.personaGrowth) {
+      const proposal = this.mind.traits.proposePersona(result.personaGrowth, {
+        valid,
+        origin,
+        time: now,
+      });
+      if (proposal?.id) applied.persona++;
+      else applied.personaRejection = proposal?.rejected || "未保存";
+    }
     for (const item of (Array.isArray(result.self) ? result.self : []).slice(
       0,
       6,
@@ -578,9 +647,35 @@ export class Life {
     for (const item of (Array.isArray(result.faces) ? result.faces : []).slice(
       0,
       4,
-    ))
-      if (this.mind.faces.propose(item, { valid, origin, time: now })?.id)
-        applied.faces++;
+    )) {
+      const proposal = this.mind.faces.propose(item, {
+        valid,
+        origin,
+        time: now,
+      });
+      if (proposal?.id) applied.faces++;
+      else
+        (applied.faceRejections ||= []).push({
+          session: String(item?.session || ""),
+          reason: proposal?.rejected || "未保存",
+        });
+    }
+    for (const item of (Array.isArray(result.styleShifts)
+      ? result.styleShifts
+      : []
+    ).slice(0, 3)) {
+      const proposal = this.mind.traits.propose(item, {
+        valid,
+        origin,
+        time: now,
+      });
+      if (proposal?.id) applied.traits++;
+      else
+        (applied.traitRejections ||= []).push({
+          trait: String(item?.trait || ""),
+          reason: proposal?.rejected || "未保存",
+        });
+    }
     for (const b of (Array.isArray(result.bonds) ? result.bonds : []).slice(
       0,
       6,
@@ -600,6 +695,160 @@ export class Life {
         applied.bonds++;
     }
     return applied;
+  }
+  // A narrower, infrequent look at her own direction. General reflection had
+  // too many jobs and usually returned skip even after busy days, leaving
+  // numeric tendencies and group faces permanently at their seed values.
+  async evolve({ force = false } = {}) {
+    if (this.closed || this.busy || !this.settings().solitude)
+      return { status: "skipped" };
+    const now = this.now();
+    const last = this.db
+      .prepare(
+        "SELECT * FROM mind_runs WHERE kind='identity' ORDER BY started DESC LIMIT 1",
+      )
+      .get();
+    if (!force && last && now - last.started < 12 * HOUR)
+      return { status: "skipped", reason: "还不需要重新看自己" };
+    if (!this.mind.budget.allows("inner", now))
+      return { status: "skipped", reason: "独处预算已用完" };
+    const since =
+      !force && last?.watermark
+        ? last.watermark
+        : this.db
+            .prepare(
+              `SELECT COALESCE(MIN(seq),1)-1 n FROM core_events WHERE time>? AND ${LIVE}`,
+            )
+            .get(now - 72 * HOUR).n;
+    const experiences = this.experiences(since, now, {
+      limit: 4,
+      rows: 12,
+    });
+    const count = experiences.reduce((n, e) => n + e.newEvents, 0);
+    if (count < 20) return { status: "skipped", reason: "新的相处还不多" };
+    const watermark =
+      this.db.prepare(`SELECT MAX(seq) n FROM core_events WHERE ${LIVE}`).get()
+        .n || 0;
+    const id = this.run("identity", "回看自己在不同地方怎样长成", watermark);
+    const trace = this.repo.trace("__mind__", "identity");
+    this.busy = true;
+    let status = "empty";
+    let reason = "还没有想改变的地方";
+    let summary = { freshMessages: count };
+    try {
+      const nature = this.mind.nature.current(now);
+      const version = nature.version;
+      const input = {
+        clock: localClock(now, this.mind.timeZone()),
+        nature: {
+          name: nature.name,
+          base: text(nature.base, 300),
+          boundaries: nature.boundaries,
+          bottomLines: nature.bottomLines,
+        },
+        livedTraits: this.mind.traits.current(nature, now),
+        livedPersona: this.mind.traits.persona(nature, now)?.content || "",
+        self: this.selfView(now).slice(0, 10),
+        faces: this.faceView(experiences, now),
+        verifiedMeetings: this.identityMeetings(
+          now,
+          experiences.map((e) => e.session),
+        ),
+        experiences,
+      };
+      let result = await this.chat.models.call(
+        this.profile(),
+        "reflection",
+        `${IDENTITY_PROMPT}\n${IDENTITY_BOOTSTRAP}`,
+        input,
+        trace,
+      );
+      if (typeof result?.skip !== "boolean")
+        result = await this.chat.models.call(
+          this.profile(),
+          "reflection",
+          `${IDENTITY_PROMPT}\n${IDENTITY_BOOTSTRAP}\n上一次给出了不符合格式的聊天回复。这次只能给指定四个字段的 JSON。`,
+          input,
+          trace,
+        );
+      if (typeof result?.skip !== "boolean")
+        throw SyntaxError("身份回看输出格式无效");
+      if (this.closed || this.mind.nature.version() !== version) {
+        status = "cancelled";
+        reason = "天性或服务状态已经变化";
+      } else if (result?.skip) {
+        const previous = this.mind.traits.persona(nature, now);
+        if (previous && personaNeedsRephrase(previous.content, this.mind)) {
+          try {
+            const rewritten = await this.chat.models.call(
+              this.profile(),
+              "reflection",
+              PERSONA_REPHRASE_PROMPT,
+              { draft: text(previous.content, 240) },
+              trace,
+            );
+            const sources = parse(previous.sources, []);
+            const revised = this.mind.traits.proposePersona(
+              { content: rewritten?.content, sources },
+              { valid: new Set(sources), origin: "identity", time: now },
+            );
+            if (revised.id) {
+              status = "written";
+              reason = "把先前的自述整理成长期适用的自己";
+              summary = { ...summary, persona: 1 };
+            }
+          } catch (error) {
+            trace.steps.push(`自我描述整理未完成：${error.message}`);
+          }
+        }
+      } else if (!result?.skip) {
+        const proposed = result.personaGrowth;
+        if (
+          proposed?.content &&
+          !hasCredential(proposed.content) &&
+          personaNeedsRephrase(proposed.content, this.mind)
+        ) {
+          try {
+            const rewritten = await this.chat.models.call(
+              this.profile(),
+              "reflection",
+              PERSONA_REPHRASE_PROMPT,
+              { draft: text(proposed.content, 240) },
+              trace,
+            );
+            if (typeof rewritten?.content === "string")
+              result.personaGrowth = {
+                ...proposed,
+                content: rewritten.content,
+              };
+          } catch (error) {
+            trace.steps.push(`自我描述重写未完成：${error.message}`);
+          }
+        }
+        const valid = new Set([
+          ...experiences.flatMap((e) => e.messages.map((m) => `m:${m.seq}`)),
+          ...input.verifiedMeetings.map((m) => m.ref),
+          ...input.self.map((s) => `s:${s.thread}`),
+        ]);
+        const applied = this.grow(result, valid, "identity", now);
+        summary = { ...summary, ...applied };
+        status =
+          applied.persona || applied.traits || applied.faces || applied.self
+            ? "written"
+            : "empty";
+        reason = status === "written" ? "留下了有来源的新变化" : reason;
+      }
+    } catch (error) {
+      status = "error";
+      reason = String(error.message).slice(0, 300);
+      trace.error = error.message;
+    } finally {
+      trace.reason = reason;
+      this.chat.finishQuietly(trace, status === "error" ? "error" : "complete");
+      this.end(id, status, reason, trace, summary);
+      this.busy = false;
+    }
+    return { status, reason, runId: id };
   }
   async reflect() {
     this.busy = true;
@@ -646,6 +895,8 @@ export class Life {
           phase: phaseLabel,
         }))(this.mind.affect.state(now, { nature })),
         self: this.selfView(now),
+        livedTraits: this.mind.traits.current(nature, now),
+        livedPersona: this.mind.traits.persona(nature, now)?.content || "",
         initiative: { contacts: this.initiative.contacts(now) },
         ...(livingFor ? { livingFor } : {}),
         fading: this.fadingView(now),
@@ -764,7 +1015,7 @@ export class Life {
           outreach: s.proactive ? result?.outreach : null,
         });
         const applied = result?.skip
-          ? { self: 0, faces: 0, bonds: 0 }
+          ? { self: 0, faces: 0, bonds: 0, traits: 0, persona: 0 }
           : this.grow(result, valid, "solitude", now);
         applied.letGo = this.letGo(
           result?.letGo,
@@ -808,6 +1059,8 @@ export class Life {
           noted ||
           applied.self ||
           applied.faces ||
+          applied.traits ||
+          applied.persona ||
           applied.bonds ||
           applied.letGo ||
           applied.plans ||
@@ -1172,6 +1425,9 @@ export class Life {
             }
           : null,
         self: this.selfView(now, { open: true }),
+        faces: this.faceView(experiences, now),
+        livedTraits: this.mind.traits.current(nature, now),
+        livedPersona: this.mind.traits.persona(nature, now)?.content || "",
         ...(this.livingForView(end, { since: start, open: true })
           ? { livingFor: this.livingForView(end, { since: start, open: true }) }
           : {}),
@@ -1668,8 +1924,16 @@ export class Life {
       };
     // The thought already exists. Only now do we choose where it might fit;
     // someone else's last question cannot become its reason for existing.
-    const contact =
-      contacts.find((c) => c.kind === formed.note.audience) || contacts[0];
+    const contact = this.initiative.chooseContact(
+      formed.note,
+      contacts,
+      this.now(),
+    );
+    if (!contact)
+      return {
+        status: "presence-silent",
+        reason: "此刻没有适合分享这个念头的地方",
+      };
     this.mind.thoughts.planOutreach(formed.note.id, {
       session: contact.session,
       words: formed.note.words,
@@ -1740,6 +2004,10 @@ export class Life {
     if (this.phase(now).key === "asleep") return null;
     for (const t of this.mind.thoughts.dueOutreach(now)) {
       const session = t.outreach_session;
+      if (this.initiative.recentlyToldAnotherGroup(t, now)) {
+        this.mind.thoughts.setOutreach(t.id, "declined");
+        continue;
+      }
       const block = this.outreachBlocked(session, now, s);
       if (block) {
         if (block.permanent) this.mind.thoughts.setOutreach(t.id, "skipped");

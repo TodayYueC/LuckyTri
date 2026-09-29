@@ -195,6 +195,7 @@ export function innerView(
   const withWhom = mind.meetings.recall({
     session,
     people,
+    cue,
     now,
     limit: 2,
   });

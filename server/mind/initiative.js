@@ -1,5 +1,7 @@
 import { HOUR, parse, text } from "./util.js";
 import { isPrivateSession } from "./memory.js";
+import { parseSessionKey, isGroupSession } from "../channels/session-key.js";
+import { sameRecentTheme } from "./novelty.js";
 
 // A chance to start something is different from a request to answer someone.
 // Time changes what she can notice; it never increments a loneliness score or
@@ -106,6 +108,84 @@ export class Initiative {
       if (contacts.length >= limit) break;
     }
     return contacts;
+  }
+  // One formed thought gets one place. The choice follows where it has roots
+  // and whom she actually knows, rather than rotating through idle rooms.
+  chooseContact(note, contacts, now = this.life.now()) {
+    const kind = note?.audience;
+    const candidates = contacts.filter(
+      (contact) => kind === "either" || contact.kind === kind,
+    );
+    if (!candidates.length) return null;
+    const thought = note?.id ? this.life.mind.thoughts.get(note.id) : null;
+    const roots = new Set();
+    for (const ref of thought?.sources || []) {
+      if (ref.startsWith("m:")) {
+        const row = this.db
+          .prepare("SELECT session_id FROM core_events WHERE seq=?")
+          .get(Number(ref.slice(2)));
+        if (row) roots.add(row.session_id);
+      } else if (ref.startsWith("t:")) {
+        const parent = this.life.mind.thoughts.get(ref.slice(2));
+        for (const room of parent?.sessions || []) roots.add(room);
+      }
+    }
+    const score = (contact) => {
+      let bond = null;
+      if (contact.kind === "private") {
+        try {
+          bond = this.life.mind.bonds.person(
+            parseSessionKey(contact.session).nativeId,
+            now,
+          );
+        } catch {
+          return -Infinity;
+        }
+      } else bond = this.life.mind.bonds.group(contact.session, now);
+      const closeness = Number(bond?.closeness || 0);
+      const familiarity = Number(bond?.familiarity || 0);
+      const tension = Number(bond?.tension || 0);
+      const talked = Number(bond?.interactions || 0);
+      const rooted = roots.has(contact.session) ? 2.5 : 0;
+      const fit = (contact.recent || []).some((line) =>
+        sameRecentTheme(line.text, note.words?.join("\n")),
+      )
+        ? 0.5
+        : 0;
+      return (
+        rooted +
+        fit +
+        closeness * 2 +
+        familiarity +
+        Math.min(5, talked) * 0.08 -
+        tension * 2 -
+        (contact.awaitingReply ? 0.35 : 0)
+      );
+    };
+    return candidates
+      .map((contact) => ({ contact, score: score(contact) }))
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          a.contact.session.localeCompare(b.contact.session),
+      )[0]?.contact;
+  }
+  recentlyToldAnotherGroup(thought, now = this.life.now()) {
+    if (!isGroupSession(thought?.outreach_session)) return false;
+    const earlier = this.db
+      .prepare(
+        "SELECT id,outreach,sources,outreach_session FROM mind_thoughts WHERE outreach_status='sent' AND created>=? AND created<? ORDER BY created DESC LIMIT 40",
+      )
+      .all(now - 12 * HOUR, now);
+    return earlier.some(
+      (row) =>
+        row.id !== thought.id &&
+        isGroupSession(row.outreach_session) &&
+        row.outreach_session !== thought.outreach_session &&
+        (sameRecentTheme(row.outreach, thought.outreach) ||
+          (thought.sources || []).includes(`t:${row.id}`) ||
+          parse(row.sources, []).includes(`t:${thought.id}`)),
+    );
   }
   sourceMaterial(thought, now = this.life.now()) {
     const self = this.life.mind.self.latest(now);

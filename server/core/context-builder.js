@@ -72,6 +72,7 @@ export function buildContext(
     const label = readableName(m.name, m.userId);
     if (label) names.set(String(m.userId), label);
   }
+  const bySeq = new Map(resolved.map((message) => [message.seq, message]));
   const sanitize = (m) => ({
     id: m.seq,
     platformId: m.platformId,
@@ -85,6 +86,21 @@ export function buildContext(
     mentions: m.mentions || [],
     replyTo: m.replyTo,
     replyChain: m.replyChain,
+    ...(m.role === "assistant" && Array.isArray(m.replyTargetIds)
+      ? {
+          replyTargets: m.replyTargetIds
+            .map((id) => bySeq.get(Number(id)))
+            .filter(Boolean)
+            .map((target) => ({
+              messageId: target.seq,
+              speaker: target.userId,
+              name:
+                readableName(target.name, target.userId) ||
+                names.get(String(target.userId)) ||
+                target.name,
+            })),
+        }
+      : {}),
     relation: m.relation,
     targetCandidates: m.targetCandidates,
     attachments: (m.attachments || []).map((a) => ({
@@ -96,9 +112,7 @@ export function buildContext(
 
   // The window start only moves when a block is summarized (or, without
   // summaries, on a fixed grid), so consecutive turns share one prefix.
-  const history = resolved.filter(
-    (m) => !m.referenceOnly && !aside.has(m.seq),
-  );
+  const history = resolved.filter((m) => !m.referenceOnly && !aside.has(m.seq));
   const keep = contextKeep(policy);
   let start;
   if (summaries.length) {

@@ -35,6 +35,8 @@ export function initiativeContext(snapshot, occasion = snapshot.initiative) {
       words: occasion?.planned ? [occasion.planned] : [],
       reason: occasion?.wantedBecause,
     },
+    ...(snapshot.self ? { self: snapshot.self } : {}),
+    ...(snapshot.inner ? { inner: snapshot.inner } : {}),
     history: {
       use: "只核对过去、避免重复和捏造；这里没有本轮收到的消息，不是待回复的问题",
       messages: history,

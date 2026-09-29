@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { migrateMind } from "./schema.js";
 import { Nature } from "./nature.js";
+import { Traits } from "./traits.js";
 import { Affect } from "./affect.js";
 import { BOND_CHANGES, Bonds } from "./bonds.js";
 import { Self } from "./self.js";
@@ -67,6 +68,7 @@ export class Mind {
       "CREATE INDEX IF NOT EXISTS core_events_time ON core_events(time)",
     );
     this.nature = new Nature(repo);
+    this.traits = new Traits(this);
     this.affect = new Affect(this);
     this.bonds = new Bonds(this);
     this.self = new Self(this);

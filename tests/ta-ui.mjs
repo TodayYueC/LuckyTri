@@ -182,6 +182,10 @@ async function run() {
     await page.locator(".companion-dock .ta-orb").click();
     await page.locator(".companion-dock .orb-say").waitFor();
     await page.locator(".companion-talk").click();
+    await page.waitForFunction(() => {
+      const drawer = document.querySelector(".ta-drawer");
+      return drawer && !drawer.classList.contains("drawer-enter-active");
+    });
     const orb = await page.locator(".drawer-head .ta-orb").boundingBox();
     const title = await page.locator(".drawer-title").boundingBox();
     assert.ok(
