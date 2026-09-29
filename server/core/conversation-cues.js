@@ -31,6 +31,24 @@ export function localClock(time, timeZone = "Asia/Shanghai") {
   };
 }
 const ellipsis = /…|\.{3,}|。{3,}/u;
+// Someone asks how she knew or guessed something.
+const BASIS_QUESTION =
+  /你.{0,6}(?:怎么|咋|凭什么|凭啥|从哪|哪里|哪儿|哪来).{0,6}(?:知道|晓得|看出|看得出|猜到|得知)/;
+// Whether her message started the exchange on her own: the last thing they
+// said before it was a long time earlier. Without such a message on record
+// this stays unknown, not true.
+export function openedUnprompted(messages, opener) {
+  if (opener?.role !== "assistant") return false;
+  const before = (messages || [])
+    .filter((m) => m.role === "user" && m.id < opener.id)
+    .at(-1);
+  return (
+    !!before &&
+    Number.isFinite(before.time) &&
+    Number.isFinite(opener.time) &&
+    opener.time - before.time >= 2 * 3600000
+  );
+}
 export function replyFocus(snapshot, decision) {
   if (snapshot.initiative)
     return {
@@ -51,6 +69,19 @@ export function replyFocus(snapshot, decision) {
       instruction:
         "对方的问号是在接你刚说的话。先核对自己上句有没有根据：说错了就改正，没说错就解释那句的意思。不要跳到别处的话题，也不要拿自己刚说过的话当作对方的证据。一句收住。",
     };
+  if (BASIS_QUESTION.test(latest)) {
+    const opener = snapshot.messages
+      .filter((m) => m.role === "assistant" && m.id < (targets.at(-1)?.id ?? 0))
+      .at(-1);
+    return {
+      kind: "basis_check",
+      instruction: `对方在问你凭什么知道或猜到的。先找到你实际发出的那句话，再核对它的依据。${
+        openedUnprompted(snapshot.messages, opener)
+          ? "那句是你自己先开口的，在那之前他没有新发来消息。"
+          : ""
+      }依据只能是你的推测（比如现在的时间）或记忆里真有的事：如实说是猜的，说不出依据就承认没有依据。不要编一条他发来的消息、一个没发生过的来源来圆。一句收住。`,
+    };
+  }
   if (
     /你.{0,10}(?:为什么|怎么|凭什么).{0,14}(?:说|认定|觉得|判断)|(?:为什么|怎么).{0,12}(?:这么说|那样说)/.test(
       latest,
