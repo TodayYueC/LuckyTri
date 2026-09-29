@@ -967,6 +967,54 @@ test("群里没被叫到的一轮失败，不会为它再试；她已经回过�
   assert.equal(tries, 1, "她已经回过，等到的重试不再发");
 });
 
+test("没人叫她时话没整理好就不说；有人叫她时仍回一句短的，不抹掉这次回答", async (t) => {
+  const draft = "我自己也这样";
+  const script = (w) => {
+    w.answers.turn = ({ context }) => ({
+      choice: "speak",
+      appraisal: "想接一句",
+      reason: "接话",
+      topic: "累",
+      targetMessageIds: context.batchIds,
+      bubbles: [draft],
+      feelings: [],
+      bonds: [],
+    });
+    w.answers.rewrite = { bubbles: [draft] };
+  };
+
+  const ambient = world();
+  t.after(ambient.close);
+  ambient.open("group:1", "一群");
+  script(ambient);
+  ambient.say("group:1", "bot", "刚才那个我也不太确定");
+  ambient.advance(MINUTE);
+  const said = ambient.say("group:1", "10001", "大家觉得今天累不累？", {
+    name: "阿明",
+  });
+  const quiet = await ambient.hear("group:1", said);
+  assert.equal(quiet.status, "silent", quiet.reason);
+  assert.match(quiet.steps.join(" "), /不说了/);
+  assert.deepEqual(
+    ambient.sent.map((s) => s.text),
+    [],
+    "不往群里发空话",
+  );
+
+  const called = world();
+  t.after(called.close);
+  called.open("group:1", "一群");
+  script(called);
+  const asked = called.say("group:1", "10001", "@我 你累不累", {
+    name: "阿明",
+    mentioned: true,
+  });
+  const answered = await called.hear("group:1", asked);
+  assert.equal(answered.status, "sent");
+  assert.match(answered.steps.join(" "), /本地安全短句/);
+  assert.equal(called.sent.length, 1);
+});
+
 test("私聊秘密和另一个机器人账号的承诺都不能进入当前群聊", async (t) => {
   const w = world();
   t.after(w.close);

@@ -1160,8 +1160,23 @@ export class ChatSystem {
         trace.validation = issues;
         return finish("error", "想说的话还没整理好，愿望保留，稍后重新决定");
       }
-      // Checks protect the words; they must not erase a decision to speak.
       trace.validation = issues;
+      // Nobody called her here: a filler word says nothing to the room, and
+      // often repeats the last one. Not saying it is the plain answer.
+      if (
+        !c.direct &&
+        !c.privateChat &&
+        !turn.crisis?.clear &&
+        !c.replay &&
+        !c.preview
+      ) {
+        trace.steps.push(
+          "没有人在叫她，回复两次仍未通过校验，不用空话顶替，不说了",
+        );
+        return finish("silent", "没被叫到，话没整理好，就不说了");
+      }
+      // Checks protect the words; when someone did call her, they must not
+      // erase the decision to answer.
       trace.steps.push("回复两次生成仍未通过校验，使用本地安全短句");
       response = { bubbles: [fallbackText], reason: "本地安全短句" };
       trace.response = response;
