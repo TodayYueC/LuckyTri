@@ -5,6 +5,7 @@ import {
   THREAD_FADING,
   aboutLife,
   anyTouches,
+  leftLife,
   cueList,
   echoes,
   ownLife,
@@ -118,7 +119,11 @@ export class Self {
         let at = earnedAt(versions.get(row.thread)) ?? row.created;
         if (row.kind === "intention" && ownLife(row.content)) {
           for (const note of notes)
-            if (note.created > at && aboutLife(row.content, note.content))
+            if (
+              note.created > at &&
+              aboutLife(row.content, note.content) &&
+              !leftLife(row.content, note.content)
+            )
               at = note.created;
           const metAt = this.mind.meetings.livedAt(row.thread, before);
           if (metAt != null && metAt > at) at = metAt;
@@ -169,8 +174,10 @@ export class Self {
   }
   // Among her own wishes, the one her latest note or spoken line is about.
   // A later send or answer about another wish takes this seat from an
-  // earlier note. Planned drafts and silent meetings do not. No such
-  // line: the one still most present. Duties never enter this list.
+  // earlier note. A line that puts a wish down does not keep that seat;
+  // older notes about the put-down wish do not take it back. Planned
+  // drafts and silent meetings do not. No such line: the one still most
+  // present. Duties never enter this list.
   #preferLived(candidates, now) {
     if (!candidates.length) return null;
     const notes = this.mind.thoughts
@@ -187,16 +194,25 @@ export class Self {
       lines.push({ text: note.content, at: note.created, spoken: false });
     }
     lines.sort((a, b) => b.at - a.at || Number(b.spoken) - Number(a.spoken));
+    const dropped = new Set();
     for (const line of lines) {
-      const held = candidates.filter((row) =>
-        aboutLife(row.content, line.text),
+      for (const row of candidates)
+        if (!dropped.has(row.thread) && leftLife(row.content, line.text))
+          dropped.add(row.thread);
+      const held = candidates.filter(
+        (row) =>
+          !dropped.has(row.thread) &&
+          aboutLife(row.content, line.text) &&
+          !leftLife(row.content, line.text),
       );
       if (held.length)
         return [...held].sort(
           (a, b) => b.salience - a.salience || b.created - a.created,
         )[0];
     }
-    return [...candidates].sort(
+    const remain = candidates.filter((row) => !dropped.has(row.thread));
+    if (!remain.length) return null;
+    return [...remain].sort(
       (a, b) => b.salience - a.salience || b.created - a.created,
     )[0];
   }

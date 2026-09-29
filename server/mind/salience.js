@@ -128,6 +128,39 @@ export function meetsLife(content, cue) {
   return namesProject(wish, cue);
 }
 
+// A later note that puts this wish down. The same sentence must name
+// the wish, not just share a leftover pair like "子里"; "封面" or
+// walking up to the button is not putting it down.
+const LIFE_FRAME = new Set(
+  "游戏 决定 完全 不看 评分 讨论 一下 开始 起来 出来 一点 开新 新游 看看 试试 打算 想要".split(
+    " ",
+  ),
+);
+
+export function leftLife(wish, thought) {
+  const want = String(wish || "");
+  const note = String(thought || "");
+  if (!want || !note) return false;
+  const marks = [...interestTerms([want])].filter(
+    (term) =>
+      !LIFE_FRAME.has(term) &&
+      (/^[a-z0-9]{3,}$/.test(term) ||
+        (/[\u4e00-\u9fff]{2}/.test(term) &&
+          !/[里的了着吗呢去上来]$/.test(term))),
+  );
+  if (!marks.length) return false;
+  return note.split(/(?<=[。！？\n])/).some((sentence) => {
+    if (
+      !/(?:封了|放下了|到此为止|不想再(?:过|想|开|玩|打|写)|不再过|不继续|先放下)/.test(
+        sentence,
+      )
+    )
+      return false;
+    const cue = interestTerms([sentence]);
+    return marks.some((term) => cue.has(term) || sentence.includes(term));
+  });
+}
+
 // A later note that is still this wish: the same wording, a title in it,
 // two shared pairs, or one pair that is not just a frame like "游戏".
 export function aboutLife(wish, thought) {
@@ -141,13 +174,8 @@ export function aboutLife(wish, thought) {
   let shared = 0;
   for (const term of terms) if (cue.has(term)) shared++;
   if (shared >= 2) return true;
-  const generic = new Set(
-    "游戏 决定 完全 不看 评分 讨论 一下 开始 起来 出来 一点 开新 新游 看看 试试 打算 想要".split(
-      " ",
-    ),
-  );
   for (const term of terms)
-    if (cue.has(term) && !generic.has(term)) return true;
+    if (cue.has(term) && !LIFE_FRAME.has(term)) return true;
   return false;
 }
 
