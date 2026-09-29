@@ -284,6 +284,30 @@ test("只有时间过去也能独处，再看旧念头，但不会每分钟循�
   assert.equal(w.calls.filter((c) => c.stage === "reflection").length, 2);
 });
 
+test("只有时间过去、连着几次独处都没有新的理解，间隔逐次拉长，有新经历就照常", async (t) => {
+  const w = setup(t, { intervalMinutes: 30, minMessages: 1 });
+  w.say("private:10001", "10001", "晚点聊");
+  w.answers.reflection = { skip: true };
+  w.answers.expression = { skip: true };
+  const rounds = () => w.calls.filter((c) => c.stage === "reflection").length;
+  w.advance(31 * MINUTE);
+  await w.life.reflect();
+  w.advance(31 * MINUTE);
+  await w.life.reflect();
+  assert.equal(rounds(), 2);
+  w.advance(31 * MINUTE);
+  assert.match(w.life.eligible() || "", /连着几次独处都没有新的理解/);
+  w.advance(30 * MINUTE);
+  assert.equal(w.life.eligible(), null, "满了加倍的间隔，可以再看一次");
+  await w.life.reflect();
+  assert.equal(rounds(), 3);
+  w.advance(61 * MINUTE);
+  assert.match(w.life.eligible() || "", /连着几次独处都没有新的理解/);
+  w.say("private:10001", "10001", "我回来了");
+  w.advance(21 * MINUTE);
+  assert.equal(w.life.eligible(), null, "有了新的经历，不必再等");
+});
+
 const circle = (w, count = 4) => {
   const lines = [
     "先想想角色怎么选",
