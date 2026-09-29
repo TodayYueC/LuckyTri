@@ -1,4 +1,4 @@
-import { interestTerms, projectTerms } from "./attention.js";
+import { interestTerms, namesProject } from "./attention.js";
 import { similar } from "./util.js";
 
 // How long each kind of thing stays with her without being lived again, as
@@ -118,9 +118,6 @@ export function sameSelf(a, b) {
   return shared >= 2 && shared / shorter >= 0.6 && shared / longer >= 0.22;
 }
 
-// A wish she is living for herself: something she wants to do or become.
-// Advice, a promise about how she will treat someone, and watching over
-// another person's state stay as threads; they do not take livingFor.
 // Whether someone's own words met this wish. Two distinctive pairs, or
 // one when the wish only has one; naming a title or work in it is enough.
 // A single Chinese pair is still not a meeting.
@@ -128,9 +125,35 @@ export function meetsLife(content, cue) {
   const wish = interestTerms([content]);
   if (!wish.size || !cue?.size) return false;
   if (touches(content, cue, wish.size < 2 ? 1 : 2)) return true;
-  for (const term of projectTerms(wish)) if (cue.has(term)) return true;
+  return namesProject(wish, cue);
+}
+
+// A later note that is still this wish: the same wording, a title in it,
+// two shared pairs, or one pair that is not just a frame like "游戏".
+export function aboutLife(wish, thought) {
+  const want = String(wish || "");
+  const note = String(thought || "");
+  if (!want || !note) return false;
+  if (sameSelf(want, note)) return true;
+  const cue = interestTerms([note]);
+  if (meetsLife(want, cue)) return true;
+  const terms = interestTerms([want]);
+  let shared = 0;
+  for (const term of terms) if (cue.has(term)) shared++;
+  if (shared >= 2) return true;
+  const generic = new Set(
+    "游戏 决定 完全 不看 评分 讨论 一下 开始 起来 出来 一点 开新 新游 看看 试试 打算 想要".split(
+      " ",
+    ),
+  );
+  for (const term of terms)
+    if (cue.has(term) && !generic.has(term)) return true;
   return false;
 }
+
+// A wish she is living for herself: something she wants to do or become.
+// Advice, a promise about how she will treat someone, and watching over
+// another person's state stay as threads; they do not take livingFor.
 
 export function ownLife(content) {
   const text = String(content || "");

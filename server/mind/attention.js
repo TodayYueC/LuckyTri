@@ -36,6 +36,16 @@ export function projectTerms(terms) {
   return named;
 }
 
+// "gal" and "galgame", or "rewrite" and "rewriting": one name contains the other.
+export function namesProject(wish, said) {
+  const left = [...projectTerms(wish)];
+  const right = [...projectTerms(said)];
+  for (const a of left)
+    for (const b of right)
+      if (a === b || a.startsWith(b) || b.startsWith(a)) return true;
+  return false;
+}
+
 // Whether she actually reads this batch or lets it go by. No dice: the
 // same situation always gets the same attention, and every skipped message
 // stays unread so the next real look still sees it.
@@ -121,14 +131,15 @@ export function attend({
       groups.set(key, texts);
     }
     for (const texts of groups.values()) {
+      const said = interestTerms(texts);
+      if (terms === living && namesProject(living, said)) return true;
       let shared = 0;
-      for (const term of interestTerms(texts))
+      for (const term of said)
         if (terms.has(term) && ++shared >= required) return true;
     }
     return false;
   };
-  if (meets(living, 2) || meets(projectTerms(living), 1))
-    add(2, "聊到了我正在过的事");
+  if (meets(living, 2)) add(2, "聊到了我正在过的事");
   else if (meets(interests, 1) || meets(curiosities, 2))
     add(2, "聊到了我在意的东西");
   if (batch.some((m) => (closeness.get(String(m.userId)) || 0) >= 0.45))

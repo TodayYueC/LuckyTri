@@ -979,6 +979,50 @@ test("更强的对别人的承诺，过了许多日子也不会把她为自己�
   }
 });
 
+test("自己后来写下的念头，会让正在过的那一件回到她真正在想的那条", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    assert.match(
+      w.mind.self.living({ now: w.now() + 2000 }).content,
+      /轻松日常的gal/,
+    );
+    w.mind.thoughts.add({
+      kind: "expression",
+      content: "这条蒙玩线到了真正要开始的那一步。",
+      time: w.now() + 3000,
+    });
+    const living = w.mind.self.living({ now: w.now() + 4000 });
+    assert.match(living.content, /蒙玩/);
+    assert.doesNotMatch(living.content, /轻松日常的gal/);
+    assert.equal(living.core, true);
+    assert.equal(
+      innerView(w.mind, { session: "group:1", now: w.now() + 4000 }).self
+        .livingFor,
+      living.content,
+    );
+  } finally {
+    w.close();
+  }
+});
+
 test("已经裂开的同一愿望，被碰到的次数仍算一件事", () => {
   const w = world();
   try {
@@ -3099,6 +3143,20 @@ test("点出愿望里的作品名，就算碰到正在过的事", () => {
       living: interestTerms([wish]),
     });
     assert.match(named.reason, /正在过的事/);
+    const wider = attend({
+      batch: [
+        {
+          userId: "10001",
+          role: "user",
+          text: "有人推 galgame 吗",
+          relation: "unknown",
+          mentions: [],
+        },
+      ],
+      now: w.now(),
+      living: interestTerms([wish]),
+    });
+    assert.match(wider.reason, /正在过的事/);
     const pair = attend({
       batch: [
         {

@@ -3,6 +3,7 @@ import {
   CORE_THREADS,
   THREAD_FADED,
   THREAD_FADING,
+  aboutLife,
   anyTouches,
   cueList,
   echoes,
@@ -122,9 +123,10 @@ export class Self {
       }));
     // One core seat belongs to the wish she is living. Stronger duties
     // keep the remaining seats; they do not fade her own life out of view.
-    const reserved = rows
-      .filter((row) => row.kind === "intention" && ownLife(row.content))
-      .sort((a, b) => b.salience - a.salience || b.created - a.created)[0];
+    const reserved = this.#preferLived(
+      rows.filter((row) => row.kind === "intention" && ownLife(row.content)),
+      at,
+    );
     const rest = rows
       .filter((row) => row.thread !== reserved?.thread)
       .sort((a, b) => b.strength - a.strength || b.created - a.created);
@@ -147,15 +149,33 @@ export class Self {
   // or the core place that keeps this wish from fading first.
   living({ before = Number.MAX_SAFE_INTEGER, now, room } = {}) {
     const at = now ?? (before < Number.MAX_SAFE_INTEGER ? before : Date.now());
-    return (
-      this.annotated({ before, now: at }).find(
+    return this.#preferLived(
+      this.annotated({ before, now: at }).filter(
         (row) =>
           row.kind === "intention" &&
           !row.faded &&
           ownLife(row.content) &&
           (room === undefined || this.mind.meetings.stays(row, room)),
-      ) || null
+      ),
+      at,
     );
+  }
+  // Among her own wishes, the one she has been writing to herself about.
+  // No such note: the one still most present. Duties never enter this list.
+  #preferLived(candidates, now) {
+    if (!candidates.length) return null;
+    const notes = this.mind.thoughts
+      .open({ now, limit: 8 })
+      .filter((t) => t.kind === "expression" || t.kind === "unfinished");
+    const held = notes.length
+      ? candidates.filter((row) =>
+          notes.some((note) => aboutLife(row.content, note.content)),
+        )
+      : [];
+    const pool = held.length ? held : candidates;
+    return [...pool].sort(
+      (a, b) => b.salience - a.salience || b.created - a.created,
+    )[0];
   }
   // Open threads that are the same wish as this one, including itself.
   // History stays split; reading treats them as one life.
