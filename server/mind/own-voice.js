@@ -1,8 +1,9 @@
 import { localClock } from "../core/conversation-cues.js";
 import { replyPrompt, prompts } from "../core/persona-manager.js";
 import { withFallback } from "../core/model-manager.js";
-import { evidence, hasCredential, similar, text } from "./util.js";
+import { evidence, hasCredential, text } from "./util.js";
 import { isPrivateSession } from "./memory.js";
+import { sameRecentTheme } from "./novelty.js";
 
 // Form a thought before choosing an audience. No transcript, unanswered
 // question or destination is supplied here: those belong to delivery, not
@@ -47,7 +48,7 @@ export class OwnVoice {
     const recent = this.mind.thoughts
       .list({ before: now + 1, limit: 80 })
       .filter((t) => t.kind === "expression")
-      .slice(0, 8);
+      .slice(0, 12);
     const { mood, energyLabel, phaseLabel } = this.mind.affect.state(now, {
       nature,
     });
@@ -68,9 +69,11 @@ export class OwnVoice {
         content: t.content,
       })),
       recentExpressions: recent.map((t) => ({
+        ref: `t:${t.id}`,
         created: t.created,
         content: t.content,
         said: t.outreach_status === "sent" ? t.outreach : "",
+        where: t.outreach_status === "sent" ? t.outreach_session : "",
       })),
     };
   }
@@ -115,11 +118,43 @@ export class OwnVoice {
           sources.some((s) => !valid.has(s))
         )
           throw Error("自己的念头含有无效来源或敏感内容，未保存");
-        const repeated = input.recentExpressions.some(
-          (t) =>
-            similar(t.content, content) ||
-            (words.length && t.said && similar(t.said, words.join("\n"))),
+        const repeated = input.recentExpressions.some((t) =>
+          sameRecentTheme(t.content, content),
         );
+        const surfaceEcho = input.recentExpressions.some(
+          (t) => t.said && sameRecentTheme(t.said, words.join("\n")),
+        );
+        const recentlySaid = input.recentExpressions.filter(
+          (t) => t.said && now - t.created < 12 * 3600000,
+        );
+        const linked = recentlySaid.some((t) => sources.includes(t.ref));
+        let echoed = surfaceEcho;
+        if (
+          !repeated &&
+          !echoed &&
+          result.share === true &&
+          recentlySaid.length
+        ) {
+          try {
+            const verdict = await models.call(
+              profile,
+              "expression_novelty",
+              '比较一个人先前已分享的念头和现在想说的话。只判断核心话题与动机是否仍是同一件事；换词、补一个没有外部新经历的小步骤、换一个群分享，都算同一主题。真正换了关注对象或出现新的经历，才算新内容。不判断好坏。只输出 JSON：{"sameTheme":true或false,"reason":"一句依据"}。',
+              {
+                candidate: { note: content, words, sources },
+                recentlySaid: recentlySaid.slice(0, 6),
+              },
+              trace,
+            );
+            echoed =
+              verdict?.sameTheme === true ||
+              (linked && verdict?.sameTheme !== false);
+          } catch {
+            // If the related thought cannot be checked, keep its new turn of
+            // thought in her journal instead of broadcasting it again.
+            echoed = linked;
+          }
+        }
         if (repeated) reason = "这个念头已经留过，不重复制造新的愿望";
         else {
           const noteId = this.mind.thoughts.add({
@@ -132,7 +167,9 @@ export class OwnVoice {
           });
           note = {
             id: noteId,
-            share: result.share === true && words.length > 0,
+            // An idea may grow privately after it has been spoken. Without a
+            // new encounter, its next paraphrase should not tour other rooms.
+            share: result.share === true && words.length > 0 && !echoed,
             words,
             reason: text(result.reason, 300) || "想把这个念头说出来",
             audience: ["private", "group"].includes(result.audience)
@@ -140,7 +177,11 @@ export class OwnVoice {
               : "either",
           };
           status = "written";
-          reason = note.share ? "留下一个自己想分享的念头" : "这句话先留给自己";
+          reason = echoed
+            ? "同一念头还在往前长，先留给自己，不换个地方重说"
+            : note.share
+              ? "留下一个自己想分享的念头"
+              : "这句话先留给自己";
         }
       }
     } catch (error) {

@@ -21,3 +21,6 @@ workspace/
 
 # Agent attachment drops, not part of the project
 .codex-remote-attachments/
+
+# Local Codex project settings
+.codex/

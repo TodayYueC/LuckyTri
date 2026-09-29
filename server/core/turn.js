@@ -15,9 +15,30 @@ export function maxBubbles(choice) {
 }
 
 export function recallWording(snapshot) {
-  if (snapshot.initiative || !snapshot.inner?.continuity?.requested)
-    return null;
-  return "这轮在问以前的相处或对他的印象。先从 inner.continuity.people 里各人的 sharedMoments 或 memories 里挑一两件确实记得的小事，像熟人回想那样回答；不只围着私聊最近的亲近称呼作答，群里真正发生的相处也属于你们。谈印象时，具体小事加自己当时的感觉就够了，不写人物分析、心理标签或关系总结，不推断对方比自己以为的更敏感、正在学着成长等。通常一两句短话，有必要才分两小条；不逐项评价、不用最后一段总结自己怎么看他，也不解释连续记忆的技术原理。知道什么就说什么，不为亲近而编造。";
+  if (snapshot.initiative) return null;
+  const continuity = snapshot.inner?.continuity;
+  const notes = [];
+  if (
+    continuity?.people?.some(
+      (person) =>
+        person.recentShared?.length ||
+        person.myPrivateIntentions?.length ||
+        person.myElsewhereWords?.some((line) => line.privateOrigin) ||
+        person.sharedMoments?.some((moment) => moment.privateOrigin),
+    )
+  )
+    notes.push(
+      "inner.continuity.recentShared 按时间列着你和同一个人刚才在私聊真实说过的话，role=assistant 是你本人已送达的原话；myPrivateIntentions 是后来留下的自己的打算。换个地方也仍是你自己的经历：先核对双方原话，再接住当下这句。privateOrigin 只供你判断，不在群里复述私聊原话、透露私事或报出来源。旧的概括和印象若与原话冲突，以原话为准；不用解释记忆机制。",
+    );
+  if (continuity?.requested)
+    notes.push(
+      "这轮在问以前的相处或对他的印象。先从 inner.continuity.people 里各人的 sharedMoments 或 memories 里挑一两件确实记得的小事，像熟人回想那样回答；不只围着私聊最近的亲近称呼作答，群里真正发生的相处也属于你们。谈印象时，具体小事加自己当时的感觉就够了，不写人物分析、心理标签或关系总结，不推断对方比自己以为的更敏感、正在学着成长等。通常一两句短话，有必要才分两小条；不逐项评价、不用最后一段总结自己怎么看他，也不解释连续记忆的技术原理。知道什么就说什么，不为亲近而编造。",
+    );
+  if (continuity?.people?.some((person) => person.myElsewhereWords?.length))
+    notes.push(
+      "inner.continuity.myElsewhereWords 是你在别处确实发出的原话和时间，可以核对自己是否说过某句；不能因为当时在另一个群就否认。它们不自动表示当时是对眼前这个人说的。若你前后说法互相矛盾，不挑一条解释成从头到尾都一样；直接承认自己说乱了，别让对方背锅。privateOrigin 的话只供内部核对，不在这里公开复述。",
+    );
+  return notes.length ? notes.join("\n") : null;
 }
 
 // One look at the conversation: what it means to her, how it moves her, and

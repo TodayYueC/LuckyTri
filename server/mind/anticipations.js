@@ -263,16 +263,13 @@ export class Anticipations {
     if (a.kind === "promise")
       return `我答应${who ? `${who}` : ""}：${a.content}（${when}${a.status === "pending" ? "，还没做" : ""}）`;
     if (a.kind === "plan") return `我打算：${a.content}（${when}）`;
+    if (a.kind === "event")
+      return `${who ? `${who}计划：` : "有人计划："}${a.content}（${when}，结果未确认）`;
     return `${who ? `${who}：` : ""}${a.content}（${when}）`;
   }
   // Near enough to matter in a conversation: from the day before until a few
   // days after, and only where it belongs.
-  upcoming({
-    now = Date.now(),
-    people = [],
-    session = "",
-    limit = 3,
-  } = {}) {
+  upcoming({ now = Date.now(), people = [], session = "", limit = 3 } = {}) {
     const here = new Set(session ? this.mind.memory.scopes(session) : []);
     const present = new Set(people.map(String));
     const out = [];
@@ -281,10 +278,11 @@ export class Anticipations {
       const after =
         a.recurrence === "yearly" ? 0 : (GRACE[a.kind] ?? GRACE.event);
       if (now < this.opens(due) || now >= this.ends(a, due) + after) continue;
-      const relevant =
-        (a.subject && present.has(String(a.subject))) ||
-        a.session_id === session ||
-        (a.kind === "plan" && !a.subject);
+      // A plan by someone else in this room belongs to that person. Its
+      // presence in the same group must not make it A's plan when B said it.
+      const relevant = a.subject
+        ? present.has(String(a.subject))
+        : a.session_id === session || a.kind === "plan";
       if (!relevant) continue;
       const local = here.has(a.session_id);
       if (a.discretion !== "open" && !local) continue;

@@ -43,6 +43,35 @@ export function replyFocus(snapshot, decision) {
   );
   const latest = targets.at(-1)?.text || "";
   if (
+    /^[?？]{1,3}$/.test(latest) &&
+    snapshot.messages.some((m) => m.role === "assistant")
+  )
+    return {
+      kind: "clarify_claim",
+      instruction:
+        "对方的问号是在接你刚说的话。先核对自己上句有没有根据：说错了就改正，没说错就解释那句的意思。不要跳到别处的话题，也不要拿自己刚说过的话当作对方的证据。一句收住。",
+    };
+  if (
+    /你.{0,10}(?:为什么|怎么|凭什么).{0,14}(?:说|认定|觉得|判断)|(?:为什么|怎么).{0,12}(?:这么说|那样说)/.test(
+      latest,
+    )
+  )
+    return {
+      kind: "clarify_claim",
+      instruction:
+        "对方在追问你之前的一个判断。先找到你实际发出的那句话和当时回应的对象，再检查依据。若把第三个人当成机器人、把谁是谁说乱了，就承认具体错处；不要编造对方的身份、主人或另一段经历来圆说法。一句收住。",
+    };
+  if (
+    /你.{0,8}(?:答应|说好).{0,12}(?:忘|不认|没做)|你.{0,8}(?:忘|不认).{0,12}(?:答应|说好)/.test(
+      latest,
+    )
+  )
+    return {
+      kind: "promise_check",
+      instruction:
+        "对方在追问约定，先核对本轮原话和已核实的承诺。确实答应过就直接承认，有漏接就承认漏接；没有证据时说自己暂时没想起来，不反问证据、不说对方记错了。只回应这件事，一句收住。",
+    };
+  if (
     /别.*(?:重复|复述)|人机|不自然|没发现.*(?:早上|晚上)|说错|搞错/.test(latest)
   )
     return {
@@ -50,7 +79,11 @@ export function replyFocus(snapshot, decision) {
       instruction:
         "对方在纠正你：简短承认具体错误就停。不解释自身状态，不再补原话题的安慰，不反问对方。最多一个气泡。",
     };
-  if (/^(?:对呀|对啊|对|嗯+|是啊|是的|好吧)[。！!\s]*$/.test(latest))
+  if (
+    /^(?:对呀|对啊|对|嗯+|是啊|是的|好吧|好的(?:呀|啊|宝宝)?)[。！!\s]*$/.test(
+      latest,
+    )
+  )
     return {
       kind: "acknowledge",
       instruction:

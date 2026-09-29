@@ -1515,7 +1515,7 @@ test("日记、手记、样子和印象里的私下原话，不进别的房间",
       discretion: "private",
     });
     const said = w.say("group:1", "10001", "今天好冷", { name: "阿明" });
-    w.mind.faces.propose(
+    const unsafe = w.mind.faces.propose(
       {
         session: "group:1",
         role: "偶尔接话的",
@@ -1524,6 +1524,15 @@ test("日记、手记、样子和印象里的私下原话，不进别的房间",
       },
       { time: w.now() },
     );
+    assert.equal(unsafe.rejected, "不能把私下说法写进群里的面貌");
+    const safe = w.mind.faces.propose(
+      { session: "group:1", role: "偶尔接话的", sources: [`m:${said.seq}`] },
+      { time: w.now() },
+    );
+    // Old data may already contain this mistake; the read boundary still filters it.
+    w.mind.db
+      .prepare("UPDATE mind_faces SET aspiration=? WHERE id=?")
+      .run("他最近在准备考研", safe.id);
     w.mind.bonds.meet([{ userId: "10001", name: "阿明" }], "group:1", w.now());
     w.mind.bonds.record({
       id: "10001",

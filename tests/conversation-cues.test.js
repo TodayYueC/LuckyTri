@@ -83,8 +83,60 @@ test("repair and acknowledgement end without a fabricated second bubble", () => 
   );
   snapshot.messages[0].text = "对呀";
   assert.equal(replyFocus(snapshot, decision).kind, "acknowledge");
+  snapshot.messages[0].text = "好的宝宝";
+  assert.equal(replyFocus(snapshot, decision).kind, "acknowledge");
+  assert(
+    validateResponse({ bubbles: ["你自己刚说的在摸鱼呀"] }, snapshot, decision)
+      .length,
+  );
+  snapshot.messages[0].text = "你答应我的事你忘了吗";
+  assert.equal(replyFocus(snapshot, decision).kind, "promise_check");
+  snapshot.messages.unshift({
+    id: 0,
+    role: "assistant",
+    text: "你自己刚说的在摸鱼呀",
+  });
+  snapshot.messages[1].text = "？";
+  assert.equal(replyFocus(snapshot, decision).kind, "clarify_claim");
+  snapshot.messages.shift();
   snapshot.messages[0].text = "好烦，怎么办，给点建议";
   assert.equal(replyFocus(snapshot, decision).kind, "respond");
+});
+test("今天的安排没有结果前，不把计划说成已经去了", () => {
+  const snapshot = {
+    sessionId: "private:10001",
+    persona: {},
+    inner: { expecting: ["周然计划：下午出门逛街（今天，结果未确认）"] },
+    messages: [
+      {
+        id: 1,
+        role: "user",
+        speaker: "10001",
+        relation: "direct",
+        text: "想你了宝宝",
+      },
+    ],
+  };
+  const decision = { choice: "speak", targetMessageIds: [1] };
+  assert(
+    validateResponse(
+      { bubbles: ["你下午不是出门逛街了吗，逛得怎么样？"] },
+      snapshot,
+      decision,
+    ).some((issue) => issue.includes("尚未确认")),
+  );
+  assert.deepEqual(
+    validateResponse({ bubbles: ["嗯，我也想你了"] }, snapshot, decision),
+    [],
+  );
+  for (const line of ["上午不是才见过", "上班别摸鱼，别来烦我"]) {
+    assert(
+      validateResponse({ bubbles: [line] }, snapshot, decision).some((issue) =>
+        issue.includes("直接表达想念"),
+      ),
+      line,
+    );
+  }
 });
 test("persona examples do not leak into effective context while identity and interests survive", () => {
   const p = {

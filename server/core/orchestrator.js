@@ -33,6 +33,7 @@ import {
 import { normalizeTurn, takeTurn } from "./turn.js";
 import { generate } from "./response-generator.js";
 import {
+  contradictoryOwnWords,
   normalizeResponse,
   reviewContext,
   validateResponse,
@@ -358,11 +359,11 @@ export class ChatSystem {
     const simulatedTurn =
       !replay && (simulated || !!preview || batch.some((m) => m.simulated));
     const live = !replay && !simulatedTurn;
-    const nature = preview?.nature
-      ? { ...this.mind.nature.current(), ...preview.nature }
-      : this.mind.nature.current();
     const clock = () =>
       replay || simulatedTurn ? (batch.at(-1)?.time ?? this.now()) : this.now();
+    const nature = preview?.nature
+      ? { ...this.mind.nature.current(), ...preview.nature }
+      : this.mind.traits.effective(this.mind.nature.current(clock()), clock());
     let watermark = batch.at(-1)?.seq ?? this.repo.latest(session);
     const eventMode = simulatedTurn;
     let resolved = null;
@@ -482,13 +483,21 @@ export class ChatSystem {
       );
       const batchIds = batch.map((m) => m.seq);
       const window = resolved.filter((m) => !m.referenceOnly).slice(-60);
+      // The speakers in this batch are the people whose history matters now.
+      // Pulling everyone from a long room window made unrelated plans compete
+      // with the exchange actually taking place.
       const people = [
         ...new Set(
-          [...batch, ...window]
-            .filter((m) => m.role === "user")
-            .map((m) => String(m.userId)),
+          batch.filter((m) => m.role === "user").map((m) => String(m.userId)),
         ),
       ];
+      if (ownInitiative && privateChat && !people.length) {
+        try {
+          people.push(String(parseSessionKey(session).nativeId));
+        } catch {
+          /* An unparseable destination has no person to infer. */
+        }
+      }
       // Replays exclude mutable memory so later corrections cannot leak into
       // the past; her inner state is folded as of the replayed moment.
       const memories =
@@ -538,6 +547,8 @@ export class ChatSystem {
           role: m.role,
           userId: m.userId,
           text: m.text || "",
+          relation: resolved.find((line) => line.id === m.seq)?.relation,
+          mentioned: m.mentioned === true,
         })),
         now,
       });
@@ -566,6 +577,10 @@ export class ChatSystem {
               resolved,
             },
           );
+      if (ownInitiative) {
+        snapshot.self = view.self;
+        snapshot.inner = view.inner;
+      }
       const visionModel = model.vision
         ? model
         : this.fallbackFor(null, model).find((item) => item.vision) || model;
@@ -931,13 +946,34 @@ export class ChatSystem {
       return issues;
     };
     const focus = replyFocus(snapshot, turn).kind;
+    const recentPrivateContinuity =
+      c.direct &&
+      !c.privateChat &&
+      snapshot.inner?.continuity?.people?.some(
+        (person) =>
+          person.recentShared?.length || person.myPrivateIntentions?.length,
+      );
     const needsDeepCheck = (response) =>
       !!snapshot.initiative ||
       !!snapshot.inner?.continuity?.requested ||
+      focus === "clarify_claim" ||
+      !!(
+        c.direct &&
+        snapshot.inner?.continuity?.people?.some(
+          (person) => person.myElsewhereWords?.length,
+        )
+      ) ||
+      !!recentPrivateContinuity ||
       (policy.deepCheck &&
         c.pressure < 0.85 &&
         (turn.crisis?.clear ||
-          ["feeling", "vent", "repair"].includes(focus) ||
+          [
+            "feeling",
+            "vent",
+            "repair",
+            "promise_check",
+            "clarify_claim",
+          ].includes(focus) ||
           (!c.direct &&
             (response.bubbles.join("").length > 60 ||
               snapshot.batch.some((m) => m.relation === "unresolved")))));
@@ -1004,7 +1040,12 @@ export class ChatSystem {
       if (outdated()) return staleExit();
       issues = await deepCheck(response);
     }
-    if (issues.length) {
+    const rewriteLimit = snapshot.inner?.continuity?.people?.some(
+      (person) => person.myElsewhereWords?.length,
+    )
+      ? 2
+      : 1;
+    for (let attempt = 0; issues.length && attempt < rewriteLimit; attempt++) {
       trace.validation = issues;
       if (outdated()) return staleExit();
       response = await makeResponse(issues);
@@ -1012,6 +1053,37 @@ export class ChatSystem {
       if (!issues.length && needsDeepCheck(response)) {
         if (outdated()) return staleExit();
         issues = await deepCheck(response);
+      }
+    }
+    if (issues.length && contradictoryOwnWords(snapshot, turn)) {
+      const honest = {
+        bubbles: ["我前面确实说过，后来解释得前后不一致，是我说乱了。"],
+        reason: "已发出的原话互相矛盾，先承认自己说乱了",
+      };
+      const checked = check(honest);
+      if (!checked.length) {
+        trace.steps.push("本人旧话互相矛盾，使用核实后的简短更正");
+        response = honest;
+        issues = [];
+      }
+    }
+    if (
+      issues.length &&
+      focus === "clarify_claim" &&
+      issues.some((issue) =>
+        /第三人的主人|倒置时间|追问者承担误解责任/.test(issue),
+      )
+    ) {
+      const honest = {
+        bubbles: [
+          "那句‘你主人’是我回他时说错了，我没有依据说他有主人。后来又解释乱了，是我的问题。",
+        ],
+        reason: "旧话错误且原回复对象明确，承认没有依据",
+      };
+      if (!check(honest).length) {
+        trace.steps.push("旧话将第三人关系说错，使用核实后的简短更正");
+        response = honest;
+        issues = [];
       }
     }
     trace.response = response;

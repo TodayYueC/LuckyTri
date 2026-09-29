@@ -65,6 +65,9 @@ export class Faces {
     if (!Object.values(next).some(Boolean)) return { rejected: "空内容" };
     if (hasCredential(Object.values(next).join(" ")))
       return { rejected: "疑似凭据" };
+    if (session.includes(":group:") || session.startsWith("group:"))
+      if (!this.mind.meetings.sayable(Object.values(next).join(" "), session))
+        return { rejected: "不能把私下说法写进群里的面貌" };
     const cited = evidence(input.sources);
     const sources = valid ? cited.filter((s) => valid.has(s)) : cited;
     if (!sources.length && origin !== "migration")

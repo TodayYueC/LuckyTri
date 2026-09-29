@@ -1561,3 +1561,169 @@ test("好久没见到、而话曾经碰到她正在过的事的人，独处时�
   assert.equal(kept.outreach_session, "group:1");
   assert.equal(w.sent.length, 0);
 });
+
+test("亲历会改变同一个她的活人格刻度、整体自述和两个地方各自的相处方式", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1", "朋友们");
+  w.open("private:10001", "阿明");
+  const group = w.say("group:1", "10001", "这次我其实有点难过", {
+    name: "阿明",
+  });
+  w.advance(MINUTE);
+  const direct = w.say("private:10001", "10001", "刚刚谢谢你认真听我说", {
+    name: "阿明",
+  });
+  w.advance(30 * MINUTE);
+  const born = w.mind.nature.current();
+  w.answers.reflection = {
+    thought: {
+      kind: "reflection",
+      content: "我想更认真地听人说完。",
+      sources: [group.seq, direct.seq],
+    },
+    personaGrowth: {
+      content: "我现在愿意先把话听完整，再决定要不要用玩笑接话。",
+      sources: [group.seq, direct.seq],
+    },
+    styleShifts: [
+      {
+        trait: "warmth",
+        direction: 3,
+        why: "我发现认真听完比急着插话更适合此刻的我",
+        sources: [group.seq, direct.seq],
+      },
+    ],
+    faces: [
+      {
+        session: "group:1",
+        tone: "有人难过时先听，不把玩笑顶在前面",
+        sources: [group.seq],
+      },
+      {
+        session: "private:10001",
+        tone: "在这里可以更直接地说关心，不替对方下结论",
+        sources: [direct.seq],
+      },
+    ],
+  };
+  const reflected = await w.life.reflect();
+  assert.equal(reflected.status, "written");
+  assert.equal(w.mind.nature.current().warmth, born.warmth);
+  assert.equal(w.mind.traits.current(born, w.now()).warmth, born.warmth + 3);
+  assert.match(w.mind.traits.persona(born, w.now()).content, /先把话听完整/);
+  assert.match(w.mind.faces.current("group:1").tone, /先听/);
+  assert.match(w.mind.faces.current("private:10001").tone, /更直接/);
+  const next = w.mind.traits.effective(born, w.now());
+  assert.equal(next.warmth, born.warmth + 3);
+  assert.match(next.livedPersona, /先把话听完整/);
+});
+
+test("有足够新相处时单独回看身份，给活跃群形成初步面貌且不会高频重复", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1", "朋友们");
+  for (let i = 0; i < 22; i++) {
+    w.say("group:1", "10001", `今天聊到的第${i}件小事`, { name: "阿明" });
+    w.advance(MINUTE);
+  }
+  w.answers.reflection = ({ experiences }) => {
+    const source = experiences[0].messages.at(-1).seq;
+    return {
+      skip: false,
+      styleShifts: [
+        {
+          trait: "initiative",
+          direction: 2,
+          why: "我想在这里更愿意开口",
+          sources: [source],
+        },
+      ],
+      faces: [
+        {
+          session: "group:1",
+          role: "一起聊小事的人",
+          tone: "普通说话，不抢话",
+          sources: [source],
+        },
+      ],
+    };
+  };
+  const result = await w.life.evolve();
+  assert.equal(result.status, "written");
+  assert.equal(
+    w.mind.traits.current(w.mind.nature.current(), w.now()).initiative,
+    w.mind.nature.current().initiative + 2,
+  );
+  assert.match(w.mind.faces.current("group:1").role, /聊小事/);
+  assert.equal((await w.life.evolve()).status, "skipped");
+});
+
+test("整体自述来自私下经历时先抽出自己的倾向，不把私下事实写成公共人格", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1", "朋友们");
+  w.open("private:10001", "阿明");
+  w.mind.memory.insert({
+    session: "private:10001",
+    subject: "10001",
+    content: "阿明最近在准备考研",
+    discretion: "private",
+  });
+  for (let i = 0; i < 20; i++) {
+    w.say("group:1", "10001", `今天群里第${i}句`, { name: "阿明" });
+    w.advance(MINUTE);
+  }
+  let calls = 0;
+  w.answers.reflection = ({ experiences }) => {
+    if (++calls === 2) return { content: "我更愿意听完别人说话，再认真接住。" };
+    return {
+      skip: false,
+      personaGrowth: {
+        content: "因为阿明最近在准备考研，我更愿意认真听他讲完。",
+        sources: [experiences[0].messages.at(-1).seq],
+      },
+      styleShifts: [],
+      faces: [],
+    };
+  };
+  assert.equal((await w.life.evolve()).status, "written");
+  assert.equal(calls, 2);
+  const content = w.mind.traits.persona()?.content;
+  assert.match(content, /听完/);
+  assert.doesNotMatch(content, /考研|阿明/);
+});
+
+test("已留下的自述带着当天细节时，可以在后来的回看中整理成长期倾向", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1", "朋友们");
+  const first = w.say("group:1", "10001", "你最近愿意听我讲完", {
+    name: "阿明",
+  });
+  w.mind.db
+    .prepare(
+      "INSERT INTO mind_persona_growth(id,created,content,sources,origin,nature_version) VALUES (?,?,?,?,?,?)",
+    )
+    .run(
+      "old-persona",
+      w.now(),
+      "今天我听他说了很多，明天也想继续问他游戏打得怎么样。",
+      JSON.stringify([`m:${first.seq}`]),
+      "identity",
+      w.mind.nature.version(),
+    );
+  for (let i = 0; i < 20; i++) {
+    w.say("group:1", "10001", `第${i}句普通聊天`, { name: "阿明" });
+    w.advance(MINUTE);
+  }
+  let calls = 0;
+  w.answers.reflection = () =>
+    ++calls === 1
+      ? { skip: true, personaGrowth: null, styleShifts: [], faces: [] }
+      : { content: "我愿意听完对方的话，再决定怎么接。" };
+  assert.equal((await w.life.evolve()).status, "written");
+  assert.equal(calls, 2);
+  assert.match(w.mind.traits.persona()?.content || "", /愿意听完/);
+  assert.equal(w.mind.traits.personaHistory().length, 2);
+});

@@ -21,7 +21,12 @@ const CACHE_KEY_PROVIDERS = new Set([
 const CACHE_KEY_HOSTS = /(?:^|\.)(?:openai\.com|opencode\.ai|openrouter\.ai)$/i;
 // Stages that only need a short JSON verdict; thinking is turned off where the
 // provider allows it.
-const QUIET_STAGES = new Set(["decision", "validation", "summary"]);
+const QUIET_STAGES = new Set([
+  "decision",
+  "validation",
+  "summary",
+  "expression_novelty",
+]);
 const STAGE_OUTPUT = {
   decision: 2048,
   validation: 2048,
@@ -32,6 +37,7 @@ const STAGE_OUTPUT = {
   rewrite: 4096,
   reflection: 4096,
   expression: 2048,
+  expression_novelty: 1024,
   daily: 6144,
   weekly: 6144,
   memory: 8192,
