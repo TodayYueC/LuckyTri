@@ -5248,6 +5248,7 @@ test("还在前面的约定排在已经过期的前面，旧的别人的安排�
       ["2026-09-21", "去买菜"],
       ["2026-09-22", "回公司上传网站"],
       ["2026-09-23", "看一场比赛直播"],
+      ["2026-09-26", "预测一场比赛的结果"],
     ])
       w.mind.anticipations.add({
         kind: "event",
@@ -5272,12 +5273,22 @@ test("还在前面的约定排在已经过期的前面，旧的别人的安排�
     assert.equal(shown.length, 2);
     assert.match(shown[0].content, /撑两天/);
     assert.equal(shown[0].lapsed, undefined);
-    assert.match(shown[1].content, /看一场比赛/, "过期的里最近的先");
-    assert.equal(shown[1].lapsed, true);
+    assert.match(shown[1].content, /预测一场比赛/, "到期了但还在宽限里的次之");
+    assert.equal(shown[1].lapsed, undefined);
     const all = w.mind.anticipations.due({ now: w.now(), limit: 5 });
     assert.deepEqual(
       all.map((item) => item.content),
-      ["还要撑两天才放假", "看一场比赛直播", "回公司上传网站", "去买菜"],
+      [
+        "还要撑两天才放假",
+        "预测一场比赛的结果",
+        "看一场比赛直播",
+        "回公司上传网站",
+        "去买菜",
+      ],
+    );
+    assert.deepEqual(
+      all.map((item) => item.lapsed === true),
+      [false, false, true, true, true],
     );
   } finally {
     w.close();

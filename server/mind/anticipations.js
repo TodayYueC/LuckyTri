@@ -293,9 +293,10 @@ export class Anticipations {
   }
   // What she might think about when alone: due soon, just past, or quietly
   // missed within the last week.
-  // What is still ahead comes first, soonest first. What already lapsed comes
-  // after it, the most recent first, so a week-old plan of someone else does
-  // not take the places from what is near now.
+  // What is still ahead comes first, soonest first. Then what was due but still
+  // waits (inside its grace), then what already lapsed; both the most recent
+  // first, so a week-old plan of someone else does not take the places from
+  // what is near now.
   due({ now = Date.now(), limit = 5, shareable = false } = {}) {
     const found = [];
     for (const a of this.pending(now)) {
@@ -307,9 +308,12 @@ export class Anticipations {
           : (GRACE[a.kind] ?? GRACE.event) + 7 * DAY;
       if (now < this.opens(due) || now >= this.ends(a, due) + after) continue;
       const lapsed = this.lapsed(a, now);
+      // 0: its day has not passed yet; 1: due, still inside the grace;
+      // 2: already lapsed.
+      const rank = lapsed ? 2 : this.ends(a, due) <= now ? 1 : 0;
       found.push({
         due,
-        lapsed,
+        rank,
         item: {
           ref: `a:${a.id}`,
           kind: ANTICIPATION_KINDS[a.kind],
@@ -323,9 +327,7 @@ export class Anticipations {
     }
     return found
       .sort(
-        (a, b) =>
-          Number(a.lapsed) - Number(b.lapsed) ||
-          (a.lapsed ? b.due - a.due : a.due - b.due),
+        (a, b) => a.rank - b.rank || (a.rank ? b.due - a.due : a.due - b.due),
       )
       .slice(0, limit)
       .map((entry) => entry.item);
