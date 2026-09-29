@@ -83,6 +83,7 @@ LuckyTri **只实现 OneBot 11 接入接口**，不包含 QQ 接入端，也不�
 npm run dev:ui       # WebUI 开发服务器
 npm run build:ui     # 构建 WebUI
 npm test             # 后端测试
+npm run test:clock   # 把真实时钟拨到过去和未来各跑一遍后端测试
 npm run test:ui      # 浏览器冒烟测试
 npm run format:check # 代码格式检查
 ```
