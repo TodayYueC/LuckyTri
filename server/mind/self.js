@@ -110,7 +110,9 @@ export class Self {
     }
     const notes = this.#lifeNotes(before);
     const rows = this.latest(before)
-      .filter((row) => row.status !== "closed")
+      // The record stays, but a claim to have played what she never played is
+      // not handed back to her as who she is.
+      .filter((row) => row.status !== "closed" && !claimedPlay(row.content))
       .map((row) => {
         // A rewording is not a new meeting with the thread. Fade follows the
         // last version that actually brought new evidence. A later note she

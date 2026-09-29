@@ -5316,6 +5316,42 @@ test("没有玩过的说法，不会被整理成她的样子", () => {
     );
     assert.equal(liked.rejected, undefined);
     assert.ok(seen);
+    // A line written before this rule stays in the record, but she is not
+    // shown it as who she is.
+    w.mind.db
+      .prepare(
+        "INSERT INTO mind_self(id,thread,created,kind,content,strength,status,sources,days,origin,session_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+      )
+      .run(
+        "old-play",
+        "old-play",
+        w.now() - 1000,
+        "interest",
+        "我玩得比较杂，主机玩得多，galgame玩得比较多",
+        0.5,
+        "active",
+        "[]",
+        "[]",
+        "memory",
+        null,
+      );
+    assert.equal(
+      w.mind.self.latest(w.now()).some((row) => row.thread === "old-play"),
+      true,
+      "记录还在",
+    );
+    assert.equal(
+      w.mind.self
+        .active({ before: w.now(), now: w.now() })
+        .some((row) => row.thread === "old-play"),
+      false,
+    );
+    assert.equal(
+      w.mind.self
+        .dormant({ before: w.now(), now: w.now() })
+        .some((row) => row.thread === "old-play"),
+      false,
+    );
   } finally {
     w.close();
   }
