@@ -3,12 +3,16 @@ import {
   CORE_THREADS,
   THREAD_FADED,
   THREAD_FADING,
+  aboutLife,
   anyTouches,
+  leftLife,
   cueList,
   echoes,
+  ownLife,
+  sameSelf,
   threadSalience,
 } from "./salience.js";
-import { leaks } from "./guard.js";
+import { claimedPlay, leaks } from "./guard.js";
 import { isPrivateSession } from "./memory.js";
 import {
   clamp,
@@ -104,21 +108,45 @@ export class Self {
       list.push({ created: row.created, sources: parse(row.sources, []) });
       versions.set(row.thread, list);
     }
+    const notes = this.#lifeNotes(before);
     const rows = this.latest(before)
-      .filter((row) => row.status !== "closed")
-      .map((row) => ({
-        ...row,
+      // The record stays, but a claim to have played what she never played is
+      // not handed back to her as who she is.
+      .filter((row) => row.status !== "closed" && !claimedPlay(row.content))
+      .map((row) => {
         // A rewording is not a new meeting with the thread. Fade follows the
-        // last version that actually brought new evidence.
-        salience: threadSalience(
-          { ...row, created: earnedAt(versions.get(row.thread)) ?? row.created },
-          lived,
-        ),
-      }));
+        // last version that actually brought new evidence. A later note she
+        // wrote to herself, a meeting that met this wish, words she spoke
+        // about it, or a line she later sent about it, are also living it.
+        let at = earnedAt(versions.get(row.thread)) ?? row.created;
+        if (row.kind === "intention" && ownLife(row.content)) {
+          for (const note of notes)
+            if (
+              note.created > at &&
+              aboutLife(row.content, note.content) &&
+              !leftLife(row.content, note.content)
+            )
+              at = note.created;
+          const metAt = this.mind.meetings.livedAt(row.thread, before);
+          if (metAt != null && metAt > at) at = metAt;
+        }
+        return {
+          ...row,
+          salience: threadSalience({ ...row, created: at }, lived),
+        };
+      });
+    // One core seat belongs to the wish she is living. Stronger duties
+    // keep the remaining seats; they do not fade her own life out of view.
+    const reserved = this.#preferLived(
+      rows.filter((row) => row.kind === "intention" && ownLife(row.content)),
+      at,
+    );
+    const rest = rows
+      .filter((row) => row.thread !== reserved?.thread)
+      .sort((a, b) => b.strength - a.strength || b.created - a.created);
     const core = new Set(
-      [...rows]
-        .sort((a, b) => b.strength - a.strength || b.created - a.created)
-        .slice(0, CORE_THREADS)
+      [reserved, ...rest.slice(0, CORE_THREADS - (reserved ? 1 : 0))]
+        .filter(Boolean)
         .map((row) => row.thread),
     );
     return rows
@@ -130,16 +158,88 @@ export class Self {
       .sort((a, b) => b.salience - a.salience || b.created - a.created);
   }
   // The one wish she is living. In a room, a stronger wish that does not
-  // belong there does not erase the next wish that does.
+  // belong there does not erase the next wish that does. A duty about
+  // how she will treat someone stays a thread; it does not take this seat
+  // or the core place that keeps this wish from fading first.
   living({ before = Number.MAX_SAFE_INTEGER, now, room } = {}) {
     const at = now ?? (before < Number.MAX_SAFE_INTEGER ? before : Date.now());
-    return (
-      this.annotated({ before, now: at }).find(
+    return this.#preferLived(
+      this.annotated({ before, now: at }).filter(
         (row) =>
           row.kind === "intention" &&
           !row.faded &&
+          ownLife(row.content) &&
           (room === undefined || this.mind.meetings.stays(row, room)),
-      ) || null
+      ),
+      at,
+    );
+  }
+  // Among her own wishes, the one her latest note or spoken line is about.
+  // A later send or answer about another wish takes this seat from an
+  // earlier note. A line that puts a wish down does not keep that seat;
+  // older notes about the put-down wish do not take it back. Planned
+  // drafts and silent meetings do not. No such line: the one still most
+  // present. Duties never enter this list.
+  #preferLived(candidates, now) {
+    if (!candidates.length) return null;
+    const notes = this.mind.thoughts
+      .open({ now, limit: 8 })
+      .filter((t) => t.kind === "expression" || t.kind === "unfinished");
+    const lines = this.mind.meetings.recentSaid(now, 8);
+    for (const note of notes) {
+      if (note.outreach_status === "sent" && note.outreach)
+        lines.push({
+          text: note.outreach,
+          at: note.outreach_at ?? note.created,
+          spoken: true,
+        });
+      lines.push({ text: note.content, at: note.created, spoken: false });
+    }
+    lines.sort((a, b) => b.at - a.at || Number(b.spoken) - Number(a.spoken));
+    const dropped = new Set();
+    for (const line of lines) {
+      for (const row of candidates)
+        if (!dropped.has(row.thread) && leftLife(row.content, line.text))
+          dropped.add(row.thread);
+      const held = candidates.filter(
+        (row) =>
+          !dropped.has(row.thread) &&
+          aboutLife(row.content, line.text) &&
+          !leftLife(row.content, line.text),
+      );
+      if (held.length)
+        return [...held].sort(
+          (a, b) => b.salience - a.salience || b.created - a.created,
+        )[0];
+    }
+    const remain = candidates.filter((row) => !dropped.has(row.thread));
+    if (!remain.length) return null;
+    return [...remain].sort(
+      (a, b) => b.salience - a.salience || b.created - a.created,
+    )[0];
+  }
+  // Notes she wrote to herself. Hidden ones do not count; resolved ones
+  // still do, because she did think them.
+  #lifeNotes(before) {
+    return this.db
+      .prepare(
+        `SELECT created, content FROM mind_thoughts
+         WHERE created<=? AND kind IN ('expression','unfinished') AND hidden=0`,
+      )
+      .all(before);
+  }
+  // Open threads that are the same wish as this one, including itself.
+  // History stays split; reading treats them as one life.
+  sameThreads(row, { before = Number.MAX_SAFE_INTEGER } = {}) {
+    if (!row?.thread) return [];
+    const kind = row.kind || "intention";
+    const content = row.content || "";
+    return this.latest(before).filter(
+      (other) =>
+        other.status !== "closed" &&
+        other.kind === kind &&
+        (other.thread === row.thread ||
+          (content && sameSelf(other.content, content))),
     );
   }
   active({ before, limit = 40, now } = {}) {
@@ -214,6 +314,9 @@ export class Self {
         : "new";
     if (!content && action !== "close") return { rejected: "空内容" };
     if (hasCredential(content)) return { rejected: "疑似凭据" };
+    // What she said to fit in is not a life she has lived.
+    if (action !== "close" && claimedPlay(content))
+      return { rejected: "没有玩过的经历，不能写成她的样子" };
     const cited = evidence(input?.sources);
     const sources = valid ? cited.filter((s) => valid.has(s)) : cited;
     if (cited.length && !sources.length)
@@ -233,7 +336,7 @@ export class Self {
     if (action === "new") {
       if (!kind) return { rejected: "类型无效" };
       prior = current.find(
-        (row) => row.kind === kind && similar(row.content, content, 0.75),
+        (row) => row.kind === kind && sameSelf(row.content, content),
       );
       if (prior) action = "revise";
       else if (!sources.length && !SELF_ORIGINATED.has(kind))

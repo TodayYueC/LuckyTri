@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { toast } from "../../api";
 import { reload, studio } from "../../stores/studio";
 import { patchSettings } from "../../plates/workspace";
@@ -41,6 +41,10 @@ const PROMPT_NAMES: Record<string, string> = {
 const draft = ref<any>(null);
 const aliases = ref(String(studio.health.settings.aliases || ""));
 const versions = ref<any[]>([]);
+const livedTraits = ref<Record<string, number>>({});
+const traitHistory = ref<any[]>([]);
+const livedPersona = ref("");
+const personaHistory = ref<any[]>([]);
 const settings = reactive<any>({ life: null, budget: null });
 const prompts = reactive({ ...studio.core.prompts });
 const promptKey = ref("turn");
@@ -107,6 +111,10 @@ async function load() {
     bottomLines: nature.nature.bottomLines.join("\n"),
   };
   versions.value = nature.versions;
+  livedTraits.value = nature.livedTraits || {};
+  traitHistory.value = nature.traitHistory || [];
+  livedPersona.value = nature.livedPersona || "";
+  personaHistory.value = nature.personaHistory || [];
   settings.life = { ...overview.life };
   settings.budget = { ...overview.budget.settings };
 }
@@ -127,6 +135,10 @@ async function saveNature() {
     await reload();
     const current = await mind.nature();
     versions.value = current.versions;
+    livedTraits.value = current.livedTraits || {};
+    traitHistory.value = current.traitHistory || [];
+    livedPersona.value = current.livedPersona || "";
+    personaHistory.value = current.personaHistory || [];
     toast("天性已保存，下一次开口时生效");
   } catch (error) {
     toast((error as Error).message, true);
@@ -165,7 +177,25 @@ async function savePrompts() {
   }
 }
 
-onMounted(load);
+let growthTimer: ReturnType<typeof setInterval> | undefined;
+onMounted(() => {
+  void load();
+  growthTimer = setInterval(async () => {
+    if (document.hidden) return;
+    try {
+      const current = await mind.nature();
+      livedTraits.value = current.livedTraits || {};
+      traitHistory.value = current.traitHistory || [];
+      livedPersona.value = current.livedPersona || "";
+      personaHistory.value = current.personaHistory || [];
+    } catch {
+      // The next poll can recover when the service is back.
+    }
+  }, 30000);
+});
+onUnmounted(() => {
+  if (growthTimer) clearInterval(growthTimer);
+});
 </script>
 
 <template>
@@ -186,6 +216,61 @@ onMounted(load);
           interactive
         />
       </div>
+    </section>
+    <section class="lived-persona" aria-label="成长中的性格">
+      <div class="lived-persona-head">
+        <span class="eyebrow">BECOMING · 正在成为</span>
+        <h2>此刻的她</h2>
+        <p>
+          天性是起点。下方是她从真实经历里长出的刻度，下一次对话会使用这些值。
+        </p>
+      </div>
+      <div class="lived-persona-grid">
+        <div v-for="t in TRAITS" :key="t.key" class="lived-trait">
+          <span>{{ t.label }}</span>
+          <strong>{{ livedTraits[t.key] ?? draft[t.key] }}</strong>
+          <small>起点 {{ draft[t.key] }}</small>
+          <div class="lived-trait-track">
+            <i :style="{ width: `${livedTraits[t.key] ?? draft[t.key]}%` }"></i>
+          </div>
+        </div>
+      </div>
+      <div class="lived-persona-story">
+        <span class="eyebrow">INNER VOICE · 自己的样子</span>
+        <p>
+          {{
+            livedPersona ||
+            "她还没有为现在的自己留下一段新的描述。底色和已有的自我线索仍会陪着她。"
+          }}
+        </p>
+        <details v-if="personaHistory.length">
+          <summary>看看她怎么走到这里 · {{ personaHistory.length }} 版</summary>
+          <ol>
+            <li v-for="item in personaHistory" :key="item.id">
+              <span>{{ item.content }}</span
+              ><time>{{ when(item.created) }}</time>
+            </li>
+          </ol>
+        </details>
+      </div>
+      <details v-if="traitHistory.length" class="lived-trait-history">
+        <summary>看看她为何改变 · {{ traitHistory.length }} 次</summary>
+        <ol>
+          <li v-for="item in traitHistory" :key="item.id">
+            <b
+              >{{
+                TRAITS.find((t) => t.key === item.trait)?.label || item.trait
+              }}
+              {{ item.delta > 0 ? "+" : "" }}{{ item.delta }}</b
+            >
+            <span>{{ item.reason }}</span>
+            <time>{{ when(item.created) }}</time>
+          </li>
+        </ol>
+      </details>
+      <p v-else class="faint">
+        她还没有从经历里改变这些刻度。独处或日记里形成了有来源的新选择后，会留在这里。
+      </p>
     </section>
     <div class="greenhouse">
       <section class="card editor">
@@ -620,6 +705,137 @@ onMounted(load);
 .nature {
   display: grid;
   gap: var(--gap);
+}
+.lived-persona {
+  padding: clamp(1.2rem, 2.2vw, 2rem);
+  border: 1px solid color-mix(in srgb, white 78%, #b6cbef);
+  border-radius: 30px;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.79),
+    rgba(220, 239, 255, 0.49) 52%,
+    rgba(247, 224, 247, 0.58)
+  );
+  box-shadow:
+    0 18px 48px rgba(77, 105, 160, 0.12),
+    inset 0 1px rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(24px) saturate(1.3);
+}
+.lived-persona-head h2 {
+  margin: 0.3rem 0;
+  color: #385783;
+}
+.lived-persona-head p {
+  margin: 0 0 1.25rem;
+  color: #6980a0;
+}
+.lived-persona-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.lived-trait {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 0.25rem;
+  padding: 1rem;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+}
+.lived-trait strong {
+  font-size: 1.55rem;
+  color: #597cbb;
+}
+.lived-trait small {
+  color: #7890aa;
+  grid-column: 1 / -1;
+}
+.lived-trait-track {
+  grid-column: 1 / -1;
+  height: 5px;
+  margin-top: 0.45rem;
+  border-radius: 99px;
+  background: rgba(99, 133, 187, 0.17);
+  overflow: hidden;
+}
+.lived-trait-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #75d6dc, #8aa9f1, #e9a6db);
+  transition: width 0.6s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.lived-persona-story {
+  margin-top: 1.1rem;
+  padding: 1.1rem 1.25rem;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.55);
+}
+.lived-persona-story p {
+  max-width: 70ch;
+  margin: 0.4rem 0 0.7rem;
+  line-height: 1.7;
+}
+.lived-persona-story details summary {
+  color: #597cbb;
+  cursor: pointer;
+}
+.lived-persona-story ol {
+  max-height: 13rem;
+  overflow: auto;
+  padding: 0;
+  list-style: none;
+}
+.lived-persona-story li {
+  display: flex;
+  gap: 1rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid rgba(101, 134, 183, 0.13);
+}
+.lived-persona-story li span {
+  flex: 1;
+}
+.lived-persona-story li time {
+  white-space: nowrap;
+  color: #7890aa;
+  font-size: 0.85em;
+}
+.lived-trait-history {
+  margin-top: 1rem;
+}
+.lived-trait-history summary {
+  cursor: pointer;
+  color: #597cbb;
+  font-weight: 650;
+}
+.lived-trait-history ol {
+  max-height: 15rem;
+  overflow: auto;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.lived-trait-history li {
+  display: flex;
+  gap: 0.7rem;
+  align-items: baseline;
+  padding: 0.55rem 0;
+  border-top: 1px solid rgba(101, 134, 183, 0.13);
+}
+.lived-trait-history li span {
+  flex: 1;
+}
+.lived-trait-history time {
+  white-space: nowrap;
+  color: #7890aa;
+  font-size: 0.85em;
+}
+@media (max-width: 900px) {
+  .lived-persona-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .nature-intro {
   position: relative;

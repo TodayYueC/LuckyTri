@@ -21,3 +21,15 @@ workspace/
 
 # Agent attachment drops, not part of the project
 .codex-remote-attachments/
+
+# Local Codex project settings
+.codex/
+
+# Investigation, fix and acceptance notes are local working papers. Only design
+# documents belong in the repository.
+/docs/MiMo性能排查.md
+/docs/上下文压缩与请求稳定性.md
+/docs/实时会话与回复修复.md
+/docs/缓存与口吻优化.md
+/docs/回复口吻与时间回归.md
+/docs/重构版使用与验收.md

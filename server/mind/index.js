@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { migrateMind } from "./schema.js";
 import { Nature } from "./nature.js";
+import { Traits } from "./traits.js";
 import { Affect } from "./affect.js";
 import { BOND_CHANGES, Bonds } from "./bonds.js";
 import { Self } from "./self.js";
@@ -14,8 +15,21 @@ import { Anticipations } from "./anticipations.js";
 import { Periods } from "./periods.js";
 import { Meetings } from "./meetings.js";
 import { Continuity } from "./continuity.js";
+import { ownLife } from "./salience.js";
 import { innerView } from "./view.js";
 import { clamp, dayKey, parse, text } from "./util.js";
+
+// The wish a day's snapshot says she was living. Older snapshots did not
+// store it; those fall back to her own-life threads from that day.
+export function snapshotLiving(snap) {
+  if (snap?.livingFor?.content && ownLife(snap.livingFor.content))
+    return snap.livingFor;
+  const own = (snap?.self || []).filter(
+    (row) => row.kind === "intention" && ownLife(row.content),
+  );
+  if (!own.length) return null;
+  return [...own].sort((a, b) => (b.strength || 0) - (a.strength || 0))[0];
+}
 
 // What changed in her between two saved days.
 export function diffSnapshots(before, after) {
@@ -25,6 +39,8 @@ export function diffSnapshots(before, after) {
   const now = new Map((after.self || []).map((t) => [key(t), t]));
   const person = (p) => p.closeness + p.trust - p.tension;
   const known = new Map((before.people || []).map((p) => [p.userId, p]));
+  const fromLife = snapshotLiving(before);
+  const toLife = snapshotLiving(after);
   return {
     appeared: [...now.values()].filter((t) => !old.has(key(t))),
     faded: [...old.values()].filter((t) => !now.has(key(t))),
@@ -46,6 +62,14 @@ export function diffSnapshots(before, after) {
       }))
       .filter((p) => p.shift === null || Math.abs(p.shift) >= 0.05),
     mood: { before: before.affect?.mood, after: after.affect?.mood },
+    ...(fromLife?.content !== toLife?.content
+      ? {
+          livingFor: {
+            from: fromLife?.content || "",
+            to: toLife?.content || "",
+          },
+        }
+      : {}),
   };
 }
 
@@ -67,6 +91,7 @@ export class Mind {
       "CREATE INDEX IF NOT EXISTS core_events_time ON core_events(time)",
     );
     this.nature = new Nature(repo);
+    this.traits = new Traits(this);
     this.affect = new Affect(this);
     this.bonds = new Bonds(this);
     this.self = new Self(this);
@@ -330,19 +355,48 @@ export class Mind {
       .prepare("SELECT * FROM mind_revocations ORDER BY created DESC LIMIT ?")
       .all(limit);
   }
+  // What she was living on a saved day. New snapshots store it; older ones
+  // may have dropped the wish from the day's bag, or written a duty there.
+  livedThen(snap) {
+    if (!snap) return null;
+    if (ownLife(snap.livingFor?.content)) return snap.livingFor;
+    if (snap.created) {
+      const lived = this.self.living({
+        before: snap.created,
+        now: snap.created,
+      });
+      if (lived) return { thread: lived.thread, content: lived.content };
+    }
+    return snapshotLiving(snap);
+  }
   // A plain record of who she was at the end of a day, for comparing later.
   snapshot(now = Date.now(), day = dayKey(now, this.timeZone())) {
+    const living = this.self.living({ before: now, now });
+    const self = this.self
+      .active({ before: now, limit: 30 })
+      .map(({ thread, kind, content, strength, status }) => ({
+        thread,
+        kind,
+        content,
+        strength,
+        status,
+      }));
+    if (living && !self.some((row) => row.thread === living.thread)) {
+      self.unshift({
+        thread: living.thread,
+        kind: living.kind,
+        content: living.content,
+        strength: living.strength,
+        status: living.status,
+      });
+      self.splice(30);
+    }
     const value = {
       affect: this.affect.state(now),
-      self: this.self
-        .active({ before: now, limit: 30 })
-        .map(({ thread, kind, content, strength, status }) => ({
-          thread,
-          kind,
-          content,
-          strength,
-          status,
-        })),
+      self,
+      ...(living
+        ? { livingFor: { thread: living.thread, content: living.content } }
+        : {}),
       faces: this.faces
         .all(now)
         .map(({ session_id, role, tone, aspiration }) => ({

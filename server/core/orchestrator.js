@@ -6,6 +6,7 @@ import { Repository } from "./repository.js";
 import {
   ModelManager,
   backupModels,
+  isTransientModelFailure,
   storedModels,
   withFallback,
 } from "./model-manager.js";
@@ -33,17 +34,18 @@ import {
 import { normalizeTurn, takeTurn } from "./turn.js";
 import { generate } from "./response-generator.js";
 import {
+  contradictoryOwnWords,
   normalizeResponse,
   reviewContext,
   validateResponse,
 } from "./response-validator.js";
-import { deliver } from "./message-scheduler.js";
+import { deliver, sleep } from "./message-scheduler.js";
 import { TopicTracker } from "./topic-tracker.js";
 import { invalidateSpeakerNames } from "./speaker-names.js";
 import { demoReply } from "./local-demo.js";
 import { Mind } from "../mind/index.js";
 import { attend, interestTerms } from "../mind/attention.js";
-import { leaks } from "../mind/guard.js";
+import { crisisSignal, leaks } from "../mind/guard.js";
 
 const TRACE_PRUNE_INTERVAL_MS = 3600000;
 const BATCH_LIMIT = 30;
@@ -110,6 +112,13 @@ export class ChatSystem {
     this.fetchImage = fetchImage;
     this.loadVisionImages = loadImages;
     this.clearEpoch = new Map();
+    // A model service that was out of reach for a moment should not leave
+    // someone who spoke to her directly without an answer until they write
+    // again: a few later tries, then it is left as it is.
+    this.retryDelays = [30000, 120000];
+    this.retried = new Map();
+    // Batches already put back once because the person kept talking.
+    this.settled = new Set();
     this.tracePruneDue = 0;
     this.backlogChecked = new Map();
     this.queue = new ConversationManager((id, batch) =>
@@ -151,6 +160,66 @@ export class ChatSystem {
       [settings.name, settings.aliases, settings.enabled, settings.demo],
       this.clearEpoch.get(session) || 0,
     ]);
+  }
+  // While the room was being read (waiting in the queue, describing images),
+  // the person she is about to answer may have kept talking. Spending a whole
+  // turn on the older words only to throw the answer away is waste, and it
+  // makes them wait for it: put the batch back, once, and answer everything
+  // together. Never for a crisis, and only if there is a place to put it back.
+  batchMovedOn(session, batch, snapshot, privateChat) {
+    if (!batch.length) return false;
+    if (batch.some((m) => m.role !== "assistant" && crisisSignal(m.text)))
+      return false;
+    const key = `${session}:${batch[0].seq}`;
+    if (this.settled.has(key)) return false;
+    const speaker = (m) => String(m.speaker ?? m.userId);
+    const asked = snapshot.batch.filter((m) => m.relation === "direct");
+    const focus = new Set(
+      (asked.length ? asked : snapshot.batch.slice(-1)).map(speaker),
+    );
+    const moved = this.repo
+      .eventsAfter(session, batch.at(-1).seq, { simulated: false })
+      .some(
+        (m) =>
+          m.role === "user" &&
+          (privateChat ||
+            focus.has(String(m.userId)) ||
+            (m.replyId &&
+              snapshot.batch.some((b) => b.platformId === m.replyId))),
+      );
+    if (!moved || !this.queue.retain(session, batch)) return false;
+    if (this.settled.size > 500) this.settled.clear();
+    this.settled.add(key);
+    return true;
+  }
+  // Ask again later for a batch that was spoken to her directly, when the model
+  // service was only briefly unavailable. Not for a missing balance or a
+  // rejected request, and not when she has already answered since.
+  retryAfterOutage(session, batch, error, trace) {
+    if (!batch.length || !isTransientModelFailure(error)) return false;
+    const now = this.now();
+    for (const [key, entry] of this.retried)
+      if (now - entry.at > 60 * 60000) this.retried.delete(key);
+    const key = `${session}:${batch[0].seq}`;
+    const tried = this.retried.get(key)?.count ?? 0;
+    if (tried >= this.retryDelays.length) return false;
+    this.retried.set(key, { count: tried + 1, at: now });
+    const delay = this.retryDelays[tried];
+    const last = batch.at(-1).seq;
+    trace.steps.push(
+      `模型服务暂时不可用，${Math.round(delay / 1000)} 秒后再试（第 ${tried + 1} 次）`,
+    );
+    this.queue.retryLater(
+      session,
+      batch,
+      delay,
+      () =>
+        this.enabled(session, { simulated: false }) &&
+        !this.repo
+          .eventsAfter(session, last, { simulated: false })
+          .some((m) => m.role === "assistant"),
+    );
+    return true;
   }
   fallbackFor(_policy, primary, trace) {
     const chain = [];
@@ -262,6 +331,8 @@ export class ChatSystem {
       room: session,
     });
     const living = interestTerms(livingThread ? [livingThread.content] : []);
+    const wishRows = this.mind.meetings.ownWishes(session, now);
+    const wishes = wishRows.map((row) => interestTerms([row.content]));
     const curiosities = interestTerms(
       this.mind.self
         .active({ before: now, limit: 12 })
@@ -278,6 +349,18 @@ export class ChatSystem {
         this.mind.bonds.person(m.userId, now)?.closeness || 0,
       ]),
     );
+    const speakers = rows
+      .filter((m) => m.role !== "assistant")
+      .map((m) => m.userId);
+    const held = new Set();
+    for (const row of wishRows)
+      for (const id of this.mind.meetings.touchedPeople(
+        session,
+        speakers,
+        now,
+        row.thread,
+      ))
+        held.add(id);
     const decision = attend({
       batch: rows,
       unread: seqs.length,
@@ -300,12 +383,8 @@ export class ChatSystem {
       interests,
       curiosities,
       living,
-      held: this.mind.meetings.touchedPeople(
-        session,
-        rows.filter((m) => m.role !== "assistant").map((m) => m.userId),
-        now,
-        livingThread?.thread || "",
-      ),
+      wishes,
+      held,
       closeness,
       pressure: this.mind.budget.pressure("conversation", now),
       initiative: nature.initiative,
@@ -358,11 +437,11 @@ export class ChatSystem {
     const simulatedTurn =
       !replay && (simulated || !!preview || batch.some((m) => m.simulated));
     const live = !replay && !simulatedTurn;
-    const nature = preview?.nature
-      ? { ...this.mind.nature.current(), ...preview.nature }
-      : this.mind.nature.current();
     const clock = () =>
       replay || simulatedTurn ? (batch.at(-1)?.time ?? this.now()) : this.now();
+    const nature = preview?.nature
+      ? { ...this.mind.nature.current(), ...preview.nature }
+      : this.mind.traits.effective(this.mind.nature.current(clock()), clock());
     let watermark = batch.at(-1)?.seq ?? this.repo.latest(session);
     const eventMode = simulatedTurn;
     let resolved = null;
@@ -482,13 +561,21 @@ export class ChatSystem {
       );
       const batchIds = batch.map((m) => m.seq);
       const window = resolved.filter((m) => !m.referenceOnly).slice(-60);
+      // The speakers in this batch are the people whose history matters now.
+      // Pulling everyone from a long room window made unrelated plans compete
+      // with the exchange actually taking place.
       const people = [
         ...new Set(
-          [...batch, ...window]
-            .filter((m) => m.role === "user")
-            .map((m) => String(m.userId)),
+          batch.filter((m) => m.role === "user").map((m) => String(m.userId)),
         ),
       ];
+      if (ownInitiative && privateChat && !people.length) {
+        try {
+          people.push(String(parseSessionKey(session).nativeId));
+        } catch {
+          /* An unparseable destination has no person to infer. */
+        }
+      }
       // Replays exclude mutable memory so later corrections cannot leak into
       // the past; her inner state is folded as of the replayed moment.
       const memories =
@@ -538,6 +625,8 @@ export class ChatSystem {
           role: m.role,
           userId: m.userId,
           text: m.text || "",
+          relation: resolved.find((line) => line.id === m.seq)?.relation,
+          mentioned: m.mentioned === true,
         })),
         now,
       });
@@ -566,6 +655,10 @@ export class ChatSystem {
               resolved,
             },
           );
+      if (ownInitiative) {
+        snapshot.self = view.self;
+        snapshot.inner = view.inner;
+      }
       const visionModel = model.vision
         ? model
         : this.fallbackFor(null, model).find((item) => item.vision) || model;
@@ -630,7 +723,10 @@ export class ChatSystem {
           const observed = await models.call(
             visionModel,
             "vision",
-            prompt.system + "\n" + prompt.vision,
+            prompt.system +
+              "\n" +
+              prompt.vision +
+              "\n每张图按 messageId 独立观察。description 只写可见元素、文字和表情语气；前后语境仅用来消歧，不把当前话题、发送意图或给谁看的猜测写进可缓存的描述。表情包台词不是事实，不从前一张图推断这一张。",
             {
               messages: visionWindow(snapshot.messages, [
                 ...describe.map((image) => image.messageId),
@@ -693,6 +789,16 @@ export class ChatSystem {
       if (["presence", "outreach"].includes(occasion?.type)) {
         snapshot.initiative = occasionData;
         trace.snapshot = initiativeContext(snapshot);
+      }
+      if (
+        live &&
+        !occasion &&
+        this.batchMovedOn(session, batch, snapshot, privateChat)
+      ) {
+        trace.steps.push(
+          "读房间的这几秒里，要回的人又说了话：先不花一次调用，并入下一批一起回",
+        );
+        return finish("stale", "读房间时又有新话，并入下一批");
       }
       let turn;
       try {
@@ -814,12 +920,16 @@ export class ChatSystem {
       } catch (error) {
         land(Array.isArray(trace.sent) && trace.sent.length > 0);
         trace.error = error.message;
+        if (live && !trace.sent?.length && (privateChat || gate?.direct))
+          this.retryAfterOutage(session, batch, error, trace);
         return finish("error", error.message);
       }
       land(Array.isArray(spoken?.sent) && spoken.sent.length > 0);
       return spoken;
     } catch (e) {
       trace.error = e.message;
+      if (live && !trace.sent?.length && (privateChat || gate?.direct))
+        this.retryAfterOutage(session, batch, e, trace);
       return finish("error", e.message);
     } finally {
       // Previews and demos are disposable by design: they never advance
@@ -931,13 +1041,36 @@ export class ChatSystem {
       return issues;
     };
     const focus = replyFocus(snapshot, turn).kind;
+    const recentPrivateContinuity =
+      c.direct &&
+      !c.privateChat &&
+      snapshot.inner?.continuity?.people?.some(
+        (person) =>
+          person.recentShared?.length || person.myPrivateIntentions?.length,
+      );
     const needsDeepCheck = (response) =>
       !!snapshot.initiative ||
       !!snapshot.inner?.continuity?.requested ||
+      focus === "clarify_claim" ||
+      focus === "basis_check" ||
+      !!(
+        c.direct &&
+        snapshot.inner?.continuity?.people?.some(
+          (person) => person.myElsewhereWords?.length,
+        )
+      ) ||
+      !!recentPrivateContinuity ||
       (policy.deepCheck &&
         c.pressure < 0.85 &&
         (turn.crisis?.clear ||
-          ["feeling", "vent", "repair"].includes(focus) ||
+          [
+            "feeling",
+            "vent",
+            "repair",
+            "promise_check",
+            "clarify_claim",
+            "basis_check",
+          ].includes(focus) ||
           (!c.direct &&
             (response.bubbles.join("").length > 60 ||
               snapshot.batch.some((m) => m.relation === "unresolved")))));
@@ -1004,7 +1137,12 @@ export class ChatSystem {
       if (outdated()) return staleExit();
       issues = await deepCheck(response);
     }
-    if (issues.length) {
+    const rewriteLimit = snapshot.inner?.continuity?.people?.some(
+      (person) => person.myElsewhereWords?.length,
+    )
+      ? 2
+      : 1;
+    for (let attempt = 0; issues.length && attempt < rewriteLimit; attempt++) {
       trace.validation = issues;
       if (outdated()) return staleExit();
       response = await makeResponse(issues);
@@ -1014,20 +1152,87 @@ export class ChatSystem {
         issues = await deepCheck(response);
       }
     }
+    if (issues.length && contradictoryOwnWords(snapshot, turn)) {
+      const honest = {
+        bubbles: ["我前面确实说过，后来解释得前后不一致，是我说乱了。"],
+        reason: "已发出的原话互相矛盾，先承认自己说乱了",
+      };
+      const checked = check(honest);
+      if (!checked.length) {
+        trace.steps.push("本人旧话互相矛盾，使用核实后的简短更正");
+        response = honest;
+        issues = [];
+      }
+    }
+    if (
+      issues.length &&
+      focus === "clarify_claim" &&
+      issues.some((issue) =>
+        /第三人的主人|倒置时间|追问者承担误解责任/.test(issue),
+      )
+    ) {
+      const honest = {
+        bubbles: [
+          "那句‘你主人’是我回他时说错了，我没有依据说他有主人。后来又解释乱了，是我的问题。",
+        ],
+        reason: "旧话错误且原回复对象明确，承认没有依据",
+      };
+      if (!check(honest).length) {
+        trace.steps.push("旧话将第三人关系说错，使用核实后的简短更正");
+        response = honest;
+        issues = [];
+      }
+    }
+    if (
+      issues.length &&
+      focus === "basis_check" &&
+      issues.some((issue) => /自己先开口的/.test(issue))
+    ) {
+      const honest = {
+        bubbles: [
+          "那句是我自己先开口的，你之前没发消息。我只是猜的，没有别的依据。",
+        ],
+        reason: "自己先开口的话没有他发来的消息可依，承认是猜的",
+      };
+      if (!check(honest).length) {
+        trace.steps.push("先开口的话被追问依据，使用核实后的简短更正");
+        response = honest;
+        issues = [];
+      }
+    }
     trace.response = response;
     if (issues.length) {
       if (snapshot.initiative) {
         trace.validation = issues;
         return finish("error", "想说的话还没整理好，愿望保留，稍后重新决定");
       }
-      // Checks protect the words; they must not erase a decision to speak.
       trace.validation = issues;
+      // Nobody called her here: a filler word says nothing to the room, and
+      // often repeats the last one. Not saying it is the plain answer.
+      if (
+        !c.direct &&
+        !c.privateChat &&
+        !turn.crisis?.clear &&
+        !c.replay &&
+        !c.preview
+      ) {
+        trace.steps.push(
+          "没有人在叫她，回复两次仍未通过校验，不用空话顶替，不说了",
+        );
+        return finish("silent", "没被叫到，话没整理好，就不说了");
+      }
+      // Checks protect the words; when someone did call her, they must not
+      // erase the decision to answer.
       trace.steps.push("回复两次生成仍未通过校验，使用本地安全短句");
       response = { bubbles: [fallbackText], reason: "本地安全短句" };
       trace.response = response;
     }
     if (c.replay) return finish("replayed", "隔离回放完成，未发送或写入记忆");
     if (c.preview) return finish("previewed", turn.reason);
+    // Give a sender who is adding one last line a moment to finish. The
+    // queue already aggregates incoming messages; this catches the tail of
+    // a model call before its first bubble is committed to the platform.
+    if (this.queue.lanes.has(session) && !turn.crisis?.clear) await sleep(250);
     if (!isCurrent()) return staleExit();
     trace.sent = await deliver(
       this.repo,
@@ -1038,6 +1243,7 @@ export class ChatSystem {
       isCurrent,
       { now: this.now },
     );
+    if (!trace.sent.length && hasRelevantUpdate()) return staleExit();
     return finish(trace.sent.length ? "sent" : "cancelled", turn.reason);
   }
   async offline(session, batch, trace, finish, context, preview, state) {

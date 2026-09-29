@@ -67,6 +67,27 @@ test("先形成自己的内容，再选择对象；旧问题只作历史，不�
   );
 });
 
+test("自己的念头若是已有愿望的另一种说法，写回同一条线索，不另长一条", async (t) => {
+  const w = setup(t);
+  const made = w.mind.self.propose(
+    { kind: "intention", content: "想让角色保留自己的爱好", strength: 0.3 },
+    { origin: "solitude", time: w.now() },
+  );
+  w.answers.expression = { ...IDEA, share: false, words: [] };
+  assert.equal((await w.life.tick()).status, "presence-silent");
+  const note = w.mind.thoughts.list()[0];
+  const versions = w.mind.self.history(made.thread);
+  assert.equal(
+    w.mind.self.latest().filter((row) => row.kind === "intention").length,
+    1,
+  );
+  assert.ok(
+    versions.some((row) => (row.sources || []).includes(`t:${note.id}`)),
+    "念头成为这条愿望的新来源",
+  );
+  assert.match(versions.at(-1).content, /角色|爱好/);
+});
+
 test("也可以只给自己留一笔，未来重读；沉默不伪造收到消息或磨掉记忆", async (t) => {
   const w = setup(t);
   w.answers.expression = { ...IDEA, share: false, words: [] };
@@ -309,9 +330,105 @@ test("自己的念头可以再次读到并发展，不被第一次分享的地�
     audience: "group",
     sources: [`t:${first.id}`],
   };
+  w.answers.expression_novelty = {
+    sameTheme: false,
+    reason: "角色关系有新的方向",
+  };
   assert.equal((await w.life.tick()).status, "presence-sent");
   assert.equal(w.sent.at(-1).session, "group:1");
   assert.deepEqual(w.mind.meetings.privateRoots([`t:${first.id}`]), []);
   const next = w.mind.thoughts.list()[0];
   assert.ok(next.sources.includes(`t:${first.id}`));
+});
+
+test("同一游戏念头换词并跨群表达时留在内心，不重复广播", async (t) => {
+  const w = setup(t);
+  w.open("group:1", "游戏群");
+  w.open("group:2", "另一个群");
+  w.say("group:1", "10002", "聊点游戏");
+  w.say("group:1", "bot", "我也在这里");
+  w.say("group:2", "10003", "聊点游戏");
+  w.say("group:2", "bot", "我也在这里");
+  w.advance(30 * MINUTE);
+  w.answers.expression = {
+    ...IDEA,
+    note: "想在重温与开新gal之间挑一个",
+    words: ["纠结半天还是想开一个没玩过的gal"],
+    audience: "group",
+  };
+  assert.equal((await w.life.tick()).status, "presence-sent");
+  const first = w.mind.thoughts.list()[0];
+  w.advance(30 * MINUTE);
+  w.answers.expression = {
+    ...IDEA,
+    note: "决定开新坑后又想到了完全蒙玩，不看评分和讨论页",
+    words: ["这次准备蒙玩，不看评分和讨论页"],
+    audience: "group",
+    sources: [`t:${first.id}`],
+  };
+  w.answers.expression_novelty = {
+    sameTheme: true,
+    reason: "仍是开新gal这件事",
+  };
+  const result = await w.life.tick();
+  assert.notEqual(result.status, "presence-sent");
+  assert.equal(w.sent.length, 1);
+  assert.equal(w.mind.thoughts.list()[0].outreach_status, "none");
+  assert.equal(
+    w.calls.filter((call) => call.stage === "expression_novelty").length,
+    1,
+  );
+});
+
+test("候选地点按真正相处和念头来源选择，不轮流向每个群说", (t) => {
+  const w = setup(t);
+  w.open("group:1", "群一");
+  w.open("group:2", "群二");
+  const source = w.say("group:2", "10002", "刚聊到角色设定");
+  const id = w.mind.thoughts.add({
+    kind: "expression",
+    content: "我想试试新的角色设定",
+    sources: [`m:${source.seq}`],
+    time: w.now(),
+  });
+  const contacts = [
+    { session: "group:1", kind: "group", recent: [], awaitingReply: false },
+    { session: "group:2", kind: "group", recent: [], awaitingReply: false },
+  ];
+  assert.equal(
+    w.life.initiative.chooseContact(
+      { id, audience: "group", words: ["角色设定"] },
+      contacts,
+    ).session,
+    "group:2",
+  );
+});
+
+test("已经在另一个群讲过的主题，即使另存为待发手记也不会二次送达", async (t) => {
+  const w = setup(t);
+  w.open("group:1", "群一");
+  w.open("group:2", "群二");
+  const first = w.mind.thoughts.add({
+    kind: "expression",
+    content: "我想开新的gal",
+    outreach: "纠结半天还是开一个没玩过的gal",
+    outreachSession: "group:1",
+    time: w.now(),
+  });
+  w.mind.thoughts.setOutreach(first, "sent");
+  w.advance(MINUTE);
+  const second = w.mind.thoughts.add({
+    kind: "reflection",
+    content: "想和另一个群说一下",
+    outreach: "说好不碰设计，结果还在纠结开新的gal还是重温",
+    outreachSession: "group:2",
+    time: w.now(),
+  });
+  assert.equal(
+    w.life.initiative.recentlyToldAnotherGroup(w.mind.thoughts.get(second)),
+    true,
+  );
+  assert.equal(await w.life.reachOut(), null);
+  assert.equal(w.mind.thoughts.get(second).outreach_status, "declined");
+  assert.equal(w.sent.length, 0);
 });

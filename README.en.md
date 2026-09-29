@@ -60,8 +60,9 @@ If the client runs elsewhere, replace `127.0.0.1` with an address that reaches L
 | `ADMIN_TOKEN` | WebUI and HTTP API access |
 | `ONEBOT_TOKEN` | OneBot WebSocket authentication |
 | `LLM_API_KEY` | Optional; takes precedence over a WebUI-saved model key |
+| `BACKUP_INTERVAL_HOURS` / `BACKUP_KEEP` | Automatic backup interval (default 24, `0` disables) and how many to keep (default 7) |
 
-The ignored `data/` directory contains local databases, chat logs, model credentials, and backups. Run `npm run backup` before upgrading. Do not commit `.env`, databases, or logs. See [Security](.github/SECURITY.md).
+The ignored `data/` directory contains local databases, chat logs, model credentials, and backups. While the server runs it makes a verified `data/backups/luckytri-auto-*.db` once a day in a separate process; these leave out model-call traces older than a day, so they stay small (`npm run backup` still makes a full copy). Backups sit on the same disk as the database, so copy important ones elsewhere. Run `npm run backup` before upgrading. Do not commit `.env`, databases, or logs. See [Security](.github/SECURITY.md).
 
 ## WebUI
 
@@ -82,6 +83,7 @@ The ignored `data/` directory contains local databases, chat logs, model credent
 npm run dev:ui       # WebUI development server
 npm run build:ui     # Build the WebUI
 npm test             # Backend tests
+npm run test:clock   # Backend tests with the wall clock moved back and forward
 npm run test:ui      # Browser smoke tests
 npm run format:check # Check code formatting
 ```

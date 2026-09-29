@@ -4,6 +4,7 @@ export class ConversationManager {
     this.windowMs = windowMs;
     this.maxWaitMs = maxWaitMs;
     this.lanes = new Map();
+    this.retries = new Set();
     this.closed = false;
   }
   enqueue(m, policy = {}) {
@@ -40,12 +41,35 @@ export class ConversationManager {
       else this.lanes.delete(session);
     }
   }
+  // Puts a batch back in front of what has arrived since. Says whether it
+  // could: without a lane there is nothing to put it back into.
   retain(session, batch) {
     const lane = this.lanes.get(session);
-    if (!lane || this.closed) return;
+    if (!lane || this.closed) return false;
     lane.pending = [
       ...new Map([...batch, ...lane.pending].map((m) => [m.seq, m])).values(),
     ].sort((a, b) => a.seq - b.seq);
+    return true;
+  }
+  // Put a batch back after a pause. `wanted` is asked again when the time
+  // comes; a batch nobody needs any more is dropped instead of run.
+  retryLater(session, batch, delayMs, wanted = () => true) {
+    if (this.closed || !batch.length) return;
+    const timer = setTimeout(() => {
+      this.retries.delete(timer);
+      if (this.closed || !wanted()) return;
+      let lane = this.lanes.get(session);
+      if (!lane) {
+        lane = { pending: [], running: false, first: Date.now() };
+        this.lanes.set(session, lane);
+      }
+      if (!lane.pending.length) lane.first = Date.now();
+      this.retain(session, batch);
+      clearTimeout(lane.timer);
+      lane.timer = setTimeout(() => this.flush(session), 0);
+    }, delayMs);
+    timer.unref?.();
+    this.retries.add(timer);
   }
   clear(session) {
     const lane = this.lanes.get(session);
@@ -57,5 +81,7 @@ export class ConversationManager {
   close() {
     this.closed = true;
     for (const lane of this.lanes.values()) clearTimeout(lane.timer);
+    for (const timer of this.retries) clearTimeout(timer);
+    this.retries.clear();
   }
 }

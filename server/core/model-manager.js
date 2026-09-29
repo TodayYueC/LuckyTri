@@ -1,4 +1,5 @@
 import { fitInput } from "./input-budget.js";
+import { parseModelJson } from "./model-json.js";
 import { createHmac } from "node:crypto";
 import {
   RETRYABLE_STATUS,
@@ -21,7 +22,12 @@ const CACHE_KEY_PROVIDERS = new Set([
 const CACHE_KEY_HOSTS = /(?:^|\.)(?:openai\.com|opencode\.ai|openrouter\.ai)$/i;
 // Stages that only need a short JSON verdict; thinking is turned off where the
 // provider allows it.
-const QUIET_STAGES = new Set(["decision", "validation", "summary"]);
+const QUIET_STAGES = new Set([
+  "decision",
+  "validation",
+  "summary",
+  "expression_novelty",
+]);
 const STAGE_OUTPUT = {
   decision: 2048,
   validation: 2048,
@@ -32,6 +38,7 @@ const STAGE_OUTPUT = {
   rewrite: 4096,
   reflection: 4096,
   expression: 2048,
+  expression_novelty: 1024,
   daily: 6144,
   weekly: 6144,
   memory: 8192,
@@ -611,7 +618,7 @@ function imageParts(images) {
   return images.flatMap((x) => [
     {
       type: "text",
-      text: `下面这张图属于消息 ${x.messageId}，发送人 ${x.speaker}。请看画面本身，不要只根据“[图片]”占位符回答。`,
+      text: `下面这张${x.kind === "sticker" ? "表情包" : "图"}属于消息 ${x.messageId}，发送人 ${x.speaker}${x.summary ? `，QQ 附带标签 ${JSON.stringify(x.summary)}` : ""}。先判断这条消息是在表达情绪、接梗，还是认真提供信息；不要自动沿用前一条消息的话题。请看画面本身，不要只根据占位符或标签回答。`,
     },
     { type: "image_url", image_url: { url: x.url } },
   ]);
@@ -765,6 +772,16 @@ function requestFailure(error, entry, profile) {
     );
   }
   return error;
+}
+// The service was briefly out of reach: a timeout, a dropped connection, a rate
+// limit, a server error, or the pause that follows repeated failures. Trying
+// again a little later can work. A missing balance, a bad key or a rejected
+// request cannot.
+export function isTransientModelFailure(error) {
+  if (!error || error instanceof SyntaxError) return false;
+  if (error.circuitOpen || error.timeout || error.networkFailure) return true;
+  if (RETRYABLE_STATUS.has(Number(error.status))) return true;
+  return isTransientNetworkError(error) || isTimeoutError(error);
 }
 export function shouldFallback(error) {
   if (!error || error instanceof SyntaxError) return false;
@@ -1105,7 +1122,30 @@ export class ModelManager {
         }
         throw Error("模型输出被截断，请增加输出预算");
       }
-      return JSON.parse(entry.raw.replace(/^```(?:json)?\s*|\s*```$/g, ""));
+      try {
+        return parseModelJson(entry.raw);
+      } catch (error) {
+        // A reply that is not JSON at all is usually a one-off slip. Ask once
+        // more before a whole turn (or a stretch of solitude) is thrown away.
+        if (
+          error instanceof SyntaxError &&
+          stage !== "test" &&
+          !options.formatRetried
+        ) {
+          entry.error = `模型输出不是有效 JSON，重试一次：${error.message}`;
+          return await this.call(
+            profile,
+            stage,
+            system,
+            data,
+            trace,
+            images,
+            attempt,
+            { ...options, formatRetried: true },
+          );
+        }
+        throw error;
+      }
     } catch (e) {
       entry.error = e.message;
       throw e;

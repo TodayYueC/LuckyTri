@@ -7,6 +7,10 @@ import { evidence, parse } from "./util.js";
 export function migrateMind(db, store) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS mind_nature (version INTEGER PRIMARY KEY, created INTEGER NOT NULL, value TEXT NOT NULL, note TEXT);
+    CREATE TABLE IF NOT EXISTS mind_trait_changes (id TEXT PRIMARY KEY, created INTEGER NOT NULL, trait TEXT NOT NULL, value INTEGER NOT NULL, delta INTEGER NOT NULL, reason TEXT NOT NULL, sources TEXT NOT NULL DEFAULT '[]', origin TEXT NOT NULL, nature_version INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS mind_trait_changes_trait ON mind_trait_changes(nature_version,trait,created);
+    CREATE TABLE IF NOT EXISTS mind_persona_growth (id TEXT PRIMARY KEY, created INTEGER NOT NULL, content TEXT NOT NULL, sources TEXT NOT NULL DEFAULT '[]', origin TEXT NOT NULL, nature_version INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS mind_persona_growth_time ON mind_persona_growth(nature_version,created);
     CREATE TABLE IF NOT EXISTS mind_affect (id TEXT PRIMARY KEY, created INTEGER NOT NULL, feeling TEXT NOT NULL, intensity REAL NOT NULL, valence REAL NOT NULL, arousal REAL NOT NULL, cause TEXT, sources TEXT NOT NULL DEFAULT '[]', session_id TEXT, origin TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS mind_affect_time ON mind_affect(created);
     CREATE TABLE IF NOT EXISTS mind_people (user_id TEXT PRIMARY KEY, name TEXT, first_seen INTEGER, last_seen INTEGER, sessions TEXT NOT NULL DEFAULT '[]');
@@ -70,6 +74,7 @@ export function migrateMind(db, store) {
     "TEXT NOT NULL DEFAULT ''",
   );
   addColumn("mind_meetings", "will_people", "TEXT NOT NULL DEFAULT '[]'");
+  addColumn("mind_meetings", "reason", "TEXT NOT NULL DEFAULT ''");
   db.prepare(
     "UPDATE mind_runs SET status='interrupted',finished=? WHERE status='running'",
   ).run(Date.now());

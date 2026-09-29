@@ -132,15 +132,18 @@ export function mountMind(app, chat, life) {
         will: (() => {
           const living = life.livingForView(now);
           if (!living) return null;
-          const trace = mind.meetings.trace(living.thread, {
-            before: now,
-            inclusive: true,
-          });
+          const trace = living.thread
+            ? mind.meetings.trace(living.thread, {
+                before: now,
+                inclusive: true,
+              })
+            : null;
           return {
-            content: living.content,
-            ...(trace.touched
+            ...(living.content ? { content: living.content } : {}),
+            ...(trace?.touched
               ? { touched: trace.touched, lastSpoke: trace.lastSpoke }
               : {}),
+            ...(living.also ? { also: living.also } : {}),
           };
         })(),
         meaning: (() => {
@@ -472,13 +475,17 @@ export function mountMind(app, chat, life) {
         )
         .get(day)?.day;
       const yesterday = previous ? mind.snapshotOf(previous) : null;
+      const present = (snap) => {
+        if (!snap) return null;
+        return { ...snap, livingFor: mind.livedThen(snap) };
+      };
       res.json({
         day,
         diary:
           life.diaries({ before: day, limit: 1 }).find((d) => d.day === day) ||
           null,
-        snapshot,
-        yesterday,
+        snapshot: present(snapshot),
+        yesterday: present(yesterday),
         change: diffSnapshots(yesterday, snapshot),
       });
     }),
@@ -489,6 +496,10 @@ export function mountMind(app, chat, life) {
       res.json({
         nature: mind.nature.current(),
         versions: mind.nature.versions(),
+        livedTraits: mind.traits.current(),
+        traitHistory: mind.traits.history(30),
+        livedPersona: mind.traits.persona()?.content || "",
+        personaHistory: mind.traits.personaHistory(15),
       }),
     ),
   );
@@ -517,6 +528,12 @@ export function mountMind(app, chat, life) {
         throw Error(reason);
       res.json(await life.reflect());
     }),
+  );
+  app.post(
+    "/api/mind/evolve",
+    wrap(async (req, res) =>
+      res.json(await life.evolve({ force: req.body?.force === true })),
+    ),
   );
   app.post(
     "/api/mind/review",

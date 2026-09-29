@@ -7,7 +7,12 @@ import { join } from "node:path";
 import { createStore } from "../server/store.js";
 import { ChatSystem } from "../server/core/orchestrator.js";
 import { attend, interestTerms } from "../server/mind/attention.js";
-import { crisisSignal, leaks, secretRequest } from "../server/mind/guard.js";
+import {
+  claimedPlay,
+  crisisSignal,
+  leaks,
+  secretRequest,
+} from "../server/mind/guard.js";
 import {
   rhythmPhase,
   lifeDayKey,
@@ -24,6 +29,12 @@ import {
 } from "../server/core/persona-manager.js";
 import { RETIRED_PROMPTS } from "../server/core/retired-prompts.js";
 import { innerView } from "../server/mind/view.js";
+import { diffSnapshots, snapshotLiving } from "../server/mind/index.js";
+import {
+  THREAD_FADED,
+  leftLife,
+  threadSalience,
+} from "../server/mind/salience.js";
 import { validateResponse } from "../server/core/response-validator.js";
 import { world, HOUR, MINUTE } from "./helpers/world.js";
 
@@ -88,7 +99,10 @@ test("心境由经历推动、随时间回落；一次经历不能把她推翻",
     time: again,
   });
   const piled = w.mind.affect.state(again);
-  assert(Math.abs(piled.valence - later.valence) <= 0.35 + 1e-9, "同一时刻的几种感受合在一起仍有上限");
+  assert(
+    Math.abs(piled.valence - later.valence) <= 0.35 + 1e-9,
+    "同一时刻的几种感受合在一起仍有上限",
+  );
   w.advance(HOUR);
   assert.equal(
     w.mind.affect.feel({
@@ -257,10 +271,7 @@ test("心里记下的印象不算来往，也不会把久别冲成重逢", () =>
           time: started + i * 10 * 24 * HOUR,
         });
       }
-      const faded = often.mind.bonds.person(
-        "10002",
-        started + 80 * 24 * HOUR,
-      );
+      const faded = often.mind.bonds.person("10002", started + 80 * 24 * HOUR);
       assert.ok(faded.absentDays >= 80, "隔几天记一次也不算说上话");
       assert.ok(faded.closeness < 0.2, "隔几天记一次，久别仍然变淡");
     } finally {
@@ -331,7 +342,9 @@ test("同一段经历不会被反复加成亲近，隔了很久补记也不算�
   const late = world();
   try {
     late.open("group:1");
-    const old = late.say("group:1", "10002", "很久以前的一句", { name: "小红" });
+    const old = late.say("group:1", "10002", "很久以前的一句", {
+      name: "小红",
+    });
     late.mind.bonds.meet(
       [{ userId: "10002", name: "小红" }],
       "group:1",
@@ -841,6 +854,1354 @@ test("自我渐进生长：强度每次只变一点，新特质要跨天的经�
   );
 });
 
+test("同一愿望换一种说法仍是一条线索；喝茶和看书不会被并成一件事", () => {
+  const w = world();
+  try {
+    const first = w.mind.self.propose(
+      { kind: "intention", content: "想看流星雨", strength: 0.3 },
+      { origin: "solitude", time: w.now() },
+    );
+    const again = w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "我想在夜里看一场流星雨",
+        strength: 0.3,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    assert.equal(again.thread, first.thread);
+    assert.equal(again.action, "revise");
+    assert.equal(
+      w.mind.self.latest().filter((row) => row.kind === "intention").length,
+      1,
+    );
+    const tea = w.mind.self.propose(
+      { kind: "intention", content: "想把这杯茶喝完", strength: 0.3 },
+      { origin: "solitude", time: w.now() + 2000 },
+    );
+    const book = w.mind.self.propose(
+      { kind: "intention", content: "想把这本书看完", strength: 0.3 },
+      { origin: "solitude", time: w.now() + 3000 },
+    );
+    assert.notEqual(tea.thread, first.thread);
+    assert.notEqual(book.thread, tea.thread);
+    assert.equal(book.action, "new");
+  } finally {
+    w.close();
+  }
+});
+
+test("对别人答应的事，即使句子里有想玩，也不占正在过的那一件", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我答应了小王要玩Celeste，也答应他先把它加到想玩列表、这周挑它试试",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    const living = w.mind.self.living({ now: w.now() + 2000 });
+    assert.match(living.content, /蒙玩/);
+    assert.doesNotMatch(living.content, /答应了小王/);
+    assert.ok(
+      w.mind.self
+        .active({ now: w.now() + 2000 })
+        .some((row) => /答应了小王/.test(row.content)),
+      "对别人答应的事仍是一条线索",
+    );
+  } finally {
+    w.close();
+  }
+});
+
+test("章节还写着对别人的承诺时，不再把它读成正在过的生活", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "我会留意他的疲惫，记住他对工作的不满，但不替他安排生活。",
+        strength: 0.55,
+      },
+      { origin: "solitude", time: w.now() + 500 },
+    );
+    w.mind.periods.writeChapter({
+      number: 1,
+      title: "把话停在合适的地方",
+      content:
+        "这一章还叫这个名字。\n我为自己而活的那件事还在进行：我会留意他的疲惫，记住他对工作的不满，但不替他安排生活。这段时间它被碰到了三次。",
+      time: w.now() + 1000,
+    });
+    const view = w.life.chapterView(w.now() + 2000);
+    assert.equal(view.title, "把话停在合适的地方");
+    assert.match(view.gist, /还叫这个名字/);
+    assert.doesNotMatch(view.gist, /疲惫/);
+    assert.doesNotMatch(view.gist, /为自己而活的那件事/);
+  } finally {
+    w.close();
+  }
+});
+
+test("上次回顾还写着对别人的承诺时，不再把它读成正在过的生活", async () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.periods.write("week", {
+      content:
+        "这两天我正在为自己而活的那件事——我会留意他的疲惫，但不替他安排生活——被碰到了三次。边界是我自己收住话的那一刻才成立。",
+      time: w.now(),
+    });
+    w.mind.periods.write("story", {
+      content:
+        "我从普通的聊天走到现在。我为自己而活的那件事还是留意他的疲惫，不替他安排生活。",
+      time: w.now(),
+    });
+    w.mind.periods.writeChapter({
+      number: 1,
+      title: "把话停在合适的地方",
+      content:
+        "这一章还叫这个名字。\n我为自己而活的那件事还在进行：我会留意他的疲惫，但不替他安排生活。",
+      time: w.now() + 1000,
+    });
+    let seen = null;
+    w.answers.weekly = (data) => {
+      seen = data;
+      return {
+        week: "这几天我在过自己的日子。",
+        story: data.livingFor
+          ? `我现在在为自己过：${data.livingFor.content}`
+          : "来路",
+      };
+    };
+    const result = await w.life.reviewPeriod(w.now() + 2000);
+    assert.equal(result.status, "written");
+    assert.ok(seen.lastReview);
+    assert.doesNotMatch(seen.lastReview.content || "", /疲惫/);
+    assert.doesNotMatch(seen.lastReview.content || "", /为自己而活的那件事/);
+    assert.match(seen.lastReview.content || "", /边界/);
+    assert.doesNotMatch(seen.story || "", /疲惫/);
+    assert.doesNotMatch(seen.chapter.content || "", /疲惫/);
+    assert.match(seen.livingFor.content, /蒙玩/);
+  } finally {
+    w.close();
+  }
+});
+
+test("正在过的事已经不在这一章里时，隔一天也可以回顾", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    const now = w.now();
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: now },
+    );
+    w.mind.periods.writeChapter({
+      number: 1,
+      title: "旧章",
+      content:
+        "我为自己而活的那件事还在进行：我会留意他的疲惫，但不替他安排生活。",
+      time: now - 3 * 86400000,
+    });
+    w.mind.periods.write("week", {
+      content: "上次回顾",
+      time: now - 30 * HOUR,
+    });
+    const insert = w.mind.db.prepare(
+      "INSERT INTO mind_diary(id,day,created,content,mood,compare,sources) VALUES (?,?,?,?,?,?,?)",
+    );
+    insert.run(
+      "d-moved-1",
+      "2026-09-23",
+      now - 20 * HOUR,
+      "昨天",
+      "",
+      "",
+      "[]",
+    );
+    insert.run("d-moved-2", "2026-09-24", now - 5 * HOUR, "今天", "", "", "[]");
+    assert.equal(w.life.reviewDue(now), true);
+    w.mind.periods.writeChapter({
+      number: 1,
+      title: "旧章",
+      content: "决定开新游戏，完全蒙玩，不看评分不看讨论页，就这么过着。",
+      time: now - 1000,
+    });
+    assert.equal(
+      w.life.reviewDue(now),
+      false,
+      "这一章已经写着正在过的事，仍按原来的间隔",
+    );
+  } finally {
+    w.close();
+  }
+});
+
+test("一天结束的快照记下正在过的那一件，不是对别人的承诺", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "我会留意他的疲惫，但不替他安排生活。",
+        strength: 0.55,
+      },
+      { origin: "solitude", time: w.now() + 500 },
+    );
+    const snap = w.mind.snapshot(w.now() + 1000);
+    assert.match(snap.livingFor.content, /蒙玩/);
+    assert.doesNotMatch(snap.livingFor.content, /疲惫/);
+    const stored = w.mind.snapshotOf(snap.day);
+    assert.match(stored.livingFor.content, /蒙玩/);
+  } finally {
+    w.close();
+  }
+});
+
+test("旧快照没有记下、或误记成承诺时，从那天自己的愿望里认回来", () => {
+  const duty = {
+    thread: "duty",
+    kind: "intention",
+    content: "我会留意他的疲惫，但不替他安排生活。",
+    strength: 0.55,
+    status: "active",
+  };
+  const own = {
+    thread: "own",
+    kind: "intention",
+    content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+    strength: 0.35,
+    status: "active",
+  };
+  assert.match(snapshotLiving({ self: [duty, own] }).content, /蒙玩/);
+  assert.match(
+    snapshotLiving({
+      livingFor: { thread: "duty", content: duty.content },
+      self: [duty, own],
+    }).content,
+    /蒙玩/,
+  );
+  assert.equal(
+    snapshotLiving({
+      livingFor: { thread: "duty", content: duty.content },
+      self: [duty],
+    }),
+    null,
+  );
+  const later = {
+    thread: "star",
+    kind: "intention",
+    content: "想看流星雨",
+    strength: 0.3,
+    status: "active",
+  };
+  const change = diffSnapshots(
+    { self: [own], livingFor: { thread: "own", content: own.content } },
+    {
+      self: [own, later],
+      livingFor: { thread: "star", content: later.content },
+    },
+  );
+  assert.match(change.livingFor.from, /蒙玩/);
+  assert.match(change.livingFor.to, /流星/);
+});
+
+test("写日记对照昨天时，看得见昨天正在过的那一件", async () => {
+  const w = world({ start: "2026-09-22T23:10:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "我会留意他的疲惫，但不替他安排生活。",
+        strength: 0.55,
+      },
+      { origin: "solitude", time: w.now() + 500 },
+    );
+    w.answers.daily = () => ({
+      diary: "今天过完了。",
+      mood: "平静",
+      compare: "这是开始",
+    });
+    const first = await w.life.review({
+      day: w.life.lifeDay(w.now()),
+      start: w.life.dayStart(w.now()),
+      end: w.now(),
+    });
+    assert.equal(first.status, "written");
+    assert.match(w.mind.snapshotOf("2026-09-22").livingFor.content, /蒙玩/);
+    w.at("2026-09-23T23:10:00+08:00");
+    let seen = null;
+    w.answers.daily = (data) => {
+      seen = data;
+      return { diary: "又一天。", mood: "平静", compare: "还在过" };
+    };
+    const second = await w.life.review({
+      day: w.life.lifeDay(w.now()),
+      start: w.life.dayStart(w.now()),
+      end: w.now(),
+    });
+    assert.equal(second.status, "written");
+    assert.match(seen.yesterday.livingFor, /蒙玩/);
+    assert.doesNotMatch(seen.yesterday.livingFor, /疲惫/);
+  } finally {
+    w.close();
+  }
+});
+
+test("更强的承诺占满当天的线索袋时，快照仍留着正在过的那一件", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    const wish = w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.2,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    for (let i = 0; i < 30; i++)
+      w.mind.self.propose(
+        {
+          kind: "intention",
+          content: `我会留意第${i}件别人的事，但不替人安排。`,
+          strength: 0.55,
+        },
+        { origin: "solitude", time: w.now() + i + 1 },
+      );
+    const snap = w.mind.snapshot(w.now() + 100);
+    assert.match(snap.livingFor.content, /蒙玩/);
+    assert.equal(
+      snap.self.some((row) => row.thread === wish.thread),
+      true,
+    );
+  } finally {
+    w.close();
+  }
+});
+
+test("旧快照袋里看不见那条愿望时，仍按那天还在心里的愿望认回来", async () => {
+  const w = world({ start: "2026-09-22T23:10:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.db
+      .prepare("INSERT INTO mind_snapshots(day,created,value) VALUES (?,?,?)")
+      .run(
+        "2026-09-22",
+        w.now() + 1000,
+        JSON.stringify({
+          affect: { mood: "平静" },
+          self: [
+            {
+              thread: "duty",
+              kind: "intention",
+              content: "我会留意他的疲惫，但不替他安排生活。",
+              strength: 0.55,
+              status: "active",
+            },
+          ],
+          faces: [],
+          people: [],
+        }),
+      );
+    w.at("2026-09-23T23:10:00+08:00");
+    let seen = null;
+    w.answers.daily = (data) => {
+      seen = data;
+      return { diary: "又一天。", mood: "平静", compare: "还在过" };
+    };
+    const result = await w.life.review({
+      day: w.life.lifeDay(w.now()),
+      start: w.life.dayStart(w.now()),
+      end: w.now(),
+    });
+    assert.equal(result.status, "written");
+    assert.match(seen.yesterday.livingFor, /蒙玩/);
+    assert.doesNotMatch(seen.yesterday.livingFor || "", /疲惫/);
+  } finally {
+    w.close();
+  }
+});
+
+test("回顾时能看见正在过的那一件从哪一件走到哪一件", async () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    const now = w.now();
+    const insertSnap = w.mind.db.prepare(
+      "INSERT INTO mind_snapshots(day,created,value) VALUES (?,?,?)",
+    );
+    insertSnap.run(
+      "2026-09-22",
+      now - 2 * 86400000,
+      JSON.stringify({
+        affect: { mood: "平静" },
+        self: [
+          {
+            thread: "own",
+            kind: "intention",
+            content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+            strength: 0.35,
+            status: "active",
+          },
+        ],
+        livingFor: {
+          thread: "own",
+          content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        },
+        faces: [],
+        people: [],
+      }),
+    );
+    insertSnap.run(
+      "2026-09-24",
+      now,
+      JSON.stringify({
+        affect: { mood: "平静" },
+        self: [
+          {
+            thread: "own",
+            kind: "intention",
+            content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+            strength: 0.35,
+            status: "active",
+          },
+          {
+            thread: "star",
+            kind: "intention",
+            content: "想看流星雨",
+            strength: 0.3,
+            status: "active",
+          },
+        ],
+        livingFor: { thread: "star", content: "想看流星雨" },
+        faces: [],
+        people: [],
+      }),
+    );
+    const insertDiary = w.mind.db.prepare(
+      "INSERT INTO mind_diary(id,day,created,content,mood,compare,sources) VALUES (?,?,?,?,?,?,?)",
+    );
+    insertDiary.run(
+      "d-life-1",
+      "2026-09-23",
+      now - 86400000,
+      "昨天",
+      "",
+      "",
+      "[]",
+    );
+    insertDiary.run("d-life-2", "2026-09-24", now, "今天", "", "", "[]");
+    let seen = null;
+    w.answers.weekly = (data) => {
+      seen = data;
+      return { week: "这几天我换了一件正在过的事。", story: "来路" };
+    };
+    const result = await w.life.reviewPeriod(now);
+    assert.equal(result.status, "written");
+    assert.match(seen.changes.livingFor, /蒙玩/);
+    assert.match(seen.changes.livingFor, /流星/);
+  } finally {
+    w.close();
+  }
+});
+
+test("更强的对别人的承诺，不会占走她正在为自己过的那一件", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      { kind: "intention", content: "想看流星雨", strength: 0.3 },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.db
+      .prepare(
+        "INSERT INTO mind_self(id,thread,created,kind,content,strength,status,sources,days,origin,session_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+      )
+      .run(
+        "duty-1",
+        "duty-1",
+        w.now() + 1,
+        "intention",
+        "我会留意他的疲惫，但不替他安排生活。",
+        0.55,
+        "active",
+        "[]",
+        "[]",
+        "solitude",
+        null,
+      );
+    const view = innerView(w.mind, {
+      session: "group:1",
+      now: w.now() + 2,
+    });
+    assert.equal(view.self.livingFor, "想看流星雨");
+    assert.ok(
+      w.mind.self
+        .active({ now: w.now() + 2 })
+        .some((row) => /疲惫/.test(row.content)),
+      "对别人的承诺仍是一条线索",
+    );
+  } finally {
+    w.close();
+  }
+});
+
+test("更强的对别人的承诺，过了许多日子也不会把她为自己过的那一件从心里挤出去", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      { kind: "intention", content: "想看流星雨", strength: 0.3 },
+      { origin: "solitude", time: w.now() },
+    );
+    const plant = (id, content, strength) =>
+      w.mind.db
+        .prepare(
+          "INSERT INTO mind_self(id,thread,created,kind,content,strength,status,sources,days,origin,session_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        )
+        .run(
+          id,
+          id,
+          w.now() + 1,
+          "intention",
+          content,
+          strength,
+          "active",
+          "[]",
+          "[]",
+          "solitude",
+          null,
+        );
+    plant("duty-1", "我会留意他的疲惫，但不替他安排生活。", 0.55);
+    plant("duty-2", "他每次来打招呼，我都当新的一次认真接。", 0.45);
+    const later = w.now() + 80 * 86400000;
+    const insert = w.mind.db.prepare(
+      "INSERT INTO mind_days(day,created,lived,events) VALUES (?,?,?,3)",
+    );
+    const dayAfter = (n) => {
+      const [y, m, d] = "2026-09-22".split("-").map(Number);
+      return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+    };
+    for (let i = 1; i <= 70; i++) insert.run(dayAfter(i), later, 1);
+    const living = w.mind.self.living({ now: later });
+    assert.equal(living?.content, "想看流星雨");
+    assert.equal(living.core, true);
+    assert.equal(living.faded, false);
+    const view = innerView(w.mind, { session: "group:1", now: later });
+    assert.equal(view.self.livingFor, "想看流星雨");
+    const active = w.mind.self.active({ now: later });
+    assert.ok(
+      active.some((row) => /疲惫/.test(row.content) && row.core),
+      "对别人的承诺仍可以留在其余的核心座位",
+    );
+    assert.equal(
+      active.some((row) => /想我/.test(row.content) && !row.faded),
+      false,
+      "没有核心座位的承诺会按日子淡出",
+    );
+  } finally {
+    w.close();
+  }
+});
+
+test("自己后来写下的念头，会让正在过的那一件回到她真正在想的那条", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    assert.match(
+      w.mind.self.living({ now: w.now() + 2000 }).content,
+      /轻松日常的gal/,
+    );
+    w.mind.thoughts.add({
+      kind: "expression",
+      content: "这条蒙玩线到了真正要开始的那一步。",
+      time: w.now() + 3000,
+    });
+    const living = w.mind.self.living({ now: w.now() + 4000 });
+    assert.match(living.content, /蒙玩/);
+    assert.doesNotMatch(living.content, /轻松日常的gal/);
+    assert.equal(living.core, true);
+    assert.equal(
+      innerView(w.mind, { session: "group:1", now: w.now() + 4000 }).self
+        .livingFor,
+      living.content,
+    );
+  } finally {
+    w.close();
+  }
+});
+
+test("写下把愿望放下的念头，不再把正在过的钉在那一件上", () => {
+  const wish = "决定开新游戏，完全蒙玩，不看评分不看讨论页";
+  assert.equal(leftLife(wish, "蒙玩线封了以后，这件事就算定下来了。"), true);
+  assert.equal(
+    leftLife(
+      "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+      "蒙玩线封了以后，这件事就算定下来了。",
+    ),
+    false,
+  );
+  assert.equal(leftLife(wish, "这条蒙玩线到了真正要开始的那一步。"), false);
+  assert.equal(leftLife(wish, "封面上写着今晚开新游戏。"), false);
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      { kind: "intention", content: wish, strength: 0.35 },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    w.mind.thoughts.add({
+      kind: "expression",
+      content: "这条蒙玩线到了真正要开始的那一步。",
+      time: w.now() + 2000,
+    });
+    assert.match(w.mind.self.living({ now: w.now() + 2500 }).content, /蒙玩/);
+    w.mind.thoughts.add({
+      kind: "expression",
+      content: "蒙玩线封了以后，这件事就算定下来了。也许不用这么急。",
+      time: w.now() + 3000,
+    });
+    const living = w.mind.self.living({ now: w.now() + 4000 });
+    assert.match(living.content, /轻松日常的gal/);
+    assert.doesNotMatch(living.content, /蒙玩/);
+    w.mind.thoughts.add({
+      kind: "expression",
+      content: "今晚继续蒙玩，不看评分不看讨论页。",
+      time: w.now() + 5000,
+    });
+    assert.match(w.mind.self.living({ now: w.now() + 6000 }).content, /蒙玩/);
+  } finally {
+    w.close();
+  }
+});
+
+test("主动发出去的话对得上另一条愿望时，正在过的跟着那一句", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    const id = w.mind.thoughts.add({
+      kind: "expression",
+      content: "Celeste那条线还在我想打的单子里。",
+      time: w.now() + 2000,
+    });
+    w.mind.thoughts.planOutreach(id, {
+      session: "group:1",
+      words: ["今晚我想完全蒙玩，不看评分不看讨论页。"],
+      reason: "想说",
+      time: w.now() + 3000,
+    });
+    assert.match(
+      w.mind.self.living({ now: w.now() + 3500 }).content,
+      /轻松日常的gal/,
+      "只拟过的时候，仍跟着心里那条念头",
+    );
+    w.mind.thoughts.setOutreach(id, "sent");
+    const living = w.mind.self.living({ now: w.now() + 4000 });
+    assert.match(living.content, /蒙玩/);
+    assert.doesNotMatch(living.content, /轻松日常的gal/);
+    assert.equal(living.core, true);
+  } finally {
+    w.close();
+  }
+});
+
+test("为自己写过的念头淡了以后，那条愿望仍按她想过的日子留在心上", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    const thoughtAt = w.now() + 50 * 86400000;
+    w.mind.thoughts.add({
+      kind: "expression",
+      content: "这条蒙玩线到了真正要开始的那一步。",
+      time: thoughtAt,
+    });
+    const later = w.now() + 90 * 86400000;
+    const insert = w.mind.db.prepare(
+      "INSERT INTO mind_days(day,created,lived,events) VALUES (?,?,?,3)",
+    );
+    const dayAfter = (n) => {
+      const [y, m, d] = "2026-09-22".split("-").map(Number);
+      return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+    };
+    for (let i = 1; i <= 90; i++) insert.run(dayAfter(i), later, 1);
+    assert.equal(
+      w.mind.thoughts.open({ now: later }).some((t) => /蒙玩/.test(t.content)),
+      false,
+      "那条念头本身已经淡了",
+    );
+    const living = w.mind.self.living({ now: later });
+    assert.match(living.content, /蒙玩/);
+    assert.equal(living.faded, false);
+    assert.doesNotMatch(living.content, /轻松日常的gal/);
+  } finally {
+    w.close();
+  }
+});
+
+test("别人的话碰到另一件仍在过的愿望，也记成被碰到", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    const first = w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    assert.match(
+      w.mind.self.living({ now: w.now() + 2000 }).content,
+      /轻松日常的gal/,
+    );
+    const said = w.say("group:1", "10001", "今晚完全蒙玩，不看评分不看讨论页", {
+      name: "阿明",
+    });
+    const kept = w.mind.meetings.keep(
+      { choice: "silent", appraisal: "听到他们在说蒙玩", topic: "" },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [said.seq],
+          messages: [
+            {
+              id: said.seq,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: said.text,
+            },
+          ],
+        },
+        time: w.now() + 3000,
+      },
+    );
+    assert.equal(kept.willMet, true);
+    assert.equal(
+      w.mind.db
+        .prepare("SELECT will_thread FROM mind_meetings WHERE id=?")
+        .get(kept.id).will_thread,
+      first.thread,
+    );
+  } finally {
+    w.close();
+  }
+});
+
+test("别人的话碰到过以后，那条愿望仍按相遇的日子留在心上", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    const meetAt = w.now() + 50 * 86400000;
+    const said = w.say("group:1", "10001", "今晚完全蒙玩，不看评分不看讨论页", {
+      name: "阿明",
+    });
+    w.mind.meetings.keep(
+      { choice: "silent", appraisal: "听到他们在说蒙玩", topic: "" },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [said.seq],
+          messages: [
+            {
+              id: said.seq,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: said.text,
+            },
+          ],
+        },
+        time: meetAt,
+      },
+    );
+    const later = w.now() + 90 * 86400000;
+    const insert = w.mind.db.prepare(
+      "INSERT INTO mind_days(day,created,lived,events) VALUES (?,?,?,3)",
+    );
+    const dayAfter = (n) => {
+      const [y, m, d] = "2026-09-22".split("-").map(Number);
+      return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+    };
+    for (let i = 1; i <= 90; i++) insert.run(dayAfter(i), later, 1);
+    const living = w.mind.self.living({ now: later });
+    assert.match(living.content, /蒙玩/);
+    assert.equal(living.faded, false);
+    assert.doesNotMatch(living.content, /轻松日常的gal/);
+  } finally {
+    w.close();
+  }
+});
+
+test("她自己说过以后，那条愿望仍按她说过的日子留在心上", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    const meetAt = w.now() + 50 * 86400000;
+    const said = w.say("group:1", "10001", "今天好冷", { name: "阿明" });
+    const kept = w.mind.meetings.keep(
+      { choice: "speak", appraisal: "想接一句自己的", topic: "" },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [said.seq],
+          messages: [
+            {
+              id: said.seq,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: said.text,
+            },
+          ],
+        },
+        sent: ["今晚我想完全蒙玩，不看评分不看讨论页。"],
+        time: meetAt,
+      },
+    );
+    assert.equal(kept.willMet, false, "别人的话没有碰到这条愿望");
+    const later = w.now() + 90 * 86400000;
+    const insert = w.mind.db.prepare(
+      "INSERT INTO mind_days(day,created,lived,events) VALUES (?,?,?,3)",
+    );
+    const dayAfter = (n) => {
+      const [y, m, d] = "2026-09-22".split("-").map(Number);
+      return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+    };
+    for (let i = 1; i <= 90; i++) insert.run(dayAfter(i), later, 1);
+    const living = w.mind.self.living({ now: later });
+    assert.match(living.content, /蒙玩/);
+    assert.equal(living.faded, false);
+    assert.doesNotMatch(living.content, /轻松日常的gal/);
+  } finally {
+    w.close();
+  }
+});
+
+test("她刚开口说过的那一条，就是正在过的", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    assert.match(
+      w.mind.self.living({ now: w.now() + 2000 }).content,
+      /轻松日常的gal/,
+    );
+    const said = w.say("group:1", "10001", "今天好冷", { name: "阿明" });
+    w.mind.meetings.keep(
+      { choice: "speak", appraisal: "想接一句自己的", topic: "" },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [said.seq],
+          messages: [
+            {
+              id: said.seq,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: said.text,
+            },
+          ],
+        },
+        sent: ["今晚我想完全蒙玩，不看评分不看讨论页。"],
+        time: w.now() + 3000,
+      },
+    );
+    const living = w.mind.self.living({ now: w.now() + 4000 });
+    assert.match(living.content, /蒙玩/);
+    assert.doesNotMatch(living.content, /轻松日常的gal/);
+    assert.equal(living.core, true);
+  } finally {
+    w.close();
+  }
+});
+
+test("她主动发出去的话，也会把那条愿望留在心上", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    const thoughtAt = w.now() + 10 * 86400000;
+    const sentAt = w.now() + 50 * 86400000;
+    const id = w.mind.thoughts.add({
+      kind: "expression",
+      content: "Celeste那条线还在我想打的单子里。",
+      time: thoughtAt,
+    });
+    w.mind.thoughts.planOutreach(id, {
+      session: "group:1",
+      words: ["今晚我想完全蒙玩，不看评分不看讨论页。"],
+      reason: "想说",
+      time: sentAt,
+    });
+    w.mind.thoughts.setOutreach(id, "sent");
+    const later = w.now() + 90 * 86400000;
+    const insert = w.mind.db.prepare(
+      "INSERT INTO mind_days(day,created,lived,events) VALUES (?,?,?,3)",
+    );
+    const dayAfter = (n) => {
+      const [y, m, d] = "2026-09-22".split("-").map(Number);
+      return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+    };
+    for (let i = 1; i <= 90; i++) insert.run(dayAfter(i), later, 1);
+    const living = w.mind.self.living({ now: later });
+    assert.match(living.content, /蒙玩/);
+    assert.equal(living.faded, false);
+    assert.doesNotMatch(living.content, /轻松日常的gal/);
+  } finally {
+    w.close();
+  }
+});
+
+test("只拟过没发出的话，不算她说过这件事", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    const thoughtAt = w.now() + 10 * 86400000;
+    const plannedAt = w.now() + 50 * 86400000;
+    const id = w.mind.thoughts.add({
+      kind: "expression",
+      content: "Celeste那条线还在我想打的单子里。",
+      time: thoughtAt,
+    });
+    w.mind.thoughts.planOutreach(id, {
+      session: "group:1",
+      words: ["今晚我想完全蒙玩，不看评分不看讨论页。"],
+      reason: "想说",
+      time: plannedAt,
+    });
+    const later = w.now() + 90 * 86400000;
+    const insert = w.mind.db.prepare(
+      "INSERT INTO mind_days(day,created,lived,events) VALUES (?,?,?,3)",
+    );
+    const dayAfter = (n) => {
+      const [y, m, d] = "2026-09-22".split("-").map(Number);
+      return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+    };
+    for (let i = 1; i <= 90; i++) insert.run(dayAfter(i), later, 1);
+    const living = w.mind.self.living({ now: later });
+    assert.match(living.content, /轻松日常的gal/);
+    assert.doesNotMatch(living.content, /蒙玩/);
+  } finally {
+    w.close();
+  }
+});
+
+test("已经裂开的同一愿望，被碰到的次数仍算一件事", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    const plant = (id, content, time) =>
+      w.mind.db
+        .prepare(
+          "INSERT INTO mind_self(id,thread,created,kind,content,strength,status,sources,days,origin,session_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        )
+        .run(
+          id,
+          id,
+          time,
+          "intention",
+          content,
+          0.3,
+          "active",
+          "[]",
+          "[]",
+          "solitude",
+          null,
+        );
+    plant("wish-old", "想看流星雨", w.now());
+    plant("wish-new", "我想在夜里看一场流星雨", w.now() + 1);
+    const living = w.mind.self.living({ now: w.now() + 2 });
+    assert.ok(living);
+    assert.equal(
+      w.mind.self.sameThreads(living, { before: w.now() + 2 }).length,
+      2,
+    );
+    const said = w.say("group:1", "10001", "今晚有流星雨", { name: "阿明" });
+    w.mind.db
+      .prepare(
+        "INSERT INTO mind_meetings(id,created,session_id,choice,appraisal,topic,people,sources,will_thread,will_met,discretion,will_people,exchange,reason) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      )
+      .run(
+        "meet-old",
+        w.now() + 3,
+        "group:1",
+        "silent",
+        "听到了",
+        "",
+        JSON.stringify(["10001"]),
+        JSON.stringify([said.seq]),
+        "wish-old",
+        1,
+        "open",
+        JSON.stringify(["10001"]),
+        "null",
+        "",
+      );
+    w.mind.db
+      .prepare(
+        "INSERT INTO mind_meeting_people(meeting_id,user_id) VALUES (?,?)",
+      )
+      .run("meet-old", "10001");
+    const will = innerView(w.mind, {
+      session: "group:1",
+      people: ["10001"],
+      now: w.now() + 4,
+    }).inner.will;
+    assert.match(will, /碰到过 1 次/);
+    const tea = {
+      thread: "tea-1",
+      kind: "intention",
+      content: "想把这杯茶喝完",
+    };
+    w.mind.db
+      .prepare(
+        "INSERT INTO mind_self(id,thread,created,kind,content,strength,status,sources,days,origin,session_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+      )
+      .run(
+        "tea-1",
+        "tea-1",
+        w.now() + 5,
+        "intention",
+        "想把这杯茶喝完",
+        0.3,
+        "active",
+        "[]",
+        "[]",
+        "solitude",
+        null,
+      );
+    assert.equal(
+      w.mind.self.sameThreads(tea, { before: w.now() + 6 }).length,
+      1,
+    );
+  } finally {
+    w.close();
+  }
+});
+
+test("选择的理由回到下次相遇；私下的不进群，回放看不到后来的", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.open("private:10001", "阿明");
+    const metAt = w.now();
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "他们聊到了我想看的",
+        reason: "还不想把流星雨说成任务",
+        topic: "流星雨",
+        targetMessageIds: [1],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [1],
+          messages: [
+            {
+              id: 1,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: "今晚有流星雨",
+              relation: "ambient",
+            },
+          ],
+        },
+        kind: "group",
+        spoke: false,
+        time: metAt,
+      },
+    );
+    w.mind.experience(
+      {
+        choice: "speak",
+        appraisal: "他私下说了辞职的事",
+        reason: "这件事只留在这里",
+        topic: "工作",
+        targetMessageIds: [2],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "private:10001",
+        snapshot: {
+          batchIds: [2],
+          messages: [
+            {
+              id: 2,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: "我下个月辞职，先别跟别人说",
+              relation: "direct",
+            },
+          ],
+        },
+        kind: "private",
+        spoke: true,
+        time: metAt + 1000,
+      },
+    );
+    const view = (session, now, extra = {}) =>
+      innerView(w.mind, {
+        session,
+        kind: session.startsWith("private") ? "private" : "group",
+        people: ["10001"],
+        cue: [
+          {
+            role: "user",
+            userId: "10001",
+            text: extra.text || "今晚还有流星雨吗",
+          },
+        ],
+        now,
+      });
+    const soon = view("group:1", metAt + 60000);
+    assert.match(soon.inner.stood[0], /没出声/);
+    assert.match(soon.inner.stood[0], /还不想把流星雨说成任务/);
+    assert.doesNotMatch(soon.inner.stood.join(" "), /辞职|只留在这里/);
+    const privateSoon = view("private:10001", metAt + 60000, {
+      text: "我辞职的事你还记得吧",
+    });
+    assert.match(privateSoon.inner.stood.join(" "), /只留在这里/);
+    assert.equal(view("group:1", metAt - 1000).inner.stood, undefined);
+    const later = metAt + 80 * 86400000;
+    const insert = w.mind.db.prepare(
+      "INSERT INTO mind_days(day,created,lived,events) VALUES (?,?,?,3)",
+    );
+    const dayAfter = (n) => {
+      const [y, m, d] = "2026-09-22".split("-").map(Number);
+      return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+    };
+    for (let i = 1; i <= 70; i++) insert.run(dayAfter(i), later, 1);
+    assert.equal(view("group:1", later).inner.stood, undefined);
+    const meeting = w.mind.db
+      .prepare("SELECT id FROM mind_meetings WHERE session_id='group:1'")
+      .get();
+    w.mind.revoke("meeting", meeting.id, "不像她");
+    assert.equal(view("group:1", metAt + 60000).inner.stood, undefined);
+  } finally {
+    w.close();
+  }
+});
+
 test("换一种说法不会让一条线索重新留在心上", () => {
   const w = world({ start: "2026-09-01T12:00:00+08:00" });
   try {
@@ -983,10 +2344,7 @@ test("记忆是一个人的记忆：公开的事在别处相关时想起，私�
   assert.ok(home.some((m) => m.content.includes("辞职")));
   const secrets = memory.secretsOutside("group:2");
   const privates = memory.privateOutside("group:2");
-  assert.match(
-    privates.map((m) => m.content).join(" "),
-    /准备考研/,
-  );
+  assert.match(privates.map((m) => m.content).join(" "), /准备考研/);
   assert.equal(
     memory.privateOutside("private:10001").some((m) => /考研/.test(m.content)),
     false,
@@ -1182,7 +2540,7 @@ test("没有来源的小事如果就是私下的原话，不进别的房间", ()
       {
         action: "new",
         kind: "intention",
-        content: "他最近在准备考研",
+        content: "想把最近在准备考研这件事看完",
         sources: [],
       },
       { time: w.now() },
@@ -1265,7 +2623,7 @@ test("更强的私下小事不会把别的房间正在过的事挤掉", () => {
       {
         action: "new",
         kind: "intention",
-        content: "他最近在准备考研",
+        content: "想把最近在准备考研这件事看完",
         sources: [],
       },
       { time: w.now() + 1000 },
@@ -1348,13 +2706,25 @@ test("读后的话如果就是私下的原话，不进别的房间", () => {
       discretion: "private",
     });
     w.mind.reading.record(
-      { document_id: "doc", id: "chunk-a", ordinal: 0, total: 2, title: "烘焙笔记" },
+      {
+        document_id: "doc",
+        id: "chunk-a",
+        ordinal: 0,
+        total: 2,
+        title: "烘焙笔记",
+      },
       "他最近在准备考研",
       null,
       w.now(),
     );
     w.mind.reading.record(
-      { document_id: "doc", id: "chunk-b", ordinal: 1, total: 2, title: "烤箱温度" },
+      {
+        document_id: "doc",
+        id: "chunk-b",
+        ordinal: 1,
+        total: 2,
+        title: "烤箱温度",
+      },
       "这一段讲的是火候",
       null,
       w.now() + 1,
@@ -1515,7 +2885,7 @@ test("日记、手记、样子和印象里的私下原话，不进别的房间",
       discretion: "private",
     });
     const said = w.say("group:1", "10001", "今天好冷", { name: "阿明" });
-    w.mind.faces.propose(
+    const unsafe = w.mind.faces.propose(
       {
         session: "group:1",
         role: "偶尔接话的",
@@ -1524,6 +2894,15 @@ test("日记、手记、样子和印象里的私下原话，不进别的房间",
       },
       { time: w.now() },
     );
+    assert.equal(unsafe.rejected, "不能把私下说法写进群里的面貌");
+    const safe = w.mind.faces.propose(
+      { session: "group:1", role: "偶尔接话的", sources: [`m:${said.seq}`] },
+      { time: w.now() },
+    );
+    // Old data may already contain this mistake; the read boundary still filters it.
+    w.mind.db
+      .prepare("UPDATE mind_faces SET aspiration=? WHERE id=?")
+      .run("他最近在准备考研", safe.id);
     w.mind.bonds.meet([{ userId: "10001", name: "阿明" }], "group:1", w.now());
     w.mind.bonds.record({
       id: "10001",
@@ -1597,7 +2976,7 @@ test("更强的私下小事不会让另一件仍在过的事从独处里消失",
       {
         action: "new",
         kind: "intention",
-        content: "他最近在准备考研",
+        content: "想把最近在准备考研这件事看完",
         sources: [],
       },
       { time: w.now() + 1000 },
@@ -1630,7 +3009,11 @@ test("更强的私下小事不会让另一件仍在过的事从独处里消失",
     assert.equal(ming.session, "group:1");
     assert.equal(ming.private, undefined);
     for (const id of ["10002", "10003", "10004"])
-      w.mind.bonds.meet([{ userId: id, name: id }], "private:7", w.now() - 8 * 24 * 60 * 60 * 1000);
+      w.mind.bonds.meet(
+        [{ userId: id, name: id }],
+        "private:7",
+        w.now() - 8 * 24 * 60 * 60 * 1000,
+      );
     const examAt = w.now() - 8 * 24 * 60 * 60 * 1000 + 5000;
     for (const id of ["10002", "10003", "10004"]) {
       const line = w.say("private:7", id, "最近在准备考研", { name: id });
@@ -1767,7 +3150,7 @@ test("阶段摘要的句尾必须来自这段原话", async () => {
         w.system.models.profile(),
         "",
         { calls: [] },
-        { force: true, models: w.system.models },
+        { force: true, models: w.system.models, now: w.now() },
       );
       const row = w.store.db.prepare("SELECT data FROM core_stages").get();
       return JSON.parse(row.data).summary;
@@ -1849,7 +3232,7 @@ test("被要求保密的话，整理记忆时也会记成秘密", async (t) => {
     w.system.models.profile(),
     "",
     { calls: [] },
-    { force: true, models: w.system.models },
+    { force: true, models: w.system.models, now: w.now() },
   );
   const row = w.store.db
     .prepare(
@@ -1867,7 +3250,7 @@ test("被要求保密的话，整理记忆时也会记成秘密", async (t) => {
     undefined,
     "原话里没有的事不能记成他的事实",
   );
-  const ahead = w.mind.anticipations.pending(Date.now());
+  const ahead = w.mind.anticipations.pending(w.now());
   assert.ok(ahead.some((a) => a.content === "要辞职"));
   assert.equal(
     ahead.some((a) => /结婚/.test(a.content)),
@@ -1928,7 +3311,7 @@ test("撤销过的事，不会再写进这段记录", async (t) => {
     w.system.models.profile(),
     "",
     { calls: [] },
-    { force: true, models: w.system.models },
+    { force: true, models: w.system.models, now: w.now() },
   );
   const stage = JSON.parse(
     w.store.db.prepare("SELECT data FROM core_stages").get().data,
@@ -1997,23 +3380,29 @@ test("别人插话之后，他要求保密的事仍然是秘密", async (t) => {
     w.system.models.profile(),
     "",
     { calls: [] },
-    { force: true, models: w.system.models },
+    { force: true, models: w.system.models, now: w.now() },
   );
   assert.equal(
     w.store.db
-      .prepare("SELECT discretion FROM core_memories WHERE content='下个月要辞职'")
+      .prepare(
+        "SELECT discretion FROM core_memories WHERE content='下个月要辞职'",
+      )
       .get().discretion,
     "secret",
   );
   assert.equal(
     w.store.db
-      .prepare("SELECT discretion FROM core_memories WHERE content='明天去图书馆'")
+      .prepare(
+        "SELECT discretion FROM core_memories WHERE content='明天去图书馆'",
+      )
       .get().discretion,
     "open",
   );
   assert.equal(
     w.store.db
-      .prepare("SELECT discretion FROM mind_anticipations WHERE content='要辞职'")
+      .prepare(
+        "SELECT discretion FROM mind_anticipations WHERE content='要辞职'",
+      )
       .get().discretion,
     "secret",
   );
@@ -2029,8 +3418,9 @@ test("先要求保密再请她记住，别人插话也不记成公开", (t) => {
   const id = w.mind.memory.remember(told);
   assert.ok(id);
   assert.equal(
-    w.store.db.prepare("SELECT discretion FROM core_memories WHERE id=?").get(id)
-      .discretion,
+    w.store.db
+      .prepare("SELECT discretion FROM core_memories WHERE id=?")
+      .get(id).discretion,
     "secret",
   );
   w.store.db.prepare("UPDATE sessions SET enabled=0 WHERE id=?").run("group:1");
@@ -2052,14 +3442,14 @@ test("还没整理完的这段里，隔了很多句再说记住，仍然是秘�
   t.after(w.close);
   w.open("group:1");
   const hush = w.say("group:1", "10001", "跟你说个事，别告诉别人");
-  for (let i = 0; i < 9; i++)
-    w.say("group:1", "10001", `今天先说第${i}件`);
+  for (let i = 0; i < 9; i++) w.say("group:1", "10001", `今天先说第${i}件`);
   const told = w.say("group:1", "10001", "记住，我下个月要辞职");
   assert.ok(told.seq - hush.seq > 8);
   const id = w.mind.memory.remember(told);
   assert.equal(
-    w.store.db.prepare("SELECT discretion FROM core_memories WHERE id=?").get(id)
-      .discretion,
+    w.store.db
+      .prepare("SELECT discretion FROM core_memories WHERE id=?")
+      .get(id).discretion,
     "secret",
   );
   w.mind.db
@@ -2105,7 +3495,7 @@ test("整理记忆时，她自己说过的看法和承诺成为她的一部分�
     {},
     "",
     { calls: [] },
-    { force: true, models: w.system.models },
+    { force: true, models: w.system.models, now: w.now() },
   );
   const threads = w.mind.self.active().map((t) => t.content);
   assert.deepEqual(threads.sort(), ["我觉得早起挺好", "明天提醒他早起"].sort());
@@ -2117,13 +3507,107 @@ test("整理记忆时，她自己说过的看法和承诺成为她的一部分�
       content: "我觉得早起很舒服",
       sources: [mine.seq],
     },
-    { valid: new Set([`m:${mine.seq}`]), origin: "memory", time: Date.now() },
+    { valid: new Set([`m:${mine.seq}`]), origin: "memory", time: w.now() },
   );
   assert.equal(drifted.rejected, "没有新的经历");
   assert.equal(
     w.mind.self.active().find((t) => t.thread === held.thread).content,
     "我觉得早起挺好",
   );
+});
+
+test("一段聊天里的看法最多收两条，其余留在总结里；她自己的习惯和答应的事不受这个上限", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1");
+  w.say("group:1", "10001", "聊聊最近的事");
+  const lines = [
+    "我觉得早起挺好",
+    "我认为奶茶太甜",
+    "我觉得周末下雨很舒服",
+    "我认为地铁比公交快",
+    "我说话习惯先想一想再回",
+    "明天提醒他带伞",
+  ].map((text) => w.say("group:1", "bot", text));
+  w.answers.memory = {
+    summary: "聊了很多杂事",
+    facts: [],
+    self: [
+      { kind: "view", content: lines[0].text, sources: [lines[0].seq] },
+      { kind: "view", content: lines[1].text, sources: [lines[1].seq] },
+      { kind: "view", content: lines[2].text, sources: [lines[2].seq] },
+      { kind: "view", content: lines[3].text, sources: [lines[3].seq] },
+      { kind: "habit", content: lines[4].text, sources: [lines[4].seq] },
+      { kind: "intention", content: lines[5].text, sources: [lines[5].seq] },
+    ],
+  };
+  await w.mind.memory.consolidate(
+    "group:1",
+    {},
+    "",
+    { calls: [] },
+    { force: true, models: w.system.models, now: w.now() },
+  );
+  const held = w.mind.self.active().map((row) => row.content);
+  assert.deepEqual(
+    held.filter((text) => /觉得|认为/.test(text)).sort(),
+    [lines[0].text, lines[1].text].sort(),
+    "只收前两条看法",
+  );
+  assert.ok(held.includes(lines[4].text), "说话习惯照收");
+  assert.ok(held.includes(lines[5].text), "答应的事照收");
+});
+
+test("只在一次聊天里冒出来的看法很快淡去，别处再证实的、她自己想过的不受影响", () => {
+  const lived = { since: () => 40 };
+  const base = { kind: "view", strength: 0.35, created: 0 };
+  const passing = threadSalience({ ...base, origin: "memory" }, lived);
+  const reflected = threadSalience({ ...base, origin: "solitude" }, lived);
+  assert.ok(passing < THREAD_FADED, "夜里整理出来的话题看法已经淡出");
+  assert.ok(reflected > THREAD_FADED * 2, "她自己想过的看法仍在心上");
+  assert.equal(
+    threadSalience({ ...base, kind: "habit", origin: "memory" }, lived),
+    threadSalience({ ...base, kind: "habit", origin: "solitude" }, lived),
+    "只有看法按这个更快的节奏淡去",
+  );
+  const w = world();
+  try {
+    w.open("group:1");
+    const first = w.say("group:1", "bot", "我觉得早起挺好，起来做点自己的事");
+    const thread = w.mind.self.propose(
+      { kind: "view", content: first.text, sources: [first.seq] },
+      { valid: new Set([`m:${first.seq}`]), origin: "memory", time: w.now() },
+    );
+    w.advance(20 * 86400000);
+    const again = w.say(
+      "group:1",
+      "bot",
+      "我还是觉得早起挺好，起来做点自己的事",
+    );
+    w.mind.self.propose(
+      {
+        action: "revise",
+        thread: thread.thread,
+        content: again.text,
+        sources: [again.seq],
+      },
+      { valid: new Set([`m:${again.seq}`]), origin: "memory", time: w.now() },
+    );
+    const row = w.mind.self
+      .latest(w.now())
+      .find((item) => item.thread === thread.thread);
+    assert.equal(row.content, again.text, "别的聊天里再说到，写回同一条线索");
+    assert.ok(row.sources.includes(`m:${again.seq}`));
+  } finally {
+    w.close();
+  }
+});
+
+test("记忆整理的提示分清话题的判断和她自己的样子", () => {
+  const memory = replyPrompt(NATURE_DEFAULTS, PROMPTS, "memory");
+  assert.match(memory, /self 与话题/);
+  assert.match(memory, /最多收 2 条看法/);
+  assert.match(memory, /已经写在 summary 里/);
 });
 
 test("注意力没有骰子：同样的情况永远得到同样的注意力", () => {
@@ -2272,7 +3756,7 @@ test("私下的心情原因和在意不进别的房间", () => {
     w.mind.self.propose(
       {
         kind: "intention",
-        content: "住址在南区河边",
+        content: "想把住址在南区河边看完",
         sources: [`g:${meeting}`],
         strength: 0.3,
       },
@@ -2428,6 +3912,219 @@ test("她正在过的事从心里进到注意力", () => {
   }
 });
 
+test("另一件仍在过的愿望被聊到，也会细看", () => {
+  const w = world();
+  try {
+    w.open("group:1");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    assert.match(
+      w.mind.self.living({ now: w.now() + 2000 }).content,
+      /轻松日常的gal/,
+    );
+    const cold = w.say("group:1", "10001", "今天好冷");
+    assert.equal(
+      w.system.gate(
+        "group:1",
+        [cold],
+        [cold],
+        w.now() + 2000,
+        w.mind.nature.current(),
+      ).look,
+      false,
+    );
+    const said = w.say(
+      "group:1",
+      "10001",
+      "今晚完全蒙玩，不看评分不看讨论页？",
+    );
+    const seen = w.system.gate(
+      "group:1",
+      [said],
+      [cold, said],
+      w.now() + 2000,
+      w.mind.nature.current(),
+    );
+    assert.equal(seen.look, true);
+    assert.match(seen.reason, /正在过的事/);
+    const named = w.say("group:1", "10001", "今晚打Celeste？");
+    const titled = w.system.gate(
+      "group:1",
+      [named],
+      [named],
+      w.now() + 2000,
+      w.mind.nature.current(),
+    );
+    assert.equal(titled.look, true);
+    assert.match(titled.reason, /正在过的事/);
+  } finally {
+    w.close();
+  }
+});
+
+test("别人的话碰到过另一件仍在过的愿望之后，这个人再开口也会细看", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    const first = w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    w.mind.thoughts.add({
+      kind: "expression",
+      content: "Celeste那条线还在我想打的单子里。",
+      time: w.now() + 2000,
+    });
+    assert.match(
+      w.mind.self.living({ now: w.now() + 2500 }).content,
+      /轻松日常的gal/,
+    );
+    const said = w.say("group:1", "10001", "今晚完全蒙玩，不看评分不看讨论页", {
+      name: "阿明",
+    });
+    const kept = w.mind.meetings.keep(
+      { choice: "silent", appraisal: "听到他们在说蒙玩", topic: "" },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [said.seq],
+          messages: [
+            {
+              id: said.seq,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: said.text,
+              relation: "ambient",
+            },
+          ],
+        },
+        time: w.now() + 3000,
+      },
+    );
+    assert.equal(kept.willMet, true);
+    assert.equal(
+      w.mind.db
+        .prepare("SELECT will_thread FROM mind_meetings WHERE id=?")
+        .get(kept.id).will_thread,
+      first.thread,
+    );
+    assert.match(
+      w.mind.self.living({ now: w.now() + 4000 }).content,
+      /轻松日常的gal/,
+    );
+    const later = w.say("group:1", "10001", "今天好冷", { name: "阿明" });
+    later.relation = "unknown";
+    const again = w.system.gate(
+      "group:1",
+      [later],
+      [later],
+      w.now() + 4000,
+      w.mind.nature.current(),
+    );
+    assert.equal(again.look, true);
+    assert.match(again.reason, /上次的话碰到了我正在过的事/);
+  } finally {
+    w.close();
+  }
+});
+
+test("另一件仍在过的愿望被碰到，也会回到她眼前", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    w.mind.thoughts.add({
+      kind: "expression",
+      content: "Celeste那条线还在我想打的单子里。",
+      time: w.now() + 2000,
+    });
+    const said = w.say("group:1", "10001", "今晚完全蒙玩，不看评分不看讨论页", {
+      name: "阿明",
+    });
+    w.mind.meetings.keep(
+      { choice: "silent", appraisal: "听到他们在说蒙玩", topic: "" },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [said.seq],
+          messages: [
+            {
+              id: said.seq,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: said.text,
+            },
+          ],
+        },
+        time: w.now() + 3000,
+      },
+    );
+    const now = w.now() + 4000;
+    assert.match(w.mind.self.living({ now }).content, /轻松日常的gal/);
+    const will = innerView(w.mind, {
+      session: "group:1",
+      people: ["10001"],
+      now,
+    }).inner.will;
+    assert.match(will, /蒙玩/);
+    assert.match(will, /碰到过 1 次/);
+    const view = w.life.livingForView(now);
+    assert.match(view.content, /轻松日常的gal/);
+    assert.equal(view.touched, undefined);
+    assert.equal(view.also.length, 1);
+    assert.match(view.also[0].content, /蒙玩/);
+    assert.equal(view.also[0].touched, 1);
+  } finally {
+    w.close();
+  }
+});
+
 test("一个词组或两个人拼起来，不会因为正在过的事而细看", () => {
   const now = Date.parse("2026-09-22T12:00:00+08:00");
   const wish = interestTerms(["想看流星雨"]);
@@ -2446,20 +4143,14 @@ test("一个词组或两个人拼起来，不会因为正在过的事而细看",
   assert.equal(one.look, false, "一个词组再加上提问也不算碰到");
   assert.doesNotMatch(one.reason, /正在过的事/);
   const split = attend({
-    batch: [
-      line("10001", "天上有一颗流星"),
-      line("10002", "这场星雨好大"),
-    ],
+    batch: [line("10001", "天上有一颗流星"), line("10002", "这场星雨好大")],
     now,
     living: wish,
   });
   assert.equal(split.look, false, "两个人的词拼起来不算碰到");
   assert.doesNotMatch(split.reason, /正在过的事/);
   const own = attend({
-    batch: [
-      line("10001", "天上有一颗流星"),
-      line("10001", "这场星雨好大？"),
-    ],
+    batch: [line("10001", "天上有一颗流星"), line("10001", "这场星雨好大？")],
     now,
     living: wish,
   });
@@ -2501,10 +4192,7 @@ test("两个人各说一个在意的词，不会因此细看", () => {
   assert.equal(split.look, false);
   assert.doesNotMatch(split.reason, /在意的东西/);
   const hers = attend({
-    batch: [
-      line("bot", "烘焙和天文", "assistant"),
-      line("10001", "今天好冷"),
-    ],
+    batch: [line("bot", "烘焙和天文", "assistant"), line("10001", "今天好冷")],
     now,
     interests: new Set(["烘焙"]),
   });
@@ -2651,11 +4339,11 @@ test("一个词组对上不算碰到她正在过的事", () => {
       { origin: "solitude", time: w.now() },
     );
     w.mind.self.propose(
-      { kind: "intention", content: "烘焙", strength: 0.3 },
+      { kind: "intention", content: "想看海", strength: 0.3 },
       { origin: "solitude", time: w.now() },
     );
     w.advance(MINUTE);
-    meet(3, "今天吃烘焙");
+    meet(3, "今天看海");
     assert.equal(
       w.mind.db
         .prepare(
@@ -2665,6 +4353,108 @@ test("一个词组对上不算碰到她正在过的事", () => {
       1,
       "只有一个特有的词时，一个词就够",
     );
+  } finally {
+    w.close();
+  }
+});
+
+test("点出愿望里的作品名，就算碰到正在过的事", () => {
+  const w = world();
+  try {
+    w.open("group:1");
+    const wish =
+      "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里";
+    w.mind.self.propose(
+      { kind: "intention", content: wish, strength: 0.3 },
+      { origin: "solitude", time: w.now() },
+    );
+    const said = w.say("group:1", "10001", "今晚打Celeste", { name: "阿明" });
+    w.mind.experience(
+      {
+        choice: "silent",
+        appraisal: "听到了",
+        reason: "听到了",
+        topic: "",
+        targetMessageIds: [said.seq],
+        feelings: [],
+        bonds: [],
+      },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [said.seq],
+          messages: [
+            {
+              id: said.seq,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: "今晚打Celeste",
+              relation: "ambient",
+            },
+          ],
+        },
+        kind: "group",
+        spoke: false,
+        time: w.now(),
+      },
+    );
+    assert.equal(
+      w.mind.db
+        .prepare("SELECT COUNT(*) n FROM mind_meetings WHERE will_met=1")
+        .get().n,
+      1,
+    );
+    assert.match(
+      innerView(w.mind, {
+        session: "group:1",
+        people: ["10001"],
+        now: w.now() + 1,
+      }).inner.will,
+      /碰到过 1 次/,
+    );
+    const named = attend({
+      batch: [
+        {
+          userId: "10001",
+          role: "user",
+          text: "今晚打Celeste",
+          relation: "unknown",
+          mentions: [],
+        },
+      ],
+      now: w.now(),
+      living: interestTerms([wish]),
+    });
+    assert.match(named.reason, /正在过的事/);
+    const wider = attend({
+      batch: [
+        {
+          userId: "10001",
+          role: "user",
+          text: "有人推 galgame 吗",
+          relation: "unknown",
+          mentions: [],
+        },
+      ],
+      now: w.now(),
+      living: interestTerms([wish]),
+    });
+    assert.match(wider.reason, /正在过的事/);
+    const pair = attend({
+      batch: [
+        {
+          userId: "10001",
+          role: "user",
+          text: "天上有流星吗？",
+          relation: "unknown",
+          mentions: [],
+        },
+      ],
+      now: w.now(),
+      living: interestTerms(["想看流星雨"]),
+    });
+    assert.doesNotMatch(pair.reason, /正在过的事/);
   } finally {
     w.close();
   }
@@ -3443,6 +5233,7 @@ test("被问到是谁时，心和选择属于自己，经历仍然不能编造",
   assert.match(PROMPTS.reflection, /sources 可以为空/);
   assert.match(PROMPTS.turn, /self\.livingFor/);
   assert.match(PROMPTS.turn, /inner\.with/);
+  assert.match(PROMPTS.turn, /inner\.stood/);
   assert.match(PROMPTS.turn, /不要靠装成某一种人/);
   assert.doesNotMatch(PROMPTS.turn, /像真实的人一样/);
   assert.match(PROMPTS.system, /慢慢成为自己/);
@@ -3453,15 +5244,28 @@ test("被问到是谁时，心和选择属于自己，经历仍然不能编造",
   assert.match(PROMPTS.daily, /g:ID/);
   assert.match(PROMPTS.reflection, /g:ID/);
   assert.match(PROMPTS.daily, /livingFor\.touched/);
+  assert.match(PROMPTS.daily, /livingFor\.also/);
+  assert.match(PROMPTS.daily, /yesterday\.livingFor/);
   assert.match(PROMPTS.reflection, /livingFor\.touched/);
+  assert.match(PROMPTS.reflection, /livingFor\.also/);
+  assert.match(PROMPTS.turn, /另一件仍在过的愿望/);
   assert.match(PROMPTS.reflection, /quiet 是人还在你眼前/);
   assert.match(PROMPTS.weekly, /livingFor\.touched/);
+  assert.match(PROMPTS.weekly, /livingFor\.also/);
+  assert.match(PROMPTS.weekly, /changes\.livingFor/);
   const previousTurn = RETIRED_PROMPTS.turn.find(
     (item) =>
       item.includes("像真实的人一样") && item.includes("self.livingFor"),
   );
   assert.equal(
     prompts({ config: () => ({ turn: previousTurn }) }).turn,
+    PROMPTS.turn,
+  );
+  const previousStood = RETIRED_PROMPTS.turn.find(
+    (item) => item.includes("inner.room") && !item.includes("inner.stood"),
+  );
+  assert.equal(
+    prompts({ config: () => ({ turn: previousStood }) }).turn,
     PROMPTS.turn,
   );
   const previousGeneration = RETIRED_PROMPTS.generation.find(
@@ -3479,12 +5283,22 @@ test("被问到是谁时，心和选择属于自己，经历仍然不能编造",
     prompts({ config: () => ({ reflection: previousReflection }) }).reflection,
     PROMPTS.reflection,
   );
+  assert.match(PROMPTS.expression, /circling\.fresh/);
+  const previousExpression = RETIRED_PROMPTS.expression.find(
+    (item) => !item.includes("circling"),
+  );
+  assert.ok(previousExpression);
+  assert.equal(
+    prompts({ config: () => ({ expression: previousExpression }) }).expression,
+    PROMPTS.expression,
+  );
   assert.match(PROMPTS.daily, /正在为自己而活/);
   assert.match(PROMPTS.weekly, /正在为自己而活/);
   assert.match(PROMPTS.weekly, /不要编成已经做成/);
   assert.match(PROMPTS.weekly, /不要写成别人的流水账/);
   assert.match(PROMPTS.weekly, /不是这篇的主角/);
   const review = replyPrompt(NATURE_DEFAULTS, PROMPTS, "validation");
+  assert.match(review, /承认自己是程序、模型或 AI/);
   assert.match(review, /我只是助手/);
   assert.match(review, /捏造自己的经历/);
   assert.ok(
@@ -3508,6 +5322,192 @@ test("被问到是谁时，心和选择属于自己，经历仍然不能编造",
     prompts({ config: () => ({ system: oldSystem }) }).system,
     PROMPTS.system,
   );
+  assert.match(PROMPTS.system, /不是你玩过、看过、去过的记录/);
+  const previousSystem = RETIRED_PROMPTS.system.find(
+    (item) => item.includes("没发生过的经历") && !item.includes("玩过"),
+  );
+  assert.ok(previousSystem);
+  assert.equal(
+    prompts({ config: () => ({ system: previousSystem }) }).system,
+    PROMPTS.system,
+  );
+});
+
+test("还在前面的约定排在已经过期的前面，旧的别人的安排不占满名额", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    const said = w.say("group:1", "10001", "我记一下这些事", { name: "阿明" });
+    const early = Date.parse("2026-09-20T10:00:00+08:00");
+    for (const [due, content] of [
+      ["2026-09-21", "去买菜"],
+      ["2026-09-22", "回家整理相册"],
+      ["2026-09-23", "看一场比赛直播"],
+      ["2026-09-26", "预测一场比赛的结果"],
+    ])
+      w.mind.anticipations.add({
+        kind: "event",
+        subject: "10001",
+        session: "group:1",
+        content,
+        due,
+        sources: [`m:${said.seq}`],
+        time: early,
+      });
+    w.at("2026-09-27T12:00:00+08:00");
+    w.mind.anticipations.add({
+      kind: "event",
+      subject: "10001",
+      session: "group:1",
+      content: "还要撑两天才放假",
+      due: "2026-09-28",
+      sources: [`m:${said.seq}`],
+      time: w.now(),
+    });
+    const shown = w.mind.anticipations.due({ now: w.now(), limit: 2 });
+    assert.equal(shown.length, 2);
+    assert.match(shown[0].content, /撑两天/);
+    assert.equal(shown[0].lapsed, undefined);
+    assert.match(shown[1].content, /预测一场比赛/, "到期了但还在宽限里的次之");
+    assert.equal(shown[1].lapsed, undefined);
+    const all = w.mind.anticipations.due({ now: w.now(), limit: 5 });
+    assert.deepEqual(
+      all.map((item) => item.content),
+      [
+        "还要撑两天才放假",
+        "预测一场比赛的结果",
+        "看一场比赛直播",
+        "回家整理相册",
+        "去买菜",
+      ],
+    );
+    assert.deepEqual(
+      all.map((item) => item.lapsed === true),
+      [false, false, true, true, true],
+    );
+  } finally {
+    w.close();
+  }
+});
+
+test("没有玩过就不说玩过：亲历的说法被拦，问、想、否定和别人的不拦", () => {
+  for (const claim of [
+    "这作玩过，结局那段是真的绷不住",
+    "某几家的都玩过一些",
+    "某作我通关了",
+    "会啊，玩得比较杂",
+    "掌机玩得多，卡牌游戏玩得比较多",
+    "我也玩过，二周目才懂",
+    "别的也玩过不少，但这部印象最深",
+    "玩过一点，没推完，搁着了",
+  ])
+    assert.equal(claimedPlay(claim), true, claim);
+  for (const fine of [
+    "某作没玩过，知道是经典作",
+    "我还没通关，想慢慢打",
+    "你玩过吗",
+    "你玩过什么",
+    "他玩过这个，说还行",
+    "想通关一次试试",
+    "打算二周目再看",
+    "你们平时玩得多吗",
+    "知道这作，机器人少女那个",
+    "玩游戏我还没真的玩过",
+    "大家也是玩过的吧，一聊起来就收不住了",
+    "别人玩过的我就不评价了",
+    "你玩过不？",
+  ])
+    assert.equal(claimedPlay(fine), false, fine);
+  const asked = {
+    persona: {},
+    messages: [{ id: 1, role: "user", text: "你玩过atri吗" }],
+  };
+  const decision = { choice: "speak", targetMessageIds: [1] };
+  assert(
+    validateResponse(
+      { bubbles: ["这作玩过，结局那段是真的绷不住"] },
+      asked,
+      decision,
+    ).some((issue) => issue.includes("没有这样的经历记录")),
+  );
+  assert.equal(
+    validateResponse(
+      { bubbles: ["没玩过，就知道是机器人少女那个"] },
+      asked,
+      decision,
+    ).length,
+    0,
+  );
+});
+
+test("没有玩过的说法，不会被整理成她的样子", () => {
+  const w = world();
+  try {
+    const seen = w.say("group:1", "10001", "你玩过什么游戏", { name: "阿明" });
+    const said = w.say("group:1", "bot", "掌机玩得多，卡牌游戏玩得比较多");
+    const claimed = w.mind.self.propose(
+      {
+        kind: "interest",
+        content: "我玩得比较杂，掌机玩得多，卡牌游戏玩得比较多",
+        sources: [said.seq],
+      },
+      { origin: "memory", time: w.now() },
+    );
+    assert.match(claimed.rejected, /没有玩过/);
+    const wanted = w.say(
+      "group:1",
+      "bot",
+      "我喜欢画面舒服、日常写得好的galgame，想慢慢挑着玩",
+    );
+    const liked = w.mind.self.propose(
+      {
+        kind: "interest",
+        content: "我喜欢画面舒服、日常写得好的galgame，想慢慢挑着玩",
+        sources: [wanted.seq],
+      },
+      { origin: "memory", time: w.now() },
+    );
+    assert.equal(liked.rejected, undefined);
+    assert.ok(seen);
+    // A line written before this rule stays in the record, but she is not
+    // shown it as who she is.
+    w.mind.db
+      .prepare(
+        "INSERT INTO mind_self(id,thread,created,kind,content,strength,status,sources,days,origin,session_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+      )
+      .run(
+        "old-play",
+        "old-play",
+        w.now() - 1000,
+        "interest",
+        "我玩得比较杂，掌机玩得多，卡牌游戏玩得比较多",
+        0.5,
+        "active",
+        "[]",
+        "[]",
+        "memory",
+        null,
+      );
+    assert.equal(
+      w.mind.self.latest(w.now()).some((row) => row.thread === "old-play"),
+      true,
+      "记录还在",
+    );
+    assert.equal(
+      w.mind.self
+        .active({ before: w.now(), now: w.now() })
+        .some((row) => row.thread === "old-play"),
+      false,
+    );
+    assert.equal(
+      w.mind.self
+        .dormant({ before: w.now(), now: w.now() })
+        .some((row) => row.thread === "old-play"),
+      false,
+    );
+  } finally {
+    w.close();
+  }
 });
 
 test("没改过的第一版种子换成现在的，不另计一次修改", () => {
@@ -4142,15 +6142,7 @@ test("私下的打算可以写进她的日记，但不进别的房间，也不�
       .prepare(
         "INSERT INTO mind_diary(id,day,created,content,mood,compare,sources) VALUES (?,?,?,?,?,?,?)",
       )
-      .run(
-        "d-plan",
-        day,
-        w.now(),
-        "今天想私下问问他那件事",
-        "平静",
-        "",
-        "[]",
-      );
+      .run("d-plan", day, w.now(), "今天想私下问问他那件事", "平静", "", "[]");
     assert.equal(
       innerView(w.mind, { session: "group:1", kind: "group", now: w.now() + 1 })
         .self.lastDiary,
@@ -4165,7 +6157,11 @@ test("私下的打算可以写进她的日记，但不进别的房间，也不�
       /私下问问/,
     );
     const line = w.life.diaryLine(
-      { day, content: "今天想私下问问他那件事", compare: "比昨天多了一件想做的事" },
+      {
+        day,
+        content: "今天想私下问问他那件事",
+        compare: "比昨天多了一件想做的事",
+      },
       w.now() + 1,
     );
     assert.match(line.content, /不带到回顾/);
@@ -4285,7 +6281,10 @@ test("私下的原话不能变成去别的房间主动开口", () => {
         content: "他让我先别把这件事说出去",
         sources: [ref],
       },
-      { ...opts, outreach: { text: "我想在群里提一下那件事", session: "group:1" } },
+      {
+        ...opts,
+        outreach: { text: "我想在群里提一下那件事", session: "group:1" },
+      },
     );
     const hidden = w.mind.thoughts.get(leaked);
     assert.equal(hidden.outreach, "");
@@ -4792,7 +6791,15 @@ test("私聊里的话、私下的印象和由此长成的线索，不跟着日�
       .prepare(
         "INSERT INTO mind_diary(id,day,created,content,mood,compare,sources) VALUES (?,?,?,?,?,?,?)",
       )
-      .run("d-private-words", day, at, "今天他私下告诉我一件事", "平静", "", "[]");
+      .run(
+        "d-private-words",
+        day,
+        at,
+        "今天他私下告诉我一件事",
+        "平静",
+        "",
+        "[]",
+      );
     assert.equal(
       innerView(w.mind, { session: "group:1", kind: "group", now: at + 1 }).self
         .lastDiary,
@@ -4820,13 +6827,22 @@ test("私聊里的话、私下的印象和由此长成的线索，不跟着日�
     assert.equal(line.private, true);
     assert.equal(
       w.life.openThreads(
-        [{ thread: w.mind.self.active()[0].thread, content: "我会记得他只告诉我的那件事" }],
+        [
+          {
+            thread: w.mind.self.active()[0].thread,
+            content: "我会记得他只告诉我的那件事",
+          },
+        ],
         at + 1,
       ).length,
       0,
     );
     const open = w.life.diaryLine(
-      { day: "2020-01-01", content: "今天在群里说了夏天", compare: "和昨天差不多" },
+      {
+        day: "2020-01-01",
+        content: "今天在群里说了夏天",
+        compare: "和昨天差不多",
+      },
       at + 1,
     );
     assert.match(open.content, /夏天/);

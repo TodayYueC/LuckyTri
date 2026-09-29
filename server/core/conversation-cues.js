@@ -1,3 +1,5 @@
+import { claimedPlay } from "../mind/guard.js";
+
 // Stable message timestamps stay with history; changing clock/style cues belong at the tail.
 export function localClock(time, timeZone = "Asia/Shanghai") {
   const parts = Object.fromEntries(
@@ -31,6 +33,24 @@ export function localClock(time, timeZone = "Asia/Shanghai") {
   };
 }
 const ellipsis = /…|\.{3,}|。{3,}/u;
+// Someone asks how she knew or guessed something.
+const BASIS_QUESTION =
+  /你.{0,6}(?:怎么|咋|凭什么|凭啥|从哪|哪里|哪儿|哪来).{0,6}(?:知道|晓得|看出|看得出|猜到|得知)/;
+// Whether her message started the exchange on her own: the last thing they
+// said before it was a long time earlier. Without such a message on record
+// this stays unknown, not true.
+export function openedUnprompted(messages, opener) {
+  if (opener?.role !== "assistant") return false;
+  const before = (messages || [])
+    .filter((m) => m.role === "user" && m.id < opener.id)
+    .at(-1);
+  return (
+    !!before &&
+    Number.isFinite(before.time) &&
+    Number.isFinite(opener.time) &&
+    opener.time - before.time >= 2 * 3600000
+  );
+}
 export function replyFocus(snapshot, decision) {
   if (snapshot.initiative)
     return {
@@ -43,6 +63,66 @@ export function replyFocus(snapshot, decision) {
   );
   const latest = targets.at(-1)?.text || "";
   if (
+    /^(?:\[表情\])+$/.test(latest) ||
+    (targets.at(-1)?.attachments || []).some(
+      (item) =>
+        item.type === "image" && item.summary && /^\[.*\]$/.test(item.summary),
+    )
+  )
+    return {
+      kind: "sticker",
+      instruction:
+        "这是表情或表情包。把画面和 QQ 标签当作理解语气的线索，先判断是在接梗、吐槽、撒娇还是另起话题；短接它表达的态度即可，不要认真复述图中文字、逐项描述画面或把表情台词当成事实。",
+    };
+  if (/^(?:\[图片\])+$/.test(latest))
+    return {
+      kind: "image",
+      instruction:
+        "这是新发的一张图。先按这条消息自己的画面和上下文判断用途，可能是新话题或表情反应；不要因为它紧挨着上一张图就沿用上一话题。没读到画面时不猜内容。",
+    };
+  if (
+    /^[?？]{1,3}$/.test(latest) &&
+    snapshot.messages.some((m) => m.role === "assistant")
+  )
+    return {
+      kind: "clarify_claim",
+      instruction:
+        "对方的问号是在接你刚说的话。先核对自己上句有没有根据：说错了就改正，没说错就解释那句的意思。不要跳到别处的话题，也不要拿自己刚说过的话当作对方的证据。一句收住。",
+    };
+  if (BASIS_QUESTION.test(latest)) {
+    const opener = snapshot.messages
+      .filter((m) => m.role === "assistant" && m.id < (targets.at(-1)?.id ?? 0))
+      .at(-1);
+    return {
+      kind: "basis_check",
+      instruction: `对方在问你凭什么知道或猜到的。先找到你实际发出的那句话，再核对它的依据。${
+        openedUnprompted(snapshot.messages, opener)
+          ? "那句是你自己先开口的，在那之前他没有新发来消息。"
+          : ""
+      }依据只能是你的推测（比如现在的时间）或记忆里真有的事：如实说是猜的，说不出依据就承认没有依据。不要编一条他发来的消息、一个没发生过的来源来圆。一句收住。`,
+    };
+  }
+  if (
+    /你.{0,10}(?:为什么|怎么|凭什么).{0,14}(?:说|认定|觉得|判断)|(?:为什么|怎么).{0,12}(?:这么说|那样说)/.test(
+      latest,
+    )
+  )
+    return {
+      kind: "clarify_claim",
+      instruction:
+        "对方在追问你之前的一个判断。先找到你实际发出的那句话和当时回应的对象，再检查依据。若把第三个人当成机器人、把谁是谁说乱了，就承认具体错处；不要编造对方的身份、主人或另一段经历来圆说法。一句收住。",
+    };
+  if (
+    /你.{0,8}(?:答应|说好).{0,12}(?:忘|不认|没做)|你.{0,8}(?:忘|不认).{0,12}(?:答应|说好)/.test(
+      latest,
+    )
+  )
+    return {
+      kind: "promise_check",
+      instruction:
+        "对方在追问约定，先核对本轮原话和已核实的承诺。确实答应过就直接承认，有漏接就承认漏接；没有证据时说自己暂时没想起来，不反问证据、不说对方记错了。只回应这件事，一句收住。",
+    };
+  if (
     /别.*(?:重复|复述)|人机|不自然|没发现.*(?:早上|晚上)|说错|搞错/.test(latest)
   )
     return {
@@ -50,7 +130,11 @@ export function replyFocus(snapshot, decision) {
       instruction:
         "对方在纠正你：简短承认具体错误就停。不解释自身状态，不再补原话题的安慰，不反问对方。最多一个气泡。",
     };
-  if (/^(?:对呀|对啊|对|嗯+|是啊|是的|好吧)[。！!\s]*$/.test(latest))
+  if (
+    /^(?:对呀|对啊|对|嗯+|是啊|是的|好吧|好的(?:呀|啊|宝宝)?)[。！!\s]*$/.test(
+      latest,
+    )
+  )
     return {
       kind: "acknowledge",
       instruction:
@@ -117,6 +201,17 @@ export function conversationalIssues(result, snapshot, decision = {}) {
     .map((m) => m.text);
   const issues = [];
   if (
+    replyFocus(snapshot, decision).kind === "sticker" &&
+    texts.some(
+      (t) =>
+        t.length > 55 ||
+        /^(?:这张|这个)?(?:表情包|图)(?:上|里|中|的文字|写着|显示)/.test(t),
+    )
+  )
+    issues.push(
+      "对方发表情是在表达语气；不要把表情包当阅读理解逐字描述或复述，只短接它在当下的用意",
+    );
+  if (
     replyFocus(snapshot, decision).kind === "feeling" &&
     texts.some((t) =>
       /慢慢(?:来|熬)|好好(?:躺|休息)|(?:那|你)(?:今晚|今天)?就别折腾|肯定撑不住/.test(
@@ -172,6 +267,10 @@ export function conversationalIssues(result, snapshot, decision = {}) {
     )
   )
     issues.push("不要为共情虚构自己同样上班或亲历；回应对方的事情即可");
+  if (texts.some(claimedPlay))
+    issues.push(
+      "不要说自己玩过、通关过什么或平时玩得杂：你没有这样的经历记录。可以说知道这作、听人聊过，或者想玩；被问到玩过什么，如实说还没真的玩过",
+    );
   if (
     texts.some((t) =>
       /^.{2,22}[啊呀][，,…。]*(?:那)?(?:确实|真的|有点)/.test(t),

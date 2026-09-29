@@ -10,6 +10,9 @@ import {
   anyTouches,
   cueList,
   meetingSalience,
+  aboutLife,
+  meetsLife,
+  ownLife,
   touches,
 } from "./salience.js";
 import { hasCredential, messageSeqs, parse, text } from "./util.js";
@@ -39,17 +42,19 @@ export class Meetings {
     const appraisal = hasCredential(turn?.appraisal)
       ? ""
       : text(turn?.appraisal, 120);
+    const reason = hasCredential(turn?.reason) ? "" : text(turn?.reason, 160);
     const people = [...new Set(heard.map((m) => String(m.speaker)))];
     const living = this.mind.self.living({
       before: time,
       now: time,
       room: session,
     });
-    const wish = living ? interestTerms([living.content]) : new Set();
-    const need = wish.size < 2 ? 1 : 2;
-    // Each person's own words have to meet the wish, across the messages
-    // they sent in this batch. Two people cannot be added together, and
-    // someone who only stood nearby is not credited.
+    // Each person's own words have to meet a wish she is still living,
+    // across the messages they sent in this batch. The wish that holds
+    // livingFor is preferred when it was met; another own wish that is
+    // still present in this room can be met without taking that seat.
+    // Two people cannot be added together, and someone who only stood
+    // nearby is not credited.
     const bySpeaker = new Map();
     for (const m of heard) {
       const id = String(m.speaker || "");
@@ -58,14 +63,19 @@ export class Meetings {
       texts.push(m.text || "");
       bySpeaker.set(id, texts);
     }
-    const willPeople = living
-      ? [...bySpeaker.entries()]
-          .filter(([, texts]) =>
-            touches(living.content, interestTerms(texts), need),
-          )
-          .map(([id]) => id)
-      : [];
-    const willMet = willPeople.length > 0;
+    const hits = [];
+    for (const wish of this.ownWishes(session, time)) {
+      const people = [...bySpeaker.entries()]
+        .filter(([, texts]) => meetsLife(wish.content, interestTerms(texts)))
+        .map(([id]) => id);
+      if (people.length) hits.push({ wish, people });
+    }
+    const chosen =
+      (living && hits.find((item) => item.wish.thread === living.thread)) ||
+      hits[0] ||
+      null;
+    const willPeople = chosen?.people || [];
+    const willMet = !!chosen;
     const quiet = heard.some((m) => secretRequest(String(m.text || "")));
     const actualWords = sent
       .filter(
@@ -96,7 +106,7 @@ export class Meetings {
       : null;
     this.db
       .prepare(
-        "INSERT INTO mind_meetings(id,created,session_id,choice,appraisal,topic,people,sources,will_thread,will_met,discretion,will_people,exchange) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO mind_meetings(id,created,session_id,choice,appraisal,topic,people,sources,will_thread,will_met,discretion,will_people,exchange,reason) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
       )
       .run(
         id,
@@ -107,11 +117,12 @@ export class Meetings {
         text(turn?.topic, 40),
         JSON.stringify(people),
         sourceKey,
-        willMet ? living.thread : null,
+        willMet ? chosen.wish.thread : null,
         willMet ? 1 : 0,
         isPrivateSession(session) ? "private" : quiet ? "secret" : "open",
         JSON.stringify(willPeople),
         JSON.stringify(exchange),
+        reason,
       );
     const link = this.db.prepare(
       "INSERT INTO mind_meeting_people(meeting_id,user_id) VALUES (?,?)",
@@ -144,6 +155,7 @@ export class Meetings {
   recall({
     session,
     people = [],
+    cue = [],
     now = Date.now(),
     limit = 2,
     inclusive = false,
@@ -168,11 +180,37 @@ export class Meetings {
       );
     take(this.#open(`m.session_id=? AND ${bound}`, [session, now]));
     const lived = this.mind.days.lived(now);
+    const currentWords = interestTerms(
+      cue
+        .filter((line) => line?.role === "user")
+        .map((line) => line.text || ""),
+    );
     return rows
-      .filter((row) => meetingSalience(row.created, lived) >= MEETING_FADED)
+      .filter((row) => {
+        if (meetingSalience(row.created, lived) < MEETING_FADED) return false;
+        if (row.session_id === session || !currentWords.size) return true;
+        // A remembered appraisal is an old interpretation, not evidence of
+        // what today's speaker just said. Cross-room cues need actual words.
+        const exchange = parse(row.exchange, null);
+        return exchange?.they?.some(
+          (line) =>
+            people.map(String).includes(String(line.speaker)) &&
+            touches(line.text || "", currentWords, 2),
+        );
+      })
       .sort((a, b) => b.created - a.created)
       .slice(0, limit)
-      .map((row) => this.line(row, people, now));
+      .map((row) => {
+        const exchange = parse(row.exchange, null);
+        const said = exchange?.they?.find((line) =>
+          people.map(String).includes(String(line.speaker)),
+        );
+        if (!said) return this.line(row, people, now);
+        const reply = exchange?.iSaid?.[0];
+        const name = this.mind.bonds.name(said?.speaker) || "对方";
+        const when = elapsedLabel(row.created, now, this.mind.timeZone());
+        return `${when}${row.session_id === session ? "" : "在别处"}，${name}说「${text(said?.text, 60)}」${reply ? `，我回「${text(reply, 60)}」` : ""}`;
+      });
   }
   line(row, people, now) {
     const ids = parse(row.people, []);
@@ -203,14 +241,16 @@ export class Meetings {
            SELECT 1 FROM mind_revocations r
            WHERE r.target_kind='meeting' AND r.target_id=m.id
          )`;
-    const args = [thread, since, before];
-    if (session) args.push(session);
     const wish = this.#wishAt(thread, before);
     if (!wish || wish.status === "closed") return { touched: 0 };
+    const threads = this.#willThreads(thread, before);
+    const marks = threads.map(() => "?").join(",");
+    const args = [...threads, since, before];
+    if (session) args.push(session);
     const hits = this.db
       .prepare(
         `SELECT choice, created, people, will_people, sources FROM mind_meetings m
-         WHERE will_thread=? AND will_met=1 AND created>=? AND created${compare}?
+         WHERE will_thread IN (${marks}) AND will_met=1 AND created>=? AND created${compare}?
          ${room} ${hidden}
          ORDER BY created DESC`,
       )
@@ -402,7 +442,70 @@ export class Meetings {
       ...(row.will_met && this.#touchStill(row, now)
         ? { touchedWill: true }
         : {}),
+      ...(row.reason && this.sayable(row.reason, "")
+        ? { why: text(row.reason, 80) }
+        : {}),
     };
+  }
+  // Choices she already made, with the reason she kept. A later meeting
+  // with the same person or the same matter can continue from here instead
+  // of deciding as if she had never chosen.
+  stood({ session, people = [], cue = [], now = Date.now(), limit = 2 } = {}) {
+    const lived = this.mind.days.lived(now);
+    const present = new Set(people.map(String));
+    const bySpeaker = new Map();
+    for (const line of cue || []) {
+      if (!line || line.role === "assistant") continue;
+      const id = String(line.userId || line.speaker || "");
+      if (!id) continue;
+      const texts = bySpeaker.get(id) || [];
+      texts.push(String(line.text || ""));
+      bySpeaker.set(id, texts);
+    }
+    const speakerCues = [...bySpeaker.values()]
+      .map((texts) => interestTerms(texts))
+      .filter((terms) => terms.size);
+    const rows = this.db
+      .prepare(
+        `SELECT m.*, COALESCE(NULLIF(m.reason,''), c.reason, '') AS why
+         FROM mind_meetings m
+         LEFT JOIN mind_choices c
+           ON c.session_id=m.session_id AND c.created=m.created
+         WHERE m.created<? AND m.appraisal!=''
+         AND NOT EXISTS (
+           SELECT 1 FROM mind_revocations r
+           WHERE r.target_kind='meeting' AND r.target_id=m.id
+         )
+         ORDER BY m.created DESC LIMIT 40`,
+      )
+      .all(now);
+    const CHOICE = {
+      speak: "开口",
+      react: "应了一下",
+      decline: "说了不想聊",
+      silent: "没出声",
+    };
+    const out = [];
+    for (const row of rows) {
+      if (out.length >= limit) break;
+      if (!this.#visible(row, session)) continue;
+      if (meetingSalience(row.created, lived) < MEETING_FADED) continue;
+      if (!this.sayable(row.appraisal, session)) continue;
+      const why = text(row.why || row.reason || "", 80);
+      if (!why || !this.sayable(why, session)) continue;
+      const ids = parse(row.people, []).map(String);
+      const withThem = ids.some((id) => present.has(id));
+      const about = anyTouches(
+        `${row.appraisal} ${row.topic || ""} ${why}`,
+        speakerCues,
+      );
+      if (!withThem && !about) continue;
+      const when = elapsedLabel(row.created, now, this.mind.timeZone());
+      out.push(
+        `${when}我${CHOICE[row.choice] || "看过"}：${text(row.appraisal, 60)}（${why}）`,
+      );
+    }
+    return out;
   }
   // People whose own words met the wish she is still living for, and whom she
   // has not seen for a few days. A faded touch does not keep them here.
@@ -410,23 +513,30 @@ export class Meetings {
   wishAway({ now = Date.now(), days = 3, limit = 3 } = {}) {
     const wishes = this.mind.self
       .annotated({ before: now, now })
-      .filter((row) => row.kind === "intention" && !row.faded);
+      .filter(
+        (row) => row.kind === "intention" && !row.faded && ownLife(row.content),
+      );
     if (!wishes.length) return [];
     const lived = this.mind.days.lived(now);
-    const read = this.db.prepare(
-      `SELECT * FROM mind_meetings m
-       WHERE will_thread=? AND will_met=1 AND created<?
-       AND NOT EXISTS (
-         SELECT 1 FROM mind_revocations r
-         WHERE r.target_kind='meeting' AND r.target_id=m.id
-       )
-       ORDER BY created DESC`,
-    );
     const buckets = [];
+    const clustered = new Set();
     for (const living of wishes) {
+      if (clustered.has(living.thread)) continue;
+      const threads = this.#willThreads(living.thread, now);
+      for (const id of threads) clustered.add(id);
+      const marks = threads.map(() => "?").join(",");
+      const read = this.db.prepare(
+        `SELECT * FROM mind_meetings m
+         WHERE will_thread IN (${marks}) AND will_met=1 AND created<?
+         AND NOT EXISTS (
+           SELECT 1 FROM mind_revocations r
+           WHERE r.target_kind='meeting' AND r.target_id=m.id
+         )
+         ORDER BY created DESC`,
+      );
       const bucket = [];
       const seenHere = new Set();
-      for (const row of read.all(living.thread, now)) {
+      for (const row of read.all(...threads, now)) {
         if (meetingSalience(row.created, lived) < MEETING_FADED) continue;
         if (!this.#stillMeets(row, living.content)) continue;
         const named = parse(row.will_people, []);
@@ -480,20 +590,22 @@ export class Meetings {
     const wish = this.#wishAt(thread, before);
     if (!wish || wish.status === "closed") return new Set();
     const lived = this.mind.days.lived(before);
+    const threads = this.#willThreads(thread, before);
+    const threadMarks = threads.map(() => "?").join(",");
     return new Set(
       this.db
         .prepare(
           `SELECT p.user_id, m.created, m.will_people, m.sources FROM mind_meeting_people p
            JOIN mind_meetings m ON m.id = p.meeting_id
            WHERE p.user_id IN (${ids.map(() => "?").join(",")})
-             AND m.will_met = 1 AND m.will_thread = ? AND m.created < ?
+             AND m.will_met = 1 AND m.will_thread IN (${threadMarks}) AND m.created < ?
              AND (m.discretion NOT IN ('private','secret') OR m.session_id = ?)
              AND NOT EXISTS (
                SELECT 1 FROM mind_revocations r
                WHERE r.target_kind = 'meeting' AND r.target_id = m.id
              )`,
         )
-        .all(...ids, thread, before, session)
+        .all(...ids, ...threads, before, session)
         .filter((row) => {
           if (meetingSalience(row.created, lived) < MEETING_FADED) return false;
           const credited = parse(row.will_people, []);
@@ -507,6 +619,163 @@ export class Meetings {
         })
         .map((row) => String(row.user_id)),
     );
+  }
+  // Own wishes still present in this room. The current livingFor is
+  // among them when it belongs here; it is not the only one that can
+  // be met.
+  ownWishes(session, time) {
+    return this.mind.self
+      .annotated({ before: time, now: time })
+      .filter(
+        (row) =>
+          row.kind === "intention" &&
+          !row.faded &&
+          ownLife(row.content) &&
+          this.stays(row, session),
+      );
+  }
+  // Touches on wishes still present. livingFor first, then another own
+  // wish that was actually met. Split wordings of the same wish count once.
+  traces({
+    session,
+    before = Date.now(),
+    since = 0,
+    inclusive = false,
+    limit = 2,
+  } = {}) {
+    const scoped = session !== undefined;
+    const living = this.mind.self.living({
+      before,
+      now: before,
+      ...(scoped ? { room: session } : {}),
+    });
+    const rows = scoped
+      ? this.ownWishes(session, before)
+      : this.mind.self
+          .annotated({ before, now: before })
+          .filter(
+            (row) =>
+              row.kind === "intention" && !row.faded && ownLife(row.content),
+          );
+    const ordered = [
+      ...(living ? [living] : []),
+      ...rows.filter((row) => row.thread !== living?.thread),
+    ];
+    const clustered = new Set();
+    const out = [];
+    for (const wish of ordered) {
+      if (clustered.has(wish.thread) || out.length >= limit) continue;
+      for (const id of this.#willThreads(wish.thread, before))
+        clustered.add(id);
+      const hit = this.trace(wish.thread, {
+        before,
+        since,
+        inclusive,
+        ...(session ? { session } : {}),
+      });
+      if (!hit.touched) continue;
+      out.push({
+        thread: wish.thread,
+        content: wish.content,
+        living: wish.thread === living?.thread,
+        ...hit,
+      });
+    }
+    return out;
+  }
+  // The last day this wish was lived: the world met it, she answered, or
+  // she sent a planned line about it. Reading only. Silent meetings and
+  // unsent drafts do not count as her speaking.
+  livedAt(thread, before = Date.now()) {
+    if (!thread) return null;
+    const wish = this.#wishAt(thread, before);
+    if (!wish || wish.status === "closed") return null;
+    const threads = this.#willThreads(thread, before);
+    const marks = threads.map(() => "?").join(",");
+    const hidden = `AND NOT EXISTS (
+           SELECT 1 FROM mind_revocations r
+           WHERE r.target_kind='meeting' AND r.target_id=m.id
+         )`;
+    const met = this.db
+      .prepare(
+        `SELECT created, will_people, sources FROM mind_meetings m
+         WHERE will_thread IN (${marks}) AND will_met=1 AND created<=?
+         ${hidden}
+         ORDER BY created DESC`,
+      )
+      .all(...threads, before);
+    let latest = null;
+    for (const row of met)
+      if (this.#stillMeets(row, wish.content)) {
+        latest = row.created;
+        break;
+      }
+    const spoken = this.db
+      .prepare(
+        `SELECT created, exchange FROM mind_meetings m
+         WHERE created<=? AND choice!='silent' AND exchange IS NOT NULL
+         AND exchange!='null' ${hidden}
+         ORDER BY created DESC`,
+      )
+      .all(before);
+    const keep = (at) => {
+      if (at != null && (latest == null || at > latest)) latest = at;
+    };
+    for (const row of spoken) {
+      const exchange = parse(row.exchange, null);
+      const said = (exchange?.iSaid || []).join("\n");
+      if (said && aboutLife(wish.content, said)) {
+        keep(row.created);
+        break;
+      }
+    }
+    const sent = this.db
+      .prepare(
+        `SELECT COALESCE(outreach_at, created) AS created, outreach
+         FROM mind_thoughts
+         WHERE outreach_status='sent' AND hidden=0 AND outreach!=''
+           AND COALESCE(outreach_at, created)<=?
+         ORDER BY COALESCE(outreach_at, created) DESC`,
+      )
+      .all(before);
+    for (const row of sent)
+      if (aboutLife(wish.content, row.outreach)) {
+        keep(row.created);
+        break;
+      }
+    return latest;
+  }
+  // Lines she actually sent in a meeting, newest first. Silent meetings
+  // do not count. Used to let livingFor follow what she just said.
+  recentSaid(before = Date.now(), limit = 8) {
+    const hidden = `AND NOT EXISTS (
+           SELECT 1 FROM mind_revocations r
+           WHERE r.target_kind='meeting' AND r.target_id=m.id
+         )`;
+    return this.db
+      .prepare(
+        `SELECT created, exchange FROM mind_meetings m
+         WHERE created<=? AND choice!='silent' AND exchange IS NOT NULL
+         AND exchange!='null' ${hidden}
+         ORDER BY created DESC LIMIT ?`,
+      )
+      .all(before, limit)
+      .flatMap((row) => {
+        const exchange = parse(row.exchange, null);
+        const said = (exchange?.iSaid || [])
+          .filter((line) => typeof line === "string" && line.trim())
+          .join("\n");
+        return said ? [{ text: said, at: row.created, spoken: true }] : [];
+      });
+  }
+  // Already-split wordings of the same wish still count as one life.
+  #willThreads(thread, before) {
+    const wish = this.#wishAt(thread, before);
+    if (!wish) return thread ? [thread] : [];
+    const ids = this.mind.self
+      .sameThreads(wish, { before })
+      .map((row) => row.thread);
+    return ids.length ? ids : [thread];
   }
   // The wish as it stood at `before`. A later wording does not inherit touches
   // that only met the old one.
@@ -549,9 +818,8 @@ export class Meetings {
     }
     const named = parse(row.will_people, []);
     const who = named.length ? named.map(String) : [...bySpeaker.keys()];
-    const need = interestTerms([content]).size < 2 ? 1 : 2;
     return who.some((id) =>
-      touches(content, interestTerms(bySpeaker.get(id) || []), need),
+      meetsLife(content, interestTerms(bySpeaker.get(id) || [])),
     );
   }
   // Where a cited meeting belongs. A private one cannot be carried elsewhere.
@@ -608,7 +876,7 @@ export class Meetings {
   }
   // Private rooms a citation rests on. Empty means the words are hers, or
   // they came from somewhere she can speak of openly.
-  privateRoots(sources) {
+  privateRoots(sources, before = Date.now()) {
     const refs = Array.isArray(sources) ? sources : parse(sources, []);
     const rooms = new Set();
     for (const row of this.places(refs))
@@ -628,8 +896,7 @@ export class Meetings {
     for (const ref of refs) {
       const match = /^d:(\d{4}-\d{2}-\d{2})$/.exec(String(ref));
       if (!match) continue;
-      for (const id of this.#privateSessionsOn(match[1], Date.now()))
-        rooms.add(id);
+      for (const id of this.#privateSessionsOn(match[1], before)) rooms.add(id);
     }
     for (const ref of refs.filter((item) => String(item).startsWith("t:"))) {
       const owned =
@@ -642,8 +909,8 @@ export class Meetings {
   }
   // A thread stays in a room when its words were not learned in private, or
   // this is the room where they were.
-  stays(thread, session) {
-    const roots = new Set(this.privateRoots(thread?.sources || []));
+  stays(thread, session, before = Date.now()) {
+    const roots = new Set(this.privateRoots(thread?.sources || [], before));
     if (thread?.session_id && isPrivateSession(thread.session_id))
       roots.add(thread.session_id);
     return !roots.size || roots.has(session);
@@ -760,6 +1027,7 @@ export class Meetings {
         when: elapsedLabel(row.created, before, this.mind.timeZone()),
         private: row.discretion === "private" || row.discretion === "secret",
         sessionId: row.session_id,
+        ...(row.reason ? { why: text(row.reason, 80) } : {}),
       }));
   }
   latest({ before = Date.now() } = {}) {
