@@ -5,6 +5,7 @@ import {
   conversationCues,
   replyFocus,
   conversationalIssues,
+  openedUnprompted,
 } from "../server/core/conversation-cues.js";
 import { effectivePersona } from "../server/core/persona-manager.js";
 import { validateResponse } from "../server/core/response-validator.js";
@@ -102,6 +103,74 @@ test("repair and acknowledgement end without a fabricated second bubble", () => 
   snapshot.messages[0].text = "好烦，怎么办，给点建议";
   assert.equal(replyFocus(snapshot, decision).kind, "respond");
 });
+test("被问凭什么知道时，先核对依据；自己先开口的话不能编一条他发来的消息", () => {
+  const at = (hour, minute = 0) =>
+    Date.parse(
+      `2026-09-27T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00+08:00`,
+    );
+  const asked = (opened) => ({
+    persona: {},
+    messages: [
+      { id: 1, role: "user", speaker: "10001", time: at(20), text: "晚安" },
+      {
+        id: 2,
+        role: "assistant",
+        time: opened,
+        text: "这个点了你还醒着呀，最近怎么样？",
+      },
+      {
+        id: 3,
+        role: "user",
+        speaker: "10001",
+        time: opened + 60000,
+        text: "你怎么知道我还醒着呀",
+      },
+    ],
+  });
+  const decision = { choice: "speak", targetMessageIds: [3] };
+  const alone = asked(at(23, 33));
+  const focus = replyFocus(alone, decision);
+  assert.equal(focus.kind, "basis_check");
+  assert.match(focus.instruction, /自己先开口的/);
+  const fabricated = "因为我看到你那条消息发过来，这个点了呀。";
+  assert(
+    validateResponse({ bubbles: [fabricated] }, alone, decision).some((issue) =>
+      issue.includes("自己先开口的"),
+    ),
+  );
+  for (const honest of [
+    "我猜的，看现在这么晚了。",
+    "我没看到你的消息，是我先发的。",
+    "没有别的依据，就是看时间猜的。",
+  ])
+    assert.deepEqual(
+      validateResponse({ bubbles: [honest] }, alone, decision).filter((issue) =>
+        issue.includes("自己先开口的"),
+      ),
+      [],
+      honest,
+    );
+  const replying = asked(at(20, 2));
+  assert.equal(replyFocus(replying, decision).kind, "basis_check");
+  assert.doesNotMatch(
+    replyFocus(replying, decision).instruction,
+    /自己先开口的/,
+  );
+  assert.deepEqual(
+    validateResponse({ bubbles: [fabricated] }, replying, decision).filter(
+      (issue) => issue.includes("自己先开口的"),
+    ),
+    [],
+    "他刚发过消息时，说看到了他的消息不算编造",
+  );
+  assert.equal(openedUnprompted(alone.messages, alone.messages[1]), true);
+  assert.equal(
+    openedUnprompted([alone.messages[1]], alone.messages[1]),
+    false,
+    "窗口里没有他更早的话时，不当成没人先说",
+  );
+});
+
 test("今天的安排没有结果前，不把计划说成已经去了", () => {
   const snapshot = {
     sessionId: "private:10001",

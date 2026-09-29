@@ -967,6 +967,7 @@ export class ChatSystem {
       !!snapshot.initiative ||
       !!snapshot.inner?.continuity?.requested ||
       focus === "clarify_claim" ||
+      focus === "basis_check" ||
       !!(
         c.direct &&
         snapshot.inner?.continuity?.people?.some(
@@ -983,6 +984,7 @@ export class ChatSystem {
             "repair",
             "promise_check",
             "clarify_claim",
+            "basis_check",
           ].includes(focus) ||
           (!c.direct &&
             (response.bubbles.join("").length > 60 ||
@@ -1092,6 +1094,23 @@ export class ChatSystem {
       };
       if (!check(honest).length) {
         trace.steps.push("旧话将第三人关系说错，使用核实后的简短更正");
+        response = honest;
+        issues = [];
+      }
+    }
+    if (
+      issues.length &&
+      focus === "basis_check" &&
+      issues.some((issue) => /自己先开口的/.test(issue))
+    ) {
+      const honest = {
+        bubbles: [
+          "那句是我自己先开口的，你之前没发消息。我只是猜的，没有别的依据。",
+        ],
+        reason: "自己先开口的话没有他发来的消息可依，承认是猜的",
+      };
+      if (!check(honest).length) {
+        trace.steps.push("先开口的话被追问依据，使用核实后的简短更正");
         response = honest;
         issues = [];
       }

@@ -820,6 +820,28 @@ test("追问你为什么这么说时核对原回复对象，不把第三人凭�
   ]);
 });
 
+test("自己先开口的话被追问依据，不编一条他发来的消息，承认是猜的", async (t) => {
+  const w = world({ start: "2026-09-27T20:00:00+08:00" });
+  t.after(w.close);
+  w.open("private:10001", "周然");
+  w.say("private:10001", "10001", "晚安，我先去洗澡了", { name: "周然" });
+  w.advance(3.5 * HOUR);
+  w.say("private:10001", "bot", "这个点了你还醒着呀，最近怎么样？");
+  w.advance(MINUTE);
+  const asked = w.say("private:10001", "10001", "你怎么知道我还醒着呀", {
+    name: "周然",
+  });
+  speaker(w, "因为我看到你那条消息发过来，这个点了呀。");
+  w.answers.rewrite = {
+    bubbles: ["因为我看到你刚才发的消息，这个点了。"],
+  };
+  const result = await w.hear("private:10001", asked);
+  assert.equal(result.status, "sent");
+  assert.deepEqual(result.sent, [
+    "那句是我自己先开口的，你之前没发消息。我只是猜的，没有别的依据。",
+  ]);
+});
+
 test("私聊秘密和另一个机器人账号的承诺都不能进入当前群聊", async (t) => {
   const w = world();
   t.after(w.close);

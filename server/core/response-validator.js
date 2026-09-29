@@ -1,4 +1,8 @@
-import { conversationalIssues, replyFocus } from "./conversation-cues.js";
+import {
+  conversationalIssues,
+  openedUnprompted,
+  replyFocus,
+} from "./conversation-cues.js";
 import { gentlePersona } from "./persona-manager.js";
 import { initiativeContext } from "./initiative-context.js";
 import { interestTerms } from "../mind/attention.js";
@@ -26,6 +30,9 @@ export function contradictoryOwnWords(snapshot, decision = {}) {
 const IMMEDIATE_CLAIM =
   /你(?:自己|才)?(?:刚(?:刚|才)?|方才)(?:自己)?(?:不是)?(?:明明)?(?:说|讲|提(?:到|过)?|发了?|打了?)(?:过)?(的|了)?[，,：:\s]*["“「]?([^，。！？!?；;"”」\n]{2,30})/g;
 const POINTS_AT = /^(?:那|这|哪|什么|啥|话|事|东西|内容|意思|一句|一堆|一些)/;
+// "因为我看到你那条消息发过来" — a source for a line she opened on her own.
+const SEEN_HIS_MESSAGE =
+  /(?<![没不未]有?)(?:看到|看见|收到|瞧见)了?你(?:这条|那条|刚才|刚刚)?(?:发(?:来|过来|出来)?)?的?(?:那条)?(?:消息|信息)|你(?:这条|那条)?(?:消息|信息)(?:发过来|发来|刚发)/;
 export function unsupportedImmediateClaim(text, snapshot, targetMessages) {
   const speakers = new Set(targetMessages.map((m) => String(m.speaker)));
   if (!speakers.size) return "";
@@ -425,10 +432,26 @@ export function validateResponse(result, snapshot, decision, maxChars = 180) {
       }
     }
   }
+  if (focus.kind === "basis_check" && questioned) {
+    const opener = (snapshot.messages || [])
+      .filter((m) => m.role === "assistant" && m.id < questioned.id)
+      .at(-1);
+    if (
+      openedUnprompted(snapshot.messages, opener) &&
+      result.bubbles.some((line) => SEEN_HIS_MESSAGE.test(line))
+    )
+      issues.push(
+        "那句是你自己先开口的，在那之前他没有新发来消息；依据只能是你的推测或记得的事，不能说成是看到了他的消息",
+      );
+  }
   if (
-    ["repair", "acknowledge", "promise_check", "clarify_claim"].includes(
-      focus.kind,
-    ) &&
+    [
+      "repair",
+      "acknowledge",
+      "promise_check",
+      "clarify_claim",
+      "basis_check",
+    ].includes(focus.kind) &&
     result.bubbles.length > 1
   )
     issues.push("这一轮只是纠正或确认，一句收住，不要追加原话题或解释");
