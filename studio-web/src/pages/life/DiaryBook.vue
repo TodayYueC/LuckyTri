@@ -110,6 +110,13 @@ async function openDay() {
               <b>放下了：</b
               >{{ day.change.faded.map((t: any) => t.content).join("；") }}
             </p>
+            <p v-if="day.change.livingFor">
+              <b>正在过的：</b>{{ day.change.livingFor.from || "还没有" }} →
+              {{ day.change.livingFor.to || "还没有" }}
+            </p>
+            <p v-else-if="day.snapshot?.livingFor?.content">
+              <b>正在过的：</b>{{ day.snapshot.livingFor.content }}
+            </p>
             <p>
               <b>心情：</b>{{ day.change.mood.before || "—" }} →
               {{ day.change.mood.after || "—" }}

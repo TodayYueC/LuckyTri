@@ -24,6 +24,7 @@ import {
 } from "../server/core/persona-manager.js";
 import { RETIRED_PROMPTS } from "../server/core/retired-prompts.js";
 import { innerView } from "../server/mind/view.js";
+import { diffSnapshots, snapshotLiving } from "../server/mind/index.js";
 import { validateResponse } from "../server/core/response-validator.js";
 import { world, HOUR, MINUTE } from "./helpers/world.js";
 
@@ -1054,6 +1055,301 @@ test("正在过的事已经不在这一章里时，隔一天也可以回顾", ()
       false,
       "这一章已经写着正在过的事，仍按原来的间隔",
     );
+  } finally {
+    w.close();
+  }
+});
+
+test("一天结束的快照记下正在过的那一件，不是对别人的承诺", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "我会留意他的疲惫，但不替他安排生活。",
+        strength: 0.55,
+      },
+      { origin: "solitude", time: w.now() + 500 },
+    );
+    const snap = w.mind.snapshot(w.now() + 1000);
+    assert.match(snap.livingFor.content, /蒙玩/);
+    assert.doesNotMatch(snap.livingFor.content, /疲惫/);
+    const stored = w.mind.snapshotOf(snap.day);
+    assert.match(stored.livingFor.content, /蒙玩/);
+  } finally {
+    w.close();
+  }
+});
+
+test("旧快照没有记下、或误记成承诺时，从那天自己的愿望里认回来", () => {
+  const duty = {
+    thread: "duty",
+    kind: "intention",
+    content: "我会留意他的疲惫，但不替他安排生活。",
+    strength: 0.55,
+    status: "active",
+  };
+  const own = {
+    thread: "own",
+    kind: "intention",
+    content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+    strength: 0.35,
+    status: "active",
+  };
+  assert.match(snapshotLiving({ self: [duty, own] }).content, /蒙玩/);
+  assert.match(
+    snapshotLiving({
+      livingFor: { thread: "duty", content: duty.content },
+      self: [duty, own],
+    }).content,
+    /蒙玩/,
+  );
+  assert.equal(
+    snapshotLiving({
+      livingFor: { thread: "duty", content: duty.content },
+      self: [duty],
+    }),
+    null,
+  );
+  const later = {
+    thread: "star",
+    kind: "intention",
+    content: "想看流星雨",
+    strength: 0.3,
+    status: "active",
+  };
+  const change = diffSnapshots(
+    { self: [own], livingFor: { thread: "own", content: own.content } },
+    {
+      self: [own, later],
+      livingFor: { thread: "star", content: later.content },
+    },
+  );
+  assert.match(change.livingFor.from, /蒙玩/);
+  assert.match(change.livingFor.to, /流星/);
+});
+
+test("写日记对照昨天时，看得见昨天正在过的那一件", async () => {
+  const w = world({ start: "2026-09-22T23:10:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "我会留意他的疲惫，但不替他安排生活。",
+        strength: 0.55,
+      },
+      { origin: "solitude", time: w.now() + 500 },
+    );
+    w.answers.daily = () => ({
+      diary: "今天过完了。",
+      mood: "平静",
+      compare: "这是开始",
+    });
+    const first = await w.life.review({
+      day: w.life.lifeDay(w.now()),
+      start: w.life.dayStart(w.now()),
+      end: w.now(),
+    });
+    assert.equal(first.status, "written");
+    assert.match(w.mind.snapshotOf("2026-09-22").livingFor.content, /蒙玩/);
+    w.at("2026-09-23T23:10:00+08:00");
+    let seen = null;
+    w.answers.daily = (data) => {
+      seen = data;
+      return { diary: "又一天。", mood: "平静", compare: "还在过" };
+    };
+    const second = await w.life.review({
+      day: w.life.lifeDay(w.now()),
+      start: w.life.dayStart(w.now()),
+      end: w.now(),
+    });
+    assert.equal(second.status, "written");
+    assert.match(seen.yesterday.livingFor, /蒙玩/);
+    assert.doesNotMatch(seen.yesterday.livingFor, /疲惫/);
+  } finally {
+    w.close();
+  }
+});
+
+test("更强的承诺占满当天的线索袋时，快照仍留着正在过的那一件", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    const wish = w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.2,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    for (let i = 0; i < 30; i++)
+      w.mind.self.propose(
+        {
+          kind: "intention",
+          content: `我会留意第${i}件别人的事，但不替人安排。`,
+          strength: 0.55,
+        },
+        { origin: "solitude", time: w.now() + i + 1 },
+      );
+    const snap = w.mind.snapshot(w.now() + 100);
+    assert.match(snap.livingFor.content, /蒙玩/);
+    assert.equal(
+      snap.self.some((row) => row.thread === wish.thread),
+      true,
+    );
+  } finally {
+    w.close();
+  }
+});
+
+test("旧快照袋里看不见那条愿望时，仍按那天还在心里的愿望认回来", async () => {
+  const w = world({ start: "2026-09-22T23:10:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.db
+      .prepare("INSERT INTO mind_snapshots(day,created,value) VALUES (?,?,?)")
+      .run(
+        "2026-09-22",
+        w.now() + 1000,
+        JSON.stringify({
+          affect: { mood: "平静" },
+          self: [
+            {
+              thread: "duty",
+              kind: "intention",
+              content: "我会留意他的疲惫，但不替他安排生活。",
+              strength: 0.55,
+              status: "active",
+            },
+          ],
+          faces: [],
+          people: [],
+        }),
+      );
+    w.at("2026-09-23T23:10:00+08:00");
+    let seen = null;
+    w.answers.daily = (data) => {
+      seen = data;
+      return { diary: "又一天。", mood: "平静", compare: "还在过" };
+    };
+    const result = await w.life.review({
+      day: w.life.lifeDay(w.now()),
+      start: w.life.dayStart(w.now()),
+      end: w.now(),
+    });
+    assert.equal(result.status, "written");
+    assert.match(seen.yesterday.livingFor, /蒙玩/);
+    assert.doesNotMatch(seen.yesterday.livingFor || "", /疲惫/);
+  } finally {
+    w.close();
+  }
+});
+
+test("回顾时能看见正在过的那一件从哪一件走到哪一件", async () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    const now = w.now();
+    const insertSnap = w.mind.db.prepare(
+      "INSERT INTO mind_snapshots(day,created,value) VALUES (?,?,?)",
+    );
+    insertSnap.run(
+      "2026-09-22",
+      now - 2 * 86400000,
+      JSON.stringify({
+        affect: { mood: "平静" },
+        self: [
+          {
+            thread: "own",
+            kind: "intention",
+            content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+            strength: 0.35,
+            status: "active",
+          },
+        ],
+        livingFor: {
+          thread: "own",
+          content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        },
+        faces: [],
+        people: [],
+      }),
+    );
+    insertSnap.run(
+      "2026-09-24",
+      now,
+      JSON.stringify({
+        affect: { mood: "平静" },
+        self: [
+          {
+            thread: "own",
+            kind: "intention",
+            content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+            strength: 0.35,
+            status: "active",
+          },
+          {
+            thread: "star",
+            kind: "intention",
+            content: "想看流星雨",
+            strength: 0.3,
+            status: "active",
+          },
+        ],
+        livingFor: { thread: "star", content: "想看流星雨" },
+        faces: [],
+        people: [],
+      }),
+    );
+    const insertDiary = w.mind.db.prepare(
+      "INSERT INTO mind_diary(id,day,created,content,mood,compare,sources) VALUES (?,?,?,?,?,?,?)",
+    );
+    insertDiary.run(
+      "d-life-1",
+      "2026-09-23",
+      now - 86400000,
+      "昨天",
+      "",
+      "",
+      "[]",
+    );
+    insertDiary.run("d-life-2", "2026-09-24", now, "今天", "", "", "[]");
+    let seen = null;
+    w.answers.weekly = (data) => {
+      seen = data;
+      return { week: "这几天我换了一件正在过的事。", story: "来路" };
+    };
+    const result = await w.life.reviewPeriod(now);
+    assert.equal(result.status, "written");
+    assert.match(seen.changes.livingFor, /蒙玩/);
+    assert.match(seen.changes.livingFor, /流星/);
   } finally {
     w.close();
   }
@@ -4792,12 +5088,14 @@ test("被问到是谁时，心和选择属于自己，经历仍然不能编造",
   assert.match(PROMPTS.reflection, /g:ID/);
   assert.match(PROMPTS.daily, /livingFor\.touched/);
   assert.match(PROMPTS.daily, /livingFor\.also/);
+  assert.match(PROMPTS.daily, /yesterday\.livingFor/);
   assert.match(PROMPTS.reflection, /livingFor\.touched/);
   assert.match(PROMPTS.reflection, /livingFor\.also/);
   assert.match(PROMPTS.turn, /另一件仍在过的愿望/);
   assert.match(PROMPTS.reflection, /quiet 是人还在你眼前/);
   assert.match(PROMPTS.weekly, /livingFor\.touched/);
   assert.match(PROMPTS.weekly, /livingFor\.also/);
+  assert.match(PROMPTS.weekly, /changes\.livingFor/);
   const previousTurn = RETIRED_PROMPTS.turn.find(
     (item) =>
       item.includes("像真实的人一样") && item.includes("self.livingFor"),

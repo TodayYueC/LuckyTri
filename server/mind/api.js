@@ -475,13 +475,17 @@ export function mountMind(app, chat, life) {
         )
         .get(day)?.day;
       const yesterday = previous ? mind.snapshotOf(previous) : null;
+      const present = (snap) => {
+        if (!snap) return null;
+        return { ...snap, livingFor: mind.livedThen(snap) };
+      };
       res.json({
         day,
         diary:
           life.diaries({ before: day, limit: 1 }).find((d) => d.day === day) ||
           null,
-        snapshot,
-        yesterday,
+        snapshot: present(snapshot),
+        yesterday: present(yesterday),
         change: diffSnapshots(yesterday, snapshot),
       });
     }),

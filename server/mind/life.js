@@ -1420,6 +1420,7 @@ export class Life {
         )
         .get(day)?.day;
       const yesterday = previousDay ? this.mind.snapshotOf(previousDay) : null;
+      const yesterdayLife = yesterday ? this.mind.livedThen(yesterday) : null;
       const lastDiary = this.db
         .prepare(
           "SELECT day,content,compare FROM mind_diary WHERE day<? ORDER BY day DESC, created DESC LIMIT 1",
@@ -1467,6 +1468,9 @@ export class Life {
           ? {
               day: yesterday.day,
               mood: yesterday.affect?.mood,
+              ...(yesterdayLife
+                ? { livingFor: text(yesterdayLife.content, 80) }
+                : {}),
               self: (yesterday.self || [])
                 .filter((t) => {
                   const row = this.mind.self
@@ -1727,12 +1731,13 @@ export class Life {
           "SELECT day FROM mind_snapshots WHERE created<=? ORDER BY day DESC LIMIT 1",
         )
         .get(now)?.day;
+      const earlierSnap = earlier ? this.mind.snapshotOf(earlier) : null;
+      const latestSnap = latest ? this.mind.snapshotOf(latest) : null;
+      const asLived = (snap) =>
+        snap ? { ...snap, livingFor: this.mind.livedThen(snap) } : null;
       const change =
-        earlier && latest
-          ? diffSnapshots(
-              this.mind.snapshotOf(earlier),
-              this.mind.snapshotOf(latest),
-            )
+        earlierSnap && latestSnap
+          ? diffSnapshots(asLived(earlierSnap), asLived(latestSnap))
           : null;
       const chapter = periods.current(now);
       const previous = chapter
@@ -1792,6 +1797,11 @@ export class Life {
                     (p) =>
                       `${p.name}：${p.shift === null ? "新认识的" : p.shift > 0 ? "更近了" : "远了一些"}`,
                   ),
+                ...(change.livingFor
+                  ? {
+                      livingFor: `${text(change.livingFor.from, 40) || "还没有"} → ${text(change.livingFor.to, 40) || "还没有"}`,
+                    }
+                  : {}),
               },
             }
           : {}),
