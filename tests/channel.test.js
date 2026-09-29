@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createStore } from "../server/store.js";
 import { Repository } from "../server/core/repository.js";
-import { persistIncoming } from "../server/core/message-manager.js";
+import {
+  messageEnvelope,
+  persistIncoming,
+} from "../server/core/message-manager.js";
 import { applyDirectoryNames } from "../server/core/sessions.js";
 import { normalize, onebot } from "../server/channels/onebot.js";
 import {
@@ -45,6 +48,22 @@ test("OneBot 规范化产出账号限定会话键", () => {
   assert.equal(m.sessionId, "onebot:20002:group:12345");
   assert.equal(m.channel, "onebot");
   assert.equal(m.nativeId, "12345");
+});
+
+test("QQ 自带表情的文字标签会随消息进入上下文", () => {
+  const incoming = normalize({
+    post_type: "message",
+    message_type: "group",
+    user_id: 10001,
+    self_id: 20002,
+    group_id: 12345,
+    message_id: 2,
+    message: [
+      { type: "face", data: { id: "344", raw: { faceText: "/大怨种" } } },
+    ],
+  });
+  assert.equal(incoming.text, "[表情]");
+  assert.equal(messageEnvelope(incoming).attachments[0].summary, "/大怨种");
 });
 
 test("群名片是 QQ 号时使用昵称", () => {

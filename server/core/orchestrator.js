@@ -39,7 +39,7 @@ import {
   reviewContext,
   validateResponse,
 } from "./response-validator.js";
-import { deliver } from "./message-scheduler.js";
+import { deliver, sleep } from "./message-scheduler.js";
 import { TopicTracker } from "./topic-tracker.js";
 import { invalidateSpeakerNames } from "./speaker-names.js";
 import { demoReply } from "./local-demo.js";
@@ -723,7 +723,10 @@ export class ChatSystem {
           const observed = await models.call(
             visionModel,
             "vision",
-            prompt.system + "\n" + prompt.vision,
+            prompt.system +
+              "\n" +
+              prompt.vision +
+              "\n每张图按 messageId 独立观察。description 只写可见元素、文字和表情语气；前后语境仅用来消歧，不把当前话题、发送意图或给谁看的猜测写进可缓存的描述。表情包台词不是事实，不从前一张图推断这一张。",
             {
               messages: visionWindow(snapshot.messages, [
                 ...describe.map((image) => image.messageId),
@@ -1226,6 +1229,10 @@ export class ChatSystem {
     }
     if (c.replay) return finish("replayed", "隔离回放完成，未发送或写入记忆");
     if (c.preview) return finish("previewed", turn.reason);
+    // Give a sender who is adding one last line a moment to finish. The
+    // queue already aggregates incoming messages; this catches the tail of
+    // a model call before its first bubble is committed to the platform.
+    if (this.queue.lanes.has(session) && !turn.crisis?.clear) await sleep(250);
     if (!isCurrent()) return staleExit();
     trace.sent = await deliver(
       this.repo,
@@ -1236,6 +1243,7 @@ export class ChatSystem {
       isCurrent,
       { now: this.now },
     );
+    if (!trace.sent.length && hasRelevantUpdate()) return staleExit();
     return finish(trace.sent.length ? "sent" : "cancelled", turn.reason);
   }
   async offline(session, batch, trace, finish, context, preview, state) {

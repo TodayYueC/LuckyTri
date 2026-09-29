@@ -20,9 +20,27 @@ export function messageEnvelope(m) {
     replyId: String(segments.find((s) => s.type === "reply")?.data?.id || ""),
     attachments: segments
       .filter((s) =>
-        ["image", "mface", "file", "video", "record", "face"].includes(s.type),
+        [
+          "image",
+          "mface",
+          "market_face",
+          "sticker",
+          "file",
+          "video",
+          "record",
+          "face",
+        ].includes(s.type),
       )
-      .map((s) => ({ type: s.type, ...s.data })),
+      .map((s) => ({
+        type: s.type,
+        ...s.data,
+        // QQ's built-in faces carry their readable name inside raw. Keep it
+        // alongside the placeholder so a reaction is not reduced to [表情].
+        summary: String(s.data?.summary || s.data?.raw?.faceText || "").slice(
+          0,
+          80,
+        ),
+      })),
     segments,
     raw: undefined,
   };

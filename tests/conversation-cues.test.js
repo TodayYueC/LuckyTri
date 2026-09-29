@@ -103,6 +103,33 @@ test("repair and acknowledgement end without a fabricated second bubble", () => 
   snapshot.messages[0].text = "好烦，怎么办，给点建议";
   assert.equal(replyFocus(snapshot, decision).kind, "respond");
 });
+
+test("表情包作为语气来接，描述画面和复述文字会触发重写", () => {
+  const snapshot = {
+    messages: [
+      {
+        id: 1,
+        role: "user",
+        text: "[表情]",
+        attachments: [{ type: "image", summary: "[吃瓜]" }],
+      },
+    ],
+  };
+  const decision = { targetMessageIds: [1] };
+  assert.equal(replyFocus(snapshot, decision).kind, "sticker");
+  assert.deepEqual(
+    conversationalIssues({ bubbles: ["哈哈，有戏看了"] }, snapshot, decision),
+    [],
+  );
+  assert.match(
+    conversationalIssues(
+      { bubbles: ["这个表情包上写着吃瓜"] },
+      snapshot,
+      decision,
+    ).join(" "),
+    /不要把表情包当阅读理解/,
+  );
+});
 test("被问凭什么知道时，先核对依据；自己先开口的话不能编一条他发来的消息", () => {
   const at = (hour, minute = 0) =>
     Date.parse(

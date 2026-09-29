@@ -22,6 +22,8 @@ const KNOWN_REASONS = new Set([
 
 const IMAGE_REQUEST =
   /这张图|这个图|这图|看图|图里|图中|截图|什么图|这是什么|帮我看|看看这|看一下这|看下这|上面那张|下面那张|图上写|画面里/;
+const isVisualAttachment = (item) =>
+  ["image", "mface", "market_face", "sticker"].includes(item?.type);
 
 export function wantsImageLook(message) {
   if (!message) return false;
@@ -35,9 +37,7 @@ export function wantsImageLook(message) {
   if (IMAGE_REQUEST.test(String(message.text || ""))) return true;
   return (
     message.kind === "private" &&
-    (message.attachments || []).some(
-      (item) => item?.type === "image" && !isStickerAttachment(item),
-    )
+    (message.attachments || []).some(isVisualAttachment)
   );
 }
 
@@ -55,15 +55,25 @@ function lookFocus(rows, batchIds) {
   for (const message of triggers) {
     focus.add(message.seq);
     const index = indexBySeq.get(message.seq);
-    if (index != null)
-      for (
-        let cursor = Math.max(0, index - 3);
-        cursor <= Math.min(rows.length - 1, index + 1);
-        cursor++
-      )
-        focus.add(rows[cursor].seq);
     const quoted = message.replyTo?.seq ?? message.replyChain?.[0];
     if (quoted != null) focus.add(quoted);
+    // A new image may simply be a reaction to another topic. Never pull in
+    // neighbouring images merely because someone addressed her nearby.
+    if (
+      index != null &&
+      !(message.attachments || []).some(isVisualAttachment) &&
+      quoted == null
+    ) {
+      const previous = rows[index - 1];
+      if (
+        previous?.userId === message.userId &&
+        (previous.attachments || []).some(isVisualAttachment) &&
+        (!Number.isFinite(message.time) ||
+          !Number.isFinite(previous.time) ||
+          message.time - previous.time <= 90000)
+      )
+        focus.add(previous.seq);
+    }
   }
   return focus;
 }
@@ -88,7 +98,7 @@ export function visionInputs(snapshot, profile, { selective = false } = {}) {
   const seenOnMessage = new Map();
   for (const m of snapshot.sourceRows || [])
     for (const a of m.attachments || []) {
-      if (a.type !== "image" || isStickerAttachment(a)) continue;
+      if (!isVisualAttachment(a)) continue;
       if (focus && !focus.has(m.seq)) continue;
       if (!profile?.vision) {
         unavailable.push({ messageId: m.seq, reason: "模型未开启视觉能力" });
@@ -109,6 +119,8 @@ export function visionInputs(snapshot, profile, { selective = false } = {}) {
         messageId: m.seq,
         speaker: m.userId,
         index,
+        kind: isStickerAttachment(a) ? "sticker" : "image",
+        summary: String(a.summary || "").slice(0, 80),
         ...source,
       });
     }
@@ -117,6 +129,7 @@ export function visionInputs(snapshot, profile, { selective = false } = {}) {
 
 function isStickerAttachment(attachment) {
   return Boolean(
+    ["mface", "market_face", "sticker"].includes(attachment.type) ||
     attachment.emoji_id ||
     attachment.emoji_package_id ||
     (attachment.summary && attachment.key) ||
@@ -440,6 +453,8 @@ export async function loadVisionImages(images, options = {}) {
             messageId: image.messageId,
             speaker: image.speaker,
             index: image.index ?? 0,
+            kind: image.kind || "image",
+            summary: image.summary || "",
             file: image.file || "",
             sha256: createHash("sha256").update(bytes).digest("hex"),
             url: `data:${mime};base64,${bytes.toString("base64")}`,
@@ -468,9 +483,9 @@ export function visionCacheKeys(sessionId, image) {
   const keys = [];
   const index = image?.index ?? 0;
   if (sessionId && image?.messageId != null)
-    keys.push(`msg:${sessionId}:${image.messageId}:${index}`);
-  if (image?.file) keys.push(`file:${sessionId}:${image.file}`);
-  if (image?.sha256) keys.push(`sha256:${image.sha256}`);
+    keys.push(`msg:v2:${sessionId}:${image.messageId}:${index}`);
+  if (image?.file) keys.push(`file:v2:${sessionId}:${image.file}`);
+  if (image?.sha256) keys.push(`sha256:v2:${image.sha256}`);
   return keys;
 }
 

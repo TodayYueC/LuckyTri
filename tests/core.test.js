@@ -456,7 +456,7 @@ test("记忆整理在后台，不阻塞当前回复返回", async () => {
   store.db.close();
 });
 
-test("没有 @ 或明确要求时不理解图片，点名后才看附近和引用", () => {
+test("选择性看图只取本条、明确引用或紧挨着的同一人图片", () => {
   const rows = [1, 2, 3].map((seq) => ({
     seq,
     userId: "1",
@@ -490,7 +490,7 @@ test("没有 @ 或明确要求时不理解图片，点名后才看附近和引�
       { vision: true },
       { selective: true },
     ).images.map((image) => image.messageId),
-    [1, 2, 3],
+    [2, 3],
   );
   const sticker = rows.map((row) =>
     row.seq === 3
@@ -514,7 +514,27 @@ test("没有 @ 或明确要求时不理解图片，点名后才看附近和引�
       { batchIds: [3], sourceRows: sticker },
       { vision: true },
       { selective: true },
-    ).images,
+    ).images.map((image) => [image.messageId, image.kind]),
+    [[3, "sticker"]],
+  );
+  const later = [
+    { ...rows[0], time: 1000 },
+    { ...rows[1], userId: "2", time: 2000 },
+    {
+      ...rows[2],
+      text: "@LuckyBot 看这张",
+      attachments: [],
+      replyChain: [],
+      time: 3000,
+      mentioned: true,
+    },
+  ];
+  assert.deepEqual(
+    visionInputs(
+      { batchIds: [3], sourceRows: later },
+      { vision: true },
+      { selective: true },
+    ).images.map((image) => image.messageId),
     [],
   );
 });
@@ -1295,7 +1315,7 @@ const TINY_PNG = Buffer.from(
   "base64",
 );
 
-test("当前 QQ 图片域名可以进入视觉，内网和非图片表情不行", () => {
+test("QQ 图片表情可以进入视觉，内网和不带画面的 face 不行", () => {
   const media = visionInputs(
     {
       sourceRows: [
@@ -1326,10 +1346,11 @@ test("当前 QQ 图片域名可以进入视觉，内网和非图片表情不行"
   );
   assert.deepEqual(
     media.images.map((image) => image.messageId),
-    [1, 1],
+    [1, 1, 1],
   );
   assert.equal(media.images[0].url.includes("multimedia.nt.qq.com.cn"), true);
-  assert.equal(media.images[1].local, "C:\\napcat\\cache\\a.png");
+  assert.equal(media.images[1].kind, "sticker");
+  assert.equal(media.images[2].local, "C:\\napcat\\cache\\a.png");
   assert.equal(media.unavailable.length, 2);
 });
 
