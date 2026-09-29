@@ -119,6 +119,8 @@ export class Self {
           for (const note of notes)
             if (note.created > at && aboutLife(row.content, note.content))
               at = note.created;
+          const metAt = this.mind.meetings.livedAt(row.thread, before);
+          if (metAt != null && metAt > at) at = metAt;
         }
         return {
           ...row,

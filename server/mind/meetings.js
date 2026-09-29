@@ -48,9 +48,12 @@ export class Meetings {
       now: time,
       room: session,
     });
-    // Each person's own words have to meet the wish, across the messages
-    // they sent in this batch. Two people cannot be added together, and
-    // someone who only stood nearby is not credited.
+    // Each person's own words have to meet a wish she is still living,
+    // across the messages they sent in this batch. The wish that holds
+    // livingFor is preferred when it was met; another own wish that is
+    // still present in this room can be met without taking that seat.
+    // Two people cannot be added together, and someone who only stood
+    // nearby is not credited.
     const bySpeaker = new Map();
     for (const m of heard) {
       const id = String(m.speaker || "");
@@ -59,14 +62,19 @@ export class Meetings {
       texts.push(m.text || "");
       bySpeaker.set(id, texts);
     }
-    const willPeople = living
-      ? [...bySpeaker.entries()]
-          .filter(([, texts]) =>
-            meetsLife(living.content, interestTerms(texts)),
-          )
-          .map(([id]) => id)
-      : [];
-    const willMet = willPeople.length > 0;
+    const hits = [];
+    for (const wish of this.#ownWishes(session, time)) {
+      const people = [...bySpeaker.entries()]
+        .filter(([, texts]) => meetsLife(wish.content, interestTerms(texts)))
+        .map(([id]) => id);
+      if (people.length) hits.push({ wish, people });
+    }
+    const chosen =
+      (living && hits.find((item) => item.wish.thread === living.thread)) ||
+      hits[0] ||
+      null;
+    const willPeople = chosen?.people || [];
+    const willMet = !!chosen;
     const quiet = heard.some((m) => secretRequest(String(m.text || "")));
     const actualWords = sent
       .filter(
@@ -108,7 +116,7 @@ export class Meetings {
         text(turn?.topic, 40),
         JSON.stringify(people),
         sourceKey,
-        willMet ? living.thread : null,
+        willMet ? chosen.wish.thread : null,
         willMet ? 1 : 0,
         isPrivateSession(session) ? "private" : quiet ? "secret" : "open",
         JSON.stringify(willPeople),
@@ -610,6 +618,43 @@ export class Meetings {
         })
         .map((row) => String(row.user_id)),
     );
+  }
+  // Own wishes still present in this room. The current livingFor is
+  // among them when it belongs here; it is not the only one that can
+  // be met.
+  #ownWishes(session, time) {
+    return this.mind.self
+      .annotated({ before: time, now: time })
+      .filter(
+        (row) =>
+          row.kind === "intention" &&
+          !row.faded &&
+          ownLife(row.content) &&
+          this.stays(row, session),
+      );
+  }
+  // The last day the world actually met this wish. Reading only; a later
+  // wording that those words no longer meet does not inherit the day.
+  livedAt(thread, before = Date.now()) {
+    if (!thread) return null;
+    const wish = this.#wishAt(thread, before);
+    if (!wish || wish.status === "closed") return null;
+    const threads = this.#willThreads(thread, before);
+    const marks = threads.map(() => "?").join(",");
+    const rows = this.db
+      .prepare(
+        `SELECT created, will_people, sources FROM mind_meetings m
+         WHERE will_thread IN (${marks}) AND will_met=1 AND created<=?
+         AND NOT EXISTS (
+           SELECT 1 FROM mind_revocations r
+           WHERE r.target_kind='meeting' AND r.target_id=m.id
+         )
+         ORDER BY created DESC`,
+      )
+      .all(...threads, before);
+    for (const row of rows)
+      if (this.#stillMeets(row, wish.content)) return row.created;
+    return null;
   }
   // Already-split wordings of the same wish still count as one life.
   #willThreads(thread, before) {

@@ -1073,6 +1073,127 @@ test("为自己写过的念头淡了以后，那条愿望仍按她想过的日�
   }
 });
 
+test("别人的话碰到另一件仍在过的愿望，也记成被碰到", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    const first = w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    assert.match(
+      w.mind.self.living({ now: w.now() + 2000 }).content,
+      /轻松日常的gal/,
+    );
+    const said = w.say("group:1", "10001", "今晚完全蒙玩，不看评分不看讨论页", {
+      name: "阿明",
+    });
+    const kept = w.mind.meetings.keep(
+      { choice: "silent", appraisal: "听到他们在说蒙玩", topic: "" },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [said.seq],
+          messages: [
+            {
+              id: said.seq,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: said.text,
+            },
+          ],
+        },
+        time: w.now() + 3000,
+      },
+    );
+    assert.equal(kept.willMet, true);
+    assert.equal(
+      w.mind.db
+        .prepare("SELECT will_thread FROM mind_meetings WHERE id=?")
+        .get(kept.id).will_thread,
+      first.thread,
+    );
+  } finally {
+    w.close();
+  }
+});
+
+test("别人的话碰到过以后，那条愿望仍按相遇的日子留在心上", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    const meetAt = w.now() + 50 * 86400000;
+    const said = w.say("group:1", "10001", "今晚完全蒙玩，不看评分不看讨论页", {
+      name: "阿明",
+    });
+    w.mind.meetings.keep(
+      { choice: "silent", appraisal: "听到他们在说蒙玩", topic: "" },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [said.seq],
+          messages: [
+            {
+              id: said.seq,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: said.text,
+            },
+          ],
+        },
+        time: meetAt,
+      },
+    );
+    const later = w.now() + 90 * 86400000;
+    const insert = w.mind.db.prepare(
+      "INSERT INTO mind_days(day,created,lived,events) VALUES (?,?,?,3)",
+    );
+    const dayAfter = (n) => {
+      const [y, m, d] = "2026-09-22".split("-").map(Number);
+      return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+    };
+    for (let i = 1; i <= 90; i++) insert.run(dayAfter(i), later, 1);
+    const living = w.mind.self.living({ now: later });
+    assert.match(living.content, /蒙玩/);
+    assert.equal(living.faded, false);
+    assert.doesNotMatch(living.content, /轻松日常的gal/);
+  } finally {
+    w.close();
+  }
+});
+
 test("已经裂开的同一愿望，被碰到的次数仍算一件事", () => {
   const w = world();
   try {
