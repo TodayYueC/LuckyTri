@@ -1506,10 +1506,7 @@ test("自己后来写下的念头，会让正在过的那一件回到她真正�
 
 test("写下把愿望放下的念头，不再把正在过的钉在那一件上", () => {
   const wish = "决定开新游戏，完全蒙玩，不看评分不看讨论页";
-  assert.equal(
-    leftLife(wish, "蒙玩线封了以后，这件事就算定下来了。"),
-    true,
-  );
+  assert.equal(leftLife(wish, "蒙玩线封了以后，这件事就算定下来了。"), true);
   assert.equal(
     leftLife(
       "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",

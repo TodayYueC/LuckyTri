@@ -178,17 +178,20 @@ test("群列表和好友列表会补上还没有名字的会话", () => {
   });
   assert.equal(changed, 2);
   assert.equal(
-    store.db.prepare("SELECT name FROM sessions WHERE id=?").get("group:100200300")
-      .name,
+    store.db
+      .prepare("SELECT name FROM sessions WHERE id=?")
+      .get("group:100200300").name,
     "后端划水群",
   );
   assert.equal(
-    store.db.prepare("SELECT name FROM sessions WHERE id=?").get("group:999").name,
+    store.db.prepare("SELECT name FROM sessions WHERE id=?").get("group:999")
+      .name,
     "春日聊天室",
   );
   assert.equal(
-    store.db.prepare("SELECT name FROM sessions WHERE id=?").get("private:10001")
-      .name,
+    store.db
+      .prepare("SELECT name FROM sessions WHERE id=?")
+      .get("private:10001").name,
     "阿明",
   );
   store.db.close();
