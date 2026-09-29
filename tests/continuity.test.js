@@ -1015,6 +1015,119 @@ test("没人叫她时话没整理好就不说；有人叫她时仍回一句短�
   assert.equal(called.sent.length, 1);
 });
 
+// A lane the way the queue holds it while a batch is being worked on.
+const busyLane = (w, session, ...arrived) => {
+  const lane = { pending: [...arrived], running: true, first: Date.now() };
+  w.system.queue.lanes.set(session, lane);
+  return lane;
+};
+const answerBatch = (w) => {
+  w.answers.turn = ({ context }) => ({
+    choice: "speak",
+    appraisal: "对方在说话",
+    reason: "回一句",
+    topic: "在吗",
+    targetMessageIds: context.batchIds,
+    bubbles: ["在呀"],
+    feelings: [],
+    bonds: [],
+  });
+};
+const turns = (w) => w.stages().filter((s) => s === "turn").length;
+
+test("读房间的时候对方又说了话：这一批先不花一次调用，并入下一批一起回", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("private:10001", "林夏");
+  answerBatch(w);
+  const a = w.say("private:10001", "10001", "在吗", { name: "林夏" });
+  const b = w.say("private:10001", "10001", "有件事想问你", { name: "林夏" });
+  const lane = busyLane(w, "private:10001", b);
+
+  const held = await w.hear("private:10001", a);
+  assert.equal(held.status, "stale");
+  assert.equal(turns(w), 0, "没有为已经过时的话花回合调用");
+  assert.deepEqual(
+    lane.pending.map((m) => m.seq),
+    [a.seq, b.seq],
+    "放回去，和新来的排在一起",
+  );
+  assert.deepEqual(w.sent, []);
+
+  const together = await w.hear("private:10001", lane.pending.splice(0));
+  assert.equal(together.status, "sent");
+  assert.equal(turns(w), 1, "合起来只花一次");
+  assert.deepEqual(
+    w.calls.find((c) => c.stage === "turn").data.context.batchIds,
+    [a.seq, b.seq],
+  );
+});
+
+test("一批最多先放一次，不会被一直说话的人饿着；没有地方放回去时照常回", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("private:10001", "林夏");
+  answerBatch(w);
+  const a = w.say("private:10001", "10001", "在吗", { name: "林夏" });
+  const b = w.say("private:10001", "10001", "还在吗", { name: "林夏" });
+  busyLane(w, "private:10001", b);
+  assert.equal((await w.hear("private:10001", a)).status, "stale");
+  assert.equal(turns(w), 0);
+  await w.hear("private:10001", a);
+  assert.equal(turns(w), 1, "同一批第二次不再放，直接回");
+
+  const bare = world();
+  t.after(bare.close);
+  bare.open("private:10002", "阿明");
+  answerBatch(bare);
+  const first = bare.say("private:10002", "10002", "在吗", { name: "阿明" });
+  bare.say("private:10002", "10002", "有空吗", { name: "阿明" });
+  await bare.hear("private:10002", first);
+  assert.equal(turns(bare), 1, "队列里没有这一批的位置，就不能放，照常回");
+});
+
+test("群里是别人说了话不放；被叫到的人接着说才放；危机不放", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1", "一群");
+  answerBatch(w);
+  const asked = w.say("group:1", "10001", "@我 你在吗", {
+    name: "阿明",
+    mentioned: true,
+  });
+  const other = w.say("group:1", "20002", "今天好热", { name: "阿青" });
+  busyLane(w, "group:1", other);
+  const first = await w.hear("group:1", asked);
+  assert.notEqual(first.reason, "读房间时又有新话，并入下一批");
+  assert.equal(turns(w), 1, "别人说话，不是要回的那个人，照常回");
+
+  const again = world();
+  t.after(again.close);
+  again.open("group:1", "一群");
+  answerBatch(again);
+  const call = again.say("group:1", "10001", "@我 你在吗", {
+    name: "阿明",
+    mentioned: true,
+  });
+  const more = again.say("group:1", "10001", "我想问个事", { name: "阿明" });
+  busyLane(again, "group:1", more);
+  assert.equal((await again.hear("group:1", call)).status, "stale");
+  assert.equal(turns(again), 0);
+
+  const hard = world();
+  t.after(hard.close);
+  hard.open("private:10001", "林夏");
+  answerBatch(hard);
+  const worst = hard.say("private:10001", "10001", "我真的不想活了", {
+    name: "林夏",
+  });
+  const after = hard.say("private:10001", "10001", "算了", { name: "林夏" });
+  busyLane(hard, "private:10001", after);
+  const seen = await hard.hear("private:10001", worst);
+  assert.equal(turns(hard), 1, "有人说不想活，不为了合并多等一轮，先去看");
+  assert.notEqual(seen.reason, "读房间时又有新话，并入下一批");
+});
+
 test("私聊秘密和另一个机器人账号的承诺都不能进入当前群聊", async (t) => {
   const w = world();
   t.after(w.close);
