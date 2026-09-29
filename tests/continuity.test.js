@@ -842,6 +842,131 @@ test("自己先开口的话被追问依据，不编一条他发来的消息，�
   ]);
 });
 
+const outage = (extra = {}) =>
+  Object.assign(new Error("模型服务网络连接失败（ECONNRESET）"), {
+    networkFailure: true,
+    ...extra,
+  });
+const until = async (done) => {
+  for (let i = 0; i < 150 && !done(); i++)
+    await new Promise((resolve) => setTimeout(resolve, 20));
+};
+
+test("被直接叫到时模型服务只是短暂不可用，稍后自己再试，不必等对方再说一次", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.system.retryDelays = [20, 40];
+  w.open("private:10001", "林夏");
+  let calls = 0;
+  w.answers.turn = ({ context }) => {
+    calls++;
+    if (calls === 1) throw outage();
+    return {
+      choice: "speak",
+      appraisal: "对方在叫我",
+      reason: "回一句",
+      topic: "在吗",
+      targetMessageIds: context.batchIds,
+      bubbles: ["在呀"],
+      feelings: [],
+      bonds: [],
+    };
+  };
+  const m = w.say("private:10001", "10001", "在吗", { name: "林夏" });
+  const first = await w.hear("private:10001", m);
+  assert.equal(first.status, "error");
+  assert.match(first.steps.join(" "), /稍后|秒后再试/);
+  await until(() => w.sent.length > 0);
+  assert.deepEqual(
+    w.sent.map((s) => s.text),
+    ["在呀"],
+  );
+  assert.equal(calls, 2);
+});
+
+test("再试有次数上限；余额不足这类重试没用的不再试", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.system.retryDelays = [20, 40];
+  w.open("private:10001", "林夏");
+  let calls = 0;
+  w.answers.turn = () => {
+    calls++;
+    throw outage();
+  };
+  await w.hear(
+    "private:10001",
+    w.say("private:10001", "10001", "在吗", { name: "林夏" }),
+  );
+  await until(() => calls >= 3);
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.equal(calls, 3, "第一次加两次再试，不再多");
+  assert.deepEqual(w.sent, []);
+
+  const other = world();
+  t.after(other.close);
+  other.system.retryDelays = [20, 40];
+  other.open("private:10002", "阿明");
+  let paid = 0;
+  other.answers.turn = () => {
+    paid++;
+    throw Object.assign(new Error("模型 API HTTP 402：账户余额或额度不足"), {
+      status: 402,
+    });
+  };
+  await other.hear(
+    "private:10002",
+    other.say("private:10002", "10002", "在吗", { name: "阿明" }),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.equal(paid, 1);
+});
+
+test("群里没被叫到的一轮失败，不会为它再试；她已经回过就不补发", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.system.retryDelays = [20];
+  w.open("group:1", "一群");
+  let calls = 0;
+  w.answers.turn = () => {
+    calls++;
+    throw outage();
+  };
+  await w.hear(
+    "group:1",
+    w.say("group:1", "10001", "今天好热", { name: "阿明" }),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  assert.equal(calls <= 1, true, "没被叫到的群聊不重试");
+
+  const sent = world();
+  t.after(sent.close);
+  sent.system.retryDelays = [40];
+  sent.open("private:10003", "小王");
+  let tries = 0;
+  sent.answers.turn = ({ context }) => {
+    tries++;
+    if (tries === 1) throw outage();
+    return {
+      choice: "speak",
+      appraisal: "x",
+      reason: "y",
+      topic: "z",
+      targetMessageIds: context.batchIds,
+      bubbles: ["补上"],
+      feelings: [],
+      bonds: [],
+    };
+  };
+  await sent.hear(
+    "private:10003",
+    sent.say("private:10003", "10003", "在吗", { name: "小王" }),
+  );
+  sent.say("private:10003", "bot", "刚才网络断了，现在回你");
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(tries, 1, "她已经回过，等到的重试不再发");
+});
+
 test("私聊秘密和另一个机器人账号的承诺都不能进入当前群聊", async (t) => {
   const w = world();
   t.after(w.close);
