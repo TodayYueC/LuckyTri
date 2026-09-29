@@ -10,6 +10,7 @@ import {
   anyTouches,
   cueList,
   meetingSalience,
+  aboutLife,
   meetsLife,
   ownLife,
   touches,
@@ -682,28 +683,48 @@ export class Meetings {
     }
     return out;
   }
-  // The last day the world actually met this wish. Reading only; a later
-  // wording that those words no longer meet does not inherit the day.
+  // The last day this wish was lived: the world met it, or she spoke it.
+  // Reading only; a later wording that those words no longer meet does
+  // not inherit the day. Silent meetings do not count as her speaking.
   livedAt(thread, before = Date.now()) {
     if (!thread) return null;
     const wish = this.#wishAt(thread, before);
     if (!wish || wish.status === "closed") return null;
     const threads = this.#willThreads(thread, before);
     const marks = threads.map(() => "?").join(",");
-    const rows = this.db
+    const hidden = `AND NOT EXISTS (
+           SELECT 1 FROM mind_revocations r
+           WHERE r.target_kind='meeting' AND r.target_id=m.id
+         )`;
+    const met = this.db
       .prepare(
         `SELECT created, will_people, sources FROM mind_meetings m
          WHERE will_thread IN (${marks}) AND will_met=1 AND created<=?
-         AND NOT EXISTS (
-           SELECT 1 FROM mind_revocations r
-           WHERE r.target_kind='meeting' AND r.target_id=m.id
-         )
+         ${hidden}
          ORDER BY created DESC`,
       )
       .all(...threads, before);
-    for (const row of rows)
-      if (this.#stillMeets(row, wish.content)) return row.created;
-    return null;
+    let latest = null;
+    for (const row of met)
+      if (this.#stillMeets(row, wish.content)) {
+        latest = row.created;
+        break;
+      }
+    const spoken = this.db
+      .prepare(
+        `SELECT created, exchange FROM mind_meetings m
+         WHERE created<=? AND choice!='silent' AND exchange IS NOT NULL
+         AND exchange!='null' ${hidden}
+         ORDER BY created DESC`,
+      )
+      .all(before);
+    for (const row of spoken) {
+      if (latest != null && row.created <= latest) break;
+      const exchange = parse(row.exchange, null);
+      const said = (exchange?.iSaid || []).join("\n");
+      if (said && aboutLife(wish.content, said)) return row.created;
+    }
+    return latest;
   }
   // Already-split wordings of the same wish still count as one life.
   #willThreads(thread, before) {

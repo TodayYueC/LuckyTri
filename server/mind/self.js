@@ -113,7 +113,8 @@ export class Self {
       .map((row) => {
         // A rewording is not a new meeting with the thread. Fade follows the
         // last version that actually brought new evidence. A later note she
-        // wrote to herself about this wish is also living it.
+        // wrote to herself, a meeting that met this wish, or words she
+        // herself spoke about it, are also living it.
         let at = earnedAt(versions.get(row.thread)) ?? row.created;
         if (row.kind === "intention" && ownLife(row.content)) {
           for (const note of notes)
