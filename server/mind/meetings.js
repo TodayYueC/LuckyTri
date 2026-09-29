@@ -10,6 +10,7 @@ import {
   anyTouches,
   cueList,
   meetingSalience,
+  ownLife,
   touches,
 } from "./salience.js";
 import { hasCredential, messageSeqs, parse, text } from "./util.js";
@@ -232,14 +233,16 @@ export class Meetings {
            SELECT 1 FROM mind_revocations r
            WHERE r.target_kind='meeting' AND r.target_id=m.id
          )`;
-    const args = [thread, since, before];
-    if (session) args.push(session);
     const wish = this.#wishAt(thread, before);
     if (!wish || wish.status === "closed") return { touched: 0 };
+    const threads = this.#willThreads(thread, before);
+    const marks = threads.map(() => "?").join(",");
+    const args = [...threads, since, before];
+    if (session) args.push(session);
     const hits = this.db
       .prepare(
         `SELECT choice, created, people, will_people, sources FROM mind_meetings m
-         WHERE will_thread=? AND will_met=1 AND created>=? AND created${compare}?
+         WHERE will_thread IN (${marks}) AND will_met=1 AND created>=? AND created${compare}?
          ${room} ${hidden}
          ORDER BY created DESC`,
       )
@@ -502,23 +505,30 @@ export class Meetings {
   wishAway({ now = Date.now(), days = 3, limit = 3 } = {}) {
     const wishes = this.mind.self
       .annotated({ before: now, now })
-      .filter((row) => row.kind === "intention" && !row.faded);
+      .filter(
+        (row) => row.kind === "intention" && !row.faded && ownLife(row.content),
+      );
     if (!wishes.length) return [];
     const lived = this.mind.days.lived(now);
-    const read = this.db.prepare(
-      `SELECT * FROM mind_meetings m
-       WHERE will_thread=? AND will_met=1 AND created<?
-       AND NOT EXISTS (
-         SELECT 1 FROM mind_revocations r
-         WHERE r.target_kind='meeting' AND r.target_id=m.id
-       )
-       ORDER BY created DESC`,
-    );
     const buckets = [];
+    const clustered = new Set();
     for (const living of wishes) {
+      if (clustered.has(living.thread)) continue;
+      const threads = this.#willThreads(living.thread, now);
+      for (const id of threads) clustered.add(id);
+      const marks = threads.map(() => "?").join(",");
+      const read = this.db.prepare(
+        `SELECT * FROM mind_meetings m
+         WHERE will_thread IN (${marks}) AND will_met=1 AND created<?
+         AND NOT EXISTS (
+           SELECT 1 FROM mind_revocations r
+           WHERE r.target_kind='meeting' AND r.target_id=m.id
+         )
+         ORDER BY created DESC`,
+      );
       const bucket = [];
       const seenHere = new Set();
-      for (const row of read.all(living.thread, now)) {
+      for (const row of read.all(...threads, now)) {
         if (meetingSalience(row.created, lived) < MEETING_FADED) continue;
         if (!this.#stillMeets(row, living.content)) continue;
         const named = parse(row.will_people, []);
@@ -572,20 +582,22 @@ export class Meetings {
     const wish = this.#wishAt(thread, before);
     if (!wish || wish.status === "closed") return new Set();
     const lived = this.mind.days.lived(before);
+    const threads = this.#willThreads(thread, before);
+    const threadMarks = threads.map(() => "?").join(",");
     return new Set(
       this.db
         .prepare(
           `SELECT p.user_id, m.created, m.will_people, m.sources FROM mind_meeting_people p
            JOIN mind_meetings m ON m.id = p.meeting_id
            WHERE p.user_id IN (${ids.map(() => "?").join(",")})
-             AND m.will_met = 1 AND m.will_thread = ? AND m.created < ?
+             AND m.will_met = 1 AND m.will_thread IN (${threadMarks}) AND m.created < ?
              AND (m.discretion NOT IN ('private','secret') OR m.session_id = ?)
              AND NOT EXISTS (
                SELECT 1 FROM mind_revocations r
                WHERE r.target_kind = 'meeting' AND r.target_id = m.id
              )`,
         )
-        .all(...ids, thread, before, session)
+        .all(...ids, ...threads, before, session)
         .filter((row) => {
           if (meetingSalience(row.created, lived) < MEETING_FADED) return false;
           const credited = parse(row.will_people, []);
@@ -599,6 +611,15 @@ export class Meetings {
         })
         .map((row) => String(row.user_id)),
     );
+  }
+  // Already-split wordings of the same wish still count as one life.
+  #willThreads(thread, before) {
+    const wish = this.#wishAt(thread, before);
+    if (!wish) return thread ? [thread] : [];
+    const ids = this.mind.self
+      .sameThreads(wish, { before })
+      .map((row) => row.thread);
+    return ids.length ? ids : [thread];
   }
   // The wish as it stood at `before`. A later wording does not inherit touches
   // that only met the old one.
