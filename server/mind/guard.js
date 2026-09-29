@@ -23,6 +23,19 @@ export function crisisSignal(text) {
   return EXPLICIT.test(value) || !CASUAL_DEATH.test(value);
 }
 
+// "某作玩过""都玩过一些""通关了""玩得比较杂": a claim to have played
+// something. She has no record of playing anything, so it is not a fact she
+// can give. Wishes ("想通关"), questions ("玩过吗"), other people ("他玩过")
+// and "没玩过" are not claims.
+const NOT_A_CLAIM = "没未不还想要会能可等算你他她谁人";
+const CLAIMED_PLAY = new RegExp(
+  `(?<![${NOT_A_CLAIM}][^，。！？,.!?\\s]{0,4})(?:也|都|早就|之前|以前|已经|全)?(?:玩过|通关|二周目|全结局|全成就)(?![吗么没？?]|不(?![少多])|的?吧)|(?<![你他她谁人][^，。！？,.!?\\s]{0,6})玩得(?:比较|挺|还)?(?:杂|多)(?![吗么？?]|的?吧)`,
+);
+
+export function claimedPlay(text) {
+  return CLAIMED_PLAY.test(String(text || ""));
+}
+
 // Secrets never enter another conversation's context, but a reply is still
 // checked against them before it leaves.
 export function leaks(bubbles, secrets) {

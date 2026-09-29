@@ -12,7 +12,7 @@ import {
   sameSelf,
   threadSalience,
 } from "./salience.js";
-import { leaks } from "./guard.js";
+import { claimedPlay, leaks } from "./guard.js";
 import { isPrivateSession } from "./memory.js";
 import {
   clamp,
@@ -312,6 +312,9 @@ export class Self {
         : "new";
     if (!content && action !== "close") return { rejected: "空内容" };
     if (hasCredential(content)) return { rejected: "疑似凭据" };
+    // What she said to fit in is not a life she has lived.
+    if (action !== "close" && claimedPlay(content))
+      return { rejected: "没有玩过的经历，不能写成她的样子" };
     const cited = evidence(input?.sources);
     const sources = valid ? cited.filter((s) => valid.has(s)) : cited;
     if (cited.length && !sources.length)

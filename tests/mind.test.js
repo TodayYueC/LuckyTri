@@ -7,7 +7,12 @@ import { join } from "node:path";
 import { createStore } from "../server/store.js";
 import { ChatSystem } from "../server/core/orchestrator.js";
 import { attend, interestTerms } from "../server/mind/attention.js";
-import { crisisSignal, leaks, secretRequest } from "../server/mind/guard.js";
+import {
+  claimedPlay,
+  crisisSignal,
+  leaks,
+  secretRequest,
+} from "../server/mind/guard.js";
 import {
   rhythmPhase,
   lifeDayKey,
@@ -5221,6 +5226,99 @@ test("被问到是谁时，心和选择属于自己，经历仍然不能编造",
     prompts({ config: () => ({ system: oldSystem }) }).system,
     PROMPTS.system,
   );
+  assert.match(PROMPTS.system, /不是你玩过、看过、去过的记录/);
+  const previousSystem = RETIRED_PROMPTS.system.find(
+    (item) => item.includes("没发生过的经历") && !item.includes("玩过"),
+  );
+  assert.ok(previousSystem);
+  assert.equal(
+    prompts({ config: () => ({ system: previousSystem }) }).system,
+    PROMPTS.system,
+  );
+});
+
+test("没有玩过就不说玩过：亲历的说法被拦，问、想、否定和别人的不拦", () => {
+  for (const claim of [
+    "某作玩过，最后那段是真的绷不住",
+    "某几家的都玩过一些",
+    "某作我通关了",
+    "会啊，玩得比较杂",
+    "主机玩得多，galgame玩得比较多",
+    "我也玩过，二周目才懂",
+    "别的也玩过不少，但这部印象最深",
+    "玩过一点，没推完，搁着了",
+  ])
+    assert.equal(claimedPlay(claim), true, claim);
+  for (const fine of [
+    "某作没玩过，知道是经典作",
+    "我还没通关，想慢慢打",
+    "你玩过吗",
+    "你玩过什么",
+    "他玩过这个，说还行",
+    "想通关一次试试",
+    "打算二周目再看",
+    "你们平时玩得多吗",
+    "知道这作，机器人少女那个",
+    "玩游戏我还没真的玩过",
+    "大家也是玩过的吧，一聊起来就收不住了",
+    "别人玩过的我就不评价了",
+    "你玩过不？",
+  ])
+    assert.equal(claimedPlay(fine), false, fine);
+  const asked = {
+    persona: {},
+    messages: [{ id: 1, role: "user", text: "你玩过atri吗" }],
+  };
+  const decision = { choice: "speak", targetMessageIds: [1] };
+  assert(
+    validateResponse(
+      { bubbles: ["某作玩过，最后那段是真的绷不住"] },
+      asked,
+      decision,
+    ).some((issue) => issue.includes("没有这样的经历记录")),
+  );
+  assert.equal(
+    validateResponse(
+      { bubbles: ["没玩过，就知道是机器人少女那个"] },
+      asked,
+      decision,
+    ).length,
+    0,
+  );
+});
+
+test("没有玩过的说法，不会被整理成她的样子", () => {
+  const w = world();
+  try {
+    const seen = w.say("group:1", "10001", "你玩过什么游戏", { name: "阿明" });
+    const said = w.say("group:1", "bot", "主机玩得多，galgame玩得比较多");
+    const claimed = w.mind.self.propose(
+      {
+        kind: "interest",
+        content: "我玩得比较杂，主机玩得多，galgame玩得比较多",
+        sources: [said.seq],
+      },
+      { origin: "memory", time: w.now() },
+    );
+    assert.match(claimed.rejected, /没有玩过/);
+    const wanted = w.say(
+      "group:1",
+      "bot",
+      "我喜欢画面舒服、日常写得好的galgame，想慢慢挑着玩",
+    );
+    const liked = w.mind.self.propose(
+      {
+        kind: "interest",
+        content: "我喜欢画面舒服、日常写得好的galgame，想慢慢挑着玩",
+        sources: [wanted.seq],
+      },
+      { origin: "memory", time: w.now() },
+    );
+    assert.equal(liked.rejected, undefined);
+    assert.ok(seen);
+  } finally {
+    w.close();
+  }
 });
 
 test("没改过的第一版种子换成现在的，不另计一次修改", () => {
