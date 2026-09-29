@@ -34,9 +34,15 @@ const FEEDBACK = {
   natural: "挺自然",
 };
 
-function groupStyle(mind, session) {
+// The way a room talks is read as of `now`, not as of the wall clock: a replay
+// or a test that moves the clock must see the room as it was at that moment.
+function groupStyle(mind, session, now) {
   try {
-    const rows = mind.store.context(session, 200, 0);
+    const rows = mind.db
+      .prepare(
+        "SELECT * FROM (SELECT * FROM messages WHERE session_id=? AND is_demo=0 AND time<=? ORDER BY id DESC LIMIT 200) ORDER BY id",
+      )
+      .all(session, now + 60000);
     const ids = rows.map((row) => row.event_id).filter(Boolean);
     const away = ids.length
       ? new Set(
@@ -50,6 +56,7 @@ function groupStyle(mind, session) {
       : new Set();
     const profile = summarizeGroupStyle(
       away.size ? rows.filter((row) => !away.has(row.event_id)) : rows,
+      now,
     );
     return profile.ready ? profile.summary : "";
   } catch {
@@ -82,7 +89,7 @@ export function innerView(
   const threads = mind.self.active({ before: now, now, limit: 6 });
   const living = mind.self.living({ before: now, now, room: session });
   const cues = speakerCues(cue);
-  const carries = (thread) => mind.meetings.stays(thread, session);
+  const carries = (thread) => mind.meetings.stays(thread, session, now);
   const visibleThreads = threads.filter(carries);
   const shownLiving = living && carries(living) ? living : null;
   const reminded = [
@@ -116,7 +123,7 @@ export function innerView(
   const read = mind.reading
     .recent({ now, limit: 2 })
     .filter((r) => r.created > now - 7 * DAY);
-  const room = kind === "group" ? groupStyle(mind, session) : "";
+  const room = kind === "group" ? groupStyle(mind, session, now) : "";
   const spoken = (value) =>
     value && mind.meetings.sayable(value, session) ? value : "";
   const self = {

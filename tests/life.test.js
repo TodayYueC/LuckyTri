@@ -385,7 +385,7 @@ test("她不在的会话，不会变成独处的经历", async (t) => {
     {},
     "",
     { calls: [] },
-    { force: true, models: w.system.models },
+    { force: true, models: w.system.models, now: w.now() },
   );
   const memoryCall = w.calls
     .slice(before)
@@ -584,12 +584,12 @@ test("独处时她会读共享资料：按兴趣挑、一段段读下去，读�
   assert.equal((await w.life.tick()).status, "written");
   assert.equal(seen[0].title, "天文笔记", "按她的兴趣挑");
   assert.match(seen[0].part, /第 1 \/ \d+ 段/);
-  const [read] = w.mind.reading.recent();
+  const [read] = w.mind.reading.recent({ now: w.now() });
   assert.equal(read.note, "原来流星雨是彗星留下的尘埃");
   assert.deepEqual(w.mind.thoughts.list()[0].sources, [seen[0].ref]);
   assert.ok(w.mind.self.active().some((s) => s.sources.includes(seen[0].ref)));
   assert.match(
-    w.mind.view({ session: "group:1" }).self.readLately[0],
+    w.mind.view({ session: "group:1", now: w.now() }).self.readLately[0],
     /天文笔记/,
   );
   w.advance(7 * HOUR);
@@ -1297,7 +1297,10 @@ test("独处和日记能引用已经留下的意思；没发生的、撤销的�
   assert.equal(thought.outreach, "");
   assert.equal(w.sent.length, 0);
   const meetingId = seen.meetings[0].ref.slice(2);
-  assert.match(w.mind.meetings.withPerson("10001")[0].meant, /面试/);
+  assert.match(
+    w.mind.meetings.withPerson("10001", { before: w.now() + 1 })[0].meant,
+    /面试/,
+  );
   w.mind.revoke("meeting", meetingId);
   assert.equal(
     w.mind.meetings
@@ -1689,7 +1692,8 @@ test("整体自述来自私下经历时先抽出自己的倾向，不把私下�
   };
   assert.equal((await w.life.evolve()).status, "written");
   assert.equal(calls, 2);
-  const content = w.mind.traits.persona()?.content;
+  const content = w.mind.traits.persona(w.mind.nature.current(), w.now())
+    ?.content;
   assert.match(content, /听完/);
   assert.doesNotMatch(content, /考研|阿明/);
 });
@@ -1724,6 +1728,9 @@ test("已留下的自述带着当天细节时，可以在后来的回看中整�
       : { content: "我愿意听完对方的话，再决定怎么接。" };
   assert.equal((await w.life.evolve()).status, "written");
   assert.equal(calls, 2);
-  assert.match(w.mind.traits.persona()?.content || "", /愿意听完/);
+  assert.match(
+    w.mind.traits.persona(w.mind.nature.current(), w.now())?.content || "",
+    /愿意听完/,
+  );
   assert.equal(w.mind.traits.personaHistory().length, 2);
 });

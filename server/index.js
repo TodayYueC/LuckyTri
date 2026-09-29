@@ -3,6 +3,7 @@ import { ChatSystem } from "./core/orchestrator.js";
 import { Life } from "./mind/life.js";
 import { createApp } from "./app.js";
 import { createOneBotGateway } from "./channels/gateway.js";
+import { createBackupScheduler } from "./backup-scheduler.js";
 
 const store = createStore();
 const gateway = createOneBotGateway(store);
@@ -14,6 +15,7 @@ const life = new Life(chatSystem, {
   online: () => gateway.status().online,
 });
 life.start();
+const backups = createBackupScheduler();
 const host = process.env.HOST || "127.0.0.1";
 if (
   !["127.0.0.1", "localhost", "::1"].includes(host) &&
@@ -25,6 +27,7 @@ let stopping = false;
 function shutdown() {
   if (stopping) return;
   stopping = true;
+  backups.stop();
   life.close();
   chatSystem.close();
   gateway.close();
@@ -40,6 +43,7 @@ const app = createApp({
   life,
   runtime: {
     connection: () => gateway.status(),
+    backup: () => backups.status(),
     shutdown,
   },
 });
@@ -53,6 +57,11 @@ function runMaintenance() {
     chatSystem.maintain();
   } catch (error) {
     console.error(`后台维护失败：${error.message}`);
+  }
+  try {
+    backups.tick();
+  } catch (error) {
+    console.error(`自动备份调度失败：${error.message}`);
   }
   gateway.refreshDirectory().catch(() => {});
 }

@@ -1776,7 +1776,7 @@ test("阶段摘要的句尾必须来自这段原话", async () => {
         w.system.models.profile(),
         "",
         { calls: [] },
-        { force: true, models: w.system.models },
+        { force: true, models: w.system.models, now: w.now() },
       );
       const row = w.store.db.prepare("SELECT data FROM core_stages").get();
       return JSON.parse(row.data).summary;
@@ -1858,7 +1858,7 @@ test("被要求保密的话，整理记忆时也会记成秘密", async (t) => {
     w.system.models.profile(),
     "",
     { calls: [] },
-    { force: true, models: w.system.models },
+    { force: true, models: w.system.models, now: w.now() },
   );
   const row = w.store.db
     .prepare(
@@ -1876,7 +1876,7 @@ test("被要求保密的话，整理记忆时也会记成秘密", async (t) => {
     undefined,
     "原话里没有的事不能记成他的事实",
   );
-  const ahead = w.mind.anticipations.pending(Date.now());
+  const ahead = w.mind.anticipations.pending(w.now());
   assert.ok(ahead.some((a) => a.content === "要辞职"));
   assert.equal(
     ahead.some((a) => /结婚/.test(a.content)),
@@ -1937,7 +1937,7 @@ test("撤销过的事，不会再写进这段记录", async (t) => {
     w.system.models.profile(),
     "",
     { calls: [] },
-    { force: true, models: w.system.models },
+    { force: true, models: w.system.models, now: w.now() },
   );
   const stage = JSON.parse(
     w.store.db.prepare("SELECT data FROM core_stages").get().data,
@@ -2006,7 +2006,7 @@ test("别人插话之后，他要求保密的事仍然是秘密", async (t) => {
     w.system.models.profile(),
     "",
     { calls: [] },
-    { force: true, models: w.system.models },
+    { force: true, models: w.system.models, now: w.now() },
   );
   assert.equal(
     w.store.db
@@ -2114,7 +2114,7 @@ test("整理记忆时，她自己说过的看法和承诺成为她的一部分�
     {},
     "",
     { calls: [] },
-    { force: true, models: w.system.models },
+    { force: true, models: w.system.models, now: w.now() },
   );
   const threads = w.mind.self.active().map((t) => t.content);
   assert.deepEqual(threads.sort(), ["我觉得早起挺好", "明天提醒他早起"].sort());
@@ -2126,7 +2126,7 @@ test("整理记忆时，她自己说过的看法和承诺成为她的一部分�
       content: "我觉得早起很舒服",
       sources: [mine.seq],
     },
-    { valid: new Set([`m:${mine.seq}`]), origin: "memory", time: Date.now() },
+    { valid: new Set([`m:${mine.seq}`]), origin: "memory", time: w.now() },
   );
   assert.equal(drifted.rejected, "没有新的经历");
   assert.equal(

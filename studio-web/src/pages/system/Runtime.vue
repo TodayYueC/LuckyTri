@@ -4,6 +4,7 @@ import { toast } from "../../api";
 import { go, studio } from "../../stores/studio";
 import { fetchState, patchSettings } from "../../plates/workspace";
 import Toggle from "../../components/ui/Toggle.vue";
+import { ago } from "../../format";
 
 const enabled = ref(Boolean(studio.health.settings.enabled));
 const demo = ref(Boolean(studio.health.settings.demo));
@@ -12,6 +13,36 @@ const enabledSessions = computed(
     (studio.core.sessions || []).filter((s: any) => s.enabled && !s.archived)
       .length,
 );
+
+// Her whole continuity is one database file, so whether a copy of it is
+// being kept belongs next to the switches that decide whether she runs.
+const backup = computed(() => {
+  const state = studio.health.backup;
+  if (!state) return null;
+  if (!state.enabled)
+    return { value: "已关闭", caption: "自动备份", tone: "warn", title: "" };
+  if (state.lastError)
+    return {
+      value: "失败",
+      caption: "自动备份出错，稍后重试",
+      tone: "danger",
+      title: state.lastError.message,
+    };
+  if (!state.latest)
+    return {
+      value: "还没有",
+      caption: "自动备份，运行一阵后会做第一份",
+      tone: "",
+      title: "",
+    };
+  const mb = Math.max(1, Math.round(state.latest.bytes / 1048576));
+  return {
+    value: ago(state.latest.at),
+    caption: `上次自动备份 · ${mb} MB · 已留 ${state.count}/${state.keep} 份`,
+    tone: "",
+    title: state.latest.name,
+  };
+});
 
 async function save() {
   try {
@@ -71,6 +102,16 @@ async function save() {
         <b>{{ studio.health.connection?.online ? "在线" : "离线" }}</b
         ><span>QQ 连接</span>
       </button>
+      <div
+        v-if="backup"
+        class="stat"
+        :class="backup.tone"
+        :title="backup.title"
+        data-testid="backup-status"
+      >
+        <b>{{ backup.value }}</b
+        ><span>{{ backup.caption }}</span>
+      </div>
     </section>
   </div>
 </template>
@@ -132,7 +173,8 @@ async function save() {
   display: grid;
   gap: 12px;
 }
-.numbers button {
+.numbers button,
+.numbers .stat {
   display: grid;
   justify-items: start;
   gap: 2px;
@@ -164,6 +206,12 @@ async function save() {
 .numbers b {
   font: 750 29px var(--font-display);
   color: var(--accent);
+}
+.numbers .stat.warn b {
+  color: var(--warn);
+}
+.numbers .stat.danger b {
+  color: var(--danger);
 }
 .numbers span {
   color: var(--ink-soft);

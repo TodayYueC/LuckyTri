@@ -37,6 +37,7 @@ export function mountStudio(app, store, runtime) {
       reasoningEfforts: REASONING_EFFORTS,
       effortLabels: EFFORT_LABELS,
       connection,
+      backup: runtime.backup?.() ?? null,
       sessions: store.db
         .prepare(
           "SELECT s.*, (SELECT text FROM messages WHERE session_id=s.id AND is_demo=? ORDER BY id DESC LIMIT 1) preview,(SELECT COUNT(*) FROM messages WHERE session_id=s.id AND is_demo=?) message_count FROM sessions s ORDER BY s.id",

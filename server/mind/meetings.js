@@ -635,7 +635,7 @@ export class Meetings {
   }
   // Private rooms a citation rests on. Empty means the words are hers, or
   // they came from somewhere she can speak of openly.
-  privateRoots(sources) {
+  privateRoots(sources, before = Date.now()) {
     const refs = Array.isArray(sources) ? sources : parse(sources, []);
     const rooms = new Set();
     for (const row of this.places(refs))
@@ -655,8 +655,7 @@ export class Meetings {
     for (const ref of refs) {
       const match = /^d:(\d{4}-\d{2}-\d{2})$/.exec(String(ref));
       if (!match) continue;
-      for (const id of this.#privateSessionsOn(match[1], Date.now()))
-        rooms.add(id);
+      for (const id of this.#privateSessionsOn(match[1], before)) rooms.add(id);
     }
     for (const ref of refs.filter((item) => String(item).startsWith("t:"))) {
       const owned =
@@ -669,8 +668,8 @@ export class Meetings {
   }
   // A thread stays in a room when its words were not learned in private, or
   // this is the room where they were.
-  stays(thread, session) {
-    const roots = new Set(this.privateRoots(thread?.sources || []));
+  stays(thread, session, before = Date.now()) {
+    const roots = new Set(this.privateRoots(thread?.sources || [], before));
     if (thread?.session_id && isPrivateSession(thread.session_id))
       roots.add(thread.session_id);
     return !roots.size || roots.has(session);
