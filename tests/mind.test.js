@@ -1338,6 +1338,61 @@ test("她自己说过以后，那条愿望仍按她说过的日子留在心上",
   }
 });
 
+test("她刚开口说过的那一条，就是正在过的", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    assert.match(
+      w.mind.self.living({ now: w.now() + 2000 }).content,
+      /轻松日常的gal/,
+    );
+    const said = w.say("group:1", "10001", "今天好冷", { name: "阿明" });
+    w.mind.meetings.keep(
+      { choice: "speak", appraisal: "想接一句自己的", topic: "" },
+      {
+        session: "group:1",
+        snapshot: {
+          batchIds: [said.seq],
+          messages: [
+            {
+              id: said.seq,
+              role: "user",
+              speaker: "10001",
+              name: "阿明",
+              text: said.text,
+            },
+          ],
+        },
+        sent: ["今晚我想完全蒙玩，不看评分不看讨论页。"],
+        time: w.now() + 3000,
+      },
+    );
+    const living = w.mind.self.living({ now: w.now() + 4000 });
+    assert.match(living.content, /蒙玩/);
+    assert.doesNotMatch(living.content, /轻松日常的gal/);
+    assert.equal(living.core, true);
+  } finally {
+    w.close();
+  }
+});
+
 test("她主动发出去的话，也会把那条愿望留在心上", () => {
   const w = world({ start: "2026-09-22T10:00:00+08:00" });
   try {

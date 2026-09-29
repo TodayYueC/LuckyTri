@@ -167,16 +167,16 @@ export class Self {
       at,
     );
   }
-  // Among her own wishes, the one her latest note or sent line is about.
-  // A later send about another wish takes this seat from an earlier note.
-  // Planned drafts do not. No such line: the one still most present.
-  // Duties never enter this list.
+  // Among her own wishes, the one her latest note or spoken line is about.
+  // A later send or answer about another wish takes this seat from an
+  // earlier note. Planned drafts and silent meetings do not. No such
+  // line: the one still most present. Duties never enter this list.
   #preferLived(candidates, now) {
     if (!candidates.length) return null;
     const notes = this.mind.thoughts
       .open({ now, limit: 8 })
       .filter((t) => t.kind === "expression" || t.kind === "unfinished");
-    const lines = [];
+    const lines = this.mind.meetings.recentSaid(now, 8);
     for (const note of notes) {
       if (note.outreach_status === "sent" && note.outreach)
         lines.push({
