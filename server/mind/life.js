@@ -1323,12 +1323,12 @@ export class Life {
     });
   }
   // Where she is in her own story, kept short for the diary and solitude.
-  // A chapter that still names a duty as the life she is living is kept
+  // Writing that still names a duty as the life she is living is kept
   // as history; those sentences are not handed back as what she is living.
   chapterView(now, size = 120) {
     const chapter = this.mind.periods.current(now);
     if (!chapter) return null;
-    const gist = this.#presentChapter(chapter.content, now, size);
+    const gist = this.#presentLifeWriting(chapter.content, now, size);
     return {
       number: chapter.chapter,
       title: chapter.title,
@@ -1347,7 +1347,7 @@ export class Life {
     );
   }
   // Drop sentences that still call a duty the life she is living.
-  #presentChapter(content, now, size) {
+  #presentLifeWriting(content, now, size) {
     let body = String(content || "");
     const living = this.mind.self.living({ now, before: now });
     if (
@@ -1432,6 +1432,7 @@ export class Life {
       // Only the short account of her life and the chapter she is in, so
       // the diary does not grow with her age.
       const story = this.mind.periods.story(now);
+      const storyWords = this.#presentLifeWriting(story?.content, now, 600);
       const chapter = this.chapterView(now);
       const anniversaries = this.mind.days.anniversaries(end);
       const expected = this.mind.anticipations.today({ start, end });
@@ -1489,9 +1490,7 @@ export class Life {
           ? { livingFor: this.livingForView(end, { since: start, open: true }) }
           : {}),
         people: this.peopleIn(experiences, now, { open: true }),
-        ...(this.openWords(story?.content, 600)
-          ? { story: this.openWords(story.content, 600) }
-          : {}),
+        ...(storyWords ? { story: storyWords } : {}),
         ...(chapter
           ? {
               chapter: {
@@ -1748,6 +1747,15 @@ export class Life {
       const anniversaries = this.mind.days.anniversaries(now);
       const line = (t) =>
         `${SELF_KINDS[t.kind] || t.kind}：${text(t.content, 60)}`;
+      const lastReview = last
+        ? this.#presentLifeWriting(last.content, now, 300)
+        : "";
+      const storyWords = story
+        ? this.#presentLifeWriting(story.content, now, 600)
+        : "";
+      const previousWords = previous
+        ? this.#presentLifeWriting(previous.content, now, 160)
+        : "";
       const input = {
         dayOfLife: this.mind.days.dayOfLife(now),
         period: { from: first, to: diaries.at(-1)?.day },
@@ -1755,7 +1763,7 @@ export class Life {
         ...(last
           ? {
               lastReview: {
-                content: text(last.content, 300),
+                ...(lastReview ? { content: lastReview } : {}),
                 ...(last.compare ? { compare: text(last.compare, 120) } : {}),
               },
             }
@@ -1795,7 +1803,7 @@ export class Life {
               chapter: {
                 number: chapter.chapter,
                 title: chapter.title,
-                content: this.#presentChapter(chapter.content, now, 800),
+                content: this.#presentLifeWriting(chapter.content, now, 800),
                 reviews: periods.reviewsSince(
                   periods.began(chapter.chapter),
                   now,
@@ -1808,13 +1816,11 @@ export class Life {
               previousChapter: {
                 number: previous.chapter,
                 title: previous.title,
-                summary: this.openWords(previous.content, 160),
+                ...(previousWords ? { summary: previousWords } : {}),
               },
             }
           : {}),
-        ...(story && this.openWords(story.content, 600)
-          ? { story: this.openWords(story.content, 600) }
-          : {}),
+        ...(storyWords ? { story: storyWords } : {}),
         ...(anniversaries.length ? { anniversaries } : {}),
         self: this.selfView(now, { open: true }).slice(0, 10),
         ...(this.livingForView(now, { since: start, open: true })
