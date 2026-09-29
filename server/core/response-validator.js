@@ -19,6 +19,52 @@ export function contradictoryOwnWords(snapshot, decision = {}) {
     words.some((line) => /就是|确实|说的就是|指的就是/.test(line))
   );
 }
+// "你刚说……" is a claim about the last few minutes, so the room can settle it.
+// The one that went wrong was her own joke handed back as the other person's
+// words. Only a claim that shares nothing with anything that person said in the
+// window is refused; "你刚说的那个" points at their words without repeating them.
+const IMMEDIATE_CLAIM =
+  /你(?:自己|才)?(?:刚(?:刚|才)?|方才)(?:自己)?(?:不是)?(?:明明)?(?:说|讲|提(?:到|过)?|发了?|打了?)(?:过)?(的|了)?[，,：:\s]*["“「]?([^，。！？!?；;"”」\n]{2,30})/g;
+const POINTS_AT = /^(?:那|这|哪|什么|啥|话|事|东西|内容|意思|一句|一堆|一些)/;
+export function unsupportedImmediateClaim(text, snapshot, targetMessages) {
+  const speakers = new Set(targetMessages.map((m) => String(m.speaker)));
+  if (!speakers.size) return "";
+  const said = interestTerms(
+    (snapshot.messages || [])
+      .filter((m) => m.role !== "assistant" && speakers.has(String(m.speaker)))
+      .slice(-60)
+      .map((m) => m.text || ""),
+  );
+  for (const match of String(text).matchAll(IMMEDIATE_CLAIM)) {
+    const claim = match[2].trim();
+    if (match[1] === "的" && POINTS_AT.test(claim)) continue;
+    const terms = interestTerms([claim]);
+    if (terms.size < 2) continue;
+    if (![...terms].some((term) => said.has(term))) return claim;
+  }
+  return "";
+}
+// The other half of the same slip: "你自己说的……" followed by a line that was
+// her own earlier message and that nobody else said in the window.
+const THEY_SAID = /你(?:自己)?(?:刚|才|明明)?说(?:过|的)/;
+export function attributesOwnWordsToThem(text, snapshot) {
+  if (!THEY_SAID.test(text)) return false;
+  const said = norm(String(text).replace(THEY_SAID, ""));
+  const recent = (snapshot.messages || []).slice(-40);
+  const mine = recent
+    .filter((m) => m.role === "assistant")
+    .map((m) => norm(m.text || ""));
+  const theirs = recent
+    .filter((m) => m.role !== "assistant")
+    .map((m) => norm(m.text || ""));
+  let echoed = false;
+  for (let i = 0; i + 6 <= said.length; i += 2) {
+    const phrase = said.slice(i, i + 6);
+    if (theirs.some((line) => line.includes(phrase))) return false;
+    if (mine.some((line) => line.includes(phrase))) echoed = true;
+  }
+  return echoed;
+}
 // The reviewer judges one reply; it needs the turn and its recent lead-in,
 // not the summaries, recall or the rest of the transcript.
 export function reviewContext(snapshot, decision = {}) {
@@ -212,6 +258,15 @@ export function validateResponse(result, snapshot, decision, maxChars = 180) {
     )
       issues.push(
         "别处已有本人真实发出的相关原话，不能否认自己说过；先核对当时对象再修正",
+      );
+    const claimed = unsupportedImmediateClaim(text, snapshot, targetMessages);
+    if (claimed)
+      issues.push(
+        `说对方刚说过“${claimed}”，但本轮记录里对方没有这样说；不能把自己先说的话或别人的话安到对方头上，承认是自己顺口带出来的，或直接问他`,
+      );
+    if (attributesOwnWordsToThem(text, snapshot))
+      issues.push(
+        "你说是对方说的那句话，其实是你自己先说的；不能把自己的话安到对方头上，承认是自己先说的",
       );
     if (
       affectionTurn &&

@@ -594,6 +594,51 @@ npm start
           不在这份备份里。
         </p>
         <p>
+          TA 的一切都存在这一个数据库里，所以服务运行时会自动备份：默认每 24
+          小时在另一个进程里做一份 <code>luckytri-auto-*.db</code>，只保留最近 7
+          份，做完会检查完整性。自动备份里有聊天、记忆、自我、日记和关系，但不带一天以前的模型调用记录（每条动辄几百
+          KB，会让备份大上十几倍），所以“为什么这么说”只能回看最近一天的。<code
+            >npm run backup</code
+          >
+          仍然是完整备份。可以在 <code>.env</code> 里调整：
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>变量</th>
+              <th>含义</th>
+              <th>默认</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>BACKUP_INTERVAL_HOURS</code></td>
+              <td>自动备份间隔，<code>0</code> 关闭</td>
+              <td><code>24</code></td>
+            </tr>
+            <tr>
+              <td><code>BACKUP_KEEP</code></td>
+              <td>保留几份自动备份</td>
+              <td><code>7</code></td>
+            </tr>
+            <tr>
+              <td><code>BACKUP_TRACE_DAYS</code></td>
+              <td>备份里保留最近几天的调用记录</td>
+              <td><code>1</code></td>
+            </tr>
+            <tr>
+              <td><code>BACKUP_DIR</code></td>
+              <td>备份目录</td>
+              <td><code>data/backups</code></td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          想立刻做一份自动备份：<code
+            >node scripts/backup.js --auto --force</code
+          >。自动备份失败会记在启动窗口/<code>data/launcher.log</code>，并隔越来越久才重试。备份和数据库放在同一块磁盘上，防不了磁盘损坏；重要的备份请自己复制到别处。
+        </p>
+        <p>
           恢复时先停止服务，把当前 <code>data/friend.db</code> 及同名
           <code>-wal</code>、<code>-shm</code> 移开，再把选中的备份复制为
           <code>data/friend.db</code>。设置了

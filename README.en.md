@@ -83,6 +83,7 @@ The ignored `data/` directory contains local databases, chat logs, model credent
 npm run dev:ui       # WebUI development server
 npm run build:ui     # Build the WebUI
 npm test             # Backend tests
+npm run test:clock   # Backend tests with the wall clock moved back and forward
 npm run test:ui      # Browser smoke tests
 npm run format:check # Check code formatting
 ```
