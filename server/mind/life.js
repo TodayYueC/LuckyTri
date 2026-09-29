@@ -302,6 +302,32 @@ export class Life {
       !timeToSelf
     )
       return fresh ? "新经历还不多" : "没有新的经历";
+    // Nothing but the time passing is the reason, and the last runs on
+    // that reason found nothing: wait longer each time until something new
+    // comes in, instead of asking again on the same clock.
+    const onlyTime =
+      (fresh === 0 || fresh < s.minMessages) &&
+      !revisit &&
+      !feedback &&
+      !shelf &&
+      !ahead;
+    if (onlyTime && last) {
+      let empties = 0;
+      for (const run of this.db
+        .prepare(
+          "SELECT status FROM mind_runs WHERE kind='solitude' AND status NOT IN ('interrupted') ORDER BY started DESC LIMIT 6",
+        )
+        .all()) {
+        if (run.status !== "empty") break;
+        empties++;
+      }
+      if (
+        empties >= 2 &&
+        now - last.started <
+          Math.min(6 * HOUR, s.intervalMinutes * MINUTE * 2 ** (empties - 1))
+      )
+        return "连着几次独处都没有新的理解，等新的经历";
+    }
     return null;
   }
   experiences(since, now, { limit = 5, rows = 24 } = {}) {
