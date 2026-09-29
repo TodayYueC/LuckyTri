@@ -1,3 +1,5 @@
+import { claimedPlay } from "../mind/guard.js";
+
 // Stable message timestamps stay with history; changing clock/style cues belong at the tail.
 export function localClock(time, timeZone = "Asia/Shanghai") {
   const parts = Object.fromEntries(
@@ -236,6 +238,10 @@ export function conversationalIssues(result, snapshot, decision = {}) {
     )
   )
     issues.push("不要为共情虚构自己同样上班或亲历；回应对方的事情即可");
+  if (texts.some(claimedPlay))
+    issues.push(
+      "不要说自己玩过、通关过什么或平时玩得杂：你没有这样的经历记录。可以说知道这作、听人聊过，或者想玩；被问到玩过什么，如实说还没真的玩过",
+    );
   if (
     texts.some((t) =>
       /^.{2,22}[啊呀][，,…。]*(?:那)?(?:确实|真的|有点)/.test(t),
