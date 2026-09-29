@@ -4,6 +4,7 @@ import { withFallback } from "../core/model-manager.js";
 import { evidence, hasCredential, text } from "./util.js";
 import { isPrivateSession } from "./memory.js";
 import { sameRecentTheme } from "./novelty.js";
+import { sameSelf } from "./salience.js";
 
 // Form a thought before choosing an audience. No transcript, unanswered
 // question or destination is supplied here: those belong to delivery, not
@@ -165,6 +166,25 @@ export class OwnVoice {
             runId: id,
             time: now,
           });
+          // A new wording of a wish she already holds writes back to that
+          // thread. It does not invent a second livingFor.
+          const match = this.mind.self
+            .latest(now)
+            .find(
+              (row) =>
+                row.status !== "closed" &&
+                !/^(?:我)?(?:会|愿意|想)?(?:建议|劝|提醒|鼓励)/.test(content) &&
+                sameSelf(row.content, content),
+            );
+          if (match)
+            this.mind.self.propose(
+              {
+                thread: match.thread,
+                content: text(content, 80),
+                sources: [`t:${noteId}`],
+              },
+              { origin: "expression", time: now },
+            );
           note = {
             id: noteId,
             // An idea may grow privately after it has been spoken. Without a

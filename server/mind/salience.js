@@ -1,4 +1,5 @@
 import { interestTerms } from "./attention.js";
+import { similar } from "./util.js";
 
 // How long each kind of thing stays with her without being lived again, as
 // a half-life in days she actually lived. Nothing here is deleted: a faded
@@ -92,11 +93,27 @@ export function grounded(content, texts) {
 
 // One set, or one set per speaker. An empty list means nothing was said.
 export function cueList(cue, cues) {
-  if (Array.isArray(cues) && cues.length) return cues.filter((set) => set?.size);
+  if (Array.isArray(cues) && cues.length)
+    return cues.filter((set) => set?.size);
   if (cue?.size) return [cue];
   return [];
 }
 
 export function anyTouches(content, cues, need = 2) {
   return cueList(null, cues).some((cue) => touches(content, cue, need));
+}
+
+// Two wordings of the same self-thread. A longer sentence that still
+// carries the shorter wish's distinctive pairs is the same thread.
+// Sharing only a frame ("我想把…完") is not enough.
+export function sameSelf(a, b) {
+  if (similar(a, b, 0.75)) return true;
+  const left = interestTerms([a]);
+  const right = interestTerms([b]);
+  if (!left.size || !right.size) return false;
+  let shared = 0;
+  for (const term of left) if (right.has(term)) shared++;
+  const shorter = Math.min(left.size, right.size);
+  const longer = Math.max(left.size, right.size);
+  return shared >= 2 && shared / shorter >= 0.6 && shared / longer >= 0.22;
 }
