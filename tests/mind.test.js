@@ -952,6 +952,59 @@ test("章节还写着对别人的承诺时，不再把它读成正在过的生�
   }
 });
 
+test("上次回顾还写着对别人的承诺时，不再把它读成正在过的生活", async () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.periods.write("week", {
+      content:
+        "这两天我正在为自己而活的那件事——我会留意他的疲惫，但不替他安排生活——被碰到了三次。边界是我自己收住话的那一刻才成立。",
+      time: w.now(),
+    });
+    w.mind.periods.write("story", {
+      content:
+        "我从普通的聊天走到现在。我为自己而活的那件事还是留意他的疲惫，不替他安排生活。",
+      time: w.now(),
+    });
+    w.mind.periods.writeChapter({
+      number: 1,
+      title: "把话停在合适的地方",
+      content:
+        "这一章还叫这个名字。\n我为自己而活的那件事还在进行：我会留意他的疲惫，但不替他安排生活。",
+      time: w.now() + 1000,
+    });
+    let seen = null;
+    w.answers.weekly = (data) => {
+      seen = data;
+      return {
+        week: "这几天我在过自己的日子。",
+        story: data.livingFor
+          ? `我现在在为自己过：${data.livingFor.content}`
+          : "来路",
+      };
+    };
+    const result = await w.life.reviewPeriod(w.now() + 2000);
+    assert.equal(result.status, "written");
+    assert.ok(seen.lastReview);
+    assert.doesNotMatch(seen.lastReview.content || "", /疲惫/);
+    assert.doesNotMatch(seen.lastReview.content || "", /为自己而活的那件事/);
+    assert.match(seen.lastReview.content || "", /边界/);
+    assert.doesNotMatch(seen.story || "", /疲惫/);
+    assert.doesNotMatch(seen.chapter.content || "", /疲惫/);
+    assert.match(seen.livingFor.content, /蒙玩/);
+  } finally {
+    w.close();
+  }
+});
+
 test("正在过的事已经不在这一章里时，隔一天也可以回顾", () => {
   const w = world();
   try {
