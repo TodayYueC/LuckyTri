@@ -1501,6 +1501,63 @@ test("开启图片理解后，回复拿到的是画面而不是图片占位符",
   store.db.close();
 });
 
+test("图片细节需要复审时，复审模型也得到同一张安全画面", async () => {
+  const { store } = setup();
+  store.save({ enabled: true, apiKey: "k" });
+  const session = "private:12345";
+  store.db
+    .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
+    .run(session, "测试", "private");
+  const seen = [];
+  const profile = {
+    ...defaultModel(store.settings()),
+    vision: true,
+    apiKey: "k",
+  };
+  const system = new ChatSystem(store, async () => ({ message_id: 1 }), {
+    models: {
+      profile: () => profile,
+      call: async (_profile, stage, _prompt, data, _trace, images = []) => {
+        seen.push({ stage, images: images.map((image) => image.messageId) });
+        if (stage === "validation") {
+          assert.equal(data.response.bubbles[0], "图上写着66%");
+          return { ok: true, issues: [] };
+        }
+        return {
+          choice: "speak",
+          reason: "接住难过的心情并看图",
+          targetMessageIds: [1],
+          bubbles: ["图上写着66%"],
+        };
+      },
+    },
+    loadVisionImages: async (images) => ({
+      images: images.map((image) => ({
+        ...image,
+        url: "data:image/png;base64,iVBORw0KGgo=",
+      })),
+      unavailable: [],
+    }),
+  });
+  system.repo.append(
+    msg(1, {
+      sessionId: session,
+      kind: "private",
+      text: "[图片]看这个有点难过",
+      attachments: [{ type: "image", url: "https://gchat.qpic.cn/a.png" }],
+    }),
+  );
+  const trace = await system.process(session, system.repo.events(session));
+  assert.equal(trace.status, "sent");
+  assert.deepEqual(seen, [
+    { stage: "turn", images: [1] },
+    { stage: "validation", images: [1] },
+  ]);
+  assert.doesNotMatch(JSON.stringify(trace), /iVBORw0KGgo=/);
+  system.close();
+  store.db.close();
+});
+
 test("主模型不能看图时，视觉模型的观察进入回复且不附带外链", async () => {
   const { store } = setup();
   store.save({ enabled: true, apiKey: "k" });

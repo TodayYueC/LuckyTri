@@ -714,6 +714,45 @@ test("旧稿完成后对方又连发，首句发送前并回队列重组", async
   store.db.close();
 });
 
+test("追问约定的两次草稿都不过关时，用具体核对回应代替‘好’", async () => {
+  const { store } = setup();
+  const session = "group:12345";
+  store.db
+    .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
+    .run(session, "测试", "group");
+  const sent = [];
+  const system = new ChatSystem(
+    store,
+    async (_message, text) => (sent.push(text), { message_id: 1 }),
+    {
+      models: {
+        profile: () => defaultModel(store.settings()),
+        call: async (_profile, stage) =>
+          stage === "turn"
+            ? {
+                choice: "speak",
+                reason: "核对承诺",
+                targetMessageIds: [1],
+                bubbles: ["第一句不该发", "第二句也不该发"],
+              }
+            : { bubbles: ["仍然拆成两句", "仍然多说一句"] },
+      },
+    },
+  );
+  system.repo.append(
+    msg(1, {
+      text: "@我 你之前答应我什么你忘了吗",
+      mentions: ["99999"],
+    }),
+  );
+  const trace = await system.process(session, system.repo.events(session));
+  assert.equal(trace.status, "sent");
+  assert.deepEqual(sent, ["你问的约定我得认真核对，刚才我没接住。"]);
+  assert.match(trace.steps.join(" "), /本地安全短句/);
+  system.close();
+  store.db.close();
+});
+
 test("复审只带这一轮需要的上下文", () => {
   const messages = Array.from({ length: 100 }, (_, i) => ({
     id: i + 1,

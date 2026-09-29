@@ -988,11 +988,21 @@ export class ChatSystem {
       return finish("stale", "生成期间语境已更新，旧稿未发送");
     };
     const outdated = () => !c.replay && !c.preview && !isCurrent();
+    const focus = replyFocus(snapshot, turn).kind;
+    const fallbackOptions = [
+      ...(focus === "promise_check"
+        ? ["你问的约定我得认真核对，刚才我没接住。", "我先认真核对一下。"]
+        : []),
+      "嗯",
+      "好",
+      "行",
+      "收到",
+    ];
     const fallbackText = turn.crisis?.clear
       ? "你现在还好吗？身边有人能陪着你吗？"
       : snapshot.initiative
         ? ""
-        : ["嗯", "好", "行", "收到"].find(
+        : fallbackOptions.find(
             (text) =>
               !(nature.forbidden || []).some((word) => text.includes(word)) &&
               !snapshot.messages
@@ -1040,7 +1050,6 @@ export class ChatSystem {
         issues.push("这句话把私下知道的事说出来了，不能在这里说");
       return issues;
     };
-    const focus = replyFocus(snapshot, turn).kind;
     const recentPrivateContinuity =
       c.direct &&
       !c.privateChat &&
@@ -1090,7 +1099,7 @@ export class ChatSystem {
             response,
             replyFocus: replyFocus(snapshot, turn),
             imageEvidence: c.generationImages.length
-              ? "本轮模型看见了图片画面，回复里的画面描述可以保留。"
+              ? "复审已附上回合模型看到的同一张画面；据图核对具体描述，不凭空判定为编造。"
               : snapshot.vision
                 ? "本轮有图片观察结果，回复可以依据 context.vision，不要当成编造。"
                 : snapshot.unavailableImages?.length
@@ -1103,6 +1112,7 @@ export class ChatSystem {
               : {}),
           },
           trace,
+          c.generationImages,
         );
         if (typeof checked.ok !== "boolean" || !Array.isArray(checked.issues)) {
           trace.steps.push("回复复审结果格式异常，已按本地校验继续");

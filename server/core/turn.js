@@ -186,7 +186,7 @@ export function wordingNotes(turn, snapshot) {
   if (turn.crisis?.clear)
     return "对方可能处在危机里：认真、简短地回应，先关心他现在是否安全、身边有没有人，鼓励联系身边可信的人或当地的求助热线；不说教、不开玩笑、不敷衍。";
   if (turn.choice === "react")
-    return "只写一个极短的反应，比如 hh、？、好耶、啊这，不超过 6 个字。";
+    return "只写一句自然的短反应，最多20字；可以接住对方的玩笑，不必缩成嗯或hh。";
   if (turn.choice === "decline")
     return "用一句自己的话说现在不想聊这个，可以带一点情绪，但不攻击人。";
   return [replyFocus(snapshot, turn).instruction, recallWording(snapshot)]
