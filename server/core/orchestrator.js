@@ -45,7 +45,7 @@ import { invalidateSpeakerNames } from "./speaker-names.js";
 import { demoReply } from "./local-demo.js";
 import { Mind } from "../mind/index.js";
 import { attend, interestTerms } from "../mind/attention.js";
-import { leaks } from "../mind/guard.js";
+import { crisisSignal, leaks } from "../mind/guard.js";
 
 const TRACE_PRUNE_INTERVAL_MS = 3600000;
 const BATCH_LIMIT = 30;
@@ -117,6 +117,8 @@ export class ChatSystem {
     // again: a few later tries, then it is left as it is.
     this.retryDelays = [30000, 120000];
     this.retried = new Map();
+    // Batches already put back once because the person kept talking.
+    this.settled = new Set();
     this.tracePruneDue = 0;
     this.backlogChecked = new Map();
     this.queue = new ConversationManager((id, batch) =>
@@ -158,6 +160,37 @@ export class ChatSystem {
       [settings.name, settings.aliases, settings.enabled, settings.demo],
       this.clearEpoch.get(session) || 0,
     ]);
+  }
+  // While the room was being read (waiting in the queue, describing images),
+  // the person she is about to answer may have kept talking. Spending a whole
+  // turn on the older words only to throw the answer away is waste, and it
+  // makes them wait for it: put the batch back, once, and answer everything
+  // together. Never for a crisis, and only if there is a place to put it back.
+  batchMovedOn(session, batch, snapshot, privateChat) {
+    if (!batch.length) return false;
+    if (batch.some((m) => m.role !== "assistant" && crisisSignal(m.text)))
+      return false;
+    const key = `${session}:${batch[0].seq}`;
+    if (this.settled.has(key)) return false;
+    const speaker = (m) => String(m.speaker ?? m.userId);
+    const asked = snapshot.batch.filter((m) => m.relation === "direct");
+    const focus = new Set(
+      (asked.length ? asked : snapshot.batch.slice(-1)).map(speaker),
+    );
+    const moved = this.repo
+      .eventsAfter(session, batch.at(-1).seq, { simulated: false })
+      .some(
+        (m) =>
+          m.role === "user" &&
+          (privateChat ||
+            focus.has(String(m.userId)) ||
+            (m.replyId &&
+              snapshot.batch.some((b) => b.platformId === m.replyId))),
+      );
+    if (!moved || !this.queue.retain(session, batch)) return false;
+    if (this.settled.size > 500) this.settled.clear();
+    this.settled.add(key);
+    return true;
   }
   // Ask again later for a batch that was spoken to her directly, when the model
   // service was only briefly unavailable. Not for a missing balance or a
@@ -753,6 +786,16 @@ export class ChatSystem {
       if (["presence", "outreach"].includes(occasion?.type)) {
         snapshot.initiative = occasionData;
         trace.snapshot = initiativeContext(snapshot);
+      }
+      if (
+        live &&
+        !occasion &&
+        this.batchMovedOn(session, batch, snapshot, privateChat)
+      ) {
+        trace.steps.push(
+          "读房间的这几秒里，要回的人又说了话：先不花一次调用，并入下一批一起回",
+        );
+        return finish("stale", "读房间时又有新话，并入下一批");
       }
       let turn;
       try {

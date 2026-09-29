@@ -41,12 +41,15 @@ export class ConversationManager {
       else this.lanes.delete(session);
     }
   }
+  // Puts a batch back in front of what has arrived since. Says whether it
+  // could: without a lane there is nothing to put it back into.
   retain(session, batch) {
     const lane = this.lanes.get(session);
-    if (!lane || this.closed) return;
+    if (!lane || this.closed) return false;
     lane.pending = [
       ...new Map([...batch, ...lane.pending].map((m) => [m.seq, m])).values(),
     ].sort((a, b) => a.seq - b.seq);
+    return true;
   }
   // Put a batch back after a pause. `wanted` is asked again when the time
   // comes; a batch nobody needs any more is dropped instead of run.
