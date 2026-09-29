@@ -1,4 +1,5 @@
 import { fitInput } from "./input-budget.js";
+import { parseModelJson } from "./model-json.js";
 import { createHmac } from "node:crypto";
 import {
   RETRYABLE_STATUS,
@@ -1111,7 +1112,30 @@ export class ModelManager {
         }
         throw Error("模型输出被截断，请增加输出预算");
       }
-      return JSON.parse(entry.raw.replace(/^```(?:json)?\s*|\s*```$/g, ""));
+      try {
+        return parseModelJson(entry.raw);
+      } catch (error) {
+        // A reply that is not JSON at all is usually a one-off slip. Ask once
+        // more before a whole turn (or a stretch of solitude) is thrown away.
+        if (
+          error instanceof SyntaxError &&
+          stage !== "test" &&
+          !options.formatRetried
+        ) {
+          entry.error = `模型输出不是有效 JSON，重试一次：${error.message}`;
+          return await this.call(
+            profile,
+            stage,
+            system,
+            data,
+            trace,
+            images,
+            attempt,
+            { ...options, formatRetried: true },
+          );
+        }
+        throw error;
+      }
     } catch (e) {
       entry.error = e.message;
       throw e;

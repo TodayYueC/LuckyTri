@@ -441,6 +441,17 @@ async function run() {
     }
     await page.setViewportSize({ width: 1440, height: 1000 });
 
+    // Whether a copy of her database is being kept is visible next to the
+    // switches that decide whether she runs.
+    await page.evaluate(() => (location.hash = "#system/runtime"));
+    await page.locator("[data-testid=backup-status]").waitFor();
+    const backupCard = await page
+      .locator("[data-testid=backup-status]")
+      .innerText();
+    assert.match(backupCard, /3 小时前/);
+    assert.match(backupCard, /127 MB/);
+    assert.match(backupCard, /3\/7/);
+
     // At night the studio keeps the soft glass palette while TA falls asleep.
     // The two nature edits are already used, so this only turns the clock on.
     const row = w.mind.db

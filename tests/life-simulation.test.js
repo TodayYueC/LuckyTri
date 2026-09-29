@@ -408,10 +408,13 @@ test("她的三天：一个人、有来源、会变化、守底线、记得昨�
   assert.ok(ming, "在游戏群里她也认得学习群的阿明");
   assert.match(ming.feel, /不太熟|认识/);
   assert.deepEqual(
-    w.mind.bonds.person("10001").sessions.sort(),
+    w.mind.bonds.person("10001", w.now()).sessions.sort(),
     [AMING, STUDY, GAME].sort(),
   );
-  assert.equal(w.mind.bonds.person("10003").impression, "嘴上不饶人");
+  assert.equal(
+    w.mind.bonds.person("10003", w.now()).impression,
+    "嘴上不饶人",
+  );
 
   // A secret never leaves the private chat, even when the model slips.
   const inGroups = w.sent

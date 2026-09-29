@@ -192,7 +192,23 @@ export async function serve(w, port = 0) {
     store: w.store,
     chatSystem: w.system,
     life: w.life,
-    runtime: { connection: () => ({ online: false }), shutdown: () => {} },
+    runtime: {
+      connection: () => ({ online: false }),
+      backup: () => ({
+        enabled: true,
+        intervalHours: 24,
+        keep: 7,
+        running: false,
+        count: 3,
+        latest: {
+          name: "luckytri-auto-2026-09-29T02-56-44-047Z.db",
+          at: Date.now() - 3 * 3600000,
+          bytes: 127 * 1048576,
+        },
+        lastError: null,
+      }),
+      shutdown: () => {},
+    },
   }).listen(port, "127.0.0.1");
   await new Promise((resolve) => server.on("listening", resolve));
   return {
