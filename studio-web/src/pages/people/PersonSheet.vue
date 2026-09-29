@@ -253,6 +253,7 @@ watch(
             }}</span>
             <div class="grow">
               <p>{{ m.meant }}</p>
+              <small v-if="m.why" class="faint">当时：{{ m.why }}</small>
               <small class="faint">{{ m.when }} · {{ m.sessionName }}</small>
             </div>
             <button

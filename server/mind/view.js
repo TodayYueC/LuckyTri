@@ -209,6 +209,13 @@ export function innerView(
   const will = shownLiving
     ? mind.meetings.trace(shownLiving.thread, { before: now, session })
     : null;
+  const stood = mind.meetings.stood({
+    session,
+    people,
+    cue,
+    now,
+    limit: 2,
+  });
   const cause =
     affect.cause && mind.meetings.sayable(affect.cause, session)
       ? text(affect.cause, 40)
@@ -238,6 +245,7 @@ export function innerView(
       ...(expectingLines.length ? { expecting: expectingLines } : {}),
       ...(withLines.length ? { with: withLines } : {}),
       ...(will?.touched ? { will: will.text } : {}),
+      ...(stood.length ? { stood } : {}),
       ...(reminded.length ? { reminded } : {}),
       ...(room ? { room } : {}),
       ...(heard.length ? { heard } : {}),

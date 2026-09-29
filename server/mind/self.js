@@ -6,6 +6,7 @@ import {
   anyTouches,
   cueList,
   echoes,
+  sameSelf,
   threadSalience,
 } from "./salience.js";
 import { leaks } from "./guard.js";
@@ -111,7 +112,10 @@ export class Self {
         // A rewording is not a new meeting with the thread. Fade follows the
         // last version that actually brought new evidence.
         salience: threadSalience(
-          { ...row, created: earnedAt(versions.get(row.thread)) ?? row.created },
+          {
+            ...row,
+            created: earnedAt(versions.get(row.thread)) ?? row.created,
+          },
           lived,
         ),
       }));
@@ -233,7 +237,7 @@ export class Self {
     if (action === "new") {
       if (!kind) return { rejected: "类型无效" };
       prior = current.find(
-        (row) => row.kind === kind && similar(row.content, content, 0.75),
+        (row) => row.kind === kind && sameSelf(row.content, content),
       );
       if (prior) action = "revise";
       else if (!sources.length && !SELF_ORIGINATED.has(kind))

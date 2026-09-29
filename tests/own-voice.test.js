@@ -67,6 +67,27 @@ test("先形成自己的内容，再选择对象；旧问题只作历史，不�
   );
 });
 
+test("自己的念头若是已有愿望的另一种说法，写回同一条线索，不另长一条", async (t) => {
+  const w = setup(t);
+  const made = w.mind.self.propose(
+    { kind: "intention", content: "想让角色保留自己的爱好", strength: 0.3 },
+    { origin: "solitude", time: w.now() },
+  );
+  w.answers.expression = { ...IDEA, share: false, words: [] };
+  assert.equal((await w.life.tick()).status, "presence-silent");
+  const note = w.mind.thoughts.list()[0];
+  const versions = w.mind.self.history(made.thread);
+  assert.equal(
+    w.mind.self.latest().filter((row) => row.kind === "intention").length,
+    1,
+  );
+  assert.ok(
+    versions.some((row) => (row.sources || []).includes(`t:${note.id}`)),
+    "念头成为这条愿望的新来源",
+  );
+  assert.match(versions.at(-1).content, /角色|爱好/);
+});
+
 test("也可以只给自己留一笔，未来重读；沉默不伪造收到消息或磨掉记忆", async (t) => {
   const w = setup(t);
   w.answers.expression = { ...IDEA, share: false, words: [] };

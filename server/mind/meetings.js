@@ -39,6 +39,7 @@ export class Meetings {
     const appraisal = hasCredential(turn?.appraisal)
       ? ""
       : text(turn?.appraisal, 120);
+    const reason = hasCredential(turn?.reason) ? "" : text(turn?.reason, 160);
     const people = [...new Set(heard.map((m) => String(m.speaker)))];
     const living = this.mind.self.living({
       before: time,
@@ -96,7 +97,7 @@ export class Meetings {
       : null;
     this.db
       .prepare(
-        "INSERT INTO mind_meetings(id,created,session_id,choice,appraisal,topic,people,sources,will_thread,will_met,discretion,will_people,exchange) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO mind_meetings(id,created,session_id,choice,appraisal,topic,people,sources,will_thread,will_met,discretion,will_people,exchange,reason) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
       )
       .run(
         id,
@@ -112,6 +113,7 @@ export class Meetings {
         isPrivateSession(session) ? "private" : quiet ? "secret" : "open",
         JSON.stringify(willPeople),
         JSON.stringify(exchange),
+        reason,
       );
     const link = this.db.prepare(
       "INSERT INTO mind_meeting_people(meeting_id,user_id) VALUES (?,?)",
@@ -429,7 +431,70 @@ export class Meetings {
       ...(row.will_met && this.#touchStill(row, now)
         ? { touchedWill: true }
         : {}),
+      ...(row.reason && this.sayable(row.reason, "")
+        ? { why: text(row.reason, 80) }
+        : {}),
     };
+  }
+  // Choices she already made, with the reason she kept. A later meeting
+  // with the same person or the same matter can continue from here instead
+  // of deciding as if she had never chosen.
+  stood({ session, people = [], cue = [], now = Date.now(), limit = 2 } = {}) {
+    const lived = this.mind.days.lived(now);
+    const present = new Set(people.map(String));
+    const bySpeaker = new Map();
+    for (const line of cue || []) {
+      if (!line || line.role === "assistant") continue;
+      const id = String(line.userId || line.speaker || "");
+      if (!id) continue;
+      const texts = bySpeaker.get(id) || [];
+      texts.push(String(line.text || ""));
+      bySpeaker.set(id, texts);
+    }
+    const speakerCues = [...bySpeaker.values()]
+      .map((texts) => interestTerms(texts))
+      .filter((terms) => terms.size);
+    const rows = this.db
+      .prepare(
+        `SELECT m.*, COALESCE(NULLIF(m.reason,''), c.reason, '') AS why
+         FROM mind_meetings m
+         LEFT JOIN mind_choices c
+           ON c.session_id=m.session_id AND c.created=m.created
+         WHERE m.created<? AND m.appraisal!=''
+         AND NOT EXISTS (
+           SELECT 1 FROM mind_revocations r
+           WHERE r.target_kind='meeting' AND r.target_id=m.id
+         )
+         ORDER BY m.created DESC LIMIT 40`,
+      )
+      .all(now);
+    const CHOICE = {
+      speak: "开口",
+      react: "应了一下",
+      decline: "说了不想聊",
+      silent: "没出声",
+    };
+    const out = [];
+    for (const row of rows) {
+      if (out.length >= limit) break;
+      if (!this.#visible(row, session)) continue;
+      if (meetingSalience(row.created, lived) < MEETING_FADED) continue;
+      if (!this.sayable(row.appraisal, session)) continue;
+      const why = text(row.why || row.reason || "", 80);
+      if (!why || !this.sayable(why, session)) continue;
+      const ids = parse(row.people, []).map(String);
+      const withThem = ids.some((id) => present.has(id));
+      const about = anyTouches(
+        `${row.appraisal} ${row.topic || ""} ${why}`,
+        speakerCues,
+      );
+      if (!withThem && !about) continue;
+      const when = elapsedLabel(row.created, now, this.mind.timeZone());
+      out.push(
+        `${when}我${CHOICE[row.choice] || "看过"}：${text(row.appraisal, 60)}（${why}）`,
+      );
+    }
+    return out;
   }
   // People whose own words met the wish she is still living for, and whom she
   // has not seen for a few days. A faded touch does not keep them here.
@@ -786,6 +851,7 @@ export class Meetings {
         when: elapsedLabel(row.created, before, this.mind.timeZone()),
         private: row.discretion === "private" || row.discretion === "secret",
         sessionId: row.session_id,
+        ...(row.reason ? { why: text(row.reason, 80) } : {}),
       }));
   }
   latest({ before = Date.now() } = {}) {

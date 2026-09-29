@@ -238,6 +238,29 @@ test("people/:id：一个人的画像包括感觉的来由、记得的事和约�
     importance: 0.6,
     time: w.now(),
   });
+  w.mind.meetings.keep(
+    {
+      choice: "silent",
+      appraisal: "他在说自己喜欢的",
+      reason: "先听着，还不想接",
+    },
+    {
+      session: "group:1",
+      snapshot: {
+        batchIds: [said.seq],
+        messages: [
+          {
+            id: said.seq,
+            role: "user",
+            speaker: "10001",
+            name: "阿明",
+            text: "我喜欢猫",
+          },
+        ],
+      },
+      time: w.now(),
+    },
+  );
   const { status, body } = await api.get("/mind/people/10001");
   assert.equal(status, 200);
   assert.equal(body.person.name, "阿明");
@@ -245,6 +268,8 @@ test("people/:id：一个人的画像包括感觉的来由、记得的事和约�
   assert.equal(body.changes[0].note, "聊得开心");
   assert.equal(body.memories[0].content, "喜欢猫");
   assert.equal(body.memories[0].sessionName, "学习群");
+  assert.equal(body.meetings[0].meant, "他在说自己喜欢的");
+  assert.equal(body.meetings[0].why, "先听着，还不想接");
   assert.deepEqual(body.anticipations, []);
   const unknown = await api.get("/mind/people/99999");
   assert.equal(unknown.status, 404);
