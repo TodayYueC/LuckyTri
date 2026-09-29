@@ -120,10 +120,17 @@ export class Self {
           lived,
         ),
       }));
+    // One core seat belongs to the wish she is living. Stronger duties
+    // keep the remaining seats; they do not fade her own life out of view.
+    const reserved = rows
+      .filter((row) => row.kind === "intention" && ownLife(row.content))
+      .sort((a, b) => b.salience - a.salience || b.created - a.created)[0];
+    const rest = rows
+      .filter((row) => row.thread !== reserved?.thread)
+      .sort((a, b) => b.strength - a.strength || b.created - a.created);
     const core = new Set(
-      [...rows]
-        .sort((a, b) => b.strength - a.strength || b.created - a.created)
-        .slice(0, CORE_THREADS)
+      [reserved, ...rest.slice(0, CORE_THREADS - (reserved ? 1 : 0))]
+        .filter(Boolean)
         .map((row) => row.thread),
     );
     return rows
@@ -136,7 +143,8 @@ export class Self {
   }
   // The one wish she is living. In a room, a stronger wish that does not
   // belong there does not erase the next wish that does. A duty about
-  // how she will treat someone stays a thread; it does not take this seat.
+  // how she will treat someone stays a thread; it does not take this seat
+  // or the core place that keeps this wish from fading first.
   living({ before = Number.MAX_SAFE_INTEGER, now, room } = {}) {
     const at = now ?? (before < Number.MAX_SAFE_INTEGER ? before : Date.now());
     return (

@@ -921,6 +921,64 @@ test("更强的对别人的承诺，不会占走她正在为自己过的那一�
   }
 });
 
+test("更强的对别人的承诺，过了许多日子也不会把她为自己过的那一件从心里挤出去", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      { kind: "intention", content: "想看流星雨", strength: 0.3 },
+      { origin: "solitude", time: w.now() },
+    );
+    const plant = (id, content, strength) =>
+      w.mind.db
+        .prepare(
+          "INSERT INTO mind_self(id,thread,created,kind,content,strength,status,sources,days,origin,session_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        )
+        .run(
+          id,
+          id,
+          w.now() + 1,
+          "intention",
+          content,
+          strength,
+          "active",
+          "[]",
+          "[]",
+          "solitude",
+          null,
+        );
+    plant("duty-1", "我会留意他的疲惫，但不替他安排生活。", 0.55);
+    plant("duty-2", "他每次来打招呼，我都当新的一次认真接。", 0.45);
+    const later = w.now() + 80 * 86400000;
+    const insert = w.mind.db.prepare(
+      "INSERT INTO mind_days(day,created,lived,events) VALUES (?,?,?,3)",
+    );
+    const dayAfter = (n) => {
+      const [y, m, d] = "2026-09-22".split("-").map(Number);
+      return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+    };
+    for (let i = 1; i <= 70; i++) insert.run(dayAfter(i), later, 1);
+    const living = w.mind.self.living({ now: later });
+    assert.equal(living?.content, "想看流星雨");
+    assert.equal(living.core, true);
+    assert.equal(living.faded, false);
+    const view = innerView(w.mind, { session: "group:1", now: later });
+    assert.equal(view.self.livingFor, "想看流星雨");
+    const active = w.mind.self.active({ now: later });
+    assert.ok(
+      active.some((row) => /疲惫/.test(row.content) && row.core),
+      "对别人的承诺仍可以留在其余的核心座位",
+    );
+    assert.equal(
+      active.some((row) => /想我/.test(row.content) && !row.faded),
+      false,
+      "没有核心座位的承诺会按日子淡出",
+    );
+  } finally {
+    w.close();
+  }
+});
+
 test("已经裂开的同一愿望，被碰到的次数仍算一件事", () => {
   const w = world();
   try {
