@@ -63,6 +63,24 @@ export function replyFocus(snapshot, decision) {
   );
   const latest = targets.at(-1)?.text || "";
   if (
+    /^(?:\[表情\])+$/.test(latest) ||
+    (targets.at(-1)?.attachments || []).some(
+      (item) =>
+        item.type === "image" && item.summary && /^\[.*\]$/.test(item.summary),
+    )
+  )
+    return {
+      kind: "sticker",
+      instruction:
+        "这是表情或表情包。把画面和 QQ 标签当作理解语气的线索，先判断是在接梗、吐槽、撒娇还是另起话题；短接它表达的态度即可，不要认真复述图中文字、逐项描述画面或把表情台词当成事实。",
+    };
+  if (/^(?:\[图片\])+$/.test(latest))
+    return {
+      kind: "image",
+      instruction:
+        "这是新发的一张图。先按这条消息自己的画面和上下文判断用途，可能是新话题或表情反应；不要因为它紧挨着上一张图就沿用上一话题。没读到画面时不猜内容。",
+    };
+  if (
     /^[?？]{1,3}$/.test(latest) &&
     snapshot.messages.some((m) => m.role === "assistant")
   )
@@ -182,6 +200,17 @@ export function conversationalIssues(result, snapshot, decision = {}) {
     .slice(-8)
     .map((m) => m.text);
   const issues = [];
+  if (
+    replyFocus(snapshot, decision).kind === "sticker" &&
+    texts.some(
+      (t) =>
+        t.length > 55 ||
+        /^(?:这张|这个)?(?:表情包|图)(?:上|里|中|的文字|写着|显示)/.test(t),
+    )
+  )
+    issues.push(
+      "对方发表情是在表达语气；不要把表情包当阅读理解逐字描述或复述，只短接它在当下的用意",
+    );
   if (
     replyFocus(snapshot, decision).kind === "feeling" &&
     texts.some((t) =>

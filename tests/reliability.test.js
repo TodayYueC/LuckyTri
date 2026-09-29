@@ -660,6 +660,60 @@ test("她在想的时候对方又补充了消息，就不再为旧批次发送�
   store.db.close();
 });
 
+test("旧稿完成后对方又连发，首句发送前并回队列重组", async () => {
+  const { store } = setup();
+  const session = "group:12345";
+  store.db
+    .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
+    .run(session, "测试", "group");
+  const sent = [];
+  let system;
+  system = new ChatSystem(
+    store,
+    async (_message, text) => (sent.push(text), { message_id: 1 }),
+    {
+      models: {
+        profile: () => defaultModel(store.settings()),
+        call: async (_profile, stage) => {
+          if (stage === "turn")
+            return {
+              choice: "speak",
+              reason: "回应问题",
+              targetMessageIds: [1],
+              bubbles: [],
+            };
+          if (stage === "generation") {
+            setTimeout(
+              () => system.receive(msg(2, { text: "等等，换个问题" })),
+              30,
+            );
+            return { bubbles: ["先前的回答"] };
+          }
+          return { ok: true, issues: [] };
+        },
+      },
+    },
+  );
+  const first = system.repo.append(
+    msg(1, { text: "LuckyBot，在吗", mentions: ["99999"] }),
+  );
+  const batch = [system.repo.events(session).at(-1)];
+  system.queue.lanes.set(session, {
+    pending: [],
+    running: true,
+    first: Date.now(),
+  });
+  const trace = await system.process(session, batch);
+  assert.equal(trace.status, "stale");
+  assert.deepEqual(sent, []);
+  assert.deepEqual(
+    system.queue.lanes.get(session).pending.map((row) => row.seq),
+    [first, first + 1],
+  );
+  system.close();
+  store.db.close();
+});
+
 test("复审只带这一轮需要的上下文", () => {
   const messages = Array.from({ length: 100 }, (_, i) => ({
     id: i + 1,
