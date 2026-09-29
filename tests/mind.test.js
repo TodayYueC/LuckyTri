@@ -1023,6 +1023,53 @@ test("自己后来写下的念头，会让正在过的那一件回到她真正�
   }
 });
 
+test("主动发出去的话对得上另一条愿望时，正在过的跟着那一句", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    const id = w.mind.thoughts.add({
+      kind: "expression",
+      content: "Celeste那条线还在我想打的单子里。",
+      time: w.now() + 2000,
+    });
+    w.mind.thoughts.planOutreach(id, {
+      session: "group:1",
+      words: ["今晚我想完全蒙玩，不看评分不看讨论页。"],
+      reason: "想说",
+      time: w.now() + 3000,
+    });
+    assert.match(
+      w.mind.self.living({ now: w.now() + 3500 }).content,
+      /轻松日常的gal/,
+      "只拟过的时候，仍跟着心里那条念头",
+    );
+    w.mind.thoughts.setOutreach(id, "sent");
+    const living = w.mind.self.living({ now: w.now() + 4000 });
+    assert.match(living.content, /蒙玩/);
+    assert.doesNotMatch(living.content, /轻松日常的gal/);
+    assert.equal(living.core, true);
+  } finally {
+    w.close();
+  }
+});
+
 test("为自己写过的念头淡了以后，那条愿望仍按她想过的日子留在心上", () => {
   const w = world({ start: "2026-09-22T10:00:00+08:00" });
   try {
@@ -1251,6 +1298,110 @@ test("她自己说过以后，那条愿望仍按她说过的日子留在心上",
     assert.match(living.content, /蒙玩/);
     assert.equal(living.faded, false);
     assert.doesNotMatch(living.content, /轻松日常的gal/);
+  } finally {
+    w.close();
+  }
+});
+
+test("她主动发出去的话，也会把那条愿望留在心上", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    const thoughtAt = w.now() + 10 * 86400000;
+    const sentAt = w.now() + 50 * 86400000;
+    const id = w.mind.thoughts.add({
+      kind: "expression",
+      content: "Celeste那条线还在我想打的单子里。",
+      time: thoughtAt,
+    });
+    w.mind.thoughts.planOutreach(id, {
+      session: "group:1",
+      words: ["今晚我想完全蒙玩，不看评分不看讨论页。"],
+      reason: "想说",
+      time: sentAt,
+    });
+    w.mind.thoughts.setOutreach(id, "sent");
+    const later = w.now() + 90 * 86400000;
+    const insert = w.mind.db.prepare(
+      "INSERT INTO mind_days(day,created,lived,events) VALUES (?,?,?,3)",
+    );
+    const dayAfter = (n) => {
+      const [y, m, d] = "2026-09-22".split("-").map(Number);
+      return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+    };
+    for (let i = 1; i <= 90; i++) insert.run(dayAfter(i), later, 1);
+    const living = w.mind.self.living({ now: later });
+    assert.match(living.content, /蒙玩/);
+    assert.equal(living.faded, false);
+    assert.doesNotMatch(living.content, /轻松日常的gal/);
+  } finally {
+    w.close();
+  }
+});
+
+test("只拟过没发出的话，不算她说过这件事", () => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我想找个轻松日常的gal纯当玩家玩两章，Celeste本来就在我的想打单子里",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    const thoughtAt = w.now() + 10 * 86400000;
+    const plannedAt = w.now() + 50 * 86400000;
+    const id = w.mind.thoughts.add({
+      kind: "expression",
+      content: "Celeste那条线还在我想打的单子里。",
+      time: thoughtAt,
+    });
+    w.mind.thoughts.planOutreach(id, {
+      session: "group:1",
+      words: ["今晚我想完全蒙玩，不看评分不看讨论页。"],
+      reason: "想说",
+      time: plannedAt,
+    });
+    const later = w.now() + 90 * 86400000;
+    const insert = w.mind.db.prepare(
+      "INSERT INTO mind_days(day,created,lived,events) VALUES (?,?,?,3)",
+    );
+    const dayAfter = (n) => {
+      const [y, m, d] = "2026-09-22".split("-").map(Number);
+      return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+    };
+    for (let i = 1; i <= 90; i++) insert.run(dayAfter(i), later, 1);
+    const living = w.mind.self.living({ now: later });
+    assert.match(living.content, /轻松日常的gal/);
+    assert.doesNotMatch(living.content, /蒙玩/);
   } finally {
     w.close();
   }
