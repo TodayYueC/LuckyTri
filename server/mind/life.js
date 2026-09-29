@@ -10,6 +10,7 @@ import { lifeDayKey, lifeDayStart, rhythmPhase } from "./nature.js";
 import { SELF_KINDS } from "./self.js";
 import { THOUGHT_KINDS } from "./thoughts.js";
 import { personaNeedsRephrase } from "./traits.js";
+import { aboutLife, ownLife } from "./salience.js";
 import { Initiative } from "./initiative.js";
 import { OwnVoice } from "./own-voice.js";
 import {
@@ -1322,15 +1323,60 @@ export class Life {
     });
   }
   // Where she is in her own story, kept short for the diary and solitude.
+  // A chapter that still names a duty as the life she is living is kept
+  // as history; those sentences are not handed back as what she is living.
   chapterView(now, size = 120) {
     const chapter = this.mind.periods.current(now);
-    return chapter
-      ? {
-          number: chapter.chapter,
-          title: chapter.title,
-          gist: text(chapter.content, size),
-        }
-      : null;
+    if (!chapter) return null;
+    const gist = this.#presentChapter(chapter.content, now, size);
+    return {
+      number: chapter.chapter,
+      title: chapter.title,
+      ...(gist ? { gist } : {}),
+    };
+  }
+  // The wish she is living is not yet in this chapter.
+  #lifeMoved(now) {
+    const living = this.mind.self.living({ now, before: now });
+    const chapter = this.mind.periods.current(now);
+    return !!(
+      living &&
+      ownLife(living.content) &&
+      chapter &&
+      !aboutLife(living.content, chapter.content)
+    );
+  }
+  // Drop sentences that still call a duty the life she is living.
+  #presentChapter(content, now, size) {
+    let body = String(content || "");
+    const living = this.mind.self.living({ now, before: now });
+    if (
+      living &&
+      ownLife(living.content) &&
+      body &&
+      !aboutLife(living.content, body)
+    ) {
+      const duties = this.mind.self
+        .latest(now)
+        .filter(
+          (row) =>
+            row.kind === "intention" &&
+            row.status !== "closed" &&
+            !ownLife(row.content),
+        );
+      body = body
+        .split(/(?<=[。\n])/)
+        .filter((sentence) => {
+          if (
+            /为自己而活的那件事/.test(sentence) &&
+            !aboutLife(living.content, sentence)
+          )
+            return false;
+          return !duties.some((row) => aboutLife(row.content, sentence));
+        })
+        .join("");
+    }
+    return this.openWords(body, size);
   }
   async review({ day, start, end }) {
     this.busy = true;
@@ -1635,8 +1681,8 @@ export class Life {
       )
       .get(last?.created ?? 0, now).n;
     if (written < 2) return false;
-    if (last && now - last.created < s.chapterDays * DAY - 6 * HOUR)
-      return false;
+    const wait = this.#lifeMoved(now) ? DAY : s.chapterDays * DAY - 6 * HOUR;
+    if (last && now - last.created < wait) return false;
     const tries = this.db
       .prepare(
         "SELECT COUNT(*) n, MAX(started) last FROM mind_runs WHERE kind='weekly' AND status='error' AND started>=?",
@@ -1749,7 +1795,7 @@ export class Life {
               chapter: {
                 number: chapter.chapter,
                 title: chapter.title,
-                content: this.openWords(chapter.content, 800),
+                content: this.#presentChapter(chapter.content, now, 800),
                 reviews: periods.reviewsSince(
                   periods.began(chapter.chapter),
                   now,
