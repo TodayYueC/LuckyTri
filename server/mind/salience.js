@@ -157,7 +157,8 @@ export function aboutLife(wish, thought) {
 
 export function ownLife(content) {
   const text = String(content || "");
-  if (/^(?:我)?(?:会|愿意|想)?(?:建议|劝|提醒|鼓励)/.test(text)) return false;
+  if (/^(?:我)?(?:会|愿意|想)?(?:建议|劝|提醒|鼓励|答应)/.test(text))
+    return false;
   return /(?:希望成为|想.{0,6}(?:看|学|玩|打|去|读|写|找|把|自己)|打算(?:开|玩|看|学|去)|决定(?:开|玩|看|学)|更想)/.test(
     text,
   );

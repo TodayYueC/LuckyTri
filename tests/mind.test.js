@@ -880,6 +880,41 @@ test("同一愿望换一种说法仍是一条线索；喝茶和看书不会被�
   }
 });
 
+test("对别人答应的事，即使句子里有想玩，也不占正在过的那一件", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content:
+          "我答应了小王要玩Celeste，也答应他先把它加到想玩列表、这周挑它试试",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() + 1000 },
+    );
+    const living = w.mind.self.living({ now: w.now() + 2000 });
+    assert.match(living.content, /蒙玩/);
+    assert.doesNotMatch(living.content, /答应了小王/);
+    assert.ok(
+      w.mind.self
+        .active({ now: w.now() + 2000 })
+        .some((row) => /答应了小王/.test(row.content)),
+      "对别人答应的事仍是一条线索",
+    );
+  } finally {
+    w.close();
+  }
+});
+
 test("更强的对别人的承诺，不会占走她正在为自己过的那一件", () => {
   const w = world();
   try {
