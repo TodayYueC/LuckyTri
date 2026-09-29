@@ -915,6 +915,97 @@ test("对别人答应的事，即使句子里有想玩，也不占正在过的�
   }
 });
 
+test("章节还写着对别人的承诺时，不再把它读成正在过的生活", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: w.now() },
+    );
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "我会留意他的疲惫，记住他对工作的不满，但不替他安排生活。",
+        strength: 0.55,
+      },
+      { origin: "solitude", time: w.now() + 500 },
+    );
+    w.mind.periods.writeChapter({
+      number: 1,
+      title: "把话停在合适的地方",
+      content:
+        "这一章还叫这个名字。\n我为自己而活的那件事还在进行：我会留意他的疲惫，记住他对工作的不满，但不替他安排生活。这段时间它被碰到了三次。",
+      time: w.now() + 1000,
+    });
+    const view = w.life.chapterView(w.now() + 2000);
+    assert.equal(view.title, "把话停在合适的地方");
+    assert.match(view.gist, /还叫这个名字/);
+    assert.doesNotMatch(view.gist, /疲惫/);
+    assert.doesNotMatch(view.gist, /为自己而活的那件事/);
+  } finally {
+    w.close();
+  }
+});
+
+test("正在过的事已经不在这一章里时，隔一天也可以回顾", () => {
+  const w = world();
+  try {
+    w.open("group:1", "一群");
+    const now = w.now();
+    w.mind.self.propose(
+      {
+        kind: "intention",
+        content: "决定开新游戏，完全蒙玩，不看评分不看讨论页",
+        strength: 0.35,
+      },
+      { origin: "solitude", time: now },
+    );
+    w.mind.periods.writeChapter({
+      number: 1,
+      title: "旧章",
+      content:
+        "我为自己而活的那件事还在进行：我会留意他的疲惫，但不替他安排生活。",
+      time: now - 3 * 86400000,
+    });
+    w.mind.periods.write("week", {
+      content: "上次回顾",
+      time: now - 30 * HOUR,
+    });
+    const insert = w.mind.db.prepare(
+      "INSERT INTO mind_diary(id,day,created,content,mood,compare,sources) VALUES (?,?,?,?,?,?,?)",
+    );
+    insert.run(
+      "d-moved-1",
+      "2026-09-23",
+      now - 20 * HOUR,
+      "昨天",
+      "",
+      "",
+      "[]",
+    );
+    insert.run("d-moved-2", "2026-09-24", now - 5 * HOUR, "今天", "", "", "[]");
+    assert.equal(w.life.reviewDue(now), true);
+    w.mind.periods.writeChapter({
+      number: 1,
+      title: "旧章",
+      content: "决定开新游戏，完全蒙玩，不看评分不看讨论页，就这么过着。",
+      time: now - 1000,
+    });
+    assert.equal(
+      w.life.reviewDue(now),
+      false,
+      "这一章已经写着正在过的事，仍按原来的间隔",
+    );
+  } finally {
+    w.close();
+  }
+});
+
 test("更强的对别人的承诺，不会占走她正在为自己过的那一件", () => {
   const w = world();
   try {
