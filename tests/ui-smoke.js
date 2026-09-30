@@ -40,7 +40,10 @@ try {
   async function openPreset(id) {
     const card = p.locator(`[data-preset="${id}"]`);
     const group = card.locator("xpath=ancestor::details[1]");
-    if ((await group.count()) && !(await group.evaluate((element) => element.open)))
+    if (
+      (await group.count()) &&
+      !(await group.evaluate((element) => element.open))
+    )
       await group.locator("summary").click();
     return card;
   }
@@ -225,6 +228,20 @@ try {
   await confirmDialog();
   await p.locator(".page-system").waitFor();
   await navigate("models");
+  await p
+    .locator('[name="embeddingBaseUrl"]')
+    .fill("https://vectors.example/v1");
+  await p
+    .locator('[name="embeddingModelName"]')
+    .fill("independent-vector-model");
+  await p.getByRole("button", { name: "保存向量模型", exact: true }).click();
+  await p.getByText("知识向量模型已保存", { exact: true }).waitFor();
+  assert.equal(
+    await p
+      .getByRole("button", { name: "测试向量连接", exact: true })
+      .isDisabled(),
+    true,
+  );
   await p.locator("#addModel").click();
   await openPreset("deepseek-flash");
   assert.equal(
@@ -406,7 +423,10 @@ try {
     await p.getByRole("link", { name: /QQClient 官方仓库/ }).getAttribute("href"),
     "https://github.com/QQClient/QQClient",
   );
-  assert.equal(await p.getByRole("button", { name: "生成连接配置" }).count(), 0);
+  assert.equal(
+    await p.getByRole("button", { name: "生成连接配置" }).count(),
+    0,
+  );
   await p.goto(base + "/guide.html");
   await p
     .getByRole("heading", {
@@ -648,8 +668,11 @@ try {
     const layout = await p.evaluate(() => ({
       documentHeight: document.documentElement.scrollHeight,
       mainTop: document.querySelector("main")?.getBoundingClientRect().top,
-      mainHeight: document.querySelector("main")?.getBoundingClientRect().height,
-      workspaceHeight: document.querySelector(".workspace")?.getBoundingClientRect().height,
+      mainHeight: document.querySelector("main")?.getBoundingClientRect()
+        .height,
+      workspaceHeight: document
+        .querySelector(".workspace")
+        ?.getBoundingClientRect().height,
     }));
     assert(
       layout.documentHeight <= (width > 760 ? 900 : 1800),

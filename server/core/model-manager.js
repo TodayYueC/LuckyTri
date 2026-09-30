@@ -1154,7 +1154,9 @@ export class ModelManager {
     }
   }
   async embed(profile, texts) {
-    const key = profile.apiKey || process.env.LLM_API_KEY;
+    const key = profile.isolatedEmbeddingKey
+      ? process.env.EMBEDDING_API_KEY || profile.apiKey
+      : profile.apiKey || process.env.LLM_API_KEY;
     if (!key) throw Error("模型尚未配置 API Key");
     const model = profile.embeddingModel || profile.model;
     const endpoint = profile.baseUrl.replace(/\/$/, "") + "/embeddings";
@@ -1166,7 +1168,11 @@ export class ModelManager {
             "Content-Type": "application/json",
             Authorization: `Bearer ${key}`,
           },
-          body: JSON.stringify({ model, input: texts }),
+          body: JSON.stringify({
+            model,
+            input: texts,
+            ...(profile.dimensions ? { dimensions: profile.dimensions } : {}),
+          }),
           signal: AbortSignal.timeout(profile.timeoutMs || 90000),
         });
         if (!r.ok) throw Error(`向量接口失败 HTTP ${r.status}`);
@@ -1181,7 +1187,13 @@ export class ModelManager {
       .map((row) => {
         if (!Array.isArray(row.embedding) || !row.embedding.length)
           throw Error("向量接口未返回 embedding");
-        return row.embedding.map(Number);
+        if (
+          !row.embedding.every(
+            (value) => typeof value === "number" && Number.isFinite(value),
+          )
+        )
+          throw Error("向量接口返回无效数值");
+        return row.embedding;
       });
   }
 }

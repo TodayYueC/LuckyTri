@@ -60,6 +60,7 @@ LuckyTri **只实现 OneBot 11 接入接口**，不包含 QQ 接入端，也不�
 | `ADMIN_TOKEN` | 管理界面与 HTTP API 的访问令牌 |
 | `ONEBOT_TOKEN` | OneBot WebSocket 连接令牌 |
 | `LLM_API_KEY` | 可选；设置后优先于 WebUI 中保存的模型密钥 |
+| `EMBEDDING_API_KEY` | 可选；独立知识向量服务密钥，在「系统 → 模型库 → 知识向量模型」配置接口与型号 |
 | `BACKUP_INTERVAL_HOURS` / `BACKUP_KEEP` | 自动备份间隔（默认 24 小时，`0` 关闭）与保留份数（默认 7） |
 
 本地数据库、聊天记录、模型密钥和备份保存在已忽略的 `data/` 目录。服务运行时每天会在另一个进程里自动做一份经过完整性检查的 `data/backups/luckytri-auto-*.db`（不含一天以前的模型调用记录，所以不大；`npm run backup` 仍是完整备份）。备份和数据库在同一块磁盘上，重要的请自己复制到别处。升级前可运行 `npm run backup`。不要提交 `.env`、数据库或日志。详见[安全说明](.github/SECURITY.md)。

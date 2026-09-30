@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from "vue";
-import { toast } from "../../api";
+import { api, toast } from "../../api";
 import {
   ingestDocument,
   listCollections,
@@ -20,6 +20,22 @@ const text = ref("");
 const probe = ref("");
 const hits = ref<any[] | null>(null);
 const saving = ref(false);
+const rebuilding = ref("");
+async function rebuild(id: string) {
+  rebuilding.value = id;
+  try {
+    const result = await api(
+      `/core/knowledge/documents/${encodeURIComponent(id)}/reembed`,
+      "POST",
+      {},
+    );
+    toast(`已重建 ${result.chunks} 段向量`);
+  } catch (error) {
+    toast((error as Error).message, true);
+  } finally {
+    rebuilding.value = "";
+  }
+}
 
 async function load() {
   if (!props.sessionId) return;
@@ -97,6 +113,14 @@ onMounted(load);
         <span class="spine" aria-hidden="true"></span>
         <b>{{ d.title }}</b>
         <small class="chip" data-tone="quiet">{{ d.status }}</small>
+        <button
+          v-if="d.status === 'ready'"
+          type="button"
+          :disabled="!!rebuilding"
+          @click="rebuild(d.id)"
+        >
+          {{ rebuilding === d.id ? "正在重建…" : "重建向量" }}
+        </button>
       </article>
       <Empty
         v-if="!documents.length"

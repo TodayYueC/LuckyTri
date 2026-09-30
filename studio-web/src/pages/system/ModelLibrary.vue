@@ -8,6 +8,7 @@ import { hueOf } from "../../format";
 import Sheet from "../../components/ui/Sheet.vue";
 import Empty from "../../components/ui/Empty.vue";
 import Select from "../../components/ui/Select.vue";
+import EmbeddingProfile from "./EmbeddingProfile.vue";
 
 const catalog = computed(() => studio.health?.modelCatalog || []);
 const effortLabels = computed(
@@ -757,6 +758,7 @@ async function testModel() {
       </Empty>
     </section>
 
+    <EmbeddingProfile />
     <section class="card usage-panel" aria-labelledby="token-usage-title">
       <div class="usage-intro">
         <div>

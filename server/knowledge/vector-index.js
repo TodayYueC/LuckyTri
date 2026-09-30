@@ -55,7 +55,13 @@ export function ensureVectorIndex(db) {
   }
 }
 
-export function vectorCandidates(db, vector, collections, cutoff) {
+export function vectorCandidates(
+  db,
+  vector,
+  collections,
+  cutoff,
+  { signature = null, legacy = true } = {},
+) {
   if (!vector?.length || !vector.every(Number.isFinite)) return [];
   const buckets = signatures(vector).flatMap(({ band, bucket }) =>
     [
@@ -69,6 +75,7 @@ export function vectorCandidates(db, vector, collections, cutoff) {
     JOIN core_chunks c ON c.id=b.chunk_id JOIN core_documents d ON d.id=c.document_id
     WHERE b.dimension=? AND (${buckets.map(() => "(b.band=? AND b.bucket=?)").join(" OR ")})
     AND c.collection_id IN (${collections.map(() => "?").join(",")}) AND d.status='ready' AND d.created<=?
+    ${signature ? "AND (c.embedding_profile=?" + (legacy ? " OR c.embedding_profile=''" : "") + ")" : ""}
     GROUP BY b.chunk_id ORDER BY COUNT(*) DESC, c.created DESC, b.chunk_id LIMIT ?`,
     )
     .all(
@@ -76,6 +83,7 @@ export function vectorCandidates(db, vector, collections, cutoff) {
       ...buckets.flatMap((item) => [item.band, item.bucket]),
       ...collections,
       cutoff,
+      ...(signature ? [signature] : []),
       VECTOR_CANDIDATES,
     )
     .map((row) => row.chunk_id);
