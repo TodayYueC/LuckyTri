@@ -6,6 +6,8 @@ import { evidence, parse } from "./util.js";
 // experience behind it; a withdrawal is a tombstone in mind_revocations.
 export function migrateMind(db, store) {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS mind_creations(id TEXT PRIMARY KEY,created INTEGER NOT NULL,plan_id TEXT NOT NULL UNIQUE,kind TEXT NOT NULL,title TEXT NOT NULL,content TEXT NOT NULL,sources TEXT NOT NULL,session_id TEXT,discretion TEXT NOT NULL,run_id TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS mind_creations_time ON mind_creations(created);
     CREATE TABLE IF NOT EXISTS mind_memory_permissions(memory_id TEXT NOT NULL,session_id TEXT NOT NULL,recall INTEGER NOT NULL,disclose INTEGER NOT NULL,expires INTEGER,updated INTEGER NOT NULL,PRIMARY KEY(memory_id,session_id));
     CREATE TABLE IF NOT EXISTS mind_permission_events(id INTEGER PRIMARY KEY,memory_id TEXT NOT NULL,session_id TEXT NOT NULL,created INTEGER NOT NULL,value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS mind_nature (version INTEGER PRIMARY KEY, created INTEGER NOT NULL, value TEXT NOT NULL, note TEXT);
@@ -77,6 +79,7 @@ export function migrateMind(db, store) {
   );
   addColumn("mind_meetings", "will_people", "TEXT NOT NULL DEFAULT '[]'");
   addColumn("mind_meetings", "reason", "TEXT NOT NULL DEFAULT ''");
+  addColumn("mind_anticipations", "activity", "TEXT NOT NULL DEFAULT ''");
   db.prepare(
     "UPDATE mind_runs SET status='interrupted',finished=? WHERE status='running'",
   ).run(Date.now());

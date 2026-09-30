@@ -34,6 +34,20 @@ const publicGroupMessage = w.store.db
     "SELECT seq FROM core_events WHERE session_id='group:12345' AND role='user' ORDER BY seq LIMIT 1",
   )
   .get();
+w.store.db
+  .prepare("INSERT INTO mind_creations VALUES (?,?,?,?,?,?,?,?,?,?)")
+  .run(
+    "fixture-creation",
+    w.now(),
+    "fixture-plan",
+    "write",
+    "星空随笔",
+    "这是界面测试的星空随笔。",
+    JSON.stringify([`m:${publicGroupMessage.seq}`]),
+    null,
+    "open",
+    "fixture-run",
+  );
 const groupFace = w.mind.faces.propose(
   {
     session: "group:12345",
@@ -364,9 +378,9 @@ async function run() {
       "选中的日期保持方形，不继承详情卡片的高度",
     );
     assert.equal(
-      await page.locator(".calendar-wrap > .picked").evaluate((el) =>
-        getComputedStyle(el).minHeight,
-      ),
+      await page
+        .locator(".calendar-wrap > .picked")
+        .evaluate((el) => getComputedStyle(el).minHeight),
       "220px",
       "日历详情仍保留合适的最小高度",
     );
@@ -377,6 +391,16 @@ async function run() {
     await promise.getByRole("button", { name: "撤销" }).click();
     await confirm("界面测试");
     await promise.getByText("已撤销").waitFor();
+    await page.locator(".creations summary").click();
+    await page
+      .getByRole("heading", { name: "星空随笔", exact: true })
+      .waitFor();
+    assert.equal(
+      await page
+        .getByText("这是界面测试的星空随笔。", { exact: true })
+        .isVisible(),
+      true,
+    );
     await page.locator(".runs summary").click();
     assert.ok((await page.locator(".run-row").count()) >= 2);
 

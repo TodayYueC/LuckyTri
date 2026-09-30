@@ -138,6 +138,7 @@ export class Anticipations {
     discretion = "open",
     sources = [],
     origin = "memory",
+    activity = "",
     time = Date.now(),
   }) {
     if (!ANTICIPATION_KINDS[kind]) return { rejected: "类型无效" };
@@ -178,7 +179,7 @@ export class Anticipations {
     const id = randomUUID();
     this.db
       .prepare(
-        "INSERT INTO mind_anticipations(id,created,kind,subject,session_id,content,due_at,due_precision,recurrence,discretion,sources,origin) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO mind_anticipations(id,created,kind,subject,session_id,content,due_at,due_precision,recurrence,discretion,sources,origin,activity) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
       )
       .run(
         id,
@@ -195,6 +196,9 @@ export class Anticipations {
           : "open",
         JSON.stringify(refs),
         origin,
+        kind === "plan" && ["read", "write", "think"].includes(activity)
+          ? activity
+          : "",
       );
     return { id };
   }

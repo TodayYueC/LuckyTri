@@ -880,9 +880,21 @@ export class Meetings {
   privateRoots(sources, before = Date.now()) {
     const cited = Array.isArray(sources) ? sources : parse(sources, []);
     const refs = [
-      ...new Set([...cited, ...evidenceRoots(this.db, cited, before)]),
+      ...new Set([
+        ...cited,
+        ...evidenceRoots(this.db, cited, before, { includeDerived: true }),
+      ]),
     ];
     const rooms = new Set();
+    for (const ref of refs.filter((ref) => String(ref).startsWith("a:"))) {
+      const plan = this.db
+        .prepare(
+          "SELECT session_id,discretion FROM mind_anticipations WHERE id=? AND created<=?",
+        )
+        .get(String(ref).slice(2), before);
+      if (plan?.session_id && ["private", "secret"].includes(plan.discretion))
+        rooms.add(plan.session_id);
+    }
     for (const row of this.places(refs))
       if (row.discretion === "private" || row.discretion === "secret")
         rooms.add(row.session_id);

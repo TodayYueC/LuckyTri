@@ -7,6 +7,7 @@ import { THOUGHT_KINDS } from "./thoughts.js";
 import { dayKey, parse, text } from "./util.js";
 
 const RUN_ACTIVITY = {
+  activity: "solitude",
   solitude: "solitude",
   expression: "solitude",
   daily: "diary",
@@ -432,6 +433,7 @@ export function mountMind(app, chat, life) {
       const now = life.now();
       res.json({
         diaries: life.diaries({ limit: 30 }),
+        creations: life.activities.list({ before: now }),
         chapters: life.chapters().map((c) => ({
           ...c,
           versions: life.chapterVersions(c.chapter).length,

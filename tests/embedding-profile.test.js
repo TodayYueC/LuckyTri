@@ -144,3 +144,29 @@ test("独立向量密钥缺失时不会使用对话模型的环境密钥", async
   );
   assert.equal(fetched, false);
 });
+
+test("向量响应按输入编号对应原文，重复编号不默默写错资料", async (t) => {
+  const w = world();
+  t.after(w.close);
+  let response = [
+    { index: 1, embedding: [0, 1] },
+    { index: 0, embedding: [1, 0] },
+  ];
+  const manager = new ModelManager(w.system.repo, {
+    fetcher: async () => ({ ok: true, json: async () => ({ data: response }) }),
+  });
+  const profile = {
+    apiKey: "test",
+    baseUrl: "https://vectors.example/v1",
+    model: "embed",
+  };
+  assert.deepEqual(await manager.embed(profile, ["甲", "乙"]), [
+    [1, 0],
+    [0, 1],
+  ]);
+  response = [
+    { index: 0, embedding: [1, 0] },
+    { index: 0, embedding: [0, 1] },
+  ];
+  await assert.rejects(manager.embed(profile, ["甲", "乙"]), /编号/);
+});

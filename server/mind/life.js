@@ -41,6 +41,7 @@ import { LifeContext } from "./life-context.js";
 import { LifeGrowth } from "./life-growth.js";
 import { LifeDiary } from "./life-diary.js";
 import { LifePresence } from "./life-presence.js";
+import { LifeActivities } from "./life-activities.js";
 
 export class Life {
   constructor(chat, { now = chat.now || Date.now, online = () => false } = {}) {
@@ -58,6 +59,7 @@ export class Life {
     this.growth = new LifeGrowth(this);
     this.journal = new LifeDiary(this);
     this.presence = new LifePresence(this);
+    this.activities = new LifeActivities(this);
   }
   settings() {
     return { ...LIFE_DEFAULTS, ...this.repo.config("life", {}) };
@@ -185,6 +187,8 @@ export class Life {
       return night.kind === "memory"
         ? this.rememberAtNight(night.session, night.day, now)
         : this.reviewPeriod(now);
+    const activity = await this.activities.run(now);
+    if (activity) return activity;
     const outreach = await this.reachOut(now);
     if (outreach) return outreach;
     const reason = this.eligible(now);
@@ -391,6 +395,7 @@ export class Life {
       if (!sources.length) continue;
       const added = this.mind.anticipations.add({
         kind: "plan",
+        activity: plan?.activity,
         content: plan?.content,
         due: plan?.due,
         sources,
@@ -543,7 +548,8 @@ export class Life {
       const result = await this.chat.models.call(
         this.profile(),
         "reflection",
-        replyPrompt(nature, prompts(this.repo), "reflection"),
+        replyPrompt(nature, prompts(this.repo), "reflection") +
+          '\nplans 可以是留给自己做的事；确实想在资料书架阅读、写短文或独处思考时，可加 activity:"read"|"write"|"think"，到时在本机执行并保存成果，不需要找人聊天。不支持的外部行动不要标 activity；不为增加任务而列计划。',
         input,
         trace,
       );

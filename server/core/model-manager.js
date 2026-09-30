@@ -1182,6 +1182,19 @@ export class ModelManager {
     const rows = Array.isArray(raw.data) ? raw.data : [];
     if (rows.length !== texts.length)
       throw Error("向量接口返回数量与输入不一致");
+    if (rows.some((row) => row.index !== undefined)) {
+      const indices = new Set();
+      for (const row of rows) {
+        if (
+          !Number.isSafeInteger(row.index) ||
+          row.index < 0 ||
+          row.index >= texts.length ||
+          indices.has(row.index)
+        )
+          throw Error("向量接口返回重复或无效的输入编号");
+        indices.add(row.index);
+      }
+    }
     return rows
       .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
       .map((row) => {

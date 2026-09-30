@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { dirname, basename, resolve, join } from "node:path";
 
-export const DATABASE_VERSION = 1;
+export const DATABASE_VERSION = 2;
 const appVersion = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ).version;

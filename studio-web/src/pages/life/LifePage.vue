@@ -213,6 +213,26 @@ onMounted(load);
         />
       </section>
 
+      <details class="card creations">
+        <summary>独处时留下的东西 · {{ life.creations?.length || 0 }}</summary>
+        <article
+          v-for="piece in life.creations || []"
+          :key="piece.id"
+          class="creation"
+        >
+          <h3>{{ piece.title }}</h3>
+          <small class="faint"
+            >{{ when(piece.created, zone) }} ·
+            {{ piece.discretion === "open" ? "自己的作品" : "留在私下" }}</small
+          >
+          <p style="white-space: pre-wrap">{{ piece.content }}</p>
+        </article>
+        <Empty
+          v-if="!life.creations?.length"
+          title="还没有独处作品"
+          text="她会按自己留下的计划，阅读、写东西或整理想法。"
+        />
+      </details>
       <details class="card runs">
         <summary>
           <span class="eyebrow">独处的时候</span>

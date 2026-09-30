@@ -2,7 +2,12 @@ import { evidence, parse } from "./util.js";
 
 // A retelling is an interpretation of an experience, not another experience.
 // Resolve all derivative citations to the same roots, without writing history.
-export function evidenceRoots(db, sources, before = Number.MAX_SAFE_INTEGER) {
+export function evidenceRoots(
+  db,
+  sources,
+  before = Number.MAX_SAFE_INTEGER,
+  { includeDerived = false } = {},
+) {
   const queue = [...evidence(sources)];
   const visited = new Set();
   const roots = new Set();
@@ -59,7 +64,7 @@ export function evidenceRoots(db, sources, before = Number.MAX_SAFE_INTEGER) {
       if (row.parent_id) queue.push(`t:${row.parent_id}`);
     }
   }
-  return [...roots];
+  return [...new Set([...roots, ...(includeDerived ? visited : [])])];
 }
 
 // Evidence outside the model's own wording. Unsent drafts, simulations,
