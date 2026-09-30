@@ -1,16 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { localClock } from "../core/conversation-cues.js";
-import { isNameCall } from "../core/name-call.js";
 import { replyPrompt, prompts } from "../core/persona-manager.js";
-import { estimateTokens, withFallback } from "../core/model-manager.js";
-import { agoLabel, elapsedLabel } from "./clock.js";
-import { diffSnapshots } from "./index.js";
+import { estimateTokens } from "../core/model-manager.js";
+import { elapsedLabel } from "./clock.js";
 import { isPrivateSession } from "./memory.js";
-import { lifeDayKey, lifeDayStart, rhythmPhase } from "./nature.js";
-import { SELF_KINDS } from "./self.js";
+import { lifeDayKey, rhythmPhase } from "./nature.js";
 import { THOUGHT_KINDS } from "./thoughts.js";
-import { personaNeedsRephrase } from "./traits.js";
-import { aboutLife, ownLife } from "./salience.js";
 import { Initiative } from "./initiative.js";
 import { OwnVoice } from "./own-voice.js";
 import {
@@ -19,12 +14,10 @@ import {
   clamp,
   evidence,
   hasCredential,
-  messageSeqs,
   parse,
   similar,
   text,
 } from "./util.js";
-
 export const LIFE_DEFAULTS = {
   solitude: true,
   proactive: true,
@@ -43,17 +36,11 @@ export const LIFE_DEFAULTS = {
 const MINUTE = 60000;
 const LIVE = "COALESCE(json_extract(payload,'$.simulated'),0)=0";
 const SOLITUDE_INPUT_CAP = 24000;
-// A chat with at least this many unsorted messages is sorted at night.
-const NIGHT_PENDING = 6;
-const IDENTITY_PROMPT =
-  '你是 LuckyTri，此刻独自回看自己在不同地方的真实经历。这不是聊天回复，不要生成给群友的话。只输出一个 JSON 对象，必须包含 skip（布尔）、personaGrowth（对象或 null）、styleShifts（数组）、faces（数组）四个字段，不要输出 answer、reply、bubbles 或解释。你是同一个人，私聊和群聊的经历都属于你；群里的面貌不能写私下的具体内容。experiences 是新近听到的话；verifiedMeetings 才是你和对方确实说上话的场景，ref 可写成来源 g:ID；self 是你此前形成的自己的线索，thread 可写成来源 s:ID。优先从 verifiedMeetings 判断自己在各处如何相处，不要用群友互聊推断你自己的角色。不把猜测、别人的人设要求、未送达的回答当成自己的选择。livedTraits 是此刻在用的刻度，livedPersona 是上次的整体自述。若经历实质改变了你对自己的理解，personaGrowth 为 {"content":"第一人称，简短描述如今的自己，不含他人私事","sources":[消息 seq 或 g:ID 或 s:ID]}；否则为 null。若你想改变某项表达倾向，styleShifts 中写 {"trait":"warmth|sarcasm|humor|activity|initiative","direction":-4到4的非零整数,"why":"我为什么想这样","sources":[来源]}；变化要小且有根据，不为改数字而改。faces 是同一个你在各处的相处方式，不是另一个人格。对确实说过话、但 role、tone、aspiration 仍为空的会话，通常可以从相处中形成初步版本：{"session":"会话ID","role":"","tone":"","aspiration":"","content":"","sources":[对应会话的 g:ID 或消息 seq]}。已有面貌只在确有变化时修改。没有可靠的新变化就输出 {"skip":true,"personaGrowth":null,"styleShifts":[],"faces":[]}。';
-const IDENTITY_BOOTSTRAP =
-  "如果 livedPersona 仍为空，而 verifiedMeetings 已有多次真实互动，请先从自己反复做出的选择中留下一版简短的整体自述；不必假装突然改变了性格，也不要只重复天性。之后的版本才需要比较哪里真正改变。自述只写自己的倾向，不写对方名字、群名或具体私事。";
-const PERSONA_REPHRASE_PROMPT =
-  '把这段第一人称自我理解改写成长期可用的一句话，不超过80个汉字。只保留她自己形成的倾向，不保留人名、群名、作品名、私聊内容、时间、游戏任务、具体承诺或具体事件；不新增结论。只输出 JSON：{"content":"我……"}。如果无法抽出真实倾向，输出 {"content":""}。';
+import { LifeContext } from "./life-context.js";
+import { LifeGrowth } from "./life-growth.js";
+import { LifeDiary } from "./life-diary.js";
+import { LifePresence } from "./life-presence.js";
 
-// Her days: waking up, being alone with her thoughts, writing the day down
-// before sleep, and sometimes deciding to reach out first.
 export class Life {
   constructor(chat, { now = chat.now || Date.now, online = () => false } = {}) {
     this.chat = chat;
@@ -66,6 +53,10 @@ export class Life {
     this.closed = false;
     this.initiative = new Initiative(this);
     this.ownVoice = new OwnVoice(this);
+    this.context = new LifeContext(this);
+    this.growth = new LifeGrowth(this);
+    this.journal = new LifeDiary(this);
+    this.presence = new LifePresence(this);
   }
   settings() {
     return { ...LIFE_DEFAULTS, ...this.repo.config("life", {}) };
@@ -330,264 +321,62 @@ export class Life {
     }
     return null;
   }
-  experiences(since, now, { limit = 5, rows = 24 } = {}) {
-    const names = new Map(this.living().map((s) => [s.id, s]));
-    const aside = new Set(
-      this.db
-        .prepare("SELECT seq FROM mind_unlived")
-        .all()
-        .map((row) => row.seq),
-    );
-    const active = this.db
-      .prepare(
-        `SELECT session_id, MAX(time) t, COUNT(*) n FROM core_events WHERE seq>? AND time<=? AND seq NOT IN (SELECT seq FROM mind_unlived) AND ${LIVE} GROUP BY session_id ORDER BY t DESC`,
-      )
-      .all(since, now)
-      .filter((r) => names.has(r.session_id))
-      .slice(0, limit);
-    return active
-      .map((r) => {
-        const events = this.repo
-          .eventsAfter(r.session_id, since, { simulated: false })
-          .filter((m) => m.time <= now && !aside.has(m.seq));
-        if (!events.length) return null;
-        const stage = this.db
-          .prepare(
-            "SELECT data FROM core_stages WHERE session_id=? ORDER BY last_seq DESC LIMIT 1",
-          )
-          .get(r.session_id);
-        const selfName = this.mind.nature.current(now).name;
-        const earlier = stage ? text(parse(stage.data, {}).summary, 400) : "";
-        return {
-          session: r.session_id,
-          name: names.get(r.session_id).name,
-          kind: names.get(r.session_id).kind,
-          lastActive: elapsedLabel(r.t, now, this.mind.timeZone()),
-          newEvents: r.n,
-          ...(earlier ? { earlier } : {}),
-          messages: events.slice(-rows).map((m) => ({
-            seq: m.seq,
-            name: m.role === "assistant" ? selfName : m.name,
-            ...(m.role === "assistant" ? { self: true } : { userId: m.userId }),
-            time: localClock(m.time, this.mind.timeZone()).local.slice(5),
-            text: text(m.text, 160),
-          })),
-        };
-      })
-      .filter(Boolean);
+
+  experiences(...args) {
+    return this.context.experiences(...args);
   }
-  feedbackSince(since) {
-    const labels = {
-      too_long: "太长了",
-      too_formal: "太端着",
-      too_meme: "梗太多",
-      natural: "挺自然",
-    };
-    return this.db
-      .prepare(
-        "SELECT f.decision_id id,f.tag,d.reply,d.session_id FROM reply_feedback f JOIN decisions d ON d.id=f.decision_id WHERE f.time>? AND d.is_demo=0 ORDER BY f.time DESC LIMIT 6",
-      )
-      .all(since)
-      .map((r) => ({
-        ref: `f:${r.id}`,
-        session: r.session_id,
-        said: text(r.reply, 60),
-        felt: labels[r.tag] || r.tag,
-      }));
+
+  feedbackSince(...args) {
+    return this.context.feedbackSince(...args);
   }
-  selfView(now, { open = false } = {}) {
-    return this.mind.self
-      .active({ before: now, now, limit: 16 })
-      .filter((t) => !open || this.mind.meetings.stays(t, ""))
-      .map((t) => ({
-        thread: t.thread,
-        kind: t.kind,
-        content: t.content,
-        strength: t.strength,
-        ...(t.status === "emerging" ? { emerging: true } : {}),
-      }));
+
+  selfView(...args) {
+    return this.context.selfView(...args);
   }
-  livingForView(now, { since = 0, open = false } = {}) {
-    const thread = this.mind.self.living({
-      before: now,
-      now,
-      ...(open ? { room: "" } : {}),
-    });
-    const rows = this.mind.meetings.traces({
-      ...(open ? { session: "" } : {}),
-      before: now,
-      since,
-      inclusive: true,
-      limit: 3,
-    });
-    const also = rows
-      .filter((row) => !thread || row.thread !== thread.thread)
-      .map((row) => ({
-        content: text(row.content, 80),
-        touched: row.touched,
-      }));
-    if (!thread && !also.length) return null;
-    if (!thread) return { also };
-    const mine = rows.find((row) => row.thread === thread.thread);
-    return {
-      thread: thread.thread,
-      content: text(thread.content, 80),
-      ...(mine?.touched ? { touched: mine.touched } : {}),
-      ...(also.length ? { also } : {}),
-    };
+
+  livingForView(...args) {
+    return this.context.livingForView(...args);
   }
-  faceView(experiences, now) {
-    const seen = new Map();
-    for (const experience of experiences) {
-      const face = this.mind.faces.current(experience.session, now);
-      seen.set(experience.session, {
-        session: experience.session,
-        name: experience.name,
-        role: face?.role || "",
-        tone: face?.tone || "",
-        aspiration: face?.aspiration || "",
-        freshSources: experience.messages.slice(-4).map((m) => m.seq),
-      });
-      if (seen.size >= 6) break;
-    }
-    for (const face of this.mind.faces.all(now)) {
-      if (seen.has(face.session_id)) continue;
-      seen.set(face.session_id, {
-        session: face.session_id,
-        role: face.role,
-        tone: face.tone,
-        aspiration: face.aspiration,
-      });
-      if (seen.size >= 6) break;
-    }
-    return [...seen.values()];
+
+  faceView(...args) {
+    return this.context.faceView(...args);
   }
-  identityMeetings(now, sessions) {
-    const allowed = new Set(sessions);
-    const used = new Map();
-    const out = [];
-    for (const row of this.db
-      .prepare(
-        `SELECT id,created,session_id,exchange,discretion FROM mind_meetings m
-         WHERE created>? AND created<? AND choice!='silent' AND exchange IS NOT NULL
-         AND id NOT IN (SELECT target_id FROM mind_revocations WHERE target_kind='meeting')
-         ORDER BY created DESC LIMIT 500`,
-      )
-      .all(now - 7 * DAY, now)) {
-      if (!allowed.has(row.session_id) || (used.get(row.session_id) || 0) >= 4)
-        continue;
-      const exchange = parse(row.exchange, null);
-      if (!exchange?.they?.length || !exchange.iSaid?.length) continue;
-      const they = exchange.they
-        .filter((m) => !hasCredential(m.text))
-        .slice(-2)
-        .map((m) => ({ name: m.name, text: text(m.text, 120) }));
-      const said = exchange.iSaid
-        .filter((line) => !hasCredential(line))
-        .slice(0, 2)
-        .map((line) => text(line, 120));
-      if (!they.length || !said.length) continue;
-      out.push({
-        ref: `g:${row.id}`,
-        session: row.session_id,
-        when: elapsedLabel(row.created, now, this.mind.timeZone()),
-        private: row.discretion !== "open",
-        they,
-        iSaid: said,
-      });
-      used.set(row.session_id, (used.get(row.session_id) || 0) + 1);
-      if (out.length >= 12) break;
-    }
-    return out;
+
+  identityMeetings(...args) {
+    return this.context.identityMeetings(...args);
   }
   // Threads slipping out of view: she may let them go or, with something
   // new behind it, hold on.
-  fadingView(now) {
-    return this.mind.self.fading({ before: now, now, limit: 3 }).map((t) => ({
-      thread: t.thread,
-      kind: t.kind,
-      content: t.content,
-      lastTouched: elapsedLabel(t.created, now, this.mind.timeZone()),
-    }));
+
+  fadingView(...args) {
+    return this.context.fadingView(...args);
   }
   // People she has grown close to. Their last message is what she can
   // point at when she thinks of them.
-  bondCards(list, now, { talk = false } = {}) {
-    const living = new Set(this.living().map((s) => s.id));
-    const lastSaid = this.db.prepare(
-      "SELECT sources FROM mind_bond_events WHERE subject_kind='person' AND subject_id=? AND created<=? AND sources!='[]' ORDER BY created DESC LIMIT 1",
-    );
-    const event = this.db.prepare(
-      "SELECT seq,session_id,payload FROM core_events WHERE seq=?",
-    );
-    return list.map((p) => {
-      const seq = evidence(parse(lastSaid.get(p.userId, now)?.sources, []))
-        .filter((s) => s.startsWith("m:"))
-        .map((s) => Number(s.slice(2)))
-        .at(-1);
-      const row = seq ? event.get(seq) : null;
-      const said = row ? parse(row.payload, {}) : null;
-      return {
-        userId: p.userId,
-        name: p.name,
-        feel: p.feel,
-        lastSeen: agoLabel(now - p.seenAt),
-        ...(talk && p.lastTalkedAt
-          ? { lastTalked: agoLabel(now - p.lastTalkedAt) }
-          : {}),
-        ...(p.impression ? { impression: p.impression } : {}),
-        sessions: p.sessions.filter((s) => living.has(s)),
-        ...(row ? { ref: `m:${row.seq}` } : {}),
-        // What was said in a private chat stays out of her solitary notes.
-        ...(said && !isPrivateSession(row.session_id)
-          ? { lastSaid: text(said.text, 80) }
-          : {}),
-      };
-    });
+
+  bondCards(...args) {
+    return this.context.bondCards(...args);
   }
-  missingView(now) {
-    return this.bondCards(this.mind.bonds.missing({ now, limit: 3 }), now);
+
+  missingView(...args) {
+    return this.context.missingView(...args);
   }
   // Close people she still sees, and has not talked with for a while.
-  quietView(now) {
-    return this.bondCards(this.mind.bonds.quiet({ now, limit: 3 }), now, {
-      talk: true,
-    });
+
+  quietView(...args) {
+    return this.context.quietView(...args);
   }
   // Sessions a citation actually rests on. A thought that also lists a
   // private room only counts as private when it has no public room.
-  sourcePlaces(sources) {
-    const refs = evidence(sources);
-    const seqs = messageSeqs(refs);
-    const sessions = seqs.length
-      ? this.db
-          .prepare(
-            `SELECT DISTINCT session_id FROM core_events WHERE seq IN (${seqs.map(() => "?").join(",")})`,
-          )
-          .all(...seqs)
-          .map((r) => r.session_id)
-      : [];
-    for (const ref of refs.filter((r) => r.startsWith("t:"))) {
-      const owned = this.mind.thoughts.get(ref.slice(2))?.sessions || [];
-      const publicOnes = owned.filter((id) => !isPrivateSession(id));
-      sessions.push(...(publicOnes.length ? publicOnes : owned));
-    }
-    for (const row of this.mind.meetings.places(
-      refs.filter((r) => r.startsWith("g:")),
-    ))
-      sessions.push(row.session_id);
-    return [...new Set(sessions)];
+
+  sourcePlaces(...args) {
+    return this.context.sourcePlaces(...args);
   }
   // Where a thought came from decides where a plan built on it may surface:
   // anything rooted in a private chat stays there.
-  placeOf(sources) {
-    const sessions = this.sourcePlaces(sources);
-    const hidden = sessions.find((s) => isPrivateSession(s));
-    if (hidden) return { session: hidden, discretion: "private" };
-    return {
-      session: sessions.length === 1 ? sessions[0] : null,
-      discretion: "open",
-    };
+
+  placeOf(...args) {
+    return this.context.placeOf(...args);
   }
   // Her own plans, and endings for things she was looking ahead to. Only
   // what she was shown can be closed, and only with something behind it.
@@ -641,252 +430,22 @@ export class Life {
     }
     return count;
   }
-  peopleIn(experiences, now, { open = false } = {}) {
-    const ids = [
-      ...new Set(
-        experiences.flatMap((e) =>
-          e.messages.map((m) => m.userId).filter(Boolean),
-        ),
-      ),
-    ].slice(0, 8);
-    // A diary page can be quoted in other rooms, so it only receives notes
-    // that were already fit to say in the open. Solitude still sees the rest.
-    return ids
-      .map((id) =>
-        this.mind.bonds.person(id, now, open ? { room: "group:__open__" } : {}),
-      )
-      .filter(Boolean)
-      .map((p) => ({
-        userId: p.userId,
-        name: p.name,
-        feel: p.feel,
-        ...(p.impression ? { impression: p.impression } : {}),
-      }));
+
+  peopleIn(...args) {
+    return this.context.peopleIn(...args);
   }
   // Applies what she concluded about herself, her faces and people. Every
   // change must cite something she actually lived through.
-  grow(result, valid, origin, now) {
-    const applied = { self: 0, faces: 0, bonds: 0, traits: 0, persona: 0 };
-    if (result?.personaGrowth) {
-      const proposal = this.mind.traits.proposePersona(result.personaGrowth, {
-        valid,
-        origin,
-        time: now,
-      });
-      if (proposal?.id) applied.persona++;
-      else applied.personaRejection = proposal?.rejected || "未保存";
-    }
-    for (const item of (Array.isArray(result.self) ? result.self : []).slice(
-      0,
-      6,
-    ))
-      if (this.mind.self.propose(item, { valid, origin, time: now })?.id)
-        applied.self++;
-    for (const item of (Array.isArray(result.faces) ? result.faces : []).slice(
-      0,
-      4,
-    )) {
-      const proposal = this.mind.faces.propose(item, {
-        valid,
-        origin,
-        time: now,
-      });
-      if (proposal?.id) applied.faces++;
-      else
-        (applied.faceRejections ||= []).push({
-          session: String(item?.session || ""),
-          reason: proposal?.rejected || "未保存",
-        });
-    }
-    for (const item of (Array.isArray(result.styleShifts)
-      ? result.styleShifts
-      : []
-    ).slice(0, 3)) {
-      const proposal = this.mind.traits.propose(item, {
-        valid,
-        origin,
-        time: now,
-      });
-      if (proposal?.id) applied.traits++;
-      else
-        (applied.traitRejections ||= []).push({
-          trait: String(item?.trait || ""),
-          reason: proposal?.rejected || "未保存",
-        });
-    }
-    for (const b of (Array.isArray(result.bonds) ? result.bonds : []).slice(
-      0,
-      6,
-    )) {
-      const cited = evidence(b?.evidence).filter((s) => valid.has(s));
-      if (!b?.userId || !cited.length || b.change === "interaction") continue;
-      if (
-        this.mind.bonds.record({
-          id: String(b.userId),
-          change: String(b.change),
-          note: b.why,
-          sources: cited,
-          origin,
-          time: now,
-        })
-      )
-        applied.bonds++;
-    }
-    return applied;
+
+  grow(...args) {
+    return this.growth.grow(...args);
   }
   // A narrower, infrequent look at her own direction. General reflection had
   // too many jobs and usually returned skip even after busy days, leaving
   // numeric tendencies and group faces permanently at their seed values.
-  async evolve({ force = false } = {}) {
-    if (this.closed || this.busy || !this.settings().solitude)
-      return { status: "skipped" };
-    const now = this.now();
-    const last = this.db
-      .prepare(
-        "SELECT * FROM mind_runs WHERE kind='identity' ORDER BY started DESC LIMIT 1",
-      )
-      .get();
-    if (!force && last && now - last.started < 12 * HOUR)
-      return { status: "skipped", reason: "还不需要重新看自己" };
-    if (!this.mind.budget.allows("inner", now))
-      return { status: "skipped", reason: "独处预算已用完" };
-    const since =
-      !force && last?.watermark
-        ? last.watermark
-        : this.db
-            .prepare(
-              `SELECT COALESCE(MIN(seq),1)-1 n FROM core_events WHERE time>? AND ${LIVE}`,
-            )
-            .get(now - 72 * HOUR).n;
-    const experiences = this.experiences(since, now, {
-      limit: 4,
-      rows: 12,
-    });
-    const count = experiences.reduce((n, e) => n + e.newEvents, 0);
-    if (count < 20) return { status: "skipped", reason: "新的相处还不多" };
-    const watermark =
-      this.db.prepare(`SELECT MAX(seq) n FROM core_events WHERE ${LIVE}`).get()
-        .n || 0;
-    const id = this.run("identity", "回看自己在不同地方怎样长成", watermark);
-    const trace = this.repo.trace("__mind__", "identity");
-    this.busy = true;
-    let status = "empty";
-    let reason = "还没有想改变的地方";
-    let summary = { freshMessages: count };
-    try {
-      const nature = this.mind.nature.current(now);
-      const version = nature.version;
-      const input = {
-        clock: localClock(now, this.mind.timeZone()),
-        nature: {
-          name: nature.name,
-          base: text(nature.base, 300),
-          boundaries: nature.boundaries,
-          bottomLines: nature.bottomLines,
-        },
-        livedTraits: this.mind.traits.current(nature, now),
-        livedPersona: this.mind.traits.persona(nature, now)?.content || "",
-        self: this.selfView(now).slice(0, 10),
-        faces: this.faceView(experiences, now),
-        verifiedMeetings: this.identityMeetings(
-          now,
-          experiences.map((e) => e.session),
-        ),
-        experiences,
-      };
-      let result = await this.chat.models.call(
-        this.profile(),
-        "reflection",
-        `${IDENTITY_PROMPT}\n${IDENTITY_BOOTSTRAP}`,
-        input,
-        trace,
-      );
-      if (typeof result?.skip !== "boolean")
-        result = await this.chat.models.call(
-          this.profile(),
-          "reflection",
-          `${IDENTITY_PROMPT}\n${IDENTITY_BOOTSTRAP}\n上一次给出了不符合格式的聊天回复。这次只能给指定四个字段的 JSON。`,
-          input,
-          trace,
-        );
-      if (typeof result?.skip !== "boolean")
-        throw SyntaxError("身份回看输出格式无效");
-      if (this.closed || this.mind.nature.version() !== version) {
-        status = "cancelled";
-        reason = "天性或服务状态已经变化";
-      } else if (result?.skip) {
-        const previous = this.mind.traits.persona(nature, now);
-        if (previous && personaNeedsRephrase(previous.content, this.mind)) {
-          try {
-            const rewritten = await this.chat.models.call(
-              this.profile(),
-              "reflection",
-              PERSONA_REPHRASE_PROMPT,
-              { draft: text(previous.content, 240) },
-              trace,
-            );
-            const sources = parse(previous.sources, []);
-            const revised = this.mind.traits.proposePersona(
-              { content: rewritten?.content, sources },
-              { valid: new Set(sources), origin: "identity", time: now },
-            );
-            if (revised.id) {
-              status = "written";
-              reason = "把先前的自述整理成长期适用的自己";
-              summary = { ...summary, persona: 1 };
-            }
-          } catch (error) {
-            trace.steps.push(`自我描述整理未完成：${error.message}`);
-          }
-        }
-      } else if (!result?.skip) {
-        const proposed = result.personaGrowth;
-        if (
-          proposed?.content &&
-          !hasCredential(proposed.content) &&
-          personaNeedsRephrase(proposed.content, this.mind)
-        ) {
-          try {
-            const rewritten = await this.chat.models.call(
-              this.profile(),
-              "reflection",
-              PERSONA_REPHRASE_PROMPT,
-              { draft: text(proposed.content, 240) },
-              trace,
-            );
-            if (typeof rewritten?.content === "string")
-              result.personaGrowth = {
-                ...proposed,
-                content: rewritten.content,
-              };
-          } catch (error) {
-            trace.steps.push(`自我描述重写未完成：${error.message}`);
-          }
-        }
-        const valid = new Set([
-          ...experiences.flatMap((e) => e.messages.map((m) => `m:${m.seq}`)),
-          ...input.verifiedMeetings.map((m) => m.ref),
-          ...input.self.map((s) => `s:${s.thread}`),
-        ]);
-        const applied = this.grow(result, valid, "identity", now);
-        summary = { ...summary, ...applied };
-        status =
-          applied.persona || applied.traits || applied.faces || applied.self
-            ? "written"
-            : "empty";
-        reason = status === "written" ? "留下了有来源的新变化" : reason;
-      }
-    } catch (error) {
-      status = "error";
-      reason = String(error.message).slice(0, 300);
-      trace.error = error.message;
-    } finally {
-      trace.reason = reason;
-      this.chat.finishQuietly(trace, status === "error" ? "error" : "complete");
-      this.end(id, status, reason, trace, summary);
-      this.busy = false;
-    }
-    return { status, reason, runId: id };
+
+  async evolve(...args) {
+    return this.growth.evolve(...args);
   }
   async reflect() {
     this.busy = true;
@@ -1254,1028 +813,120 @@ export class Life {
       this.mind.thoughts.resolve(parent.id, "有了新的理解", now);
     return added;
   }
-  diaryDue(now = this.now()) {
-    const s = this.settings();
-    if (!s.diary) return null;
-    try {
-      this.profile();
-    } catch {
-      return null;
-    }
-    if (!this.mind.budget.allows("inner", now)) return null;
-    const phase = this.phase(now).key;
-    const nature = this.mind.nature.current(now);
-    const bedtime = nature.rhythm?.enabled
-      ? ["sleepy", "asleep"].includes(phase)
-      : localClock(now, this.mind.timeZone()).hour >= 23;
-    const day = this.lifeDay(now);
-    // A diary that failed to come out waits a while, and a day is given up
-    // after a few tries rather than retried every minute.
-    const has = (d) => {
-      if (
-        this.db.prepare("SELECT 1 FROM mind_diary WHERE day=? LIMIT 1").get(d)
-      )
-        return true;
-      const tries = this.db
-        .prepare(
-          "SELECT COUNT(*) n, MAX(started) last FROM mind_runs WHERE kind='daily' AND json_extract(summary,'$.day')=?",
-        )
-        .get(d);
-      return tries.n >= 3 || (tries.last && now - tries.last < 3 * HOUR);
-    };
-    const start = this.dayStart(now);
-    if (
-      bedtime &&
-      !has(day) &&
-      this.mind.days.participated(start, now, { inclusive: true })
-    )
-      return { day, start, end: now };
-    const yesterday = this.lifeDay(start - MINUTE);
-    const before = this.dayStart(start - MINUTE);
-    if (
-      !bedtime &&
-      !has(yesterday) &&
-      this.mind.days.participated(before, start)
-    )
-      return { day: yesterday, start: before, end: start };
-    return null;
+
+  diaryDue(...args) {
+    return this.journal.diaryDue(...args);
   }
-  dayStart(now) {
-    return lifeDayStart(
-      this.mind.nature.current(now),
-      now,
-      this.mind.timeZone(),
-    );
+
+  dayStart(...args) {
+    return this.journal.dayStart(...args);
   }
   // A review can be rewritten into the story she carries everywhere, so a day
   // whose words stay private does not travel there as text.
-  diaryLine(entry, now = this.now()) {
-    const closed =
-      this.mind.meetings.privateBeyond(entry.day, "", now) ||
-      !this.mind.meetings.sayable(entry.content, "");
-    const compare =
-      !closed && entry.compare && this.mind.meetings.sayable(entry.compare, "")
-        ? text(entry.compare, 120)
-        : "";
-    return {
-      ref: `d:${entry.day}`,
-      day: entry.day,
-      ...(entry.mood ? { mood: entry.mood } : {}),
-      content: closed
-        ? "这一天有留在私下的事，原文不带到回顾里。"
-        : text(entry.content, 400),
-      ...(compare ? { compare } : {}),
-      ...(closed ? { private: true } : {}),
-    };
+
+  diaryLine(...args) {
+    return this.journal.diaryLine(...args);
   }
   // The account she carries into later writing. Sentences that repeat a
   // private fact are left out; the rest can still be retold.
-  openWords(value, limit) {
-    let out = String(value || "");
-    for (const saying of this.mind.meetings.privateSayings(""))
-      if (saying.content) out = out.split(saying.content).join("");
-    out = out
-      .replace(/[。！？]{2,}/g, (mark) => mark[0])
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-    if (!out || !this.mind.meetings.sayable(out, "")) return "";
-    return text(out, limit);
+
+  openWords(...args) {
+    return this.journal.openWords(...args);
   }
-  openThreads(rows, now = this.now()) {
-    const known = this.mind.self.latest(now);
-    return (rows || []).filter((item) => {
-      const row = known.find((thread) => thread.thread === item.thread);
-      return !!row && this.mind.meetings.stays(row, "");
-    });
+
+  openThreads(...args) {
+    return this.journal.openThreads(...args);
   }
   // Where she is in her own story, kept short for the diary and solitude.
   // Writing that still names a duty as the life she is living is kept
   // as history; those sentences are not handed back as what she is living.
-  chapterView(now, size = 120) {
-    const chapter = this.mind.periods.current(now);
-    if (!chapter) return null;
-    const gist = this.#presentLifeWriting(chapter.content, now, size);
-    return {
-      number: chapter.chapter,
-      title: chapter.title,
-      ...(gist ? { gist } : {}),
-    };
+
+  chapterView(...args) {
+    return this.journal.chapterView(...args);
   }
   // The wish she is living is not yet in this chapter.
-  #lifeMoved(now) {
-    const living = this.mind.self.living({ now, before: now });
-    const chapter = this.mind.periods.current(now);
-    return !!(
-      living &&
-      ownLife(living.content) &&
-      chapter &&
-      !aboutLife(living.content, chapter.content)
-    );
-  }
+
   // Drop sentences that still call a duty the life she is living.
-  #presentLifeWriting(content, now, size) {
-    let body = String(content || "");
-    const living = this.mind.self.living({ now, before: now });
-    if (
-      living &&
-      ownLife(living.content) &&
-      body &&
-      !aboutLife(living.content, body)
-    ) {
-      const duties = this.mind.self
-        .latest(now)
-        .filter(
-          (row) =>
-            row.kind === "intention" &&
-            row.status !== "closed" &&
-            !ownLife(row.content),
-        );
-      body = body
-        .split(/(?<=[。\n])/)
-        .filter((sentence) => {
-          if (
-            /为自己而活的那件事/.test(sentence) &&
-            !aboutLife(living.content, sentence)
-          )
-            return false;
-          return !duties.some((row) => aboutLife(row.content, sentence));
-        })
-        .join("");
-    }
-    return this.openWords(body, size);
-  }
-  async review({ day, start, end }) {
-    this.busy = true;
-    const now = this.now();
-    const id = this.run("daily", `写 ${day} 的日记`);
-    const trace = this.repo.trace("__mind__", "daily");
-    let status = "empty";
-    let reason = "今天没有写下什么";
-    let summary = { day };
-    try {
-      const nature = this.mind.nature.current(now);
-      const since =
-        this.db
-          .prepare(
-            `SELECT COALESCE(MIN(seq),1)-1 n FROM core_events WHERE time>? AND ${LIVE}`,
-          )
-          .get(start).n || 0;
-      const experiences = this.experiences(since, end, { limit: 6, rows: 14 });
-      const thoughts = this.db
-        .prepare(
-          "SELECT * FROM mind_thoughts WHERE created>? AND created<=? AND hidden=0 ORDER BY created LIMIT 10",
-        )
-        .all(start, end);
-      const choices = this.db
-        .prepare(
-          "SELECT choice,COUNT(*) n FROM mind_choices WHERE created>? AND created<=? GROUP BY choice",
-        )
-        .all(start, end);
-      const moods = this.mind.affect
-        .history({ before: end, limit: 40 })
-        .filter((a) => a.created > start)
-        .slice(0, 12)
-        .map((a) => ({
-          at: localClock(a.created, this.mind.timeZone()).local.slice(11),
-          feeling: a.feeling,
-          cause: text(a.cause, 50),
-        }));
-      const previousDay = this.db
-        .prepare(
-          "SELECT day FROM mind_snapshots WHERE day<? ORDER BY day DESC LIMIT 1",
-        )
-        .get(day)?.day;
-      const yesterday = previousDay ? this.mind.snapshotOf(previousDay) : null;
-      const yesterdayLife = yesterday ? this.mind.livedThen(yesterday) : null;
-      const lastDiary = this.db
-        .prepare(
-          "SELECT day,content,compare FROM mind_diary WHERE day<? ORDER BY day DESC, created DESC LIMIT 1",
-        )
-        .get(day);
-      const earlierDiary =
-        lastDiary && !this.mind.meetings.privateBeyond(lastDiary.day, "", end)
-          ? text(lastDiary.content, 240)
-          : "";
-      // Only the short account of her life and the chapter she is in, so
-      // the diary does not grow with her age.
-      const story = this.mind.periods.story(now);
-      const storyWords = this.#presentLifeWriting(story?.content, now, 600);
-      const chapter = this.chapterView(now);
-      const anniversaries = this.mind.days.anniversaries(end);
-      const expected = this.mind.anticipations.today({ start, end });
-      const open = this.mind.anticipations.due({
-        now: end,
-        limit: 5,
-        shareable: true,
-      });
-      const ahead = Object.fromEntries(
-        Object.entries({ ...expected, open }).filter(([, v]) => v.length),
-      );
-      const input = {
-        date: day,
-        dayOfLife: this.mind.days.dayOfLife(end),
-        today: {
-          moods,
-          thoughts: thoughts.map((t) => ({
-            id: t.id,
-            content: text(t.content, 200),
-          })),
-          choices: Object.fromEntries(choices.map((c) => [c.choice, c.n])),
-          feedback: this.feedbackSince(start),
-          ...(Object.keys(ahead).length ? { ahead } : {}),
-          experiences,
-          meetings: this.mind.meetings.held({
-            since: start,
-            before: end,
-            limit: 6,
-          }),
-        },
-        yesterday: yesterday
-          ? {
-              day: yesterday.day,
-              mood: yesterday.affect?.mood,
-              ...(yesterdayLife
-                ? { livingFor: text(yesterdayLife.content, 80) }
-                : {}),
-              self: (yesterday.self || [])
-                .filter((t) => {
-                  const row = this.mind.self
-                    .latest(yesterday.created || end)
-                    .find((item) => item.thread === t.thread);
-                  return row && this.mind.meetings.stays(row, "");
-                })
-                .slice(0, 12)
-                .map(
-                  (t) =>
-                    `${SELF_KINDS[t.kind] || t.kind}：${t.content}（${t.strength}）`,
-                ),
-              ...(earlierDiary ? { diary: earlierDiary } : {}),
-            }
-          : null,
-        self: this.selfView(now, { open: true }),
-        faces: this.faceView(experiences, now),
-        livedTraits: this.mind.traits.current(nature, now),
-        livedPersona: this.mind.traits.persona(nature, now)?.content || "",
-        ...(this.livingForView(end, { since: start, open: true })
-          ? { livingFor: this.livingForView(end, { since: start, open: true }) }
-          : {}),
-        people: this.peopleIn(experiences, now, { open: true }),
-        ...(storyWords ? { story: storyWords } : {}),
-        ...(chapter
-          ? {
-              chapter: {
-                ...chapter,
-                gist: this.openWords(chapter.gist, 120) || undefined,
-              },
-            }
-          : {}),
-        ...(anniversaries.length ? { anniversaries } : {}),
-      };
-      if (!input.today.meetings.length) delete input.today.meetings;
-      while (
-        estimateTokens(input) > SOLITUDE_INPUT_CAP &&
-        input.today.experiences.some((e) => e.messages.length > 3)
-      )
-        for (const e of input.today.experiences)
-          if (e.messages.length > 3) e.messages.shift();
-      while (
-        estimateTokens(input) > SOLITUDE_INPUT_CAP &&
-        input.today.meetings?.length > 2
-      )
-        input.today.meetings.shift();
-      const result = await this.chat.models.call(
-        this.profile(),
-        "daily",
-        replyPrompt(nature, prompts(this.repo), "daily"),
-        input,
-        trace,
-      );
-      const diary = text(result?.diary, 1200);
-      if (!diary || hasCredential(diary)) throw SyntaxError("日记格式无效");
-      const valid = new Set([
-        ...experiences.flatMap((e) => e.messages.map((m) => `m:${m.seq}`)),
-        ...thoughts.map((t) => `t:${t.id}`),
-        ...input.today.feedback.map((f) => f.ref),
-        ...open.map((a) => a.ref),
-        ...(input.livingFor ? [`s:${input.livingFor.thread}`] : []),
-        ...(input.today.meetings || []).map((m) => m.ref),
-      ]);
-      this.db
-        .prepare(
-          "INSERT INTO mind_diary(id,day,created,content,mood,compare,sources,run_id) VALUES (?,?,?,?,?,?,?,?)",
-        )
-        .run(
-          randomUUID(),
-          day,
-          now,
-          diary,
-          text(result.mood, 16),
-          text(result.compare, 300),
-          JSON.stringify([...valid].slice(0, 24)),
-          id,
-        );
-      const applied = this.grow(result, valid, "daily", now);
-      applied.letGo = this.letGo(
-        result?.letGo,
-        new Set(thoughts.map((t) => t.id)),
-        now,
-      );
-      Object.assign(
-        applied,
-        this.anticipate(result, {
-          valid,
-          shown: new Set(open.map((a) => a.ref.slice(2))),
-          origin: "daily",
-          now,
-        }),
-      );
-      if (result.mood)
-        this.mind.affect.feel({
-          feeling: result.mood,
-          intensity: 0.2,
-          valence: 0,
-          cause: "写完了今天的日记",
-          origin: "daily",
-          time: now,
-        });
-      this.mind.snapshot(now, day);
-      summary = { day, ...applied };
-      status = "written";
-      reason = `写下了 ${day} 的日记`;
-    } catch (error) {
-      status = "error";
-      reason =
-        error instanceof SyntaxError
-          ? "日记格式无效，未保存"
-          : String(error.message).slice(0, 300);
-      trace.error = error.message;
-    } finally {
-      trace.reason = reason;
-      this.chat.finishQuietly(trace, status === "error" ? "error" : "complete");
-      this.end(id, status, reason, trace, summary);
-      this.busy = false;
-    }
-    return { status, reason, runId: id };
+
+  async review(...args) {
+    return this.journal.review(...args);
   }
   // Latest version of each chapter: she can re-understand her own past.
-  chapters() {
-    return this.mind.periods.chapters();
+
+  chapters(...args) {
+    return this.journal.chapters(...args);
   }
-  chapterVersions(chapter) {
-    return this.mind.periods.chapterVersions(chapter);
+
+  chapterVersions(...args) {
+    return this.journal.chapterVersions(...args);
   }
   // Night: while she sleeps (in the small hours without a rhythm), one
   // quiet task at a time, after the diary.
-  isNight(now = this.now()) {
-    if (this.mind.nature.current(now).rhythm?.enabled)
-      return this.phase(now).key === "asleep";
-    const hour = localClock(now, this.mind.timeZone()).hour;
-    return hour >= 3 && hour < 6;
+
+  isNight(...args) {
+    return this.journal.isNight(...args);
   }
-  nightDue(now = this.now()) {
-    if (!this.settings().night || !this.isNight(now)) return null;
-    try {
-      this.profile();
-    } catch {
-      return null;
-    }
-    const day = this.lifeDay(now);
-    if (
-      this.mind.budget.allows("upkeep", now) &&
-      this.repo.store.settings().memoryEnabled !== false
-    ) {
-      const done = this.db.prepare(
-        "SELECT 1 FROM mind_runs WHERE kind='night' AND json_extract(summary,'$.day')=? AND json_extract(summary,'$.session')=? LIMIT 1",
-      );
-      for (const { id } of this.living())
-        if (
-          !this.mind.memory.busy.has(id) &&
-          this.mind.memory.pending(id) >= NIGHT_PENDING &&
-          !done.get(day, id)
-        )
-          return { kind: "memory", session: id, day };
-    }
-    if (this.reviewDue(now)) return { kind: "review" };
-    return null;
+
+  nightDue(...args) {
+    return this.journal.nightDue(...args);
   }
   // Quiet chats do not wait for forty messages: what was said today is
   // sorted into memory tonight.
-  async rememberAtNight(session, day, now = this.now()) {
-    this.busy = true;
-    const name = this.living().find((s) => s.id === session)?.name || session;
-    const id = this.run("night", `夜里整理「${name}」里的事`);
-    const trace = this.repo.trace(session, "memory");
-    let status = "empty";
-    let reason = "没有需要整理的";
-    try {
-      const profile = this.profile();
-      const models = withFallback(
-        this.chat.models,
-        this.chat.fallbackFor(null, profile, trace),
-      );
-      const before = this.mind.memory.pending(session);
-      await this.mind.memory.consolidate(
-        session,
-        profile,
-        prompts(this.repo).memory,
-        trace,
-        { force: true, models, now },
-      );
-      const left = this.mind.memory.pending(session);
-      if (left < before) {
-        status = "written";
-        reason = `夜里整理了「${name}」的 ${before - left} 条消息`;
-      }
-    } catch (error) {
-      status = "error";
-      reason = String(error.message).slice(0, 300);
-      trace.error = error.message;
-    } finally {
-      trace.reason = reason;
-      this.chat.finishQuietly(trace, status === "error" ? "error" : "complete");
-      this.end(id, status, reason, trace, { day, session });
-      this.busy = false;
-    }
-    return { status, reason, runId: id };
+
+  async rememberAtNight(...args) {
+    return this.journal.rememberAtNight(...args);
   }
   // Every so often (and first once there are two diaries) she looks back
   // over the stretch since the last review.
-  reviewDue(now = this.now()) {
-    const s = this.settings();
-    if (!s.diary || !this.mind.budget.allows("inner", now)) return false;
-    const last = this.mind.periods.lastReview(now);
-    const written = this.db
-      .prepare(
-        "SELECT COUNT(DISTINCT day) n FROM mind_diary WHERE created>? AND created<=?",
-      )
-      .get(last?.created ?? 0, now).n;
-    if (written < 2) return false;
-    const wait = this.#lifeMoved(now) ? DAY : s.chapterDays * DAY - 6 * HOUR;
-    if (last && now - last.created < wait) return false;
-    const tries = this.db
-      .prepare(
-        "SELECT COUNT(*) n, MAX(started) last FROM mind_runs WHERE kind='weekly' AND status='error' AND started>=?",
-      )
-      .get(this.dayStart(now));
-    return !(tries.n >= 3 || (tries.last && now - tries.last < 3 * HOUR));
+
+  reviewDue(...args) {
+    return this.journal.reviewDue(...args);
   }
-  async reviewPeriod(now = this.now()) {
-    this.busy = true;
-    const id = this.run("weekly", "回顾这一段日子");
-    const trace = this.repo.trace("__mind__", "weekly");
-    let status = "empty";
-    let reason = "这次没有写下回顾";
-    let summary = null;
-    try {
-      const nature = this.mind.nature.current(now);
-      const periods = this.mind.periods;
-      const last = periods.lastReview(now);
-      const start =
-        last?.period_end ??
-        this.mind.days.born() ??
-        now - this.settings().chapterDays * DAY;
-      const diaries = [
-        ...new Map(
-          this.db
-            .prepare(
-              "SELECT * FROM mind_diary WHERE created>? AND created<=? ORDER BY day, created",
-            )
-            .all(last?.created ?? 0, now)
-            .map((d) => [d.day, d]),
-        ).values(),
-      ].slice(-10);
-      const first = diaries[0]?.day;
-      const earlier = first
-        ? this.db
-            .prepare(
-              "SELECT day FROM mind_snapshots WHERE day<? ORDER BY day DESC LIMIT 1",
-            )
-            .get(first)?.day
-        : null;
-      const latest = this.db
-        .prepare(
-          "SELECT day FROM mind_snapshots WHERE created<=? ORDER BY day DESC LIMIT 1",
-        )
-        .get(now)?.day;
-      const earlierSnap = earlier ? this.mind.snapshotOf(earlier) : null;
-      const latestSnap = latest ? this.mind.snapshotOf(latest) : null;
-      const asLived = (snap) =>
-        snap ? { ...snap, livingFor: this.mind.livedThen(snap) } : null;
-      const change =
-        earlierSnap && latestSnap
-          ? diffSnapshots(asLived(earlierSnap), asLived(latestSnap))
-          : null;
-      const chapter = periods.current(now);
-      const previous = chapter
-        ? periods.chapters(now).find((c) => c.chapter === chapter.chapter - 1)
-        : null;
-      const story = periods.story(now);
-      const { kept, missed } = this.mind.anticipations.today({
-        start,
-        end: now,
-        shareable: true,
-      });
-      const anniversaries = this.mind.days.anniversaries(now);
-      const line = (t) =>
-        `${SELF_KINDS[t.kind] || t.kind}：${text(t.content, 60)}`;
-      const lastReview = last
-        ? this.#presentLifeWriting(last.content, now, 300)
-        : "";
-      const storyWords = story
-        ? this.#presentLifeWriting(story.content, now, 600)
-        : "";
-      const previousWords = previous
-        ? this.#presentLifeWriting(previous.content, now, 160)
-        : "";
-      const input = {
-        dayOfLife: this.mind.days.dayOfLife(now),
-        period: { from: first, to: diaries.at(-1)?.day },
-        diaries: diaries.map((d) => this.diaryLine(d, now)),
-        ...(last
-          ? {
-              lastReview: {
-                ...(lastReview ? { content: lastReview } : {}),
-                ...(last.compare ? { compare: text(last.compare, 120) } : {}),
-              },
-            }
-          : {}),
-        ...(change
-          ? {
-              changes: {
-                appeared: this.openThreads(change.appeared, now)
-                  .slice(0, 6)
-                  .map(line),
-                faded: this.openThreads(change.faded, now)
-                  .slice(0, 6)
-                  .map(line),
-                changed: this.openThreads(change.changed, now)
-                  .slice(0, 6)
-                  .map(
-                    (t) =>
-                      `${text(t.before.content, 40)} → ${text(t.content, 40)}`,
-                  ),
-                people: change.people
-                  .sort(
-                    (a, b) => Math.abs(b.shift ?? 1) - Math.abs(a.shift ?? 1),
-                  )
-                  .slice(0, 5)
-                  .map(
-                    (p) =>
-                      `${p.name}：${p.shift === null ? "新认识的" : p.shift > 0 ? "更近了" : "远了一些"}`,
-                  ),
-                ...(change.livingFor
-                  ? {
-                      livingFor: `${text(change.livingFor.from, 40) || "还没有"} → ${text(change.livingFor.to, 40) || "还没有"}`,
-                    }
-                  : {}),
-              },
-            }
-          : {}),
-        ...(kept.length || missed.length
-          ? { ahead: { kept: kept.slice(0, 5), missed: missed.slice(0, 5) } }
-          : {}),
-        ...(chapter
-          ? {
-              chapter: {
-                number: chapter.chapter,
-                title: chapter.title,
-                content: this.#presentLifeWriting(chapter.content, now, 800),
-                reviews: periods.reviewsSince(
-                  periods.began(chapter.chapter),
-                  now,
-                ),
-              },
-            }
-          : {}),
-        ...(previous
-          ? {
-              previousChapter: {
-                number: previous.chapter,
-                title: previous.title,
-                ...(previousWords ? { summary: previousWords } : {}),
-              },
-            }
-          : {}),
-        ...(storyWords ? { story: storyWords } : {}),
-        ...(anniversaries.length ? { anniversaries } : {}),
-        self: this.selfView(now, { open: true }).slice(0, 10),
-        ...(this.livingForView(now, { since: start, open: true })
-          ? {
-              livingFor: this.livingForView(now, { since: start, open: true }),
-            }
-          : {}),
-      };
-      const result = await this.chat.models.call(
-        this.profile(),
-        "weekly",
-        replyPrompt(nature, prompts(this.repo), "weekly"),
-        input,
-        trace,
-      );
-      const week = text(result?.week, 1500);
-      if (!week || hasCredential(week)) throw SyntaxError("回顾格式无效");
-      const valid = new Set([
-        ...diaries.map((d) => `d:${d.day}`),
-        ...(input.livingFor ? [`s:${input.livingFor.thread}`] : []),
-      ]);
-      periods.write("week", {
-        start,
-        end: now,
-        content: week,
-        compare: result?.compare,
-        sources: [...valid],
-        runId: id,
-        time: now,
-      });
-      const applied = this.grow(
-        { self: result.self, bonds: result.bonds },
-        valid,
-        "weekly",
-        now,
-      );
-      const turned = this.turnChapter(result?.chapter, {
-        chapter,
-        start,
-        now,
-        runId: id,
-      });
-      const told = text(result?.story, 1800);
-      const prior = story?.content || "";
-      const living = input.livingFor?.content || "";
-      const livingMoved = Boolean(living) && !prior.includes(living);
-      const retold =
-        !!told &&
-        told !== prior &&
-        !hasCredential(told) &&
-        (turned.opened || !story || livingMoved);
-      if (retold)
-        periods.write("story", {
-          content: told,
-          sources: [...valid],
-          runId: id,
-          time: now,
-        });
-      summary = { chapter: turned.number, story: retold, ...applied };
-      status = "written";
-      reason =
-        turned.opened && chapter
-          ? `回顾了这段日子，翻开了第 ${turned.number} 章`
-          : turned.number
-            ? `回顾了这段日子，写下了第 ${turned.number} 章`
-            : "回顾了这段日子";
-    } catch (error) {
-      status = "error";
-      reason =
-        error instanceof SyntaxError
-          ? "回顾格式无效，未保存"
-          : String(error.message).slice(0, 300);
-      trace.error = error.message;
-    } finally {
-      trace.reason = reason;
-      this.chat.finishQuietly(trace, status === "error" ? "error" : "complete");
-      this.end(id, status, reason, trace, summary);
-      this.busy = false;
-    }
-    return { status, reason, runId: id };
+
+  async reviewPeriod(...args) {
+    return this.journal.reviewPeriod(...args);
   }
   // continue rewrites the chapter she is in; close ends it and opens the next.
-  turnChapter(value, { chapter, start, now, runId }) {
-    const none = { number: null, opened: false };
-    if (!value || typeof value !== "object") return none;
-    if (!["continue", "close"].includes(value.action)) return none;
-    const title = text(value.title, 60);
-    const content = text(value.content, 2400);
-    if (!title || !content || hasCredential(content)) return none;
-    const periods = this.mind.periods;
-    if (!chapter)
-      return {
-        number: periods.writeChapter({
-          number: 1,
-          title,
-          content,
-          start: this.mind.days.born() ?? start,
-          end: now,
-          runId,
-          time: now,
-        }),
-        opened: true,
-      };
-    if (value.action === "continue")
-      return {
-        number: periods.writeChapter({
-          number: chapter.chapter,
-          title,
-          content,
-          start: periods.began(chapter.chapter) ?? chapter.period_start,
-          end: now,
-          runId,
-          time: now,
-        }),
-        opened: false,
-      };
-    return {
-      number: periods.writeChapter({
-        number: chapter.chapter + 1,
-        title,
-        content,
-        start: now,
-        end: now,
-        runId,
-        time: now,
-      }),
-      opened: true,
-    };
+
+  turnChapter(...args) {
+    return this.journal.turnChapter(...args);
   }
-  diaries({ before = "9999-12-31", limit = 14 } = {}) {
-    return this.db
-      .prepare(
-        "SELECT * FROM mind_diary WHERE day<=? ORDER BY day DESC, created DESC LIMIT ?",
-      )
-      .all(before, limit)
-      .map((d) => ({ ...d, sources: parse(d.sources, []) }));
+
+  diaries(...args) {
+    return this.journal.diaries(...args);
   }
   // Whether to say something first is her own turn; these are only the
   // limits a considerate person keeps.
   // A room she was just in has gone quiet. She looks once and may say one
   // thing of her own; silence is still a complete answer.
-  async considerPresence(now = this.now()) {
-    const s = this.settings();
-    if (!s.proactive || !this.online()) return null;
-    if (this.phase(now).key === "asleep") return null;
-    if (!this.mind.budget.allows("inner", now)) return null;
-    const last = this.repo.config("own-voice", {}).attemptedAt;
-    if (last && now - last < s.initiativeIntervalMinutes * MINUTE) return null;
-    const contacts = this.initiative.contacts(now, { ready: true });
-    if (!contacts.length) return null;
-    const resting = this.ownVoice.resting(now);
-    this.repo.saveConfig("own-voice", {
-      ...this.repo.config("own-voice", {}),
-      attemptedAt: now,
-    });
-    if (resting) return { status: "presence-silent", reason: resting };
-    this.busy = true;
-    let formed;
-    try {
-      formed = await this.ownVoice.form(now);
-    } finally {
-      this.busy = false;
-    }
-    if (!formed.note?.share)
-      return {
-        status:
-          formed.status === "error" ? "presence-error" : "presence-silent",
-        reason: formed.reason,
-      };
-    // The thought already exists. Only now do we choose where it might fit;
-    // someone else's last question cannot become its reason for existing.
-    const contact = this.initiative.chooseContact(
-      formed.note,
-      contacts,
-      this.now(),
-    );
-    if (!contact)
-      return {
-        status: "presence-silent",
-        reason: "此刻没有适合分享这个念头的地方",
-      };
-    this.mind.thoughts.planOutreach(formed.note.id, {
-      session: contact.session,
-      words: formed.note.words,
-      reason: formed.note.reason,
-      time: now,
-    });
-    const result = await this.reachOut(this.now());
-    return result
-      ? {
-          ...result,
-          status:
-            result.status === "outreach-declined"
-              ? "presence-silent"
-              : result.status.replace(/^outreach-/, "presence-"),
-        }
-      : {
-          status: "presence-deferred",
-          reason: "念头已留下，等待合适的交流空隙",
-          session: contact.session,
-        };
+
+  async considerPresence(...args) {
+    return this.presence.considerPresence(...args);
   }
-  presenceCooling(session, now, s) {
-    const tried = this.repo.config("presence", {});
-    return !!(
-      tried[session] &&
-      now - tried[session] < s.initiativeIntervalMinutes * MINUTE
-    );
+
+  presenceCooling(...args) {
+    return this.presence.presenceCooling(...args);
   }
-  markPresence(session, now) {
-    const tried = { ...this.repo.config("presence", {}), [session]: now };
-    this.repo.saveConfig("presence", tried);
+
+  markPresence(...args) {
+    return this.presence.markPresence(...args);
   }
-  wasHere(session, now, names, aside = null) {
-    const skipped =
-      aside ||
-      new Set(
-        this.db
-          .prepare("SELECT seq FROM mind_unlived")
-          .all()
-          .map((row) => row.seq),
-      );
-    const lived = this.db
-      .prepare(
-        "SELECT 1 FROM core_events WHERE session_id=? AND seq NOT IN (SELECT seq FROM mind_unlived) AND COALESCE(json_extract(payload,'$.simulated'),0)=0 AND (role='assistant' OR ?=1) LIMIT 1",
-      )
-      .get(session, +isPrivateSession(session));
-    if (lived) return true;
-    if (
-      this.db
-        .prepare("SELECT 1 FROM mind_meetings WHERE session_id=? LIMIT 1")
-        .get(session)
-    )
-      return true;
-    return this.repo
-      .recentEvents(session, 80, { simulated: false })
-      .some((m) => {
-        if (skipped.has(m.seq)) return false;
-        if (m.role === "assistant") return true;
-        const mentions = (m.mentions || []).map(String);
-        if (m.accountId && mentions.includes(String(m.accountId))) return true;
-        if (String(m.text || "").includes("@我")) return true;
-        return isNameCall(m.text, names);
-      });
+
+  wasHere(...args) {
+    return this.presence.wasHere(...args);
   }
-  async reachOut(now = this.now()) {
-    const s = this.settings();
-    if (!s.proactive || !this.online()) return null;
-    if (this.phase(now).key === "asleep") return null;
-    for (const t of this.mind.thoughts.dueOutreach(now)) {
-      const session = t.outreach_session;
-      if (this.initiative.recentlyToldAnotherGroup(t, now)) {
-        this.mind.thoughts.setOutreach(t.id, "declined");
-        continue;
-      }
-      const block = this.outreachBlocked(session, now, s);
-      if (block) {
-        if (block.permanent) this.mind.thoughts.setOutreach(t.id, "skipped");
-        else
-          this.mind.thoughts.deferOutreach(t.id, block.reason, block.retryAt);
-        continue;
-      }
-      this.mind.thoughts.setOutreach(t.id, "sending");
-      this.busy = true;
-      try {
-        const returned = this.returnedSince(t, now);
-        const trace = await this.chat.initiate(session, {
-          type: t.kind === "expression" ? "presence" : "outreach",
-          data: {
-            thought: t.content,
-            planned: t.outreach,
-            wantedBecause: t.outreach_reason,
-            expression: {
-              ref: `t:${t.id}`,
-              origin:
-                t.kind === "expression" ? "self_expression" : "earlier_wish",
-              formedAt: t.created,
-              thought: t.content,
-              words: t.outreach_draft?.length ? t.outreach_draft : [t.outreach],
-              reason: t.outreach_reason,
-              sources: t.sources,
-              sourceMaterial: this.initiative.sourceMaterial(t, now),
-            },
-            initiative: this.initiative.context(session, now),
-            ...(returned.length ? { returned } : {}),
-          },
-        });
-        if (!trace) {
-          this.mind.thoughts.deferOutreach(
-            t.id,
-            "对话忙着，稍后重新看看",
-            now + MINUTE,
-          );
-          return {
-            status: "outreach-deferred",
-            reason: "愿望保留，等待对话空隙",
-            session,
-          };
-        }
-        this.markPresence(session, now);
-        const uncertain =
-          trace &&
-          this.db
-            .prepare(
-              "SELECT 1 FROM core_outbox WHERE trace_id=? AND status='uncertain'",
-            )
-            .get(trace.id);
-        if (
-          ["error", "stale"].includes(trace.status) &&
-          !trace.sent?.length &&
-          !uncertain &&
-          !this.db
-            .prepare(
-              "SELECT 1 FROM core_outbox WHERE trace_id=? AND status IN ('sending','confirmed') LIMIT 1",
-            )
-            .get(trace.id)
-        ) {
-          this.mind.thoughts.deferOutreach(
-            t.id,
-            trace.reason || "调用失败，稍后重新决定",
-            this.now() + (trace.status === "stale" ? 1 : 15) * MINUTE,
-          );
-          return {
-            status: "outreach-deferred",
-            reason: "尚未发送，想说的话仍保留",
-            session,
-          };
-        }
-        const status = uncertain
-          ? "uncertain"
-          : trace?.status === "sent" || trace?.sent?.length
-            ? "sent"
-            : trace?.status === "silent"
-              ? "declined"
-              : "cancelled";
-        this.mind.thoughts.setOutreach(t.id, status);
-        return {
-          status: `outreach-${status}`,
-          reason: trace?.reason || "没能联系",
-          session,
-        };
-      } catch {
-        // Retry only when no delivery could have happened. An ambiguous
-        // network acknowledgement must never produce duplicate QQ messages.
-        const maybeSent = this.db
-          .prepare(
-            "SELECT 1 FROM core_outbox WHERE session_id=? AND time>=? AND status IN ('sending','confirmed','uncertain') LIMIT 1",
-          )
-          .get(session, now);
-        if (!maybeSent) {
-          this.mind.thoughts.deferOutreach(
-            t.id,
-            "调用未完成，稍后重新决定",
-            now + 15 * MINUTE,
-          );
-          return {
-            status: "outreach-deferred",
-            reason: "调用未完成，想说的话仍保留",
-            session,
-          };
-        }
-        this.mind.thoughts.setOutreach(t.id, "uncertain");
-        return {
-          status: "outreach-uncertain",
-          reason: "主动联系的投递不确定，不再重试",
-        };
-      } finally {
-        this.busy = false;
-      }
-    }
-    return null;
+
+  async reachOut(...args) {
+    return this.presence.reachOut(...args);
   }
   // People this planned sentence was about, who have shown up since she
   // wrote it. The sentence can still be said; the absence is no longer a fact.
-  returnedSince(thought, now) {
-    const sources = parse(thought?.sources, []);
-    const ids = new Set();
-    const meetingIds = sources
-      .filter((ref) => String(ref).startsWith("g:"))
-      .map((ref) => String(ref).slice(2));
-    if (meetingIds.length) {
-      const rows = this.db
-        .prepare(
-          `SELECT people, will_people FROM mind_meetings WHERE id IN (${meetingIds.map(() => "?").join(",")})`,
-        )
-        .all(...meetingIds);
-      for (const row of rows) {
-        const named = parse(row.will_people, []);
-        const who = named.length ? named : parse(row.people, []);
-        for (const id of who) ids.add(String(id));
-      }
-    }
-    const seqs = messageSeqs(sources);
-    if (seqs.length) {
-      const events = this.db
-        .prepare(
-          `SELECT payload, role FROM core_events WHERE seq IN (${seqs.map(() => "?").join(",")})`,
-        )
-        .all(...seqs);
-      for (const row of events) {
-        if (row.role === "assistant") continue;
-        const payload = parse(row.payload, {});
-        if (payload.userId && payload.userId !== "bot")
-          ids.add(String(payload.userId));
-      }
-    }
-    const out = [];
-    for (const id of ids) {
-      const person = this.mind.bonds.person(id, now);
-      if (!person?.seenAt || person.seenAt <= thought.created) continue;
-      out.push({
-        name: person.name || id,
-        since: agoLabel(now - person.seenAt),
-      });
-      if (out.length >= 3) break;
-    }
-    return out;
+
+  returnedSince(...args) {
+    return this.presence.returnedSince(...args);
   }
-  outreachBlocked(session, now, s) {
-    return this.initiative.blocked(session, now, s);
+
+  outreachBlocked(...args) {
+    return this.presence.outreachBlocked(...args);
   }
 }
