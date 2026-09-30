@@ -91,7 +91,8 @@ export class Traits {
     const previous = this.persona(nature, time);
     const correcting =
       previous && personaNeedsRephrase(previous.content, this.mind);
-    if (!correcting && !externalEvidence(this.db, sources, time).length)
+    const grounded = externalEvidence(this.db, sources, time);
+    if (!correcting && !grounded.length)
       return { rejected: "自述需要模型之外的新经历" };
     if (previous && similar(content, previous.content, 0.85))
       return { rejected: "没有实质变化" };
@@ -108,7 +109,7 @@ export class Traits {
     if (
       previous &&
       !personaNeedsRephrase(previous.content, this.mind) &&
-      !evidenceRoots(this.db, sources, time).some((root) => !spent.has(root))
+      !grounded.some((root) => !spent.has(root))
     )
       return { rejected: "没有新的亲历来源" };
     const id = randomUUID();
@@ -152,11 +153,7 @@ export class Traits {
           evidenceRoots(this.db, JSON.parse(row.sources), time),
         ),
     );
-    if (
-      !evidenceRoots(this.db, sources, time).some(
-        (source) => !spent.has(source),
-      )
-    )
+    if (!grounded.some((source) => !spent.has(source)))
       return { rejected: "这段经历已经改变过它" };
     const previous = this.current(nature, time)[trait];
     const start = lifeDayStart(nature, time, this.mind.timeZone());

@@ -18,6 +18,36 @@ function plan(w, activity) {
   });
 }
 
+test("空书架的阅读计划保持待办，不阻塞后面可以执行的写作计划", async (t) => {
+  const w = world({ online: false });
+  t.after(w.close);
+  const reading = plan(w, "read");
+  const wish = w.mind.self.propose(
+    { kind: "intention", content: "我想写一首关于咖啡香气的小诗" },
+    { time: w.now() },
+  );
+  const writing = w.mind.anticipations.add({
+    kind: "plan",
+    activity: "write",
+    content: "写一首关于咖啡香气的小诗",
+    due: "2026-09-22 10:00",
+    sources: [`s:${wish.thread}`],
+    origin: "solitude",
+    time: w.now(),
+  });
+  assert.ok(writing.id);
+  w.answers.reflection = {
+    done: true,
+    title: "咖啡香气",
+    content: "杯沿的一点热气，留给清晨一小片安静。",
+  };
+  const result = await w.life.activities.run();
+  assert.equal(result?.status, "written");
+  assert.equal(w.mind.anticipations.get(reading.id).status, "pending");
+  assert.equal(w.mind.anticipations.get(writing.id).status, "done");
+  assert.equal(w.sent.length, 0);
+});
+
 test("离线也能执行自己的写作计划，成果与完成状态一起保存，没有发送或人格变化", async (t) => {
   const w = world({ online: false });
   t.after(w.close);

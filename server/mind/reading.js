@@ -108,6 +108,13 @@ export class Reading {
       .all(now, limit);
   }
   unreadCount() {
-    return this.shared().length;
+    return this.db
+      .prepare(
+        `SELECT COUNT(*) count FROM core_chunks c
+         JOIN core_documents d ON d.id=c.document_id AND d.status='ready'
+         JOIN core_collections k ON k.id=c.collection_id AND k.scope='shared'
+         WHERE c.id NOT IN (SELECT chunk_id FROM mind_readings)`,
+      )
+      .get().count;
   }
 }

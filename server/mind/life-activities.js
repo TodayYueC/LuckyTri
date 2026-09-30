@@ -23,6 +23,7 @@ export class LifeActivities {
   }
   next(now) {
     const life = this.life;
+    let hasReading;
     for (const plan of this.db
       .prepare(
         "SELECT * FROM mind_anticipations WHERE kind='plan' AND activity IN ('read','write','think') AND status='pending' AND recurrence='none' AND created<=? AND due_at<=? AND (session_id IS NULL OR EXISTS (SELECT 1 FROM sessions s WHERE s.id=mind_anticipations.session_id AND s.enabled=1 AND s.archived=0)) ORDER BY due_at,created LIMIT 20",
@@ -45,6 +46,10 @@ export class LifeActivities {
         )
         .get(plan.id);
       if (last && now - last.started < HOUR) continue;
+      if (plan.activity === "read") {
+        hasReading ??= life.mind.reading.unreadCount() > 0;
+        if (!hasReading) continue;
+      }
       return { ...plan, sources: parse(plan.sources, []) };
     }
     return null;
