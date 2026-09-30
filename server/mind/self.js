@@ -392,7 +392,12 @@ export class Self {
       return { rejected: "对不上她说过的话" };
     // A revision that cites nothing new keeps the old provenance. Dropping
     // it would let a privately learned sentence travel into other rooms.
-    const kept = sources.length || !prior ? sources : prior.sources || [];
+    const kept = [
+      ...new Set([
+        ...(prior && !fresh.length ? prior.sources || [] : []),
+        ...sources,
+      ]),
+    ];
     const days = [
       ...new Set([
         ...(prior?.days || []),

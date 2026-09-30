@@ -667,6 +667,7 @@ test("没有新来源的修正不会把私下的线索带到别的房间", () =>
   try {
     w.open("group:1", "一群");
     w.open("private:10001", "阿明");
+    w.say("private:10001", "10001", "我住在南区");
     w.mind.experience(
       {
         choice: "silent",

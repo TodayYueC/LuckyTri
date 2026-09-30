@@ -6,6 +6,8 @@ import { evidence, parse } from "./util.js";
 // experience behind it; a withdrawal is a tombstone in mind_revocations.
 export function migrateMind(db, store) {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS mind_memory_permissions(memory_id TEXT NOT NULL,session_id TEXT NOT NULL,recall INTEGER NOT NULL,disclose INTEGER NOT NULL,expires INTEGER,updated INTEGER NOT NULL,PRIMARY KEY(memory_id,session_id));
+    CREATE TABLE IF NOT EXISTS mind_permission_events(id INTEGER PRIMARY KEY,memory_id TEXT NOT NULL,session_id TEXT NOT NULL,created INTEGER NOT NULL,value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS mind_nature (version INTEGER PRIMARY KEY, created INTEGER NOT NULL, value TEXT NOT NULL, note TEXT);
     CREATE TABLE IF NOT EXISTS mind_trait_changes (id TEXT PRIMARY KEY, created INTEGER NOT NULL, trait TEXT NOT NULL, value INTEGER NOT NULL, delta INTEGER NOT NULL, reason TEXT NOT NULL, sources TEXT NOT NULL DEFAULT '[]', origin TEXT NOT NULL, nature_version INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS mind_trait_changes_trait ON mind_trait_changes(nature_version,trait,created);

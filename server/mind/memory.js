@@ -100,7 +100,7 @@ export class MemoryManager {
     session,
     rows,
     cutoff = Date.now(),
-    { people = [], touch = true } = {},
+    { people = [], touch = true, forSpeech = false } = {},
   ) {
     const db = this.repo.db;
     const here = new Set(this.scopes(session));
@@ -159,7 +159,7 @@ export class MemoryManager {
     const scored = [];
     for (const m of candidates) {
       const local = here.has(m.session_id) || m.session_id === "__shared__";
-      if (m.discretion === "secret" && !local) continue;
+      if (!this.permission(m, session, cutoff).recall) continue;
       const overlap = oneSpeakerOverlap(m.content);
       const relevance = overlap + (fts.has(m.id) ? 2 : 0);
       const about = speakers.has(m.subject)
@@ -239,7 +239,10 @@ export class MemoryManager {
       return {
         id: m.id,
         subject: m.subject,
-        content: m.content,
+        content:
+          forSpeech && !this.permission(m, session, cutoff).disclose
+            ? "（关于此人的一条受限记忆；没有在这里复述具体内容的授权）"
+            : m.content,
         type: m.type,
         confidence: m.confidence,
         importance: m.importance,
@@ -260,6 +263,69 @@ export class MemoryManager {
   secretsOutside(session) {
     return this.#outside(session, "secret");
   }
+  permission(memory, session, now = Date.now()) {
+    const local = this.scopes(session).includes(memory.session_id);
+    const saved = this.repo.db
+      .prepare(
+        "SELECT recall,disclose,expires FROM mind_memory_permissions WHERE memory_id=? AND session_id=?",
+      )
+      .get(memory.id, session);
+    if (saved && (!saved.expires || saved.expires > now))
+      return { recall: !!saved.recall, disclose: !!saved.disclose };
+    return {
+      recall: memory.discretion !== "secret" || local,
+      disclose: memory.discretion === "open" || local,
+    };
+  }
+  permissions(id) {
+    if (!this.repo.db.prepare("SELECT 1 FROM core_memories WHERE id=?").get(id))
+      throw Error("记忆不存在");
+    return this.repo.db
+      .prepare(
+        "SELECT session_id,recall,disclose,expires,updated FROM mind_memory_permissions WHERE memory_id=?",
+      )
+      .all(id);
+  }
+  setPermission(id, { session, recall, disclose, expires = null }) {
+    if (
+      !this.repo.db
+        .prepare("SELECT 1 FROM core_memories WHERE id=? AND status!='deleted'")
+        .get(id)
+    )
+      throw Error("记忆不存在");
+    if (!this.repo.db.prepare("SELECT 1 FROM sessions WHERE id=?").get(session))
+      throw Error("会话不存在");
+    if (
+      typeof recall !== "boolean" ||
+      typeof disclose !== "boolean" ||
+      (disclose && !recall)
+    )
+      throw Error("允许复述时也必须允许想起");
+    if (
+      expires !== null &&
+      (!Number.isSafeInteger(expires) || expires <= Date.now())
+    )
+      throw Error("授权到期时间无效");
+    const value = { recall, disclose, expires };
+    const db = this.repo.db,
+      now = Date.now();
+    db.exec("SAVEPOINT memory_permission");
+    try {
+      db.prepare(
+        "INSERT INTO mind_memory_permissions VALUES (?,?,?,?,?,?) ON CONFLICT(memory_id,session_id) DO UPDATE SET recall=excluded.recall,disclose=excluded.disclose,expires=excluded.expires,updated=excluded.updated",
+      ).run(id, session, +recall, +disclose, expires, now);
+      db.prepare(
+        "INSERT INTO mind_permission_events(memory_id,session_id,created,value) VALUES (?,?,?,?)",
+      ).run(id, session, now, JSON.stringify(value));
+      db.exec("RELEASE memory_permission");
+    } catch (error) {
+      db.exec("ROLLBACK TO memory_permission");
+      db.exec("RELEASE memory_permission");
+      throw error;
+    }
+    this.repo.store.revision++;
+    return value;
+  }
   // Private facts may be recalled, with a warning. They still must not leave
   // in the words she actually sends.
   privateOutside(session) {
@@ -272,7 +338,11 @@ export class MemoryManager {
         "SELECT id,session_id,subject,content FROM core_memories WHERE discretion=? AND status='confirmed' ORDER BY updated DESC LIMIT 200",
       )
       .all(discretion)
-      .filter((m) => !here.has(m.session_id));
+      .filter(
+        (m) =>
+          !here.has(m.session_id) &&
+          !this.permission({ ...m, discretion }, session).disclose,
+      );
   }
   update(id, patch) {
     const db = this.repo.db,

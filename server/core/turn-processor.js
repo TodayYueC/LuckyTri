@@ -222,6 +222,7 @@ export class TurnProcessor {
           ? this.owner.mind.memory.retrieve(session, batch, now, {
               people,
               touch: live,
+              forSpeech: true,
             })
           : [];
       const knowledge = ownInitiative

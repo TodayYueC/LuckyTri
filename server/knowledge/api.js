@@ -16,6 +16,16 @@ import {
 
 export function mountKnowledge(app, system) {
   const { repo } = system;
+  app.get(
+    "/api/core/memories/:id/permissions",
+    wrap((req, res) => res.json(system.memory.permissions(req.params.id))),
+  );
+  app.patch(
+    "/api/core/memories/:id/permissions",
+    wrap((req, res) =>
+      res.json(system.memory.setPermission(req.params.id, req.body)),
+    ),
+  );
   app.get("/api/core/knowledge/embedding", (req, res) =>
     res.json(publicEmbeddingProfile(repo)),
   );

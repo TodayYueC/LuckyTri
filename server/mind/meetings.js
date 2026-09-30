@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { evidenceRoots } from "./evidence.js";
 import { sessionNativeId } from "../channels/session-key.js";
 import { interestTerms } from "./attention.js";
 import { agoLabel, elapsedLabel } from "./clock.js";
@@ -877,7 +878,10 @@ export class Meetings {
   // Private rooms a citation rests on. Empty means the words are hers, or
   // they came from somewhere she can speak of openly.
   privateRoots(sources, before = Date.now()) {
-    const refs = Array.isArray(sources) ? sources : parse(sources, []);
+    const cited = Array.isArray(sources) ? sources : parse(sources, []);
+    const refs = [
+      ...new Set([...cited, ...evidenceRoots(this.db, cited, before)]),
+    ];
     const rooms = new Set();
     for (const row of this.places(refs))
       if (row.discretion === "private" || row.discretion === "secret")
@@ -926,10 +930,15 @@ export class Meetings {
     for (const discretion of ["private", "secret"])
       for (const row of this.db
         .prepare(
-          "SELECT content, session_id FROM core_memories WHERE discretion=? AND status='confirmed' ORDER BY updated DESC LIMIT 200",
+          "SELECT id,content, session_id FROM core_memories WHERE discretion=? AND status='confirmed' ORDER BY updated DESC LIMIT 200",
         )
         .all(discretion))
-        keep(row.content, row.session_id);
+        if (
+          !exceptSession ||
+          !this.mind.memory.permission({ ...row, discretion }, exceptSession)
+            .disclose
+        )
+          keep(row.content, row.session_id);
     for (const row of this.db
       .prepare(
         `SELECT appraisal AS content, session_id FROM mind_meetings m

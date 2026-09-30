@@ -51,7 +51,7 @@ export function evidenceRoots(db, sources, before = Number.MAX_SAFE_INTEGER) {
     if (
       kind === "s" &&
       rows.length &&
-      rows.every((row) => !evidence(parse(row.sources, [])).length)
+      rows.some((row) => !evidence(parse(row.sources, [])).length)
     )
       roots.add(ref);
     for (const row of rows) {
