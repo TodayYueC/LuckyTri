@@ -98,7 +98,7 @@ export class Works {
   list({ q = "", project = "", limit = 30, offset = 0 } = {}) {
     return this.db
       .prepare(
-        `SELECT w.*,p.kind,p.title project_title,v.summary,length(v.content) characters FROM mind_time_works w LEFT JOIN mind_time_projects p ON p.id=w.project_id JOIN mind_time_versions v ON v.work_id=w.id AND v.version=w.version WHERE (w.title LIKE ? OR p.title LIKE ?) ${project ? "AND w.project_id=?" : ""} ORDER BY w.updated DESC LIMIT ? OFFSET ?`,
+        `SELECT w.*,COALESCE(p.kind,(SELECT kind FROM mind_creations WHERE id=w.legacy_creation)) kind,p.title project_title,v.summary,v.sources,length(v.content) characters FROM mind_time_works w LEFT JOIN mind_time_projects p ON p.id=w.project_id JOIN mind_time_versions v ON v.work_id=w.id AND v.version=w.version WHERE (w.title LIKE ? OR p.title LIKE ?) ${project ? "AND w.project_id=?" : ""} ORDER BY w.updated DESC LIMIT ? OFFSET ?`,
       )
       .all(
         "%" + text(q, 80) + "%",
@@ -116,12 +116,24 @@ export class Works {
     const v = this.db
       .prepare("SELECT * FROM mind_time_versions WHERE work_id=? AND version=?")
       .get(id, Number(version) || work.version);
+    const saved = v
+      ? this.db
+          .prepare(
+            "SELECT reason FROM mind_time_events WHERE kind='draft' AND json_extract(data,'$.workId')=? AND json_extract(data,'$.version')=? ORDER BY id DESC LIMIT 1",
+          )
+          .get(id, v.version)
+      : null;
     return v
       ? {
           ...work,
           ...v,
           id: work.id,
           versionId: v.id,
+          state: saved
+            ? saved.reason === "保存完成稿"
+              ? "complete"
+              : "draft"
+            : work.state,
           sources: parse(v.sources, []),
           versions: this.db
             .prepare(
@@ -332,7 +344,7 @@ export class Works {
         (w) =>
           w.created <= now &&
           this.time.visible(
-            { ...w, sources: this.get(w.id).sources },
+            { ...w, sources: parse(w.sources, []) },
             session,
             now,
           ),
@@ -350,6 +362,7 @@ export class Works {
         id: w.id,
         title: w.title,
         state: w.state,
+        kind: w.kind,
         version: w.version,
         ordinal: w.ordinal,
         summary: text(w.summary, 180),

@@ -156,6 +156,14 @@ export function normalizeTurn(raw, snapshot, trace) {
       .slice(0, max);
   return {
     choice,
+    share:
+      raw.share && ["send", "later", "decline"].includes(raw.share.choice)
+        ? {
+            workId: text(raw.share.workId, 100),
+            choice: raw.share.choice,
+            reason: text(raw.share.reason, 240),
+          }
+        : null,
     attention:
       raw.attention &&
       ["continue", "chat", "rest"].includes(raw.attention.action)

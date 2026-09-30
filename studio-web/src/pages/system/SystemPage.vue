@@ -5,9 +5,10 @@ import Tabs from "../../components/ui/Tabs.vue";
 import ConnectQQ from "./ConnectQQ.vue";
 import ModelLibrary from "./ModelLibrary.vue";
 import Runtime from "./Runtime.vue";
+import SearchProfile from "./SearchProfile.vue";
 import { ask } from "../../dialog";
 
-const VIEWS = ["connect", "models", "runtime"];
+const VIEWS = ["connect", "models", "search", "runtime"];
 const view = ref(VIEWS.includes(studio.sub) ? studio.sub : "connect");
 async function switchView(next: string) {
   if (next === view.value) return;
@@ -55,11 +56,13 @@ watch(
       :items="[
         { key: 'connect', label: '连接 QQ' },
         { key: 'models', label: '模型库' },
+        { key: 'search', label: '独立搜索' },
         { key: 'runtime', label: '运行开关' },
       ]"
     />
     <ConnectQQ v-if="view === 'connect'" @open="switchView" />
     <ModelLibrary v-else-if="view === 'models'" />
+    <SearchProfile v-else-if="view === 'search'" />
     <Runtime v-else />
   </div>
 </template>

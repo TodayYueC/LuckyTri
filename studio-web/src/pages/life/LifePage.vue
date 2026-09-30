@@ -69,6 +69,9 @@ onMounted(load);
       <div class="life-mark" aria-hidden="true"><span></span></div>
     </header>
     <div class="life-bar">
+      <button class="text-button" @click="go('time')">
+        时间、任务与作品 →
+      </button>
       <Tabs
         v-model="view"
         label="一生的分区"
@@ -219,6 +222,9 @@ onMounted(load);
 
       <details class="card creations">
         <summary>独处时留下的东西 · {{ life.creations?.length || 0 }}</summary>
+        <button class="text-button" @click="go('time', 'works')">
+          阅读草稿、篇章和旧版本 →
+        </button>
         <article
           v-for="piece in life.creations || []"
           :key="piece.id"

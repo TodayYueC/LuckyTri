@@ -635,7 +635,7 @@ export class MemoryManager {
       const cited = block.filter((m) =>
         (Array.isArray(a.sources) ? a.sources : []).map(Number).includes(m.seq),
       );
-      if (!kind || !cited.length) continue;
+      if (!kind || !cited.length || cited.some((m) => m.artifact)) continue;
       let subject = a.subject == null ? null : String(a.subject);
       if (kind === "promise") {
         if (!cited.every((m) => m.role === "assistant")) continue;
@@ -731,7 +731,8 @@ export class MemoryManager {
       const value = await models.call(
         profile,
         "memory",
-        prompt,
+        prompt +
+          "\nartifact 标记的是作品正文，fiction 的人物/剧情和 reference 的游戏资料情节不能作为现实人物事实；不要把正文中的约定提取成她现实接受的承诺。读者讨论作品时保留作品语境。",
         {
           sessionId: session,
           self,
@@ -747,6 +748,7 @@ export class MemoryManager {
                   names.get(String(m.userId)) ||
                   m.userId,
             role: m.role,
+            ...(m.artifact ? { artifact: m.artifact } : {}),
             text: String(m.text || "").slice(0, 600),
             // A readable local time lets "明天" become a date.
             localTime: localClock(m.time, zone).local,

@@ -25,6 +25,7 @@ const views: Record<Page, object> = {
   heart: defineAsyncComponent(() => import("./pages/heart/HeartPage.vue")),
   people: defineAsyncComponent(() => import("./pages/people/PeoplePage.vue")),
   life: defineAsyncComponent(() => import("./pages/life/LifePage.vue")),
+  time: defineAsyncComponent(() => import("./pages/time/TimePage.vue")),
   memory: defineAsyncComponent(() => import("./pages/memory/MemoryPage.vue")),
   nature: defineAsyncComponent(() => import("./pages/nature/NaturePage.vue")),
   system: defineAsyncComponent(() => import("./pages/system/SystemPage.vue")),

@@ -53,6 +53,7 @@ export class LifeContext {
           ...(earlier ? { earlier } : {}),
           messages: events.slice(-rows).map((m) => ({
             seq: m.seq,
+            ...(m.artifact ? { artifact: m.artifact } : {}),
             name: m.role === "assistant" ? selfName : m.name,
             ...(m.role === "assistant" ? { self: true } : { userId: m.userId }),
             time: localClock(m.time, this.owner.mind.timeZone()).local.slice(5),

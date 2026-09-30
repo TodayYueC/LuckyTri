@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Attention } from "./attention.js";
 import { Tasks, ACTIVITY_LABELS } from "./tasks.js";
-import { evidence, parse, text } from "../util.js";
+import { dayKey, evidence, parse, text, zonedTime } from "../util.js";
 import { Works } from "./works.js";
 import { Sharing } from "./sharing.js";
 import { evidenceRoots } from "../evidence.js";
@@ -209,7 +209,12 @@ export class TimeSystem {
   }
   progress(task, work, result, now = this.now()) {
     const focus =
-      this.elapsed(task.id, now) >= this.settings().focusMinutes * 60000;
+      (this.db
+        .prepare(
+          "SELECT active_ms,updated FROM mind_time_spans WHERE task_id=? AND ended IS NULL",
+        )
+        .get(task.id)?.active_ms || 0) >=
+      this.settings().focusMinutes * 60000;
     const state = focus ? "paused" : "doing",
       next =
         now +
@@ -235,22 +240,36 @@ export class TimeSystem {
       now,
     );
   }
-  reconcile(response, session, now = this.now()) {
-    const works = this.works.fragments({ session, now }),
-      completed = works.some((w) => w.state === "complete");
+  reconcile(response, session, now = this.now(), prior = null) {
+    const works = this.works
+      .fragments({ session, now, cue: response.bubbles })
+      .filter((w) => w.kind === "write");
     return {
       ...response,
       bubbles: response.bubbles.map((line) => {
+        if (prior?.id && this.tasks.get(prior.id)?.state !== "doing")
+          line = line.replace(
+            /(?:我)?(?:现在)?正在(写|读|阅读|玩)/g,
+            "我刚才在$1",
+          );
         if (
           !/(?:我|那篇|小说|短篇|故事).{0,20}(?:写好了|写完了|已经完成|已经发给)/.test(
             line,
           )
         )
           return line;
+        const title = line.match(/《([^》]+)》/)?.[1],
+          primary = this.primary();
+        const related = title
+          ? works.filter((w) => w.title === title)
+          : primary?.activity === "write"
+            ? works.filter((w) => w.id === primary.work_id)
+            : works;
+        const completed = related.some((w) => w.state === "complete");
         if (!completed)
           line = line.replace(
             /(?:已经)?(?:写好了|写完了|已经完成)/g,
-            works.length
+            related.length
               ? "写下了一部分，还没完成"
               : "还没完成，得真正动笔写下来",
           );
@@ -258,7 +277,14 @@ export class TimeSystem {
           /已经发给/.test(line) &&
           !this.sharing
             .list()
-            .some((s) => s.session_id === session && s.state === "sent")
+            .some(
+              (s) =>
+                s.session_id === session &&
+                s.state === "sent" &&
+                related.some(
+                  (w) => w.id === s.work_id && w.version === s.version,
+                ),
+            )
         )
           line = line.replace(/已经发给(?:你|大家)?(?:了)?/g, "还没有完整交付");
         return line;
@@ -266,7 +292,8 @@ export class TimeSystem {
     };
   }
   view({ session, now = this.now(), cue = [] } = {}) {
-    const task = this.primary();
+    const primary = this.primary(),
+      task = primary?.created <= now ? primary : null;
     const current =
       task && this.visible(task, session, now)
         ? {
@@ -276,7 +303,14 @@ export class TimeSystem {
             title: task.title,
             why: task.why,
             state: task.state,
-            checkpoint: task.checkpoint,
+            checkpoint: {
+              summary: text(task.checkpoint.summary, 300),
+              next: text(task.checkpoint.next, 160),
+              version: task.checkpoint.version,
+              stage: task.checkpoint.stage,
+              segments:
+                task.checkpoint.segments || task.checkpoint.segment || 0,
+            },
             elapsedMs: this.elapsed(task.id, now),
             mode: task.activity === "game" ? "reference" : "actual",
           }
@@ -287,6 +321,7 @@ export class TimeSystem {
       .list({ limit: 100 })
       .filter(
         (row) =>
+          row.created <= now &&
           row.state !== "abandoned" &&
           (row.state !== "done" ||
             !["none", "sent"].includes(row.share_state)) &&
@@ -345,6 +380,21 @@ export class TimeSystem {
   ) {
     if (!this.valid(task)) throw Error("任务已变化");
     if (!workId && !creation) throw Error("完成需要实际成果");
+    const actualWork =
+      workId &&
+      this.db
+        .prepare(
+          "SELECT 1 FROM mind_time_works w JOIN mind_time_versions v ON v.work_id=w.id AND v.version=w.version WHERE w.id=? AND w.state='complete' AND length(v.content)>0 AND EXISTS(SELECT 1 FROM mind_time_tasks t WHERE t.id=? AND t.work_id=w.id)",
+        )
+        .get(workId, task.id);
+    const actualCreation =
+      creation &&
+      this.db
+        .prepare(
+          "SELECT 1 FROM mind_creations WHERE id=? AND plan_id IN (?,?) AND length(content)>0",
+        )
+        .get(creation, task.id, task.anticipation_id || task.id);
+    if (!actualWork && !actualCreation) throw Error("完成需要已提交的实际成果");
     this.stopSpan(task, now);
     const share = task.kind === "promise" && task.subject ? "waiting" : "none";
     this.db
@@ -374,5 +424,82 @@ export class TimeSystem {
       )
       .all(Math.max(1, Math.min(100, limit)), Math.max(0, offset))
       .map((row) => ({ ...row, data: parse(row.data, {}) }));
+  }
+  today(now = this.now()) {
+    const start = zonedTime(
+      dayKey(now, this.mind.timeZone()),
+      this.mind.timeZone(),
+    );
+    const spans = this.db
+      .prepare(
+        "SELECT s.*,t.title,t.activity FROM mind_time_spans s JOIN mind_time_tasks t ON t.id=s.task_id WHERE s.started<=? AND COALESCE(s.ended,s.updated)>=? ORDER BY started",
+      )
+      .all(now, start)
+      .map((row) => ({
+        ...row,
+        todayMs: Math.min(
+          row.active_ms,
+          Math.max(
+            0,
+            Math.min(row.updated, now) - Math.max(row.started, start),
+          ),
+        ),
+      }));
+    const interactions = this.db
+      .prepare(
+        "SELECT * FROM mind_time_events WHERE kind='interaction' AND created>=? AND created<=? ORDER BY created DESC LIMIT 100",
+      )
+      .all(start, now)
+      .map((row) => ({ ...row, data: parse(row.data, {}) }));
+    return {
+      now,
+      start,
+      spans,
+      interactions,
+      activeMs: spans.reduce((n, s) => n + s.todayMs, 0),
+    };
+  }
+  lived({ since = 0, before = this.now(), session, limit = 6 } = {}) {
+    const tasks = this.db
+      .prepare(
+        "SELECT t.id FROM mind_time_tasks t WHERE t.created<=? AND EXISTS(SELECT 1 FROM mind_time_works w JOIN mind_time_versions v ON v.work_id=w.id WHERE w.task_id=t.id AND v.created>=? AND v.created<=?) ORDER BY t.updated DESC LIMIT 60",
+      )
+      .all(before, since, before)
+      .map((row) => this.tasks.get(row.id));
+    return tasks
+      .filter((task) => this.visible(task, session, before))
+      .slice(0, limit)
+      .map((task) => {
+        const event = this.db
+          .prepare(
+            "SELECT kind,data FROM mind_time_events WHERE task_id=? AND created<=? AND kind IN ('doing','paused','waiting','done','abandoned','checkpoint') ORDER BY id DESC LIMIT 1",
+          )
+          .get(task.id, before);
+        const work = this.db
+          .prepare(
+            "SELECT w.id,v.title,length(v.content) characters FROM mind_time_works w JOIN mind_time_versions v ON v.work_id=w.id WHERE w.task_id=? AND v.created<=? ORDER BY v.created DESC,v.version DESC LIMIT 1",
+          )
+          .get(task.id, before);
+        const state =
+          event?.kind === "checkpoint" ? "doing" : event?.kind || "doing";
+        return {
+          ref: `x:${task.id}`,
+          title: task.title,
+          why: task.why,
+          activity: task.activity,
+          state,
+          share:
+            task.completed && task.completed <= before
+              ? task.share_state
+              : "none",
+          mode: task.activity === "game" ? "reference" : "actual",
+          progress:
+            task.activity === "game"
+              ? "接触游戏资料并留下札记，未实际操作客户端"
+              : `${work?.title || ""}，已保存 ${work?.characters || 0} 字${state === "done" ? "完成稿" : "正文"}`,
+          project: task.project_id,
+          work: work?.id || null,
+        };
+      });
   }
 }

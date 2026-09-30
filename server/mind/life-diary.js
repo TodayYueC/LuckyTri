@@ -241,6 +241,7 @@ export class LifeDiary {
         date: day,
         dayOfLife: this.owner.mind.days.dayOfLife(end),
         today: {
+          actions: this.owner.mind.time.lived({ since: start, before: end }),
           moods,
           thoughts: thoughts.map((t) => ({
             id: t.id,
@@ -325,6 +326,7 @@ export class LifeDiary {
       const diary = text(result?.diary, 1200);
       if (!diary || hasCredential(diary)) throw SyntaxError("日记格式无效");
       const valid = new Set([
+        ...input.today.actions.map((a) => a.ref),
         ...experiences.flatMap((e) => e.messages.map((m) => `m:${m.seq}`)),
         ...thoughts.map((t) => `t:${t.id}`),
         ...input.today.feedback.map((f) => f.ref),

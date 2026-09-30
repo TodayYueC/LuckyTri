@@ -11,6 +11,9 @@ export function migrateTime(db) {
     CREATE TABLE IF NOT EXISTS mind_time_works(id TEXT PRIMARY KEY,created INTEGER NOT NULL,updated INTEGER NOT NULL,task_id TEXT,project_id TEXT,ordinal INTEGER NOT NULL DEFAULT 1,title TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'draft',version INTEGER NOT NULL DEFAULT 0,session_id TEXT,discretion TEXT NOT NULL DEFAULT 'open',legacy_creation TEXT UNIQUE,UNIQUE(project_id,ordinal));
     CREATE TABLE IF NOT EXISTS mind_time_versions(id TEXT PRIMARY KEY,work_id TEXT NOT NULL,version INTEGER NOT NULL,created INTEGER NOT NULL,title TEXT NOT NULL,content TEXT NOT NULL,summary TEXT NOT NULL DEFAULT '',sources TEXT NOT NULL DEFAULT '[]',run_id TEXT,UNIQUE(work_id,version));
     CREATE INDEX IF NOT EXISTS mind_time_versions_work ON mind_time_versions(work_id,version);
+    CREATE INDEX IF NOT EXISTS mind_time_works_recent ON mind_time_works(updated DESC);
+    CREATE INDEX IF NOT EXISTS mind_time_works_task ON mind_time_works(task_id);
+    CREATE INDEX IF NOT EXISTS mind_time_projects_recent ON mind_time_projects(updated DESC);
     CREATE TABLE IF NOT EXISTS mind_time_sources(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,created INTEGER NOT NULL,title TEXT NOT NULL,url TEXT NOT NULL,content TEXT NOT NULL,hash TEXT NOT NULL,UNIQUE(project_id,url,hash));
     CREATE TABLE IF NOT EXISTS mind_time_searches(id INTEGER PRIMARY KEY,created INTEGER NOT NULL,provider TEXT NOT NULL,query TEXT NOT NULL,state TEXT NOT NULL,error TEXT NOT NULL DEFAULT '');
     CREATE TABLE IF NOT EXISTS mind_time_shares(id TEXT PRIMARY KEY,created INTEGER NOT NULL,updated INTEGER NOT NULL,work_id TEXT NOT NULL,version INTEGER NOT NULL,session_id TEXT NOT NULL,offset INTEGER NOT NULL DEFAULT 0,state TEXT NOT NULL DEFAULT 'pending',reason TEXT NOT NULL DEFAULT '',trace_id TEXT,UNIQUE(work_id,version,session_id));

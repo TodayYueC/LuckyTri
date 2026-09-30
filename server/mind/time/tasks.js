@@ -20,8 +20,8 @@ export const ACTIVITY_LABELS = {
   unknown: "等待澄清",
 };
 export function classifyActivity(words) {
-  if (/游戏|Rewrite|ATRI|盲开|通关|打完.+章|游玩/i.test(words)) return "game";
   if (/写|小说|短篇|诗|随笔|故事/.test(words)) return "write";
+  if (/游戏|Rewrite|ATRI|盲开|通关|打完.+章|游玩/i.test(words)) return "game";
   if (/读|阅读|看.{0,12}(?:书|资料|文章)/.test(words)) return "read";
   if (/思考|想一想|想想|整理思路/.test(words)) return "think";
   return "unknown";
@@ -60,7 +60,10 @@ export class Tasks {
       overdue:
         !!row.due_at &&
         row.due_at < this.time.now() &&
-        !["done", "abandoned"].includes(row.state),
+        row.state !== "abandoned" &&
+        (row.state !== "done" ||
+          (row.kind === "promise" &&
+            !["none", "sent"].includes(row.share_state))),
     }));
   }
   add(
@@ -204,6 +207,15 @@ export class Tasks {
         /(?:不|没|别)(?:会|想|打算|准备)|开玩笑/.test(words)
       )
         continue;
+      if (/(?:小说里|故事里|角色台词|模拟对话|假如我是|假设我是)/.test(words))
+        continue;
+      if (
+        /(?:已经|刚才|刚|昨天).{0,20}(?:写(?:了|完)|读(?:了|完)|玩(?:了|过)|做完)/.test(
+          words,
+        ) &&
+        !/(?:明天|明晚|回头|等我|我会|我打算)/.test(words)
+      )
+        continue;
       if (
         !/(?:我(?:会|要|想|打算|准备|答应)|给你|帮你|等我|回头|明天|明晚|今晚).{0,45}(?:写|读|玩|看|整理|想一想|发给|送给|做)/.test(
           words,
@@ -235,7 +247,16 @@ export class Tasks {
         },
         now,
       );
-      if (result.id) ids.push(result.id);
+      if (result.id) {
+        ids.push(result.id);
+        if (/(?:如果|等到|等你).{0,35}(?:资料|题目|要求|确认)/.test(words))
+          this.wait(
+            this.get(result.id),
+            "等待约定的条件澄清",
+            Number.MAX_SAFE_INTEGER,
+            now,
+          );
+      }
     }
     return ids;
   }

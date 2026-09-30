@@ -456,7 +456,15 @@ export function mountMind(app, chat, life) {
       const before = Number(req.query.before) || Number.MAX_SAFE_INTEGER;
       const now = life.now();
       res.json({
-        diaries: life.diaries({ limit: 30 }),
+        diaries: life
+          .diaries({ limit: 30 })
+          .map((d) => ({
+            ...d,
+            actions: mind.time.lived({
+              since: life.dayStart(d.created),
+              before: d.created,
+            }),
+          })),
         creations: life.activities.list({ before: now }),
         chapters: life.chapters().map((c) => ({
           ...c,

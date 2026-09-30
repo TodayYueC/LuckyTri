@@ -1,9 +1,18 @@
 import { wrap } from "../../http.js";
+import { displayNames } from "../../studio/display-names.js";
+import { zonedTime } from "../util.js";
 export function mountTime(app, life) {
   const time = life.mind.time;
   app.get(
     "/api/mind/time/search",
-    wrap((req, res) => res.json(time.search.public())),
+    wrap((req, res) => {
+      if (
+        req.query.provider &&
+        !["tavily", "brave"].includes(req.query.provider)
+      )
+        throw Error("搜索提供方无效");
+      res.json(time.search.public(req.query.provider));
+    }),
   );
   app.patch(
     "/api/mind/time/search",
@@ -102,6 +111,17 @@ export function mountTime(app, life) {
       time.tasks.sync(life.now());
       res.json({
         ...time.view(),
+        today: time.today(),
+        next: time.tasks
+          .ready()
+          .slice(0, 5)
+          .map((t) => ({
+            id: t.id,
+            title: t.title,
+            state: t.state,
+            why: t.why,
+            due_at: t.due_at,
+          })),
         settings: time.settings(),
         events: time.events({ limit: 20 }),
         affect: life.mind.affect.state(life.now()),
@@ -115,7 +135,18 @@ export function mountTime(app, life) {
   );
   app.get(
     "/api/mind/time/tasks",
-    wrap((req, res) => res.json(time.tasks.list(req.query))),
+    wrap((req, res) => {
+      const names = displayNames(life.db, life.now());
+      res.json(
+        time.tasks.list(req.query).map((task) => ({
+          ...task,
+          person: task.subject
+            ? names.get(String(task.subject)) || "相关的人"
+            : null,
+          elapsedMs: time.elapsed(task.id),
+        })),
+      );
+    }),
   );
   app.get(
     "/api/mind/time/tasks/:id",
@@ -123,7 +154,15 @@ export function mountTime(app, life) {
   );
   app.post(
     "/api/mind/time/tasks/:id/control",
-    wrap((req, res) => res.json(time.tasks.control(req.params.id, req.body))),
+    wrap((req, res) => {
+      const input = { ...req.body };
+      if (typeof input.readyAt === "string") {
+        input.readyAt = zonedTime(input.readyAt, life.mind.timeZone());
+        if (input.readyAt === null)
+          throw Error("开始时间格式应为 YYYY-MM-DD HH:mm");
+      }
+      res.json(time.tasks.control(req.params.id, input));
+    }),
   );
   app.put(
     "/api/mind/time/settings",

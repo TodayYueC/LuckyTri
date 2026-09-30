@@ -24,6 +24,10 @@ test("截止日期与开始时间分开；无日期任务可执行，不能勾�
   );
   const p = w.mind.time.start(w.mind.time.tasks.get(id));
   assert.throws(() => w.mind.time.complete(p), /实际成果/);
+  assert.throws(
+    () => w.mind.time.complete(p, { creation: "不存在的成果" }),
+    /实际成果/,
+  );
 });
 test("普通交流不暂停活动；深聊由明确选择改变注意力，旧租约作废", async (t) => {
   const w = world();

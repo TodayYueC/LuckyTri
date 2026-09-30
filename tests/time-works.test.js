@@ -66,6 +66,23 @@ test("取消后的迟到成果不能提交", async (t) => {
   assert.equal((await run).status, "cancelled");
   assert.equal(w.mind.time.works.list().length, 0);
 });
+test("发送前只修正变化的活动事实与未完成作品，不重跑交流", async (t) => {
+  const { w, id } = setup(t);
+  w.answers.reflection = { done: false, title: "月光", content: "开头。" };
+  await w.life.activities.run();
+  const prior = w.mind.time.view({ session: "private:10001" }).current;
+  w.mind.time.adjust({ attention: { action: "chat", reason: "想认真听" } });
+  const corrected = w.mind.time.reconcile(
+    { bubbles: ["我正在写小说，月光这篇已经写完了。"] },
+    "private:10001",
+    w.now(),
+    prior,
+  );
+  assert.match(corrected.bubbles[0], /刚才在写/);
+  assert.match(corrected.bubbles[0], /还没完成/);
+  assert.equal(w.calls.length, 1);
+  assert.equal(w.mind.time.tasks.get(id).state, "paused");
+});
 test("完成与交付分开；每轮最多1500字，全部确认才算兑现", async (t) => {
   const { w, id } = setup(t, { promise: true });
   w.answers.reflection = {

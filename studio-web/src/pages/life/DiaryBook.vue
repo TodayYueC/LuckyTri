@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { toast } from "../../api";
 import { mind } from "../../plates/mind";
+import { go } from "../../stores/studio";
 import { dayLabel, weekday } from "../../format";
 import Empty from "../../components/ui/Empty.vue";
 
@@ -69,6 +70,16 @@ async function openDay() {
           }}</span>
         </header>
         <p class="ink">{{ entry.content }}</p>
+        <div v-if="entry.actions?.length" class="row">
+          <button
+            v-for="action in entry.actions"
+            :key="action.ref"
+            class="text-button"
+            @click="go('time', action.work ? 'works/' + action.work : 'tasks')"
+          >
+            {{ action.title }} →
+          </button>
+        </div>
         <blockquote v-if="entry.compare">
           和昨天的自己比：{{ entry.compare }}
         </blockquote>

@@ -3,6 +3,7 @@ import { localClock } from "../core/conversation-cues.js";
 import { hasCredential } from "./guard.js";
 import { isPrivateSession } from "./memory.js";
 import { lifeSpan } from "./nature.js";
+import { classifyActivity } from "./time/tasks.js";
 import { DAY, evidence, parse, similar, text, zonedTime } from "./util.js";
 
 // What she is looking ahead to: promises she made, things she means to do,
@@ -196,7 +197,7 @@ export class Anticipations {
           : "open",
         JSON.stringify(refs),
         origin,
-        kind === "plan" && ["read", "write", "think"].includes(activity)
+        kind === "plan" && ["read", "write", "think", "game"].includes(activity)
           ? activity
           : "",
       );
@@ -221,6 +222,11 @@ export class Anticipations {
     const a = this.get(id);
     if (!a || a.status !== "pending" || a.recurrence === "yearly") return false;
     if (status === "done") {
+      if (
+        ["plan", "promise"].includes(a.kind) &&
+        (a.activity || classifyActivity(a.content) !== "unknown")
+      )
+        this.mind.time?.tasks.sync(time);
       const task = this.db
         .prepare(
           "SELECT state,share_state FROM mind_time_tasks WHERE anticipation_id=?",
@@ -276,8 +282,22 @@ export class Anticipations {
   label(a, due, now) {
     const who = this.who(a);
     const when = this.relative(due, now, a.due_precision);
-    if (a.kind === "promise")
-      return `我答应${who ? `${who}` : ""}：${a.content}（${when}${a.status === "pending" ? "，还没做" : ""}）`;
+    if (a.kind === "promise") {
+      const task = this.db
+        .prepare(
+          "SELECT state,share_state,checkpoint FROM mind_time_tasks WHERE anticipation_id=?",
+        )
+        .get(a.id);
+      const progress =
+        task?.state === "done" && task.share_state !== "sent"
+          ? "作品完成，尚未交付"
+          : task?.state === "doing"
+            ? "正在做"
+            : parse(task?.checkpoint, {}).workId
+              ? "已有草稿，尚未完成"
+              : "还没做";
+      return `我答应${who ? `${who}` : ""}：${a.content}（${when}${a.status === "pending" ? "，" + progress : ""}）`;
+    }
     if (a.kind === "plan") return `我打算：${a.content}（${when}）`;
     if (a.kind === "event")
       return `${who ? `${who}计划：` : "有人计划："}${a.content}（${when}，结果未确认）`;

@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { toast } from "../../api";
 import { presence, refreshPresence } from "../../stores/presence";
 import { studio } from "../../stores/studio";
+import { go } from "../../stores/studio";
 import { activityLine, latelyLine, statusLine } from "../../mood/presence";
 import { mind } from "../../plates/mind";
 import { ago, placeName } from "../../format";
@@ -42,7 +43,10 @@ async function run(kind: "reflect" | "review") {
 }
 
 onMounted(() => void load());
-watch(() => [studio.tick, studio.pulse], () => void load());
+watch(
+  () => [studio.tick, studio.pulse],
+  () => void load(),
+);
 </script>
 
 <template>
@@ -68,22 +72,48 @@ watch(() => [studio.tick, studio.pulse], () => void load());
         <span v-if="affect.energyLabel" class="chip" data-tone="quiet">
           精力 · {{ affect.energyLabel }}
         </span>
-        <span v-if="overview?.nature?.rhythm?.enabled" class="chip" data-tone="quiet">
-          {{ overview.nature.rhythm.wake }} 醒 / {{ overview.nature.rhythm.sleep }} 睡
+        <span
+          v-if="overview?.nature?.rhythm?.enabled"
+          class="chip"
+          data-tone="quiet"
+        >
+          {{ overview.nature.rhythm.wake }} 醒 /
+          {{ overview.nature.rhythm.sleep }} 睡
         </span>
       </div>
       <div class="row actions">
-        <button class="primary" @click="studio.chatOpen = true">和 TA 聊聊</button>
+        <button
+          v-if="p?.currentLife?.current"
+          class="text-button"
+          @click="go('time')"
+        >
+          看看进度
+        </button>
+        <button class="primary" @click="studio.chatOpen = true">
+          和 TA 聊聊
+        </button>
         <button :disabled="busyMind" @click="run('reflect')">
           {{ busyMind ? "TA 正在想…" : "让 TA 独处一会儿" }}
         </button>
-        <button :disabled="busyMind" @click="run('review')">写下今天的日记</button>
+        <button :disabled="busyMind" @click="run('review')">
+          写下今天的日记
+        </button>
       </div>
-      <small class="faint">{{ overview?.reason || "安静下来时，TA 会自己独处。" }}</small>
+      <small class="faint">{{
+        overview?.reason || "安静下来时，TA 会自己独处。"
+      }}</small>
       <div v-if="p?.lastWords" class="aside-bit">
         <span class="eyebrow">最近说</span>
         <p>“{{ p.lastWords.text }}”</p>
-        <small>{{ placeName({ name: p.lastWords.sessionName, id: p.lastWords.session }) }} · {{ ago(p.lastWords.time, p.now) }}</small>
+        <small
+          >{{
+            placeName({
+              name: p.lastWords.sessionName,
+              id: p.lastWords.session,
+            })
+          }}
+          · {{ ago(p.lastWords.time, p.now) }}</small
+        >
       </div>
       <div v-if="p?.thought" class="aside-bit">
         <span class="eyebrow">放在心上</span>
@@ -92,7 +122,10 @@ watch(() => [studio.tick, studio.pulse], () => void load());
       </div>
       <div v-if="nextExpect" class="aside-bit">
         <span class="eyebrow">在等</span>
-        <p>{{ nextExpect.name ? `${nextExpect.name}：` : "" }}{{ nextExpect.content }}</p>
+        <p>
+          {{ nextExpect.name ? `${nextExpect.name}：` : ""
+          }}{{ nextExpect.content }}
+        </p>
         <small v-if="nextExpect.when">{{ nextExpect.when }}</small>
       </div>
     </div>
@@ -147,6 +180,13 @@ watch(() => [studio.tick, studio.pulse], () => void load());
 .chips .chip {
   background: rgb(255 255 255 / 0.64);
   border-color: rgb(255 255 255 / 0.84);
+}
+.activity-chip {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  min-width: 0;
+  line-height: 1.5;
 }
 .actions {
   display: grid;

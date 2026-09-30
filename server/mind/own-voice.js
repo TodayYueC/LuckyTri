@@ -115,6 +115,12 @@ export class OwnVoice {
     return {
       ...(run >= 2 ? { circling: { notes: run, fresh } } : {}),
       clock: localClock(now, this.mind.timeZone()),
+      currentLife: this.mind.time.view({ session: "", now }),
+      actions: this.mind.time.lived({
+        session: "",
+        before: now,
+        since: now - 86400000,
+      }),
       mood: { feeling: mood, energy: energyLabel, phase: phaseLabel },
       interests: nature.interests || [],
       self: threads.map((s) => ({
@@ -171,7 +177,7 @@ export class OwnVoice {
           .map((s) => text(s, 180));
         const sources = evidence(result.sources);
         const valid = new Set(
-          [...input.self, ...input.notes].map((s) => s.ref),
+          [...input.self, ...input.notes, ...input.actions].map((s) => s.ref),
         );
         if (
           !content ||

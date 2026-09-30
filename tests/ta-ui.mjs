@@ -105,7 +105,7 @@ async function run() {
   };
   try {
     for (const [from, to] of [
-      ["time", "#now"],
+      ["time", "#time"],
       ["her", "#now"],
       ["overview", "#now"],
       ["character", "#now"],

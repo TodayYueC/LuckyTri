@@ -37,6 +37,18 @@ export interface PresenceAffect {
 }
 
 export interface Presence {
+  currentLife?: {
+    current?: {
+      id?: string;
+      title?: string;
+      label: string;
+      state: string;
+      elapsedMs?: number;
+      checkpoint?: any;
+    } | null;
+    pending?: any[];
+    works?: any[];
+  };
   name: string;
   now: number;
   clock?: { local: string; hour: number; period: string; timeZone: string };
@@ -88,6 +100,13 @@ export function latelyLine(affect: PresenceAffect | undefined) {
 
 export function activityLine(presence: Presence | null) {
   if (!presence) return "";
+  if (presence.currentLife?.current)
+    return (
+      presence.currentLife.current.label +
+      (presence.currentLife.current.title
+        ? " · " + presence.currentLife.current.title
+        : "")
+    );
   const { kind, sessionName } = presence.activity || { kind: "idle" };
   const label = ACTIVITY_LABELS[kind] || ACTIVITY_LABELS.idle;
   if ((kind === "speaking" || kind === "thinking") && sessionName)

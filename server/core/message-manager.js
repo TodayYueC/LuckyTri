@@ -111,6 +111,7 @@ export function persistReply(repo, m, text, platformId, time = Date.now()) {
     mentions: [],
     attachments: [],
     simulated: !!m.simulated,
+    ...(m.artifact ? { artifact: m.artifact } : {}),
     ...(m.traceId ? { traceId: m.traceId } : {}),
     ...(Array.isArray(m.replyTargetIds)
       ? { replyTargetIds: m.replyTargetIds }

@@ -11,6 +11,11 @@ export const AREAS = {
     en: "LIFE",
     tagline: "记得昨天的自己，也成为今天的自己。",
   },
+  time: {
+    label: "时间",
+    en: "TIME",
+    tagline: "带着自己的安排、作品与经历走过时间。",
+  },
   chats: {
     label: "对话",
     en: "CHATS",
@@ -33,18 +38,23 @@ export type Page = keyof typeof AREAS;
 
 export const NAV: { label: string; pages: Page[] }[] = [
   { label: "TA", pages: ["now", "heart", "people", "life"] },
-  { label: "日常", pages: ["chats", "memory"] },
+  { label: "日常", pages: ["time", "chats", "memory"] },
   { label: "设置", pages: ["nature", "system"] },
 ];
 
 export const MOBILE_TABS: Page[] = ["now", "chats", "heart", "life"];
-export const MOBILE_MORE: Page[] = ["people", "memory", "nature", "system"];
+export const MOBILE_MORE: Page[] = [
+  "time",
+  "people",
+  "memory",
+  "nature",
+  "system",
+];
 
 // Links from the old studio keep working.
 const LEGACY: Record<string, string> = {
   overview: "now",
   her: "now",
-  time: "now",
   character: "now",
   live: "chats",
   spaces: "chats/settings",

@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { deliver } from "../../core/message-scheduler.js";
 import { withFallback } from "../../core/model-manager.js";
 import { prompts, replyPrompt } from "../../core/persona-manager.js";
-import { text } from "../util.js";
+import { parse, text } from "../util.js";
+import { parseSessionKey } from "../../channels/session-key.js";
 import { leaks } from "../guard.js";
 
 export class Sharing {
@@ -170,11 +171,41 @@ export class Sharing {
       )
       .run(trace.id, life.now(), share.id);
     if (!reserved.changes) return null;
+    const kind =
+      this.time.works.project(work.project_id)?.kind ||
+      this.db
+        .prepare("SELECT kind FROM mind_creations WHERE id=?")
+        .get(work.legacy_creation || "")?.kind;
+    const route = parseSessionKey(share.session_id),
+      anchor = parse(
+        this.db
+          .prepare(
+            "SELECT payload FROM core_events WHERE session_id=? ORDER BY seq DESC LIMIT 1",
+          )
+          .get(share.session_id)?.payload,
+        {},
+      );
     const message = {
       sessionId: share.session_id,
-      kind: share.session_id.split(":")[0],
-      userId: task?.subject || share.session_id.split(":")[1],
-      accountId: life.repo.store.settings().botId || "bot",
+      kind: route.kind,
+      userId:
+        route.kind === "private"
+          ? route.nativeId
+          : task?.subject || route.nativeId,
+      accountId:
+        route.accountId !== "_" ? route.accountId : anchor.accountId || "",
+      nativeId: route.nativeId,
+      channel: route.channel,
+      artifact: {
+        workId: work.id,
+        version: work.version,
+        domain:
+          kind === "game"
+            ? "reference"
+            : kind === "write"
+              ? "fiction"
+              : "personal-notes",
+      },
       name: life.mind.nature.current().name,
       attachments: [],
     };

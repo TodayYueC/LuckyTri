@@ -30,8 +30,8 @@ export class Search {
       provider: chosen,
     };
   }
-  public() {
-    const { apiKey, ...profile } = this.profile();
+  public(provider) {
+    const { apiKey, ...profile } = this.profile(provider);
     return {
       ...profile,
       hasApiKey: !!apiKey,

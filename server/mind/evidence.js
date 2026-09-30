@@ -19,6 +19,21 @@ export function evidenceRoots(
     const kind = ref[0],
       id = ref.slice(2);
     if (["m", "r", "f"].includes(kind)) {
+      if (kind === "m") {
+        const event = db
+            .prepare("SELECT payload FROM core_events WHERE seq=? AND time<=?")
+            .get(Number(id), before),
+          workId = parse(event?.payload, {})?.artifact?.workId;
+        if (workId) {
+          const work = db
+            .prepare("SELECT task_id FROM mind_time_works WHERE id=?")
+            .get(workId);
+          if (work?.task_id) {
+            queue.push(`x:${work.task_id}`);
+            continue;
+          }
+        }
+      }
       roots.add(ref);
       continue;
     }
@@ -82,9 +97,9 @@ export function externalEvidence(db, sources, before) {
     if (ref.startsWith("x:"))
       return !!db
         .prepare(
-          "SELECT 1 FROM mind_time_tasks WHERE id=? AND state='done' AND completed<=? AND EXISTS(SELECT 1 FROM mind_time_versions v JOIN mind_time_works w ON w.id=v.work_id WHERE w.task_id=mind_time_tasks.id AND length(v.content)>=400)",
+          "SELECT 1 FROM mind_time_tasks WHERE id=? AND state!='abandoned' AND created<=? AND EXISTS(SELECT 1 FROM mind_time_versions v JOIN mind_time_works w ON w.id=v.work_id WHERE w.task_id=mind_time_tasks.id AND v.created<=? AND length(v.content)>0) AND (SELECT COALESCE(SUM(active_ms),0) FROM mind_time_spans WHERE task_id=mind_time_tasks.id AND updated<=?)>=300000",
         )
-        .get(id, before);
+        .get(id, before, before, before);
     if (ref.startsWith("m:"))
       return !!db
         .prepare(

@@ -51,10 +51,13 @@ export function api(
 ): Promise<any> {
   checkToken();
   if (
-    method === "GET" &&
-    (cachedPaths.has(path) ||
-      path.startsWith("/mind/life?") ||
-      path.startsWith("/mind/people/"))
+    (method === "GET" &&
+      (cachedPaths.has(path) ||
+        path.startsWith("/mind/life?") ||
+        path.startsWith("/mind/people/"))) ||
+    (method === "GET" &&
+      path.startsWith("/mind/time") &&
+      !path.startsWith("/mind/time/search"))
   )
     return reads.get(path, () => request(path, method, body));
   return request(path, method, body);

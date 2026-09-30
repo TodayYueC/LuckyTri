@@ -184,6 +184,18 @@ export class Life {
       if (woke) return woke;
     }
     const due = this.diaryDue(now);
+    if (this.mind.time.primary() && this.mind.time.attention.activityBusy)
+      return { status: "doing", reason: "正在推进自己的活动步骤" };
+    if (this.mind.time.primary() && (due || this.nightDue(now)))
+      this.mind.time.tasks.control(
+        this.mind.time.primary().id,
+        {
+          action: "pause",
+          readyAt: now + this.mind.time.settings().breakMinutes * 60000,
+          reason: "先写日记或整理今天，保留续接位置",
+        },
+        now,
+      );
     if (due) return this.review(due);
     const night = this.nightDue(now);
     if (night)
@@ -413,6 +425,20 @@ export class Life {
         ...this.placeOf(sources),
       });
       if (added.id) applied.plans++;
+      else if (!plan?.due) {
+        const task = this.mind.time.tasks.add(
+          {
+            kind: "plan",
+            activity: plan?.activity,
+            title: plan?.content,
+            why: text(plan?.why, 240) || "这次自己选择留下的打算",
+            sources,
+            ...this.placeOf(sources),
+          },
+          now,
+        );
+        if (task.id) applied.plans++;
+      }
     }
     for (const item of (Array.isArray(result?.closeAnticipations)
       ? result.closeAnticipations
@@ -463,6 +489,10 @@ export class Life {
     return this.growth.evolve(...args);
   }
   async reflect() {
+    if (this.mind.time.attention.activityBusy)
+      return { status: "skipped", reason: "自己的活动步骤尚未结束" };
+    if (this.mind.time.primary())
+      return { status: "skipped", reason: "正在做自己的事，保留专注时段" };
     this.busy = true;
     const now = this.now();
     const s = this.settings();
@@ -499,6 +529,11 @@ export class Life {
       const input = {
         ...(chunk ? { reading: this.mind.reading.passage(chunk) } : {}),
         clock: localClock(now, this.mind.timeZone()),
+        currentLife: this.mind.time.view({ now }),
+        actions: this.mind.time.lived({
+          since: last?.started || now - DAY,
+          before: now,
+        }),
         ...(chapter ? { chapter } : {}),
         mood: (({ mood, cause, energyLabel, phaseLabel }) => ({
           mood,
@@ -558,7 +593,7 @@ export class Life {
         this.profile(),
         "reflection",
         replyPrompt(nature, prompts(this.repo), "reflection") +
-          '\nplans 可以是留给自己做的事；确实想在资料书架阅读、写短文或独处思考时，可加 activity:"read"|"write"|"think"，到时在本机执行并保存成果，不需要找人聊天。不支持的外部行动不要标 activity；不为增加任务而列计划。',
+          '\nplans 可以是留给自己做的事；确实想在资料书架阅读、写短文、独处思考或接触游戏资料时，可加 activity:"read"|"write"|"think"|"game"，并写清content中的游戏名、why动机。game仅支持资料体验。不为增加任务而列计划。',
         input,
         trace,
       );
@@ -593,6 +628,7 @@ export class Life {
         const missing = input.missing || [];
         const ahead = input.ahead || [];
         const valid = new Set([
+          ...input.actions.map((a) => a.ref),
           ...experiences.flatMap((e) => e.messages.map((m) => `m:${m.seq}`)),
           ...thoughts.map((t) => `t:${t.id}`),
           ...input.feedback.map((f) => f.ref),
@@ -871,6 +907,19 @@ export class Life {
   // Drop sentences that still call a duty the life she is living.
 
   async review(...args) {
+    if (this.mind.time.attention.activityBusy)
+      return { status: "skipped", reason: "自己的活动步骤尚未结束" };
+    const primary = this.mind.time.primary();
+    if (primary)
+      this.mind.time.tasks.control(
+        primary.id,
+        {
+          action: "pause",
+          readyAt: this.now() + this.mind.time.settings().breakMinutes * 60000,
+          reason: "安排调整：先写日记，保留续接位置",
+        },
+        this.now(),
+      );
     return this.journal.review(...args);
   }
   // Latest version of each chapter: she can re-understand her own past.
@@ -906,6 +955,8 @@ export class Life {
   }
 
   async reviewPeriod(...args) {
+    if (this.mind.time.attention.activityBusy)
+      return { status: "skipped", reason: "自己的活动步骤尚未结束" };
     return this.journal.reviewPeriod(...args);
   }
   // continue rewrites the chapter she is in; close ends it and opens the next.

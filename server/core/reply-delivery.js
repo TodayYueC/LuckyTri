@@ -331,6 +331,7 @@ export class ReplyDelivery {
       response,
       session,
       this.owner.now(),
+      snapshot.inner?.currentLife?.current,
     );
     trace.response = response;
     trace.sent = await deliver(
@@ -340,10 +341,31 @@ export class ReplyDelivery {
       trace,
       this.owner.send,
       isCurrent,
-      { now: this.owner.now },
+      {
+        now: this.owner.now,
+        prepareBubble: (line) =>
+          this.owner.mind.time.reconcile(
+            { bubbles: [line] },
+            session,
+            this.owner.now(),
+            snapshot.inner?.currentLife?.current,
+          ).bubbles[0],
+      },
     );
     if (!trace.sent.length && hasRelevantUpdate()) return staleExit();
     if (trace.sent.length && !c.simulatedTurn) {
+      if (turn.share?.workId) {
+        try {
+          this.owner.mind.time.sharing.choose(
+            turn.share.workId,
+            session,
+            turn.share,
+            this.owner.now(),
+          );
+        } catch (error) {
+          trace.steps.push("分享选择未执行：" + error.message);
+        }
+      }
       this.owner.mind.time.tasks.capture(trace, turn, this.owner.now());
       this.owner.mind.time.interaction(
         session,

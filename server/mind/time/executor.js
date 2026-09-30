@@ -53,6 +53,18 @@ export class TimeExecutor {
         time.tasks.wait(candidate, "今日独处预算不足", now + 3600000, now);
         continue;
       }
+      if (
+        ["write", "game"].includes(candidate.activity) &&
+        mind.affect.state(now).energy < 0.18
+      ) {
+        time.tasks.wait(
+          candidate,
+          "精力较低，先恢复一会儿再投入",
+          now + 10 * 60000,
+          now,
+        );
+        continue;
+      }
       if (candidate.activity === "game") {
         const blocked = candidate.checkpoint.sourceIds?.length
           ? ""
@@ -111,6 +123,7 @@ export class TimeExecutor {
         {
           clock: localClock(now, mind.timeZone()),
           activity: task.activity,
+          affect: mind.affect.state(now),
           task: {
             id: task.id,
             title: task.title,
@@ -131,6 +144,14 @@ export class TimeExecutor {
         trace,
       );
       const finished = life.now();
+      if (
+        task.activity === "write" &&
+        result?.done === true &&
+        /(?:未完待续|[（(]待续[）)]|尚未完成|只是开头草稿)\s*[。.!！]?\s*$/.test(
+          String(result.content || ""),
+        )
+      )
+        result.done = false;
       if (
         life.closed ||
         mind.nature.version() !== version ||
