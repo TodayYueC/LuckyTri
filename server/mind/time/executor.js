@@ -54,13 +54,13 @@ export class TimeExecutor {
         continue;
       }
       if (candidate.activity === "game") {
-        time.tasks.wait(
-          candidate,
-          "等待独立搜索配置与资料体验能力",
-          now + 60000,
-          now,
-        );
-        continue;
+        const blocked = candidate.checkpoint.sourceIds?.length
+          ? ""
+          : time.search.ready(now);
+        if (blocked) {
+          time.tasks.wait(candidate, blocked, now + 60000, now);
+          continue;
+        }
       }
       chunk = candidate.activity === "read" ? mind.reading.next(now) : null;
       if (candidate.activity === "read" && !chunk) {
@@ -90,6 +90,12 @@ export class TimeExecutor {
       reason = "这次还不想做",
       creation = null;
     try {
+      if (task.activity === "game") {
+        const outcome = await time.games.step(task, life, trace, runId);
+        status = outcome.status;
+        reason = outcome.reason;
+        return { ...outcome, runId };
+      }
       const nature = mind.traits.effective(mind.nature.current(now), now);
       const result = await withFallback(
         life.chat.models,

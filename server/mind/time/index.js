@@ -5,6 +5,8 @@ import { evidence, parse, text } from "../util.js";
 import { Works } from "./works.js";
 import { Sharing } from "./sharing.js";
 import { evidenceRoots } from "../evidence.js";
+import { Search } from "./search.js";
+import { Games } from "./games.js";
 
 export const TIME_DEFAULTS = {
   focusMinutes: 25,
@@ -20,6 +22,8 @@ export class TimeSystem {
     this.tasks = new Tasks(this);
     this.works = new Works(this);
     this.sharing = new Sharing(this);
+    this.search = new Search(this);
+    this.games = new Games(this);
     // A stopped process cannot keep reading, creating or playing in the gap.
     this.db.exec(
       "UPDATE mind_time_spans SET ended=updated WHERE ended IS NULL; UPDATE mind_time_tasks SET state='paused',lease=NULL,lease_at=NULL,wait_reason='实例中断，进度已保留',revision=revision+1 WHERE state='doing';",

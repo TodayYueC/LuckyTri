@@ -2,6 +2,64 @@ import { wrap } from "../../http.js";
 export function mountTime(app, life) {
   const time = life.mind.time;
   app.get(
+    "/api/mind/time/search",
+    wrap((req, res) => res.json(time.search.public())),
+  );
+  app.patch(
+    "/api/mind/time/search",
+    wrap((req, res) => res.json(time.search.save(req.body))),
+  );
+  app.post(
+    "/api/mind/time/search/test",
+    wrap(async (req, res) =>
+      res.json({
+        results: await time.search.query("ATRI 游戏 资料简介"),
+        profile: time.search.public(),
+      }),
+    ),
+  );
+  app.get(
+    "/api/mind/time/projects/:id/sources",
+    wrap((req, res) => res.json(time.search.sources(req.params.id))),
+  );
+  app.get(
+    "/api/mind/time/sources/:id",
+    wrap((req, res) =>
+      res.json(
+        life.db
+          .prepare("SELECT * FROM mind_time_sources WHERE id=?")
+          .get(req.params.id) || null,
+      ),
+    ),
+  );
+  app.get(
+    "/api/mind/time/experiences",
+    wrap((req, res) =>
+      res.json(
+        life.db
+          .prepare(
+            "SELECT * FROM mind_time_events WHERE kind IN ('reference-experience','done','checkpoint') ORDER BY created DESC,id DESC LIMIT ? OFFSET ?",
+          )
+          .all(
+            Math.max(1, Math.min(100, Number(req.query.limit) || 40)),
+            Math.max(0, Number(req.query.offset) || 0),
+          )
+          .map((row) => ({ ...row, data: JSON.parse(row.data) })),
+      ),
+    ),
+  );
+  app.get(
+    "/api/mind/time/game-mode",
+    wrap((req, res) =>
+      res.json({
+        mode: "reference",
+        label: "正在玩 · 资料模式",
+        realEnabled: false,
+        realStatus: "开发中",
+      }),
+    ),
+  );
+  app.get(
     "/api/mind/time/projects",
     wrap((req, res) => res.json(time.works.projects(req.query))),
   );
