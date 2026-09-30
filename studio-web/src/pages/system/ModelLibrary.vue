@@ -453,310 +453,312 @@ async function testModel() {
 
 <template>
   <div class="library">
-    <aside class="card shelf">
-      <div class="shelf-head">
-        <h2>
-          模型库 <small>{{ modelList.length }}</small>
-        </h2>
-        <button id="addModel" class="small primary" @click="openPicker">
-          ＋ 新增模型
-        </button>
-      </div>
-      <p class="faint">
-        群聊、私聊和独处都使用默认模型。其余已启用的模型按这里的顺序作为备用。关掉的模型不会被调用。
-      </p>
-      <div class="rows">
-        <p v-if="!modelList.length" class="muted">还没有模型。</p>
-        <details
-          v-for="group in savedGroups"
-          :key="group.vendor"
-          class="saved-vendor"
-          :open="expandedSavedVendor === group.vendor"
-          :data-saved-vendor="group.vendor"
-          @toggle="toggleSavedVendor(group.vendor, $event)"
-        >
-          <summary>
-            <span>{{ group.vendor }}</span>
-            <small>{{ group.models.length }} 个模型</small>
-          </summary>
-          <div class="vendor-models">
-            <button
-              v-for="entry in group.models"
-              :key="entry.model.id"
-              class="entity-row"
-              :class="{ selected: index === entry.index }"
-              @click="select(entry.index)"
-            >
-              <span
-                class="badge"
-                :style="{
-                  '--hue': hueOf(
-                    entry.model.label || entry.model.model || entry.model.id,
-                  ),
-                }"
-                >{{
-                  String(entry.model.label || entry.model.model || "?")
-                    .slice(0, 1)
-                    .toUpperCase()
-                }}</span
+    <div class="model-workspace">
+      <aside class="card shelf">
+        <div class="shelf-head">
+          <h2>
+            模型库 <small>{{ modelList.length }}</small>
+          </h2>
+          <button id="addModel" class="small primary" @click="openPicker">
+            ＋ 新增模型
+          </button>
+        </div>
+        <p class="faint">
+          群聊、私聊和独处都使用默认模型。其余已启用的模型按这里的顺序作为备用。关掉的模型不会被调用。
+        </p>
+        <div class="rows">
+          <p v-if="!modelList.length" class="muted">还没有模型。</p>
+          <details
+            v-for="group in savedGroups"
+            :key="group.vendor"
+            class="saved-vendor"
+            :open="expandedSavedVendor === group.vendor"
+            :data-saved-vendor="group.vendor"
+            @toggle="toggleSavedVendor(group.vendor, $event)"
+          >
+            <summary>
+              <span>{{ group.vendor }}</span>
+              <small>{{ group.models.length }} 个模型</small>
+            </summary>
+            <div class="vendor-models">
+              <button
+                v-for="entry in group.models"
+                :key="entry.model.id"
+                class="entity-row"
+                :class="{ selected: index === entry.index }"
+                @click="select(entry.index)"
               >
-              <span class="who">
-                <b>{{ entry.model.label || entry.model.model }}</b>
-                <small>{{
-                  entry.model.enabled === false
-                    ? "已关闭"
-                    : entry.model.isDefault
-                      ? "默认模型"
-                      : "备用模型"
-                }}</small>
-              </span>
+                <span
+                  class="badge"
+                  :style="{
+                    '--hue': hueOf(
+                      entry.model.label || entry.model.model || entry.model.id,
+                    ),
+                  }"
+                  >{{
+                    String(entry.model.label || entry.model.model || "?")
+                      .slice(0, 1)
+                      .toUpperCase()
+                  }}</span
+                >
+                <span class="who">
+                  <b>{{ entry.model.label || entry.model.model }}</b>
+                  <small>{{
+                    entry.model.enabled === false
+                      ? "已关闭"
+                      : entry.model.isDefault
+                        ? "默认模型"
+                        : "备用模型"
+                  }}</small>
+                </span>
+              </button>
+            </div>
+          </details>
+        </div>
+      </aside>
+
+      <section v-if="editing" class="card detail">
+        <div class="card-head">
+          <div>
+            <span class="eyebrow">模型档案</span>
+            <h2>{{ draft.label || "新模型" }}</h2>
+          </div>
+          <span class="chip" :data-tone="draft.hasApiKey ? 'ok' : 'warn'">{{
+            (draft.isDefault ? "默认模型 · " : "") +
+            (draft.hasApiKey ? "密钥已保存" : "待填写密钥")
+          }}</span>
+        </div>
+        <form
+          id="modelForm"
+          class="stack"
+          @submit.prevent="save"
+          @input="studio.dirty = true"
+        >
+          <fieldset>
+            <legend>连接</legend>
+            <div class="form-grid">
+              <label v-if="vendorModels.length > 1">
+                同厂商模型
+                <Select
+                  :model-value="draft.presetId"
+                  aria-label="同厂商模型"
+                  :options="
+                    vendorModels.map((item: any) => ({
+                      value: item.id,
+                      label: item.label,
+                    }))
+                  "
+                  @change="switchPreset"
+                />
+              </label>
+              <label
+                >显示名称<input v-model="draft.label" name="label" required
+              /></label>
+              <label
+                >供应商<input
+                  v-model="draft.provider"
+                  name="provider"
+                  placeholder="例如 deepseek、openai"
+              /></label>
+              <label
+                >API 地址<input
+                  v-model="draft.baseUrl"
+                  name="baseUrl"
+                  type="url"
+                  required
+              /></label>
+              <label
+                >模型名称<input v-model="draft.model" name="model" required
+              /></label>
+              <label class="wide">
+                API Key
+                <input
+                  v-model="draft.apiKey"
+                  name="apiKey"
+                  type="password"
+                  autocomplete="new-password"
+                  :placeholder="
+                    draft.hasApiKey
+                      ? '已保存，留空则保留'
+                      : '填写供应商提供的密钥'
+                  "
+                />
+              </label>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>容量与思考</legend>
+            <p class="faint">
+              官方按输入长度分档计价的模型可以在标准和百万之间切换；输出上限默认是官方最大值，思考强度只列出这个模型支持的档位。
+            </p>
+            <div class="form-grid">
+              <label v-if="contextOptions.length">
+                上下文容量
+                <Select
+                  name="contextWindow"
+                  :model-value="draft.contextWindow"
+                  :options="
+                    contextOptions.map((option: any) => ({
+                      value: option.contextWindow,
+                      label: option.label,
+                    }))
+                  "
+                  @change="applyContextWindow"
+                />
+              </label>
+              <label v-else
+                >上下文容量<input
+                  v-model.number="draft.contextWindow"
+                  name="contextWindow"
+                  type="number"
+              /></label>
+              <label
+                >最大输入 Token<input
+                  v-model.number="draft.maxInputTokens"
+                  name="maxInputTokens"
+                  type="number"
+              /></label>
+              <label
+                >最大输出 Token<input
+                  v-model.number="draft.maxOutputTokens"
+                  name="maxOutputTokens"
+                  type="number"
+              /></label>
+              <label>
+                思考强度
+                <Select
+                  v-model="draft.reasoningEffort"
+                  name="reasoningEffort"
+                  aria-label="思考强度"
+                  :options="
+                    effortOptions.map((v: string) => ({
+                      value: v,
+                      label: effortName(v),
+                    }))
+                  "
+                />
+              </label>
+            </div>
+          </fieldset>
+          <details class="advanced">
+            <summary>高级参数与模型能力</summary>
+            <div class="form-grid">
+              <label
+                >随机程度 Temperature<input
+                  v-model.number="draft.temperature"
+                  name="temperature"
+                  type="number"
+                  step="0.05"
+              /></label>
+              <label
+                >采样范围 Top P<input
+                  v-model.number="draft.topP"
+                  name="topP"
+                  type="number"
+                  step="0.05"
+              /></label>
+              <label
+                >超时（毫秒）<input
+                  v-model.number="draft.timeoutMs"
+                  name="timeoutMs"
+                  type="number"
+              /></label>
+              <label
+                >知识检索模型<input
+                  v-model="draft.embeddingModel"
+                  name="embeddingModel"
+                  placeholder="留空跟随对话模型"
+              /></label>
+            </div>
+            <p class="faint">
+              打开图片理解后，聊天里的图片会先在本机读取，再连同画面交给这个模型。主模型不能看图时，到会话设置另选一个打开了图片理解的视觉兼容模型。
+            </p>
+            <div class="caps">
+              <label
+                v-for="(label, key) in {
+                  vision: '图片理解',
+                  system: 'System Prompt',
+                  json: 'JSON 输出',
+                  tools: '工具调用',
+                  embedding: '知识向量',
+                }"
+                :key="key"
+                class="check"
+              >
+                <input v-model="draft[key]" :name="key" type="checkbox" />{{
+                  label
+                }}
+              </label>
+            </div>
+          </details>
+          <div
+            v-if="testResult"
+            id="modelTestResult"
+            class="notice"
+            role="status"
+          >
+            {{ testResult }}
+          </div>
+          <div class="actions">
+            <button class="primary" :disabled="busy">
+              {{ busy ? "正在保存…" : "保存模型" }}
+            </button>
+            <small class="faint">{{
+              studio.dirty ? "有未保存的修改" : "已保存的模型才会用来测试和回复"
+            }}</small>
+            <label v-if="!draft.isDefault" class="check">
+              <input
+                type="checkbox"
+                :checked="draft.enabled !== false"
+                @change="
+                  draft.enabled = ($event.target as HTMLInputElement).checked;
+                  studio.dirty = true;
+                "
+              />启用这个备用模型
+            </label>
+            <button
+              v-if="!draft.isDefault"
+              id="setDefaultModel"
+              type="button"
+              @click="makeDefault"
+            >
+              设为默认模型
+            </button>
+            <button
+              v-if="hasSavedProfile"
+              id="testModel"
+              type="button"
+              :disabled="busy || testing || studio.dirty"
+              @click="testModel"
+            >
+              {{
+                testing
+                  ? "正在测试…"
+                  : studio.dirty
+                    ? "保存后测试此模型"
+                    : "测试此模型连接"
+              }}
+            </button>
+            <button
+              id="deleteModel"
+              type="button"
+              class="danger push"
+              @click="remove"
+            >
+              删除模型
             </button>
           </div>
-        </details>
-      </div>
-    </aside>
-
-    <section v-if="editing" class="card detail">
-      <div class="card-head">
-        <div>
-          <span class="eyebrow">模型档案</span>
-          <h2>{{ draft.label || "新模型" }}</h2>
-        </div>
-        <span class="chip" :data-tone="draft.hasApiKey ? 'ok' : 'warn'">{{
-          (draft.isDefault ? "默认模型 · " : "") +
-          (draft.hasApiKey ? "密钥已保存" : "待填写密钥")
-        }}</span>
-      </div>
-      <form
-        id="modelForm"
-        class="stack"
-        @submit.prevent="save"
-        @input="studio.dirty = true"
-      >
-        <fieldset>
-          <legend>连接</legend>
-          <div class="form-grid">
-            <label v-if="vendorModels.length > 1">
-              同厂商模型
-              <Select
-                :model-value="draft.presetId"
-                aria-label="同厂商模型"
-                :options="
-                  vendorModels.map((item: any) => ({
-                    value: item.id,
-                    label: item.label,
-                  }))
-                "
-                @change="switchPreset"
-              />
-            </label>
-            <label
-              >显示名称<input v-model="draft.label" name="label" required
-            /></label>
-            <label
-              >供应商<input
-                v-model="draft.provider"
-                name="provider"
-                placeholder="例如 deepseek、openai"
-            /></label>
-            <label
-              >API 地址<input
-                v-model="draft.baseUrl"
-                name="baseUrl"
-                type="url"
-                required
-            /></label>
-            <label
-              >模型名称<input v-model="draft.model" name="model" required
-            /></label>
-            <label class="wide">
-              API Key
-              <input
-                v-model="draft.apiKey"
-                name="apiKey"
-                type="password"
-                autocomplete="new-password"
-                :placeholder="
-                  draft.hasApiKey
-                    ? '已保存，留空则保留'
-                    : '填写供应商提供的密钥'
-                "
-              />
-            </label>
-          </div>
-        </fieldset>
-        <fieldset>
-          <legend>容量与思考</legend>
-          <p class="faint">
-            官方按输入长度分档计价的模型可以在标准和百万之间切换；输出上限默认是官方最大值，思考强度只列出这个模型支持的档位。
-          </p>
-          <div class="form-grid">
-            <label v-if="contextOptions.length">
-              上下文容量
-              <Select
-                name="contextWindow"
-                :model-value="draft.contextWindow"
-                :options="
-                  contextOptions.map((option: any) => ({
-                    value: option.contextWindow,
-                    label: option.label,
-                  }))
-                "
-                @change="applyContextWindow"
-              />
-            </label>
-            <label v-else
-              >上下文容量<input
-                v-model.number="draft.contextWindow"
-                name="contextWindow"
-                type="number"
-            /></label>
-            <label
-              >最大输入 Token<input
-                v-model.number="draft.maxInputTokens"
-                name="maxInputTokens"
-                type="number"
-            /></label>
-            <label
-              >最大输出 Token<input
-                v-model.number="draft.maxOutputTokens"
-                name="maxOutputTokens"
-                type="number"
-            /></label>
-            <label>
-              思考强度
-              <Select
-                v-model="draft.reasoningEffort"
-                name="reasoningEffort"
-                aria-label="思考强度"
-                :options="
-                  effortOptions.map((v: string) => ({
-                    value: v,
-                    label: effortName(v),
-                  }))
-                "
-              />
-            </label>
-          </div>
-        </fieldset>
-        <details class="advanced">
-          <summary>高级参数与模型能力</summary>
-          <div class="form-grid">
-            <label
-              >随机程度 Temperature<input
-                v-model.number="draft.temperature"
-                name="temperature"
-                type="number"
-                step="0.05"
-            /></label>
-            <label
-              >采样范围 Top P<input
-                v-model.number="draft.topP"
-                name="topP"
-                type="number"
-                step="0.05"
-            /></label>
-            <label
-              >超时（毫秒）<input
-                v-model.number="draft.timeoutMs"
-                name="timeoutMs"
-                type="number"
-            /></label>
-            <label
-              >知识检索模型<input
-                v-model="draft.embeddingModel"
-                name="embeddingModel"
-                placeholder="留空跟随对话模型"
-            /></label>
-          </div>
-          <p class="faint">
-            打开图片理解后，聊天里的图片会先在本机读取，再连同画面交给这个模型。主模型不能看图时，到会话设置另选一个打开了图片理解的视觉兼容模型。
-          </p>
-          <div class="caps">
-            <label
-              v-for="(label, key) in {
-                vision: '图片理解',
-                system: 'System Prompt',
-                json: 'JSON 输出',
-                tools: '工具调用',
-                embedding: '知识向量',
-              }"
-              :key="key"
-              class="check"
-            >
-              <input v-model="draft[key]" :name="key" type="checkbox" />{{
-                label
-              }}
-            </label>
-          </div>
-        </details>
-        <div
-          v-if="testResult"
-          id="modelTestResult"
-          class="notice"
-          role="status"
+        </form>
+      </section>
+      <section v-else class="card detail">
+        <Empty
+          title="还没有模型"
+          text="常见厂商会预填模型参数；OpenRouter 可选 GPT-6 预设，也可用自选模型手动填写模型 ID 和参数。"
         >
-          {{ testResult }}
-        </div>
-        <div class="actions">
-          <button class="primary" :disabled="busy">
-            {{ busy ? "正在保存…" : "保存模型" }}
-          </button>
-          <small class="faint">{{
-            studio.dirty ? "有未保存的修改" : "已保存的模型才会用来测试和回复"
-          }}</small>
-          <label v-if="!draft.isDefault" class="check">
-            <input
-              type="checkbox"
-              :checked="draft.enabled !== false"
-              @change="
-                draft.enabled = ($event.target as HTMLInputElement).checked;
-                studio.dirty = true;
-              "
-            />启用这个备用模型
-          </label>
-          <button
-            v-if="!draft.isDefault"
-            id="setDefaultModel"
-            type="button"
-            @click="makeDefault"
-          >
-            设为默认模型
-          </button>
-          <button
-            v-if="hasSavedProfile"
-            id="testModel"
-            type="button"
-            :disabled="busy || testing || studio.dirty"
-            @click="testModel"
-          >
-            {{
-              testing
-                ? "正在测试…"
-                : studio.dirty
-                  ? "保存后测试此模型"
-                  : "测试此模型连接"
-            }}
-          </button>
-          <button
-            id="deleteModel"
-            type="button"
-            class="danger push"
-            @click="remove"
-          >
-            删除模型
-          </button>
-        </div>
-      </form>
-    </section>
-    <section v-else class="card detail">
-      <Empty
-        title="还没有模型"
-        text="常见厂商会预填模型参数；OpenRouter 可选 GPT-6 预设，也可用自选模型手动填写模型 ID 和参数。"
-      >
-        <button class="primary" @click="openPicker">＋ 新增模型</button>
-      </Empty>
-    </section>
+          <button class="primary" @click="openPicker">＋ 新增模型</button>
+        </Empty>
+      </section>
+    </div>
 
     <EmbeddingProfile />
     <section class="card usage-panel" aria-labelledby="token-usage-title">
@@ -884,6 +886,11 @@ async function testModel() {
 
 <style scoped>
 .library {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap);
+}
+.model-workspace {
   display: grid;
   grid-template-columns: minmax(260px, 0.32fr) minmax(0, 1fr);
   gap: var(--gap);
@@ -1320,7 +1327,7 @@ legend {
   font-size: 11.5px;
 }
 @media (max-width: 900px) {
-  .library {
+  .model-workspace {
     grid-template-columns: minmax(0, 1fr);
   }
   .usage-panel {

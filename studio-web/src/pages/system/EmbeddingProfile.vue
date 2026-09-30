@@ -140,11 +140,11 @@ onMounted(load);
 
 <style scoped>
 .embedding-profile {
-  margin-top: 24px;
+  min-width: 0;
 }
 .fields {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
   gap: 14px;
   margin: 16px 0;
 }

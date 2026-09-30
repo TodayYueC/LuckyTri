@@ -54,6 +54,64 @@ try {
       await group.locator("summary").click();
     await row.click();
   }
+  async function checkModelLayout(width, state) {
+    const panel = p.locator(".embedding-profile");
+    await panel.locator("form").waitFor();
+    await panel.evaluate((element) => {
+      window.scrollTo({
+        top: window.scrollY + element.getBoundingClientRect().top - 120,
+        behavior: "instant",
+      });
+    });
+    const layout = await p.evaluate(() => {
+      const box = (selector) => {
+        const r = document.querySelector(selector).getBoundingClientRect();
+        return {
+          left: r.left,
+          right: r.right,
+          top: r.top,
+          bottom: r.bottom,
+          width: r.width,
+        };
+      };
+      return {
+        library: box(".library"),
+        panel: box(".embedding-profile"),
+        shelf: box(".library .shelf"),
+        detail: box(".library .detail"),
+        inputs: [
+          ...document.querySelectorAll(".embedding-profile .fields input"),
+        ].map((input) => {
+          const r = input.getBoundingClientRect();
+          return { left: r.left, right: r.right };
+        }),
+      };
+    });
+    await p.screenshot({
+      path: `workspace/ui-review/models-${state}-${width}.png`,
+      fullPage: true,
+    });
+    assert(
+      layout.panel.width >= layout.library.width - 2,
+      `embedding panel uses the available width (${state}, ${width}px)`,
+    );
+    assert(
+      layout.panel.top >= layout.detail.bottom,
+      `embedding panel follows the model editor (${state}, ${width}px)`,
+    );
+    assert(
+      layout.shelf.bottom <= layout.panel.top,
+      `sticky model shelf does not cover embedding settings (${state}, ${width}px)`,
+    );
+    assert(
+      layout.inputs.every(
+        (input) =>
+          input.left >= layout.panel.left && input.right <= layout.panel.right,
+      ),
+      `embedding inputs stay within their panel (${state}, ${width}px)`,
+    );
+    await p.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  }
   const errors = [];
   mkdirSync("workspace/ui-review", { recursive: true });
   p.on("pageerror", (e) => errors.push(e.message));
@@ -120,6 +178,7 @@ try {
         ),
         `horizontal overflow: ${page} at ${width}`,
       );
+      if (page === "models") await checkModelLayout(width, "empty");
       await p.screenshot({
         path: `workspace/ui-review/${page}-${width}.png`,
         fullPage: true,
@@ -256,6 +315,11 @@ try {
     await p.locator("#modelForm [name=model]").inputValue(),
     "test-model",
   );
+  for (const width of [1440, 1024, 820, 390]) {
+    await p.setViewportSize({ width, height: 1000 });
+    await checkModelLayout(width, "saved");
+  }
+  await p.setViewportSize({ width: 1440, height: 1000 });
   // One model editor owns connection and capacity; unsaved new models are discarded.
   assert.equal(await p.locator("#settings").count(), 0);
   await p.locator("#addModel").click();
