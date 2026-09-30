@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { evidenceRoots } from "./evidence.js";
+import { evidenceRoots, externalEvidence } from "./evidence.js";
 import {
   CORE_THREADS,
   THREAD_FADED,
@@ -289,9 +289,13 @@ export class Self {
         days: parse(row.days, []),
       }));
   }
-  days(sources, time) {
+  days(sources, time, { external = false } = {}) {
     const timeZone = this.mind.timeZone();
-    const seqs = messageSeqs(evidenceRoots(this.db, sources, time));
+    const seqs = messageSeqs(
+      external
+        ? externalEvidence(this.db, sources, time)
+        : evidenceRoots(this.db, sources, time),
+    );
     const found = seqs.length
       ? this.db
           .prepare(
@@ -302,7 +306,11 @@ export class Self {
       : [];
     // Diary days cited in a review count as the days it happened.
     // A diary written later does not make its underlying experience later.
-    return [...new Set(found.length ? found : [dayKey(time, timeZone)])];
+    return [
+      ...new Set(
+        found.length ? found : external ? [] : [dayKey(time, timeZone)],
+      ),
+    ];
   }
   propose(
     input,
@@ -353,9 +361,17 @@ export class Self {
       for (const row of this.history(prior.thread))
         for (const source of evidenceRoots(this.db, row.sources || [], time))
           spent.add(source);
-    const fresh = sources.filter((source) =>
+    let fresh = sources.filter((source) =>
       evidenceRoots(this.db, [source], time).some((root) => !spent.has(root)),
     );
+    const lasting = ["trait", "habit"].includes(prior?.kind || kind);
+    const freshWords = fresh;
+    if (lasting)
+      fresh = fresh.filter((source) =>
+        externalEvidence(this.db, [source], time).some(
+          (root) => !spent.has(root),
+        ),
+      );
     const spoken = content || prior?.content || "";
     // The same evidence cannot be spent again to make a thread stronger.
     // An unchanged sentence is not a new version. A rewording can stay,
@@ -371,14 +387,17 @@ export class Self {
     if (
       origin === "memory" &&
       action !== "close" &&
-      !echoes(spoken, this.#spoken(fresh))
+      !echoes(spoken, this.#spoken(freshWords))
     )
       return { rejected: "对不上她说过的话" };
     // A revision that cites nothing new keeps the old provenance. Dropping
     // it would let a privately learned sentence travel into other rooms.
     const kept = sources.length || !prior ? sources : prior.sources || [];
     const days = [
-      ...new Set([...(prior?.days || []), ...this.days(kept, time)]),
+      ...new Set([
+        ...(prior?.days || []),
+        ...this.days(kept, time, { external: lasting }),
+      ]),
     ].slice(-60);
     let strength;
     let status;

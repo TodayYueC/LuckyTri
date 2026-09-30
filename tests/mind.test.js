@@ -753,13 +753,14 @@ test("自我渐进生长：强度每次只变一点，新特质要跨天的经�
   const w = world();
   t.after(w.close);
   w.open("group:1");
+  const metFirst = w.say("group:1", "10001", "刚认识时你话不多，慢慢聊就好");
   const a = w.say("group:1", "bot", "我其实挺喜欢下雨天的");
   const created = w.mind.self.propose(
     {
       kind: "trait",
       content: "我好像是个慢热的人",
       strength: 0.9,
-      sources: [a.seq],
+      sources: [a.seq, metFirst.seq],
     },
     { time: w.now() },
   );
@@ -792,13 +793,18 @@ test("自我渐进生长：强度每次只变一点，新特质要跨天的经�
   assert.equal(thread.strength, held, "同一段经历不再把强度抬高");
   assert.equal(thread.status, "emerging", "同一天的经历不够");
   w.advance(26 * HOUR);
+  const metAgain = w.say(
+    "group:1",
+    "10001",
+    "熟了以后，你确实更愿意和我聊天了",
+  );
   const b = w.say("group:1", "bot", "熟了以后我话就多了");
   w.mind.self.propose(
     {
       thread: created.thread,
       content: "我是个慢热的人，熟了话会多",
       strength: 1,
-      sources: [b.seq],
+      sources: [b.seq, metAgain.seq],
     },
     { time: w.now() },
   );

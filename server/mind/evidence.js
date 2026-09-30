@@ -61,3 +61,30 @@ export function evidenceRoots(db, sources, before = Number.MAX_SAFE_INTEGER) {
   }
   return [...roots];
 }
+
+// Evidence outside the model's own wording. Unsent drafts, simulations,
+// unknown citations and new names for an internal wish do not qualify.
+export function externalEvidence(db, sources, before) {
+  return evidenceRoots(db, sources, before).filter((ref) => {
+    const id = ref.slice(2);
+    if (ref.startsWith("m:"))
+      return !!db
+        .prepare(
+          "SELECT 1 FROM core_events WHERE seq=? AND time<=? AND role='user' AND COALESCE(json_extract(payload,'$.simulated'),0)=0 AND seq NOT IN (SELECT seq FROM mind_unlived)",
+        )
+        .get(Number(id), before);
+    if (ref.startsWith("f:"))
+      return !!db
+        .prepare(
+          "SELECT 1 FROM reply_feedback f JOIN decisions d ON d.id=f.decision_id WHERE f.decision_id=? AND f.time<=? AND d.is_demo=0",
+        )
+        .get(id, before);
+    if (ref.startsWith("r:"))
+      return !!db
+        .prepare(
+          "SELECT 1 FROM mind_readings WHERE chunk_id=? AND created<=? LIMIT 1",
+        )
+        .get(id, before);
+    return false;
+  });
+}
