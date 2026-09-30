@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { DATABASE_VERSION } from "../database-archive.js";
 import { parseSessionKey } from "../channels/session-key.js";
 import { migrateKnowledge } from "../knowledge/schema.js";
 import { migrateMind } from "../mind/schema.js";
@@ -91,6 +92,7 @@ export function migrateCore(store) {
   ).run();
   migrateKnowledge(db);
   migrateMind(db, store);
+  db.exec(`PRAGMA user_version=${DATABASE_VERSION}`);
 }
 
 const TOKEN_FIELDS = [

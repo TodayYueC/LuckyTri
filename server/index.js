@@ -33,8 +33,15 @@ function shutdown() {
   gateway.close();
   store.revision++;
   clearInterval(maintenance);
-  server.close(() => process.exit(0));
-  setTimeout(() => process.exit(0), 3000).unref();
+  const finish = () => {
+    try {
+      store.db.close();
+    } finally {
+      process.exit(0);
+    }
+  };
+  server.close(finish);
+  setTimeout(finish, 3000).unref();
 }
 
 const app = createApp({

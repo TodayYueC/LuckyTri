@@ -12,7 +12,12 @@ import { applySpeakerNames, speakerNames } from "../core/speaker-names.js";
 
 export function mountStudio(app, store, runtime) {
   app.get("/api/service/status", (req, res) =>
-    res.json({ app: "luckybot", workspace: realpathSync(process.cwd()) }),
+    res.json({
+      app: "luckybot",
+      workspace: realpathSync(process.cwd()),
+      pid: process.pid,
+      schemaVersion: store.db.prepare("PRAGMA user_version").get().user_version,
+    }),
   );
   app.post("/api/service/stop", (req, res) => {
     res.json({ ok: true });

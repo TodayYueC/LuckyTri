@@ -27,6 +27,7 @@
     "setup": "node scripts/setup.js",
     "stop": "node --env-file-if-exists=.env scripts/stop.js",
     "backup": "node --env-file-if-exists=.env scripts/backup.js",
+    "recovery": "node scripts/recover.js",
     "docs:build": "node scripts/build-guide.js",
     "format": "prettier --write server studio-web scripts tests package.json",
     "format:check": "prettier --check server studio-web scripts tests package.json"

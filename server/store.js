@@ -4,7 +4,9 @@ import { dirname } from "node:path";
 import { summarizeGroupStyle } from "./group-style.js";
 import { isGroupSession } from "./channels/session-key.js";
 import { NATURE_DEFAULTS } from "./mind/nature.js";
+import { prepareDatabaseMigration } from "./database-archive.js";
 export function createStore(path = process.env.DB_PATH || "data/friend.db") {
+  prepareDatabaseMigration(path);
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   const legacyMessages =
@@ -18,6 +20,8 @@ export function createStore(path = process.env.DB_PATH || "data/friend.db") {
       .all()
       .some((c) => c.name === "is_demo");
   db.exec(`PRAGMA journal_mode=WAL;
+ PRAGMA synchronous=FULL;
+ PRAGMA busy_timeout=5000;
  CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, name TEXT, kind TEXT, enabled INTEGER DEFAULT 0);
  CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, event_id TEXT UNIQUE, session_id TEXT, user_id TEXT, name TEXT, text TEXT, time INTEGER, role TEXT);
