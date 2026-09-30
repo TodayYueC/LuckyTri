@@ -105,6 +105,26 @@ export function migrateKnowledge(db) {
   );
   if (
     !db
+      .prepare("PRAGMA table_info(core_chunks)")
+      .all()
+      .some((c) => c.name === "vector_indexed")
+  )
+    db.exec(
+      "ALTER TABLE core_chunks ADD COLUMN vector_indexed INTEGER NOT NULL DEFAULT 0",
+    );
+  db.exec(`CREATE INDEX IF NOT EXISTS core_chunks_collection ON core_chunks(collection_id, document_id);
+    CREATE INDEX IF NOT EXISTS core_chunks_unindexed ON core_chunks(vector_indexed) WHERE embedding IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS core_vector_buckets(dimension INTEGER NOT NULL,band INTEGER NOT NULL,bucket INTEGER NOT NULL,chunk_id TEXT NOT NULL,PRIMARY KEY(dimension,band,bucket,chunk_id));
+    CREATE INDEX IF NOT EXISTS core_vector_buckets_chunk ON core_vector_buckets(chunk_id);
+    CREATE TRIGGER IF NOT EXISTS core_vector_changed AFTER UPDATE OF embedding ON core_chunks BEGIN
+      DELETE FROM core_vector_buckets WHERE chunk_id=NEW.id;
+      UPDATE core_chunks SET vector_indexed=0 WHERE id=NEW.id;
+    END;
+    CREATE TRIGGER IF NOT EXISTS core_vector_deleted AFTER DELETE ON core_chunks BEGIN
+      DELETE FROM core_vector_buckets WHERE chunk_id=OLD.id;
+    END;`);
+  if (
+    !db
       .prepare("SELECT id FROM core_collections WHERE id='shared-default'")
       .get()
   )
