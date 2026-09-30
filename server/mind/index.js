@@ -15,6 +15,7 @@ import { Anticipations } from "./anticipations.js";
 import { Periods } from "./periods.js";
 import { Meetings } from "./meetings.js";
 import { Continuity } from "./continuity.js";
+import { TimeSystem } from "./time/index.js";
 import { ownLife } from "./salience.js";
 import { innerView } from "./view.js";
 import { clamp, dayKey, parse, text } from "./util.js";
@@ -105,6 +106,7 @@ export class Mind {
     this.periods = new Periods(this);
     this.meetings = new Meetings(this);
     this.continuity = new Continuity(this);
+    this.time = new TimeSystem(this);
     this.days.reconcile();
   }
   timeZone() {

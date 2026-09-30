@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { NATURE_DEFAULTS, NATURE_FIELDS } from "./nature.js";
 import { evidence, parse } from "./util.js";
+import { migrateTime } from "./time/schema.js";
 
 // Every table here only grows. A change is a new row that cites the
 // experience behind it; a withdrawal is a tombstone in mind_revocations.
 export function migrateMind(db, store) {
+  migrateTime(db);
   db.exec(`
     CREATE TABLE IF NOT EXISTS mind_creations(id TEXT PRIMARY KEY,created INTEGER NOT NULL,plan_id TEXT NOT NULL UNIQUE,kind TEXT NOT NULL,title TEXT NOT NULL,content TEXT NOT NULL,sources TEXT NOT NULL,session_id TEXT,discretion TEXT NOT NULL,run_id TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS mind_creations_time ON mind_creations(created);

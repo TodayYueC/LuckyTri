@@ -337,6 +337,14 @@ export class ReplyDelivery {
       { now: this.owner.now },
     );
     if (!trace.sent.length && hasRelevantUpdate()) return staleExit();
+    if (trace.sent.length && !c.simulatedTurn) {
+      this.owner.mind.time.tasks.capture(trace, turn, this.owner.now());
+      this.owner.mind.time.interaction(
+        session,
+        turn.targetMessageIds,
+        this.owner.now(),
+      );
+    }
     return finish(trace.sent.length ? "sent" : "cancelled", turn.reason);
   }
 }

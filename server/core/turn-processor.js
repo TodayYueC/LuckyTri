@@ -492,6 +492,7 @@ export class TurnProcessor {
         );
       }
       trace.decision = turn;
+      if (live) this.owner.mind.time.adjust(turn, clock());
       trace.path = occasion?.type || (direct ? "direct" : "contextual");
       const roomKind = privateChat ? "private" : "group";
       let talkSettled = false;

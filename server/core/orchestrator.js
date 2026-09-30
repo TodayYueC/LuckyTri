@@ -375,7 +375,17 @@ export class ChatSystem {
   }
 
   async process(...args) {
-    return this.turnProcessor.process(...args);
+    const options = args[2] || {};
+    if (
+      options.replay ||
+      options.preview ||
+      options.simulated ||
+      args[1]?.some((m) => m.simulated)
+    )
+      return this.turnProcessor.process(...args);
+    return this.mind.time.attention.chat(() =>
+      this.turnProcessor.process(...args),
+    );
   }
 
   async speak(...args) {
@@ -547,6 +557,7 @@ export class ChatSystem {
     }
   }
   close() {
+    this.mind.time.attention.close();
     this.queue.close();
     this.compactor.close();
   }

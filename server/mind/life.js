@@ -50,6 +50,7 @@ export class Life {
     this.repo = chat.repo;
     this.db = chat.repo.db;
     this.now = now;
+    this.mind.time.now = now;
     this.online = online;
     this.busy = false;
     this.closed = false;
@@ -174,6 +175,8 @@ export class Life {
     if (this.closed || this.busy)
       return { status: "skipped", reason: "已有后台任务或服务已停止" };
     const now = this.now();
+    this.mind.time.tasks.sync(now);
+    this.mind.time.tick(now);
     this.mind.days.rollup(now);
     const phase = this.phase(now).key;
     if (phase !== "asleep") {
@@ -189,6 +192,11 @@ export class Life {
         : this.reviewPeriod(now);
     const activity = await this.activities.run(now);
     if (activity) return activity;
+    if (this.mind.time.primary())
+      return {
+        status: "doing",
+        reason: "自己的活动在继续，普通交流可以伴随进行",
+      };
     const outreach = await this.reachOut(now);
     if (outreach) return outreach;
     const reason = this.eligible(now);
@@ -228,6 +236,7 @@ export class Life {
     return last;
   }
   eligible(now = this.now()) {
+    if (this.mind.time.primary()) return "正在做自己的事";
     const s = this.settings();
     if (!s.solitude) return "独处未开启";
     if (this.phase(now).key === "asleep") return "睡着了";

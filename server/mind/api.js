@@ -1,4 +1,5 @@
 import { wrap } from "../http.js";
+import { mountTime } from "./time/api.js";
 import { localClock } from "../core/conversation-cues.js";
 import { agoLabel, elapsedLabel } from "./clock.js";
 import { diffSnapshots } from "./index.js";
@@ -75,6 +76,7 @@ function activityOf({ db, life, now, affect, words, names }) {
 
 export function mountMind(app, chat, life) {
   const { mind } = chat;
+  mountTime(app, life);
   // A small, cheap picture of TA for the studio: asked for on every change.
   app.get(
     "/api/mind/presence",
@@ -118,6 +120,7 @@ export function mountMind(app, chat, life) {
           baseline: affect.baseline,
         },
         activity: activityOf({ db, life, now, affect, words, names }),
+        currentLife: mind.time.view({ now }),
         lastWords: words,
         recentWords,
         thought: thought

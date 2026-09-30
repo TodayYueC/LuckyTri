@@ -156,6 +156,14 @@ export function normalizeTurn(raw, snapshot, trace) {
       .slice(0, max);
   return {
     choice,
+    attention:
+      raw.attention &&
+      ["continue", "chat", "rest"].includes(raw.attention.action)
+        ? {
+            action: raw.attention.action,
+            reason: text(raw.attention.reason, 120),
+          }
+        : { action: "continue" },
     appraisal: text(raw.appraisal, 200),
     reason: text(raw.reason || raw.appraisal, 300) || "此刻的判断",
     topic: text(raw.topic, 40),
