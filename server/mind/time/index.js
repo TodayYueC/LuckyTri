@@ -2,6 +2,9 @@ import { randomUUID } from "node:crypto";
 import { Attention } from "./attention.js";
 import { Tasks, ACTIVITY_LABELS } from "./tasks.js";
 import { evidence, parse, text } from "../util.js";
+import { Works } from "./works.js";
+import { Sharing } from "./sharing.js";
+import { evidenceRoots } from "../evidence.js";
 
 export const TIME_DEFAULTS = {
   focusMinutes: 25,
@@ -15,6 +18,8 @@ export class TimeSystem {
     this.now = Date.now;
     this.attention = new Attention();
     this.tasks = new Tasks(this);
+    this.works = new Works(this);
+    this.sharing = new Sharing(this);
     // A stopped process cannot keep reading, creating or playing in the gap.
     this.db.exec(
       "UPDATE mind_time_spans SET ended=updated WHERE ended IS NULL; UPDATE mind_time_tasks SET state='paused',lease=NULL,lease_at=NULL,wait_reason='实例中断，进度已保留',revision=revision+1 WHERE state='doing';",
@@ -67,6 +72,18 @@ export class TimeSystem {
       )
       .get(task.id);
     if (!span) return;
+    if (this.mind.affect.state(now).phase === "asleep") {
+      this.tasks.control(
+        task.id,
+        {
+          action: "pause",
+          readyAt: now + 3600000,
+          reason: "睡眠期间不推进自己的活动",
+        },
+        span.updated,
+      );
+      return;
+    }
     if (now < span.updated) return;
     if (now - span.updated > 90000) {
       this.tasks.control(
@@ -145,6 +162,7 @@ export class TimeSystem {
   }
   visible(row, session, now = this.now()) {
     if (session === undefined) return true;
+    if (!this.allowed(row, now)) return false;
     if (row.discretion !== "open" && row.session_id !== session) return false;
     return this.mind.meetings.stays(
       { ...row, sources: evidence(row.sources) },
@@ -152,7 +170,98 @@ export class TimeSystem {
       now,
     );
   }
-  view({ session, now = this.now() } = {}) {
+  allowed(row, now = this.now()) {
+    const refs = evidenceRoots(this.db, row.sources || [], now, {
+      includeDerived: true,
+    });
+    for (const ref of refs) {
+      const kind = { s: "self", g: "meeting", t: "thought", a: "anticipation" }[
+          ref[0]
+        ],
+        id = ref.slice(2);
+      if (
+        kind &&
+        this.db
+          .prepare(
+            "SELECT 1 FROM mind_revocations WHERE target_kind=? AND target_id=?",
+          )
+          .get(kind, id)
+      )
+        return false;
+      if (
+        ref[0] === "m" &&
+        this.db
+          .prepare("SELECT 1 FROM mind_unlived WHERE seq=?")
+          .get(Number(id))
+      )
+        return false;
+      if (
+        ref[0] === "a" &&
+        this.mind.anticipations.get(id)?.status === "revoked"
+      )
+        return false;
+    }
+    return true;
+  }
+  progress(task, work, result, now = this.now()) {
+    const focus =
+      this.elapsed(task.id, now) >= this.settings().focusMinutes * 60000;
+    const state = focus ? "paused" : "doing",
+      next =
+        now +
+        (focus ? this.settings().breakMinutes : this.settings().stepMinutes) *
+          60000;
+    if (focus) this.stopSpan(task, now);
+    this.db
+      .prepare(
+        "UPDATE mind_time_tasks SET state=?,updated=?,next_step=?,wait_reason=?,lease=NULL,lease_at=NULL,revision=revision+1 WHERE id=?",
+      )
+      .run(
+        state,
+        now,
+        next,
+        focus ? "专注段结束，歇一会再接着做" : "",
+        task.id,
+      );
+    this.event(
+      task.id,
+      "checkpoint",
+      result.next || "保存位置，下次接着做",
+      { workId: work.id, version: work.version },
+      now,
+    );
+  }
+  reconcile(response, session, now = this.now()) {
+    const works = this.works.fragments({ session, now }),
+      completed = works.some((w) => w.state === "complete");
+    return {
+      ...response,
+      bubbles: response.bubbles.map((line) => {
+        if (
+          !/(?:我|那篇|小说|短篇|故事).{0,20}(?:写好了|写完了|已经完成|已经发给)/.test(
+            line,
+          )
+        )
+          return line;
+        if (!completed)
+          line = line.replace(
+            /(?:已经)?(?:写好了|写完了|已经完成)/g,
+            works.length
+              ? "写下了一部分，还没完成"
+              : "还没完成，得真正动笔写下来",
+          );
+        if (
+          /已经发给/.test(line) &&
+          !this.sharing
+            .list()
+            .some((s) => s.session_id === session && s.state === "sent")
+        )
+          line = line.replace(/已经发给(?:你|大家)?(?:了)?/g, "还没有完整交付");
+        return line;
+      }),
+    };
+  }
+  view({ session, now = this.now(), cue = [] } = {}) {
     const task = this.primary();
     const current =
       task && this.visible(task, session, now)
@@ -174,7 +283,9 @@ export class TimeSystem {
       .list({ limit: 100 })
       .filter(
         (row) =>
-          !["done", "abandoned"].includes(row.state) &&
+          row.state !== "abandoned" &&
+          (row.state !== "done" ||
+            !["none", "sent"].includes(row.share_state)) &&
           this.visible(row, session, now),
       )
       .slice(0, 3)
@@ -186,8 +297,13 @@ export class TimeSystem {
         wait: row.wait_reason,
         overdue: row.overdue,
         kind: row.kind,
+        share: row.share_state,
       }));
-    return { current, pending };
+    return {
+      current,
+      pending,
+      works: this.works.fragments({ session, now, cue }),
+    };
   }
   interaction(session, sources, now = this.now()) {
     const task = this.primary();

@@ -101,6 +101,9 @@ export function reviewContext(snapshot, decision = {}) {
   const recent = new Set(messages.slice(-30).map((m) => m.id));
   return {
     ...rest,
+    ...(snapshot.inner?.currentLife
+      ? { currentLife: snapshot.inner.currentLife }
+      : {}),
     ...(snapshot.inner?.continuity
       ? { continuity: snapshot.inner.continuity }
       : {}),

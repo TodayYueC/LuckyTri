@@ -241,7 +241,7 @@ export function innerView(
     self,
     affect: cause ? affect : { ...affect, cause: "" },
     inner: {
-      currentLife: mind.time.view({ session, now }),
+      currentLife: mind.time.view({ session, now, cue }),
       state: `${affect.phaseLabel}，精力${affect.energyLabel}，心情${affect.mood}${cause ? `（${cause}）` : ""}${affect.lately ? `，${affect.lately}` : ""}`,
       ...(persons.length ? { people: persons } : {}),
       ...(continuity ? { continuity } : {}),

@@ -78,6 +78,7 @@ export class Tasks {
       anticipationId = null,
       projectId = null,
       dependsOn = null,
+      activeOnly = false,
     },
     now = this.time.now(),
   ) {
@@ -89,7 +90,7 @@ export class Tasks {
     if (!refs.length) return { rejected: "缺少真实来源" };
     const prior = this.db
       .prepare(
-        "SELECT * FROM mind_time_tasks WHERE state!='abandoned' AND kind=? AND COALESCE(subject,'')=?",
+        `SELECT * FROM mind_time_tasks WHERE state!='abandoned' ${activeOnly ? "AND state!='done'" : ""} AND kind=? AND COALESCE(subject,'')=?`,
       )
       .all(kind, String(subject || ""))
       .find(
@@ -252,12 +253,33 @@ export class Tasks {
       .sort((a, b) => this.score(b, now) - this.score(a, now));
   }
   score(task, now) {
-    const age = Math.min(20, (now - task.created) / 3600000);
+    const age = Math.max(0, Math.min(20, (now - task.created) / 3600000));
     const due = task.due_at
       ? Math.max(0, 30 - (task.due_at - now) / 3600000)
       : 0;
-    const own = task.kind === "plan" ? 20 : 30;
-    return own + age + Math.min(40, due);
+    const recent = this.db
+      .prepare(
+        "SELECT t.kind FROM mind_time_events e JOIN mind_time_tasks t ON t.id=e.task_id WHERE e.kind='done' ORDER BY e.created DESC LIMIT 2",
+      )
+      .all();
+    const own =
+      task.kind === "plan"
+        ? 20 +
+          (recent.length === 2 && recent.every((t) => t.kind === "promise")
+            ? 65
+            : 0)
+        : task.kind === "suggestion"
+          ? 10
+          : 30;
+    const person = task.subject
+      ? this.time.mind.bonds.person(task.subject, now)
+      : null;
+    return (
+      own +
+      age +
+      Math.min(40, due) +
+      Math.min(8, Number(person?.closeness || 0) * 8)
+    );
   }
   control(id, { action, reason = "", readyAt, dueAt }, now = this.time.now()) {
     const task = this.get(id);

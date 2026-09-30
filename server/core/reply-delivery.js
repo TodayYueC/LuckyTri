@@ -327,6 +327,12 @@ export class ReplyDelivery {
     if (this.owner.queue.lanes.has(session) && !turn.crisis?.clear)
       await sleep(250);
     if (!isCurrent()) return staleExit();
+    response = this.owner.mind.time.reconcile(
+      response,
+      session,
+      this.owner.now(),
+    );
+    trace.response = response;
     trace.sent = await deliver(
       this.owner.repo,
       batch.at(-1) || c.anchor,

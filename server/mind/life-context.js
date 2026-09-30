@@ -81,10 +81,14 @@ export class LifeContext {
         felt: labels[r.tag] || r.tag,
       }));
   }
-  selfView(now, { open = false } = {}) {
+  selfView(now, { open = false, room } = {}) {
     return this.owner.mind.self
       .active({ before: now, now, limit: 16 })
-      .filter((t) => !open || this.owner.mind.meetings.stays(t, ""))
+      .filter((t) =>
+        room !== undefined
+          ? this.owner.mind.meetings.stays(t, room)
+          : !open || this.owner.mind.meetings.stays(t, ""),
+      )
       .map((t) => ({
         thread: t.thread,
         kind: t.kind,

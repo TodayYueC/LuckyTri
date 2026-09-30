@@ -199,7 +199,17 @@ export class Affect {
     const energy = clamp(
       phase.energy +
         (arousal - BASELINE.arousal) * 0.3 -
-        Math.min(0.2, talked * 0.006),
+        Math.min(0.2, talked * 0.006) -
+        Math.min(
+          0.12,
+          (this.db
+            .prepare(
+              "SELECT COALESCE(SUM(active_ms),0) n FROM mind_time_spans WHERE updated>? AND started<=?",
+            )
+            .get(now - 2 * HOUR, now).n /
+            HOUR) *
+            0.035,
+        ),
       0.05,
       1,
     );

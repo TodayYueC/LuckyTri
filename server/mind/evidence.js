@@ -23,7 +23,14 @@ export function evidenceRoots(
       continue;
     }
     let rows = [];
-    if (kind === "t")
+    if (kind === "x") {
+      rows = db
+        .prepare(
+          "SELECT sources FROM mind_time_tasks WHERE id=? AND created<=? AND EXISTS (SELECT 1 FROM mind_time_versions v JOIN mind_time_works w ON w.id=v.work_id WHERE w.task_id=mind_time_tasks.id AND v.created<=?)",
+        )
+        .all(id, before, before);
+      if (rows.length) roots.add(ref);
+    } else if (kind === "t")
       rows = db
         .prepare(
           "SELECT sources,parent_id FROM mind_thoughts WHERE id=? AND created<=? AND hidden=0",
@@ -72,6 +79,12 @@ export function evidenceRoots(
 export function externalEvidence(db, sources, before) {
   return evidenceRoots(db, sources, before).filter((ref) => {
     const id = ref.slice(2);
+    if (ref.startsWith("x:"))
+      return !!db
+        .prepare(
+          "SELECT 1 FROM mind_time_tasks WHERE id=? AND state='done' AND completed<=? AND EXISTS(SELECT 1 FROM mind_time_versions v JOIN mind_time_works w ON w.id=v.work_id WHERE w.task_id=mind_time_tasks.id AND length(v.content)>=400)",
+        )
+        .get(id, before);
     if (ref.startsWith("m:"))
       return !!db
         .prepare(

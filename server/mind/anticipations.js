@@ -220,6 +220,18 @@ export class Anticipations {
     if (!CLOSE.has(status)) return false;
     const a = this.get(id);
     if (!a || a.status !== "pending" || a.recurrence === "yearly") return false;
+    if (status === "done") {
+      const task = this.db
+        .prepare(
+          "SELECT state,share_state FROM mind_time_tasks WHERE anticipation_id=?",
+        )
+        .get(id);
+      if (
+        task &&
+        (task.state !== "done" || !["none", "sent"].includes(task.share_state))
+      )
+        return false;
+    }
     return (
       this.db
         .prepare(
