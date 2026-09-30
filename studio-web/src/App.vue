@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from "vue";
+import { computed, defineAsyncComponent, onMounted, onUnmounted } from "vue";
 import { followHash, go, reload, studio } from "./stores/studio";
 import { presence, refreshPresence, watchPresence } from "./stores/presence";
 import { AREAS, MOBILE_MORE, MOBILE_TABS, NAV, type Page } from "./router";
 import { subscribe } from "./sse";
-import { toast } from "./api";
+import { clearReads, expireReads, toast } from "./api";
 import { applyTheme, liveMood, setQuiet, theme } from "./mood/useMood";
 import { loadWallpapers } from "./wallpaper";
 import { MOODS } from "./mood/themes";
@@ -18,23 +18,16 @@ import Confirm from "./components/ui/Confirm.vue";
 import Icon from "./components/ui/Icon.vue";
 import Sheet from "./components/ui/Sheet.vue";
 import NowPage from "./pages/now/NowPage.vue";
-import ChatsPage from "./pages/chats/ChatsPage.vue";
-import HeartPage from "./pages/heart/HeartPage.vue";
-import PeoplePage from "./pages/people/PeoplePage.vue";
-import LifePage from "./pages/life/LifePage.vue";
-import MemoryPage from "./pages/memory/MemoryPage.vue";
-import NaturePage from "./pages/nature/NaturePage.vue";
-import SystemPage from "./pages/system/SystemPage.vue";
 
 const views: Record<Page, object> = {
   now: NowPage,
-  chats: ChatsPage,
-  heart: HeartPage,
-  people: PeoplePage,
-  life: LifePage,
-  memory: MemoryPage,
-  nature: NaturePage,
-  system: SystemPage,
+  chats: defineAsyncComponent(() => import("./pages/chats/ChatsPage.vue")),
+  heart: defineAsyncComponent(() => import("./pages/heart/HeartPage.vue")),
+  people: defineAsyncComponent(() => import("./pages/people/PeoplePage.vue")),
+  life: defineAsyncComponent(() => import("./pages/life/LifePage.vue")),
+  memory: defineAsyncComponent(() => import("./pages/memory/MemoryPage.vue")),
+  nature: defineAsyncComponent(() => import("./pages/nature/NaturePage.vue")),
+  system: defineAsyncComponent(() => import("./pages/system/SystemPage.vue")),
 };
 
 applyTheme();
@@ -51,9 +44,16 @@ let presenceTimer = 0;
 let reloadTimer = 0;
 let pulseTimer = 0;
 let lastPresence = 0;
+let streamStarted = false;
 
 // Server changes arrive in bursts; each follower gets its own pace.
-function onServerChange() {
+function onServerChange(value: unknown) {
+  if (!streamStarted) {
+    streamStarted = true;
+    if ((value as { revision?: number })?.revision === studio.core?.revision)
+      return;
+  }
+  expireReads();
   const now = Date.now();
   clearTimeout(presenceTimer);
   presenceTimer = window.setTimeout(
@@ -79,6 +79,7 @@ async function refresh() {
     toast("请先保存草稿");
     return;
   }
+  clearReads();
   await Promise.all([reload(), refreshPresence()]);
   studio.tick += 1;
 }
@@ -193,46 +194,44 @@ onUnmounted(() => {
     </nav>
 
     <div class="workspace">
-    <NowStatusDock />
+      <NowStatusDock />
 
-    <main id="main" tabindex="-1">
-      <header class="topbar">
-        <div class="topbar-title">
-          <span class="eyebrow">{{ area.en }}</span>
-          <h1>{{ area.label }}</h1>
-          <p>{{ area.tagline }}</p>
+      <main id="main" tabindex="-1">
+        <header class="topbar">
+          <div class="topbar-title">
+            <span class="eyebrow">{{ area.en }}</span>
+            <h1>{{ area.label }}</h1>
+            <p>{{ area.tagline }}</p>
+          </div>
+          <div class="topbar-actions">
+            <button
+              id="connection"
+              class="pill"
+              :class="{ offline: !online }"
+              :title="online ? 'QQ 已连接' : '去连接 QQ'"
+              @click="online || go('system', 'connect')"
+            >
+              <span class="dot" :class="{ off: !online }"></span
+              >{{ online ? "QQ 已连接" : "QQ 未连接" }}
+            </button>
+            <button
+              id="refresh"
+              class="icon-button"
+              aria-label="刷新当前数据"
+              title="刷新"
+              @click="refresh"
+            >
+              <Icon name="refresh" />
+            </button>
+          </div>
+        </header>
+        <div v-if="studio.dirty" class="draft-banner" role="status">
+          <span class="dot warn"></span>草稿还没保存，保存后才会生效
         </div>
-        <div class="topbar-actions">
-          <button
-            id="connection"
-            class="pill"
-            :class="{ offline: !online }"
-            :title="online ? 'QQ 已连接' : '去连接 QQ'"
-            @click="online || go('system', 'connect')"
-          >
-            <span class="dot" :class="{ off: !online }"></span
-            >{{ online ? "QQ 已连接" : "QQ 未连接" }}
-          </button>
-          <button
-            id="refresh"
-            class="icon-button"
-            aria-label="刷新当前数据"
-            title="刷新"
-            @click="refresh"
-          >
-            <Icon name="refresh" />
-          </button>
-        </div>
-      </header>
-      <div v-if="studio.dirty" class="draft-banner" role="status">
-        <span class="dot warn"></span>草稿还没保存，保存后才会生效
-      </div>
-      <Transition name="scene" mode="out-in">
         <div :key="studio.page" class="view" :class="'page-' + studio.page">
           <component :is="views[studio.page]" />
         </div>
-      </Transition>
-    </main>
+      </main>
     </div>
 
     <nav class="tabbar" aria-label="主要功能">

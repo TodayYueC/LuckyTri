@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, shallowRef, watch } from "vue";
+import { readSnapshot } from "../../api";
 import { go, setSub, studio } from "../../stores/studio";
 import { presence } from "../../stores/presence";
 import { RUN_LABELS, RUN_STATES, mind, when } from "../../plates/mind";
@@ -11,7 +12,7 @@ import DiaryBook from "./DiaryBook.vue";
 import AheadCalendar from "./AheadCalendar.vue";
 
 const VIEWS = ["diary", "reviews", "story", "ahead", "shelf"];
-const life = ref<any>(null);
+const life = shallowRef<any>(readSnapshot("/mind/life?q=") || null);
 const view = ref(VIEWS.includes(studio.sub) ? studio.sub : "diary");
 const chapterVersions = ref<Record<number, any[]>>({});
 const storyVersions = ref<any[] | null>(null);
@@ -23,8 +24,11 @@ const today = computed(
     new Date().toISOString().slice(0, 10),
 );
 
+let loadSequence = 0;
 async function load() {
-  life.value = await mind.life();
+  const sequence = ++loadSequence;
+  const result = await mind.life();
+  if (sequence === loadSequence) life.value = result;
 }
 
 async function toggleChapter(n: number) {
@@ -50,7 +54,7 @@ watch(
     view.value = VIEWS.includes(sub) ? sub : "diary";
   },
 );
-watch(() => studio.tick, load);
+watch(() => [studio.tick, studio.pulse], load);
 onMounted(load);
 </script>
 

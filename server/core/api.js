@@ -63,7 +63,7 @@ export function mountCore(app, system) {
     });
   });
   app.get("/api/core/state", (req, res) => {
-    const names = displayNames(repo.db);
+    const names = displayNames(repo.db, system.now());
     res.json({
       models: normalizeModels(storedModels(repo)).map(publicModel),
       persona: system.mind.nature.current(),
@@ -413,7 +413,7 @@ export function mountCore(app, system) {
       const after =
         req.query.after === undefined ? null : Number(req.query.after);
       const names = speakerNames(repo.db, [session]);
-      const labels = displayNames(repo.db);
+      const labels = displayNames(repo.db, system.now());
       const rows =
         Number.isSafeInteger(after) && after >= 0
           ? repo.db

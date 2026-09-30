@@ -11,7 +11,7 @@ import {
 import { applySpeakerNames, speakerNames } from "../core/speaker-names.js";
 import { displayNames, displaySession } from "./display-names.js";
 
-export function mountStudio(app, store, runtime) {
+export function mountStudio(app, store, runtime, chat) {
   app.get("/api/service/status", (req, res) =>
     res.json({
       app: "luckybot",
@@ -28,7 +28,7 @@ export function mountStudio(app, store, runtime) {
     const { apiKey, ...settings } = store.settings();
     const demo = Number(settings.demo);
     const connection = runtime.connection();
-    const namesForDisplay = displayNames(store.db);
+    const namesForDisplay = displayNames(store.db, chat?.now() ?? Date.now());
     res.json({
       settings: {
         ...settings,

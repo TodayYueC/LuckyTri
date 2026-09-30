@@ -60,6 +60,7 @@ export class Self {
   constructor(mind) {
     this.mind = mind;
     this.db = mind.db;
+    this.annotation = null;
   }
   revokedThreads() {
     return new Set(
@@ -98,6 +99,14 @@ export class Self {
   // her core and never fall out of view.
   annotated({ before = Number.MAX_SAFE_INTEGER, now } = {}) {
     const at = now ?? (before < Number.MAX_SAFE_INTEGER ? before : Date.now());
+    const mark = this.db
+      .prepare(
+        "SELECT total_changes() changes, (SELECT data_version FROM pragma_data_version) external",
+      )
+      .get();
+    const key = `${before}:${at}:${mark.changes}:${mark.external}`;
+    if (this.annotation?.key === key)
+      return structuredClone(this.annotation.rows);
     const lived = this.mind.days.lived(at);
     const versions = new Map();
     for (const row of this.db
@@ -153,13 +162,17 @@ export class Self {
         .filter(Boolean)
         .map((row) => row.thread),
     );
-    return rows
+    const ranked = rows
       .map((row) => ({
         ...row,
         core: core.has(row.thread),
         faded: !core.has(row.thread) && row.salience < THREAD_FADED,
       }))
       .sort((a, b) => b.salience - a.salience || b.created - a.created);
+    // Several views in one read use the same exact moment, never a later replay.
+    // Writes and external database changes invalidate the derived picture.
+    this.annotation = { key, rows: ranked };
+    return structuredClone(ranked);
   }
   // The one wish she is living. In a room, a stronger wish that does not
   // belong there does not erase the next wish that does. A duty about

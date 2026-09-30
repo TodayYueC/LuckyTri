@@ -20,8 +20,8 @@ const RUN_ACTIVITY = {
   night: "night",
 };
 
-function sessionNames(db) {
-  const people = displayNames(db);
+function sessionNames(db, now) {
+  const people = displayNames(db, now);
   return new Map(
     db
       .prepare("SELECT id,name FROM sessions")
@@ -83,7 +83,7 @@ export function mountMind(app, chat, life) {
       const db = chat.repo.db;
       const nature = mind.nature.current(now);
       const affect = mind.affect.state(now, { nature });
-      const names = sessionNames(db);
+      const names = sessionNames(db, now);
       const demo = Number(!!chat.store.settings().demo);
       const saidRows = db
         .prepare(
@@ -183,7 +183,7 @@ export function mountMind(app, chat, life) {
       const now = life.now();
       const start = life.dayStart(now);
       const db = chat.repo.db;
-      const names = sessionNames(db);
+      const names = sessionNames(db, now);
       const where = (session) => ({
         session,
         sessionName: names.get(session) || session,
@@ -270,7 +270,7 @@ export function mountMind(app, chat, life) {
         throw error;
       }
       const db = chat.repo.db;
-      const names = sessionNames(db);
+      const names = sessionNames(db, now);
       res.json({
         person: {
           ...displayPerson(person, displayNames(db, now)),
@@ -309,7 +309,7 @@ export function mountMind(app, chat, life) {
     wrap((req, res) => {
       const now = life.now();
       const nature = mind.nature.current(now);
-      const names = sessionNames(chat.repo.db);
+      const names = sessionNames(chat.repo.db, now);
       res.json({
         clock: localClock(now, mind.timeZone()),
         affect: mind.affect.state(now, { nature }),

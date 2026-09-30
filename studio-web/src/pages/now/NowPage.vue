@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, shallowRef, watch } from "vue";
+import { readSnapshot } from "../../api";
 import { go, studio } from "../../stores/studio";
 import { presence } from "../../stores/presence";
 import {
@@ -21,8 +22,8 @@ import Timeline from "../../components/ui/Timeline.vue";
 import WallpaperPicker from "./WallpaperPicker.vue";
 import { useHeroStage } from "./useHeroStage";
 
-const overview = ref<any>(null);
-const today = ref<any>(null);
+const overview = shallowRef<any>(readSnapshot("/mind") || null);
+const today = shallowRef<any>(readSnapshot("/mind/today") || null);
 const filter = ref("all");
 const wallpaperPicking = ref(false);
 const {
@@ -124,8 +125,11 @@ function share(id: string) {
   return usage.value.total ? (usage.value[id] || 0) / usage.value.total : 0;
 }
 
+let loadSequence = 0;
 async function load() {
+  const sequence = ++loadSequence;
   const [o, t] = await Promise.all([mind.overview(), mind.today()]);
+  if (sequence !== loadSequence) return;
   overview.value = o;
   today.value = t;
 }

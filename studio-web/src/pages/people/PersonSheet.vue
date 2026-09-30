@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { toast } from "../../api";
+import { readSnapshot, toast } from "../../api";
 import { ask, askText } from "../../dialog";
 import {
   ANTICIPATION_LABELS,
@@ -34,10 +34,16 @@ const knownDays = computed(() => {
 
 async function load() {
   if (!props.id) return;
+  const requested = props.id;
+  if (data.value?.person?.userId !== requested)
+    data.value =
+      readSnapshot("/mind/people/" + encodeURIComponent(requested)) || null;
   error.value = "";
   try {
-    data.value = await mind.person(props.id);
+    const result = await mind.person(requested);
+    if (props.id === requested) data.value = result;
   } catch (e) {
+    if (props.id !== requested) return;
     data.value = null;
     error.value = (e as Error).message;
   }

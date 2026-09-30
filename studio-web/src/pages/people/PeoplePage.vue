@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, shallowRef, watch } from "vue";
+import { readSnapshot } from "../../api";
 import { setSub, studio } from "../../stores/studio";
 import { presence } from "../../stores/presence";
 import { DIMENSIONS, mind } from "../../plates/mind";
@@ -11,7 +12,7 @@ import Galaxy from "./Galaxy.vue";
 import PersonSheet from "./PersonSheet.vue";
 import GroupFaces from "./GroupFaces.vue";
 
-const bonds = ref<any>(null);
+const bonds = shallowRef<any>(readSnapshot("/mind/bonds") || null);
 const view = ref("galaxy");
 const query = ref("");
 const personId = ref<string | null>(
@@ -29,8 +30,11 @@ const people = computed(() => {
     : list;
 });
 
+let loadSequence = 0;
 async function load() {
-  bonds.value = await mind.bonds();
+  const sequence = ++loadSequence;
+  const result = await mind.bonds();
+  if (sequence === loadSequence) bonds.value = result;
 }
 
 function open(id: string) {
@@ -53,7 +57,7 @@ watch(
     personId.value = sub && sub !== "list" ? sub : null;
   },
 );
-watch(() => studio.tick, load);
+watch(() => [studio.tick, studio.pulse], load);
 onMounted(load);
 </script>
 

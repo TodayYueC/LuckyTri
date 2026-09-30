@@ -1,4 +1,33 @@
 import { askText } from "./dialog";
+import { reads } from "./read-cache";
+
+const cachedPaths = new Set([
+  "/mind",
+  "/mind/today",
+  "/mind/self",
+  "/mind/bonds",
+  "/mind/nature",
+]);
+let cacheToken = "";
+function checkToken() {
+  if (cacheToken !== (sessionStorage.token || "")) {
+    reads.clear();
+    cacheToken = sessionStorage.token || "";
+  }
+}
+export function readSnapshot(path: string) {
+  checkToken();
+  return reads.snapshot(path);
+}
+export function expireReads() {
+  reads.expire();
+}
+export function clearReads() {
+  reads.clear();
+}
+export function readVersion() {
+  return reads.version;
+}
 
 let asking: Promise<string | null> | null = null;
 
@@ -15,9 +44,25 @@ function askToken() {
   return asking;
 }
 
-export async function api(
+export function api(
   path: string,
   method = "GET",
+  body?: unknown,
+): Promise<any> {
+  checkToken();
+  if (
+    method === "GET" &&
+    (cachedPaths.has(path) ||
+      path.startsWith("/mind/life?") ||
+      path.startsWith("/mind/people/"))
+  )
+    return reads.get(path, () => request(path, method, body));
+  return request(path, method, body);
+}
+
+async function request(
+  path: string,
+  method: string,
   body?: unknown,
 ): Promise<any> {
   const r = await fetch("/api" + path, {
@@ -32,11 +77,13 @@ export async function api(
     const token = await askToken();
     if (token) {
       sessionStorage.token = token;
+      clearReads();
       return api(path, method, body);
     }
   }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw Error(data.error || "请求失败");
+  if (method !== "GET") clearReads();
   return data;
 }
 

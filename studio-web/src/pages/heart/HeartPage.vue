@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, shallowRef, watch } from "vue";
+import { readSnapshot } from "../../api";
 import { toast } from "../../api";
 import { askText } from "../../dialog";
 import { setSub, studio } from "../../stores/studio";
@@ -22,9 +23,11 @@ import StarMap from "./StarMap.vue";
 import NotesWall from "./NotesWall.vue";
 
 const narrow = useMedia("(max-width: 760px)");
-const self = ref<any>(null);
-const overview = ref<any>(null);
-const thoughts = ref<any[]>([]);
+const self = shallowRef<any>(readSnapshot("/mind/self") || null);
+const overview = shallowRef<any>(readSnapshot("/mind") || null);
+const thoughts = shallowRef<any[]>(
+  readSnapshot("/mind/life?q=")?.thoughts || [],
+);
 const query = ref("");
 const view = ref(
   studio.sub === "notes"
@@ -75,12 +78,15 @@ function toggleGroup(kind: string) {
   };
 }
 
+let loadSequence = 0;
 async function load() {
+  const sequence = ++loadSequence;
   const [s, o, l] = await Promise.all([
     mind.self(),
     mind.overview(),
     mind.life(query.value),
   ]);
+  if (sequence !== loadSequence) return;
   self.value = s;
   overview.value = o;
   thoughts.value = l.thoughts;
@@ -90,8 +96,10 @@ async function load() {
 }
 
 async function search(q: string) {
+  const sequence = ++loadSequence;
   query.value = q;
-  thoughts.value = (await mind.life(q)).thoughts;
+  const result = await mind.life(q);
+  if (sequence === loadSequence) thoughts.value = result.thoughts;
 }
 
 async function open(t: any) {
@@ -129,7 +137,7 @@ watch(
     else if (!sub && view.value === "notes") view.value = "stars";
   },
 );
-watch(() => studio.tick, load);
+watch(() => [studio.tick, studio.pulse], load);
 onMounted(load);
 </script>
 
@@ -217,7 +225,9 @@ onMounted(load);
                 ? "收起线索"
                 : `再看 ${g.threads.length - listVisibleLimit} 条线索`
             }}
-            <span aria-hidden="true">{{ expandedGroups[g.kind] ? "↑" : "↓" }}</span>
+            <span aria-hidden="true">{{
+              expandedGroups[g.kind] ? "↑" : "↓"
+            }}</span>
           </button>
         </div>
         <Empty

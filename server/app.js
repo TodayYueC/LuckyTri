@@ -38,7 +38,7 @@ export function createApp({ store, chatSystem, runtime, life }) {
       return res.status(400).json({ error: "请提交 JSON 对象" });
     next();
   });
-  mountStudio(app, store, runtime);
+  mountStudio(app, store, runtime, chatSystem);
   mountManagement(app, store, chatSystem);
   mountCore(app, chatSystem);
   mountMind(app, chatSystem, life || new Life(chatSystem));
