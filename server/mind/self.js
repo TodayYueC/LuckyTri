@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { evidenceRoots } from "./evidence.js";
 import {
   CORE_THREADS,
   THREAD_FADED,
@@ -40,12 +41,12 @@ const TRAIT_CAP = 0.25;
 
 // Fade follows the last version that cited something not cited before.
 // The first version counts even when it has no source.
-function earnedAt(history) {
+function earnedAt(history, roots) {
   if (!history?.length) return null;
-  const seen = new Set(history[0].sources || []);
+  const seen = new Set(roots(history[0].sources || []));
   let at = history[0].created;
   for (const row of history.slice(1)) {
-    const sources = row.sources || [];
+    const sources = roots(row.sources || []);
     if (sources.some((source) => !seen.has(source))) at = row.created;
     for (const source of sources) seen.add(source);
   }
@@ -118,7 +119,10 @@ export class Self {
         // last version that actually brought new evidence. A later note she
         // wrote to herself, a meeting that met this wish, words she spoke
         // about it, or a line she later sent about it, are also living it.
-        let at = earnedAt(versions.get(row.thread)) ?? row.created;
+        let at =
+          earnedAt(versions.get(row.thread), (sources) =>
+            evidenceRoots(this.db, sources, before),
+          ) ?? row.created;
         if (row.kind === "intention" && ownLife(row.content)) {
           for (const note of notes)
             if (
@@ -287,7 +291,7 @@ export class Self {
   }
   days(sources, time) {
     const timeZone = this.mind.timeZone();
-    const seqs = messageSeqs(sources);
+    const seqs = messageSeqs(evidenceRoots(this.db, sources, time));
     const found = seqs.length
       ? this.db
           .prepare(
@@ -297,8 +301,7 @@ export class Self {
           .map((row) => dayKey(row.time, timeZone))
       : [];
     // Diary days cited in a review count as the days it happened.
-    for (const ref of evidence(sources))
-      if (/^d:\d{4}-\d{2}-\d{2}$/.test(ref)) found.push(ref.slice(2));
+    // A diary written later does not make its underlying experience later.
     return [...new Set(found.length ? found : [dayKey(time, timeZone)])];
   }
   propose(
@@ -348,8 +351,11 @@ export class Self {
     const spent = new Set();
     if (prior)
       for (const row of this.history(prior.thread))
-        for (const source of row.sources || []) spent.add(source);
-    const fresh = sources.filter((source) => !spent.has(source));
+        for (const source of evidenceRoots(this.db, row.sources || [], time))
+          spent.add(source);
+    const fresh = sources.filter((source) =>
+      evidenceRoots(this.db, [source], time).some((root) => !spent.has(root)),
+    );
     const spoken = content || prior?.content || "";
     // The same evidence cannot be spent again to make a thread stronger.
     // An unchanged sentence is not a new version. A rewording can stay,

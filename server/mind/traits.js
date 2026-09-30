@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { evidenceRoots } from "./evidence.js";
 import { evidence, hasCredential, similar, text } from "./util.js";
 
 export const LIVED_TRAITS = [
@@ -85,6 +86,22 @@ export class Traits {
     const previous = this.persona(nature, time);
     if (previous && similar(content, previous.content, 0.85))
       return { rejected: "没有实质变化" };
+    const spent = new Set(
+      this.db
+        .prepare(
+          "SELECT sources FROM mind_persona_growth WHERE nature_version=? AND created<=?",
+        )
+        .all(nature.version, time)
+        .flatMap((row) =>
+          evidenceRoots(this.db, JSON.parse(row.sources), time),
+        ),
+    );
+    if (
+      previous &&
+      !personaNeedsRephrase(previous.content, this.mind) &&
+      !evidenceRoots(this.db, sources, time).some((root) => !spent.has(root))
+    )
+      return { rejected: "没有新的亲历来源" };
     const id = randomUUID();
     this.db
       .prepare(
@@ -120,9 +137,15 @@ export class Traits {
           "SELECT sources FROM mind_trait_changes WHERE trait=? AND nature_version=?",
         )
         .all(trait, nature.version)
-        .flatMap((row) => JSON.parse(row.sources)),
+        .flatMap((row) =>
+          evidenceRoots(this.db, JSON.parse(row.sources), time),
+        ),
     );
-    if (sources.every((source) => spent.has(source)))
+    if (
+      !evidenceRoots(this.db, sources, time).some(
+        (source) => !spent.has(source),
+      )
+    )
       return { rejected: "这段经历已经改变过它" };
     const previous = this.current(nature, time)[trait];
     // A single reflection may nudge a tendency, never replace her overnight.

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { evidenceRoots } from "./evidence.js";
 import { localClock } from "../core/conversation-cues.js";
 import { replyPrompt, prompts } from "../core/persona-manager.js";
 import { estimateTokens } from "../core/model-manager.js";
@@ -745,12 +746,18 @@ export class Life {
       while (current && !seen.has(current.id)) {
         seen.add(current.id);
         spent.add(`t:${current.id}`);
-        for (const source of current.sources || []) spent.add(source);
+        for (const source of evidenceRoots(this.db, current.sources || [], now))
+          spent.add(source);
         current = current.parent_id
           ? this.mind.thoughts.get(current.parent_id)
           : null;
       }
-      if (!sources.some((source) => !spent.has(source))) return null;
+      if (
+        !evidenceRoots(this.db, sources, now).some(
+          (source) => !spent.has(source),
+        )
+      )
+        return null;
     }
     const recent = this.mind.thoughts.list({ limit: 20 });
     const repeated = recent.some((t) => similar(t.content, content));

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { evidenceRoots } from "./evidence.js";
 import { isPrivateSession } from "./memory.js";
 import {
   DAY,
@@ -128,7 +129,8 @@ function foldEvents(rows) {
           sources: row.sources || "[]",
         });
       }
-      if (state.notes.length > 24) state.notes.splice(0, state.notes.length - 24);
+      if (state.notes.length > 24)
+        state.notes.splice(0, state.notes.length - 24);
       state.lastChange = row.change;
       state.lastChangeAt = row.created;
     }
@@ -147,8 +149,7 @@ function foldEvents(rows) {
 // How it feels at `now`: the folded history, carried forward to this moment.
 function settle(folded, now) {
   const state = { ...folded };
-  if (state.lastEventAt !== null)
-    easeTension(state, state.lastEventAt, now);
+  if (state.lastEventAt !== null) easeTension(state, state.lastEventAt, now);
   if (state.lastContactAt !== null)
     easeCloseness(
       state,
@@ -263,8 +264,9 @@ export class Bonds {
       .all(kind, String(id), change);
     const seen = new Set();
     for (const row of rows)
-      for (const source of parse(row.sources, [])) seen.add(source);
-    return cited.every((source) => seen.has(source));
+      for (const source of evidenceRoots(this.db, parse(row.sources, [])))
+        seen.add(source);
+    return evidenceRoots(this.db, cited).every((source) => seen.has(source));
   }
   // When the cited moment actually happened. Null when nothing can be dated,
   // so a feeling without a readable source is not treated as late.
@@ -401,7 +403,8 @@ export class Bonds {
   // that was formed in the open.
   #noteFits(note, room) {
     const hidden = new Set();
-    if (note.session && isPrivateSession(note.session)) hidden.add(note.session);
+    if (note.session && isPrivateSession(note.session))
+      hidden.add(note.session);
     const sources = parse(note.sources, []);
     for (const row of this.mind.meetings.places(sources))
       if (row.discretion === "private" || row.discretion === "secret")
@@ -519,9 +522,7 @@ export class Bonds {
       .sort((a, b) => {
         const span = (p) =>
           p.absentDays ??
-          (p.firstMetAt != null
-            ? Math.floor((now - p.firstMetAt) / DAY)
-            : 0);
+          (p.firstMetAt != null ? Math.floor((now - p.firstMetAt) / DAY) : 0);
         return span(b) - span(a);
       })
       .slice(0, limit);

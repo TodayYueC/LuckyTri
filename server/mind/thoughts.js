@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { evidenceRoots } from "./evidence.js";
 import {
   THOUGHT_FADED,
   anyTouches,
@@ -118,7 +119,9 @@ export class Thoughts {
       .all(now, now)
       .map(row)
       .filter((t) => !session || t.sessions.includes(session));
-    const clock = sourceClock(notes);
+    const clock = sourceClock(notes, (sources) =>
+      evidenceRoots(this.db, sources, now),
+    );
     return notes
       .map((t) => {
         const earned = clock.get(t.id) ?? t.created;
@@ -249,11 +252,12 @@ export class Thoughts {
 
 // The first time a source was lived. A later note that only repeats those
 // sources keeps that time, so rewriting it does not make it newly present.
-function sourceClock(notes) {
+function sourceClock(notes, roots) {
   const earned = new Map();
   const clock = new Map();
   for (const note of [...notes].sort((a, b) => a.created - b.created)) {
-    const sources = note.sources.length ? note.sources : [`t:${note.id}`];
+    const resolved = roots(note.sources);
+    const sources = resolved.length ? resolved : [`t:${note.id}`];
     const fresh = sources.some((source) => !earned.has(source));
     if (fresh) {
       clock.set(note.id, note.created);
