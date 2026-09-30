@@ -16,6 +16,7 @@ import { hasCredential, secretRequest } from "./guard.js";
 import { MEMORY_IDLE_DAYS, grounded } from "./salience.js";
 import { DAY, clamp, similar, text } from "./util.js";
 import { recallIntent } from "./continuity.js";
+import { consolidationDecision } from "./memory-policy.js";
 
 const RECALL_CONFIDENCE = 0.5;
 const RECALL_LIMIT = 12;
@@ -506,6 +507,11 @@ export class MemoryManager {
       )
       .get(session, session).n;
   }
+  due(session, now = Date.now()) {
+    return this.mind
+      ? consolidationDecision(this.mind, session, now)
+      : { due: this.pending(session) >= BLOCK_USERS };
+  }
   // What she already remembers about the people in this stretch, so the
   // same fact is not written twice and a changed one can replace the old.
   known(session, block) {
@@ -615,8 +621,7 @@ export class MemoryManager {
     } = {},
   ) {
     if (this.busy.has(session)) return;
-    if (!force && Date.now() - (this.lastAttempt.get(session) || 0) < 60000)
-      return;
+    if (!force && now - (this.lastAttempt.get(session) || 0) < 60000) return;
     this.busy.add(session);
     try {
       const db = this.repo.db;
@@ -631,14 +636,16 @@ export class MemoryManager {
           .map((row) => row.seq),
       );
       const rows = this.repo
-        .eventsAfter(session, cursor, { simulated })
+        .eventsAfter(session, cursor, { simulated, limit: 200 })
         .filter(
           (m) =>
-            !aside.has(m.seq) && !/^\[(图片|表情|媒体)\]+$/.test(m.text || ""),
+            m.time <= now &&
+            !aside.has(m.seq) &&
+            !/^\[(图片|表情|媒体)\]+$/.test(m.text || ""),
         );
       const users = rows.filter((m) => m.role === "user");
-      if (!users.length || (users.length < BLOCK_USERS && !force)) return;
-      this.lastAttempt.set(session, Date.now());
+      if (!users.length || (!force && !this.due(session, now).due)) return;
+      this.lastAttempt.set(session, now);
       // Her answers to the block's last messages belong with that block.
       const next = users[BLOCK_USERS]?.seq ?? Number.MAX_SAFE_INTEGER;
       const block = rows.filter((m) => m.seq < next);

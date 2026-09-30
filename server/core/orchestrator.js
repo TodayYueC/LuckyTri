@@ -465,7 +465,7 @@ export class ChatSystem {
   }
   // Memory consolidation and context compaction after a live turn. Both run
   // detached so they never hold the conversational lane.
-  backgroundWork(session, policy) {
+  backgroundWork(session, policy, now = this.now()) {
     if (!policy.memory && policy.compaction === false) return;
     if (!this.enabled(session, { simulated: false })) return;
     if (!this.mind.budget.allows("upkeep")) return;
@@ -480,15 +480,15 @@ export class ChatSystem {
     if (
       policy.memory &&
       this.store.settings().memoryEnabled !== false &&
-      memory.pending(session) >= 40 &&
+      memory.due(session, now).due &&
       !memory.busy.has(session) &&
-      this.now() - (memory.lastAttempt.get(session) || 0) >= 60000
+      now - (memory.lastAttempt.get(session) || 0) >= 60000
     ) {
       const t = this.repo.trace(session, "memory");
       memory
         .consolidate(session, profile, prompts(this.repo).memory, t, {
           models,
-          now: this.now(),
+          now,
         })
         .then(() => this.finishQuietly(t, "complete"))
         .catch((e) => {
@@ -525,19 +525,7 @@ export class ChatSystem {
       .all()) {
       if (!this.enabled(id, { simulated: false })) continue;
       const policy = this.policy(id);
-      if (policy.compaction !== false && this.mind.budget.allows("upkeep")) {
-        try {
-          const profile = this.models.profile();
-          this.scheduleCompaction(
-            id,
-            policy,
-            profile,
-            withFallback(this.models, this.fallbackFor(policy, profile)),
-          );
-        } catch {
-          /* no model yet */
-        }
-      }
+      this.backgroundWork(id, policy, now);
       this.checkBacklog(id, now);
     }
   }
