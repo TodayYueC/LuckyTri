@@ -19,6 +19,7 @@ import {
   invalidateSpeakerNames,
   speakerNames,
 } from "./speaker-names.js";
+import { displayNames, displaySession } from "../studio/display-names.js";
 
 export function mountCore(app, system) {
   const { repo } = system;
@@ -61,7 +62,8 @@ export function mountCore(app, system) {
       since: row.since == null ? null : Number(row.since),
     });
   });
-  app.get("/api/core/state", (req, res) =>
+  app.get("/api/core/state", (req, res) => {
+    const names = displayNames(repo.db);
     res.json({
       models: normalizeModels(storedModels(repo)).map(publicModel),
       persona: system.mind.nature.current(),
@@ -70,12 +72,12 @@ export function mountCore(app, system) {
         .prepare("SELECT * FROM sessions")
         .all()
         .map((s) => ({
-          ...publicSession(s),
+          ...displaySession(publicSession(s), names),
           policy: system.policy(s.id),
         })),
       revision: repo.store.revision,
-    }),
-  );
+    });
+  });
   app.post(
     "/api/core/sessions",
     wrap((req, res) => {
@@ -411,6 +413,7 @@ export function mountCore(app, system) {
       const after =
         req.query.after === undefined ? null : Number(req.query.after);
       const names = speakerNames(repo.db, [session]);
+      const labels = displayNames(repo.db);
       const rows =
         Number.isSafeInteger(after) && after >= 0
           ? repo.db
@@ -426,7 +429,9 @@ export function mountCore(app, system) {
       res.json(
         rows.map((r) => {
           const payload = JSON.parse(r.payload);
-          const label = names.get(String(payload.userId));
+          const label =
+            labels.get(String(payload.userId)) ||
+            names.get(String(payload.userId));
           if (label) payload.name = label;
           return { ...r, payload };
         }),

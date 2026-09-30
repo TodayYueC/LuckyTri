@@ -17,6 +17,7 @@ import { MEMORY_IDLE_DAYS, grounded } from "./salience.js";
 import { DAY, clamp, similar, text } from "./util.js";
 import { recallIntent } from "./continuity.js";
 import { consolidationDecision } from "./memory-policy.js";
+import { requestedName } from "../core/person-name.js";
 
 const RECALL_CONFIDENCE = 0.5;
 const RECALL_LIMIT = 12;
@@ -513,9 +514,12 @@ export class MemoryManager {
     const match = value.match(
       /(?:请)?(?:记住|记一下)[，,：:\s]*(我[^\n]{2,200})[。！!]?$/u,
     );
-    if (!match || SENSITIVE.test(match[1]) || hasCredential(match[1]))
+    const name = requestedName(value);
+    if ((!match && !name) || SENSITIVE.test(value) || hasCredential(value))
       return null;
-    const said = match[1].replace(/[。！!]+$/, "").trim();
+    const said = name
+      ? `我希望被称呼为${name}`
+      : match[1].replace(/[。！!]+$/, "").trim();
     const content = /我/.test(said.slice(1))
       ? `原话：${said}`
       : said.replace(/^我/, "");

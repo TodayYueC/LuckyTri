@@ -19,6 +19,51 @@ async function serve(w) {
   return { get, close: () => new Promise((r) => server.close(r)) };
 }
 
+test("人物列表、详情和私聊入口使用本人要求的称呼，群入口保留群名", async (t) => {
+  const w = world();
+  const api = await serve(w);
+  t.after(async () => {
+    await api.close();
+    w.close();
+  });
+  w.open("group:12345", "学习群");
+  w.open("private:10001", "10001");
+  w.mind.bonds.meet(
+    [{ userId: "10001", name: "group:12345" }],
+    "group:12345",
+    w.now(),
+  );
+  const msg = w.say("private:10001", "10001", "记住，我叫林夏", {
+    name: "群名片",
+    accountName: "账号昵称",
+  });
+  assert.ok(w.mind.memory.remember(msg));
+  const { body: bonds } = await api.get("/mind/bonds");
+  assert.equal(bonds.people[0].name, "林夏");
+  assert.equal(
+    bonds.groups.find((g) => g.session === "private:10001").name,
+    "林夏",
+  );
+  assert.equal(
+    bonds.groups.find((g) => g.session === "group:12345").name,
+    "学习群",
+  );
+  const { body: detail } = await api.get("/mind/people/10001");
+  assert.equal(detail.person.name, "林夏");
+  const { body: events } = await api.get("/core/events?session=private:10001");
+  assert.equal(events[0].payload.name, "林夏");
+  const { body: core } = await api.get("/core/state");
+  assert.equal(
+    core.sessions.find((s) => s.id === "private:10001").name,
+    "林夏",
+  );
+  assert.equal(
+    w.mind.bonds.name("10001"),
+    "group:12345",
+    "UI 称呼不改写内部会话身份或跨群提示",
+  );
+});
+
 test("presence：TA 此刻的样子、正在做什么、最近说的话、放在心上的事和在等的事", async (t) => {
   const w = world();
   const api = await serve(w);

@@ -9,6 +9,7 @@ import {
   REASONING_EFFORTS,
 } from "../model-presets.js";
 import { applySpeakerNames, speakerNames } from "../core/speaker-names.js";
+import { displayNames, displaySession } from "./display-names.js";
 
 export function mountStudio(app, store, runtime) {
   app.get("/api/service/status", (req, res) =>
@@ -27,6 +28,7 @@ export function mountStudio(app, store, runtime) {
     const { apiKey, ...settings } = store.settings();
     const demo = Number(settings.demo);
     const connection = runtime.connection();
+    const namesForDisplay = displayNames(store.db);
     res.json({
       settings: {
         ...settings,
@@ -49,7 +51,7 @@ export function mountStudio(app, store, runtime) {
         )
         .all(demo, demo)
         .map((session) => ({
-          ...publicSession(session),
+          ...displaySession(publicSession(session), namesForDisplay),
           style: store.groupStyle(session.id, demo),
         })),
       decisions: (() => {

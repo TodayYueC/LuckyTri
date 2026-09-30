@@ -4,6 +4,7 @@ import { tokenEqual } from "../http.js";
 import { effectiveOneBotToken } from "./onebot-token.js";
 import { onebot, normalize } from "./onebot.js";
 import { applyDirectoryNames } from "../core/sessions.js";
+import { saveAccountNames } from "../studio/display-names.js";
 
 export function createOneBotGateway(store) {
   const pending = new Map();
@@ -15,6 +16,7 @@ export function createOneBotGateway(store) {
   let heartbeat = null;
   let wss = null;
   let directoryAt = 0;
+  const checkedNames = new Map();
 
   function asList(data) {
     if (Array.isArray(data)) return data;
@@ -35,22 +37,61 @@ export function createOneBotGateway(store) {
         return [];
       }
     };
-    const groups = await listed("get_group_list");
-    const friends = await listed("get_friend_list");
+    const [groups, friends] = await Promise.all([
+      listed("get_group_list"),
+      listed("get_friend_list"),
+    ]);
     const known = store.db.prepare("SELECT id,kind FROM sessions").all();
     for (const row of known) {
       const native = String(row.id).split(":").pop();
-      const isGroup = row.kind === "group" || String(row.id).includes(":group:");
+      const isGroup =
+        row.kind === "group" || String(row.id).includes(":group:");
       if (!isGroup || !/^\d+$/.test(native)) continue;
       if (groups.some((group) => String(group.group_id) === native)) continue;
       try {
-        const info = await rpc("get_group_info", { group_id: Number(native) }, 8000);
+        const info = await rpc(
+          "get_group_info",
+          { group_id: Number(native) },
+          8000,
+        );
         if (info && typeof info === "object") groups.push(info);
       } catch (error) {
         console.error(`读取群 ${native} 的名字失败：${error.message}`);
       }
     }
-    const changed = applyDirectoryNames(store.db, { groups, friends });
+    let changed = applyDirectoryNames(store.db, { groups, friends });
+    changed += saveAccountNames(store.db, friends);
+    const ids = store.db
+      .prepare(
+        "SELECT user_id FROM mind_people ORDER BY last_seen DESC LIMIT 200",
+      )
+      .all()
+      .map((row) => row.user_id)
+      .filter(
+        (id) =>
+          /^\d{4,20}$/.test(id) &&
+          !friends.some((friend) => String(friend.user_id) === id) &&
+          Date.now() - (checkedNames.get(id) || 0) > 3600000,
+      );
+    const accounts = [];
+    for (let start = 0; start < ids.length; start += 4) {
+      await Promise.all(
+        ids.slice(start, start + 4).map(async (id) => {
+          checkedNames.set(id, Date.now());
+          try {
+            const person = await rpc(
+              "get_stranger_info",
+              { user_id: Number(id) },
+              2500,
+            );
+            if (person?.nickname) accounts.push({ ...person, user_id: id });
+          } catch {
+            /* The message nickname remains usable if QQ cannot look it up. */
+          }
+        }),
+      );
+    }
+    changed += saveAccountNames(store.db, accounts);
     if (changed) store.revision++;
     return changed;
   }
@@ -210,5 +251,13 @@ export function createOneBotGateway(store) {
     };
   }
 
-  return { send, fetchQuoted, fetchImage, refreshDirectory, attach, close, status };
+  return {
+    send,
+    fetchQuoted,
+    fetchImage,
+    refreshDirectory,
+    attach,
+    close,
+    status,
+  };
 }

@@ -251,6 +251,10 @@ export function normalize(event, { botMessageIds } = {}) {
     kind,
     userId: String(event.user_id),
     name: senderLabel(event.sender, event.user_id),
+    accountName: senderLabel(
+      { nickname: event.sender?.nickname, nick: event.sender?.nick },
+      event.user_id,
+    ),
     text: text.slice(0, 4000),
     mentioned: atSelf || replyToBot,
     replyToBot,
