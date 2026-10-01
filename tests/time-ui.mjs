@@ -32,7 +32,7 @@ w.answers.reflection = {
   done: true,
   title: "月光之门",
   content: "第二段：她推开了门。",
-  summary: "门后的世界",
+  summary: "门后的世界，故事还有想继续探索的细节。\n".repeat(18),
 };
 await w.life.activities.run();
 const projectId = w.mind.time.tasks.get(task).project_id;
@@ -283,6 +283,18 @@ try {
         () => document.documentElement.scrollWidth <= innerWidth + 2,
       ),
       `${width} 体验记录不应横向溢出`,
+    );
+    const previews = await page
+      .locator(".experience-summary")
+      .evaluateAll((elements) =>
+        elements.map((el) => ({
+          height: el.getBoundingClientRect().height,
+          line: parseFloat(getComputedStyle(el).lineHeight),
+        })),
+      );
+    assert.ok(
+      previews.every((p) => p.height <= p.line * 4 + 2),
+      `${width} 摘录最多四行，不把记录列表变成长正文`,
     );
     await page.locator(".experience-log").screenshot({
       path: `workspace/ui-review/time-experiences-${width}.png`,

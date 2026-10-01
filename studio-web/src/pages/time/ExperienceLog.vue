@@ -211,9 +211,13 @@ function clock(time: number) {
   overflow-wrap: anywhere;
 }
 .experience-summary {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
   font-size: 14px;
   line-height: 1.85;
-  white-space: pre-line;
+  white-space: normal;
   overflow-wrap: anywhere;
 }
 .experience-project,
