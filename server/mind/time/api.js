@@ -7,6 +7,10 @@ export function mountTime(app, life) {
     "/api/mind/time/agenda",
     wrap((req, res) => res.json(time.agenda.view(life.now()))),
   );
+  app.post(
+    "/api/mind/time/plan",
+    wrap((req, res) => res.json(life.planner.request())),
+  );
   app.get(
     "/api/mind/time/care",
     wrap((req, res) => res.json(life.ownDay.status())),

@@ -35,7 +35,7 @@ export class TimeSystem {
     this.tasks.delivery.reconcile();
     // A stopped process cannot keep reading, creating or playing in the gap.
     this.db.exec(
-      "UPDATE mind_time_spans SET ended=updated WHERE ended IS NULL; UPDATE mind_time_tasks SET state='paused',lease=NULL,lease_at=NULL,wait_reason='实例中断，进度已保留',revision=revision+1 WHERE state='doing';",
+      "UPDATE mind_time_spans SET ended=updated WHERE ended IS NULL; UPDATE mind_time_tasks SET state='paused',lease=NULL,lease_at=NULL,wait_reason='实例中断，进度已保留',checkpoint=CASE WHEN json_extract(checkpoint,'$.schedule.chosenAt') IS NOT NULL THEN json_set(checkpoint,'$.reschedule',json('true')) ELSE checkpoint END,revision=revision+1 WHERE state='doing';",
     );
   }
   settings() {
@@ -86,6 +86,16 @@ export class TimeSystem {
       this.db
         .prepare("SELECT id FROM mind_time_tasks WHERE state='doing' LIMIT 1")
         .get()?.id || "",
+    );
+  }
+  focusMs(task) {
+    const chosen =
+      task.checkpoint.schedule?.chosenAt &&
+      task.checkpoint.schedule.durationMinutes;
+    return (
+      (Number.isInteger(chosen) && chosen >= 5 && chosen <= 240
+        ? chosen
+        : this.settings().focusMinutes) * 60000
     );
   }
   tick(now = this.now()) {
@@ -145,7 +155,7 @@ export class TimeSystem {
     if (
       !task.lease &&
       task.checkpoint.activityClock?.phase === "engaged" &&
-      recorded.engaged_ms >= this.settings().focusMinutes * 60000 &&
+      recorded.engaged_ms >= this.focusMs(task) &&
       this.clock.remaining(task, now) > 0
     )
       this.tasks.control(
@@ -319,8 +329,7 @@ export class TimeSystem {
         .prepare(
           `SELECT ${task.checkpoint.activityClock ? "engaged_ms" : "active_ms"} active_ms,updated FROM mind_time_spans WHERE task_id=? AND ended IS NULL`,
         )
-        .get(task.id)?.active_ms || 0) >=
-      this.settings().focusMinutes * 60000;
+        .get(task.id)?.active_ms || 0) >= this.focusMs(task);
     const state = focus ? "paused" : "doing",
       next =
         now +
@@ -425,6 +434,7 @@ export class TimeSystem {
             elapsedMs: this.elapsed(task.id, now),
             activityKind: task.activity === "game" ? "gaming" : task.activity,
             timing: this.clock.view(task, now),
+            schedule: task.checkpoint.schedule || null,
             moment:
               task.activity === "game" ? this.games.moment(task, now) : null,
           }
@@ -447,7 +457,8 @@ export class TimeSystem {
         elapsedMs: 0,
         timing: { phase: "preparing", plannedMs: null },
       };
-    const care = this.search.life?.ownDay?.working;
+    const planner = this.search.life?.planner?.working;
+    const care = planner ? "plan" : this.search.life?.ownDay?.working;
     if (!current && care)
       current = {
         id: "own-day",

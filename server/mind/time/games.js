@@ -3,6 +3,7 @@ import { prompts, replyPrompt } from "../../core/persona-manager.js";
 import { evidence, text, parse } from "../util.js";
 import { gameTopic, intentUnit } from "./intent.js";
 import { naturalGameReason, gameContract, gameText } from "./presentation.js";
+import { gameName } from "./availability.js";
 
 export class Games {
   constructor(time) {
@@ -10,7 +11,7 @@ export class Games {
     this.db = time.db;
   }
   topic(task) {
-    return gameTopic(task.title);
+    return gameName(this.time, task);
   }
   moment(task, now) {
     if (

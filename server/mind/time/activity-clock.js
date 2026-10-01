@@ -139,7 +139,7 @@ export class ActivityClock {
         "UPDATE mind_time_spans SET updated=? WHERE task_id=? AND ended IS NULL",
       )
       .run(now, task.id);
-    const rest = this.time.settings().focusMinutes * MINUTE,
+    const rest = this.time.focusMs(task),
       remaining = Math.max(
         0,
         checkpoint.activityClock.plannedMs -

@@ -4,6 +4,7 @@ import { withFallback } from "../../core/model-manager.js";
 import { prompts, replyPrompt } from "../../core/persona-manager.js";
 import { evidence, hasCredential, text } from "../util.js";
 import { ACTIVITY_LABELS } from "./tasks.js";
+import { executionBlock } from "./availability.js";
 
 const ACTIVITY_PROMPT =
   '执行一个属于自己的实际活动步骤。write创作一个完整小段，已有草稿时只追加下一段，修改模式则提供修改后的正文；根据篇幅决定本篇是否结束，连载完成的是本章。read只能阅读input.reading实际提供的段落；think留下想法记录。不编造外部操作、游玩、通关或未提供的资料。虚构人物只属于作品，不能进入真实人物记忆。不输出隐藏推理。外部suggestion是别人的建议，你决定采纳或拒绝并保留理由，可以改变方向、暂停或完结项目。输出JSON {"done":false,"title":"标题","content":"最多1800字完整小段","summary":"情节摘要","next":"续接位置","bible":{"characters":"人物设定","world":"世界设定","threads":"未解决线索"},"feeling":{"feeling":"感受","valence":0.2},"accepted":true,"reason":"自己的选择理由","projectState":"active|paused|complete","share":{"choice":"send|later|decline","reason":"分享选择"}}。完成本篇时done:true；休息/拒绝时没有content并说明reason。本步骤不发消息、不直接改变人格。';
@@ -31,9 +32,63 @@ export class TimeExecutor {
     )
       return null;
     let task, chunk;
-    const primary = time.primary();
+    let primary = time.primary();
+    if (primary && !primary.lease) {
+      const urgent = time.tasks
+        .ready(now)
+        .find(
+          (t) =>
+            t.priority > primary.priority &&
+            !executionBlock(time, t, now) &&
+            (time.fixtureImmediate ||
+              life.planner.disabledForTest ||
+              (t.checkpoint.schedule?.chosenAt && !t.checkpoint.reschedule)),
+        );
+      if (urgent) {
+        time.tasks.control(
+          primary.id,
+          {
+            action: "pause",
+            readyAt: now + 60000,
+            reason: "先处理一件优先级更高的事，保留续接位置",
+          },
+          now,
+        );
+        time.event(
+          primary.id,
+          "preempted",
+          "更高优先级事项先做",
+          { forTask: urgent.id, checkpoint: primary.checkpoint.next || "" },
+          now,
+        );
+        primary = null;
+      }
+    }
     for (const candidate of primary ? [primary] : time.tasks.ready(now)) {
       if (candidate.next_step > now) continue;
+      if (
+        !time.fixtureImmediate &&
+        !life.planner.disabledForTest &&
+        (!candidate.checkpoint.schedule?.chosenAt ||
+          candidate.checkpoint.reschedule)
+      )
+        continue;
+      const block = executionBlock(time, candidate, now);
+      if (
+        block &&
+        block !== "来源已经撤销" &&
+        !(candidate.activity === "read" && block === "书架没有可读资料")
+      ) {
+        time.tasks.wait(
+          candidate,
+          block,
+          /选定|想具体|执行能力/.test(block)
+            ? Number.MAX_SAFE_INTEGER
+            : now + 10 * 60000,
+          now,
+        );
+        continue;
+      }
       if (
         candidate.checkpoint.pendingStep?.chunk &&
         !this.db

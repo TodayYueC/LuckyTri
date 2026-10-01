@@ -56,6 +56,7 @@ export function world({
   // acceptance worlds explicitly use paced:true and advance a real clock.
   system.mind.time.fixtureImmediate = !paced;
   life.ownDay.disabledForTest = !ownLife;
+  life.planner.disabledForTest = !ownLife;
   let n = 0;
   const open = (session, name = session) =>
     store.db

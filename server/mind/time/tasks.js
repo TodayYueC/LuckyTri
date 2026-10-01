@@ -370,6 +370,118 @@ export class Tasks {
       Math.min(8, Number(person?.closeness || 0) * 8)
     );
   }
+  arrange(
+    id,
+    { startAt, durationMinutes, reason, activity, title, topic, projectId },
+    now = this.time.now(),
+  ) {
+    const task = this.get(id);
+    if (
+      !task ||
+      ["doing", "done", "abandoned"].includes(task.state) ||
+      task.lease
+    )
+      throw Error("事项已变化，不能覆盖安排");
+    if (
+      !Number.isFinite(startAt) ||
+      startAt < now - 60000 ||
+      !Number.isInteger(durationMinutes) ||
+      durationMinutes < 5 ||
+      durationMinutes > 240
+    )
+      throw Error("时间安排无效");
+    startAt = Math.max(now, startAt);
+    const conflicts = this.slots(now).filter(
+      (slot) =>
+        slot.id !== id &&
+        slot.startAt < startAt + durationMinutes * 60000 &&
+        slot.endAt > startAt,
+    );
+    if (conflicts.some((slot) => slot.priority >= task.priority))
+      throw Error("所选时间与已有安排重叠，需要重新选定");
+    const checkpoint = {
+      ...task.checkpoint,
+      reschedule: false,
+      schedule: {
+        proposedAt: startAt,
+        endedAt: startAt + durationMinutes * 60000,
+        durationMinutes,
+        chosenAt: now,
+        chosenBy: "self",
+        reason: text(reason, 240),
+        focusMinutes: durationMinutes,
+        outcome: task.checkpoint.schedule?.outcome || "",
+      },
+      ...(topic ? { topic: text(topic, 80) } : {}),
+    };
+    if (task.checkpoint.activityClock?.phase === "preparing")
+      delete checkpoint.activityClock;
+    this.db.exec("SAVEPOINT arrange_task");
+    try {
+      const updated = this.db
+        .prepare(
+          "UPDATE mind_time_tasks SET title=?,activity=?,state=?,ready_at=?,next_step=?,wait_reason='',updated=?,checkpoint=?,project_id=COALESCE(?,project_id),revision=revision+1 WHERE id=? AND revision=? AND lease IS NULL",
+        )
+        .run(
+          text(title, 240) || task.title,
+          activity || task.activity,
+          startAt > now ? "scheduled" : "todo",
+          startAt,
+          startAt,
+          now,
+          JSON.stringify(checkpoint),
+          projectId || null,
+          id,
+          task.revision,
+        );
+      if (!updated.changes) throw Error("事项已变化");
+      const current = this.get(id);
+      if (topic && current.project_id) {
+        const project = this.time.works.project(current.project_id);
+        this.db
+          .prepare("UPDATE mind_time_projects SET bible=?,updated=? WHERE id=?")
+          .run(
+            JSON.stringify({ ...project.bible, topic: text(topic, 80) }),
+            now,
+            project.id,
+          );
+      }
+      this.time.event(
+        id,
+        "self-scheduled",
+        reason || "自己选定开始时间与投入时长",
+        {
+          previous: task.checkpoint.schedule || null,
+          schedule: checkpoint.schedule,
+          previousTitle: task.title,
+        },
+        now,
+      );
+      return current;
+    } catch (error) {
+      this.db.exec("ROLLBACK TO arrange_task");
+      throw error;
+    } finally {
+      this.db.exec("RELEASE arrange_task");
+    }
+  }
+  slots(now = this.time.now()) {
+    return this.db
+      .prepare(
+        "SELECT id,priority,state,checkpoint FROM mind_time_tasks WHERE state IN ('todo','scheduled','doing') AND json_extract(checkpoint,'$.reschedule') IS NOT 1 AND json_extract(checkpoint,'$.schedule.chosenAt') IS NOT NULL AND json_extract(checkpoint,'$.schedule.endedAt')>? ORDER BY ready_at LIMIT 30",
+      )
+      .all(now)
+      .map((row) => {
+        const slot = parse(row.checkpoint, {}).schedule;
+        return {
+          id: row.id,
+          priority: row.priority,
+          startAt: slot.proposedAt,
+          endAt: slot.endedAt,
+          ongoing: row.state === "doing",
+        };
+      });
+  }
   control(
     id,
     { action, reason = "", readyAt, dueAt, priority },
@@ -409,9 +521,12 @@ export class Tasks {
       state === "paused" && !Number.isFinite(readyAt)
         ? Number.MAX_SAFE_INTEGER
         : ready;
+    const checkpoint = { ...task.checkpoint };
+    if (state === "paused" && checkpoint.schedule?.chosenAt)
+      checkpoint.reschedule = true;
     this.db
       .prepare(
-        "UPDATE mind_time_tasks SET state=?,updated=?,ready_at=?,next_step=?,due_at=?,wait_reason=?,revision=revision+1,lease=NULL,lease_at=NULL WHERE id=?",
+        "UPDATE mind_time_tasks SET state=?,updated=?,ready_at=?,next_step=?,due_at=?,wait_reason=?,checkpoint=?,revision=revision+1,lease=NULL,lease_at=NULL WHERE id=?",
       )
       .run(
         state,
@@ -420,6 +535,7 @@ export class Tasks {
         next,
         dueAt === undefined ? task.due_at : dueAt,
         text(reason, 300),
+        JSON.stringify(checkpoint),
         id,
       );
     this.time.event(id, state, reason, {}, now);

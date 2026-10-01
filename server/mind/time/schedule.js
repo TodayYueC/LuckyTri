@@ -42,9 +42,10 @@ export function deadlineAt(at, precision, zone) {
 export function taskSchedule(task, time, now = time.now()) {
   const plan = task.checkpoint?.schedule;
   const waiting = task.state === "waiting";
-  const focus = plan?.focusMinutes || time.settings().focusMinutes;
+  const focus =
+    plan?.durationMinutes || plan?.focusMinutes || time.settings().focusMinutes;
   const proposed =
-    plan?.proposedAt > now
+    plan?.chosenAt || plan?.proposedAt > now
       ? plan.proposedAt
       : task.state === "scheduled" && task.ready_at > now
         ? task.ready_at
@@ -63,6 +64,10 @@ export function taskSchedule(task, time, now = time.now()) {
     proposedEnd: proposed ? proposed + focus * 60000 : null,
     startedAt: live?.started || null,
     focusMinutes: focus,
+    chosenAt: plan?.chosenAt || null,
+    chosenBy: plan?.chosenBy || null,
+    durationMinutes: plan?.durationMinutes || null,
+    reason: plan?.reason || "",
     conditional: waiting,
     deadlinePrecision: task.due_precision || "time",
     deadlineAt: task.due_at,

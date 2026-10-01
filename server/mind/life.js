@@ -43,6 +43,7 @@ import { LifeDiary } from "./life-diary.js";
 import { LifePresence } from "./life-presence.js";
 import { LifeActivities } from "./life-activities.js";
 import { OwnDay } from "./own-day.js";
+import { DayPlanner } from "./day-planner.js";
 
 export class Life {
   constructor(chat, { now = chat.now || Date.now, online = () => false } = {}) {
@@ -64,6 +65,7 @@ export class Life {
     this.presence = new LifePresence(this);
     this.activities = new LifeActivities(this);
     this.ownDay = new OwnDay(this);
+    this.planner = new DayPlanner(this);
   }
   settings() {
     return { ...LIFE_DEFAULTS, ...this.repo.config("life", {}) };
@@ -137,6 +139,7 @@ export class Life {
         "INSERT INTO mind_runs(id,kind,started,status,reason,watermark) VALUES (?,?,?,'running',?,?)",
       )
       .run(id, kind, this.now(), reason, watermark);
+    this.repo.store.revision++;
     return id;
   }
   end(id, status, reason, trace, summary = null) {
@@ -205,6 +208,8 @@ export class Life {
       return night.kind === "memory"
         ? this.rememberAtNight(night.session, night.day, now)
         : this.reviewPeriod(now);
+    const arrangement = await this.planner.run(now);
+    if (arrangement) return arrangement;
     const care = await this.ownDay.run(now);
     if (care) return care;
     const activity = await this.activities.run(now);

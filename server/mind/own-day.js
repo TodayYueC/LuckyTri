@@ -3,6 +3,9 @@ import { prompts, replyPrompt } from "../core/persona-manager.js";
 import { localClock } from "../core/conversation-cues.js";
 import { evidence, text, hasCredential } from "./util.js";
 import { CommitmentReview } from "./time/commitment-review.js";
+import { chosenSlot } from "./day-planner.js";
+import { activityEstimate } from "./time/activity-clock.js";
+import { gameTopic } from "./time/intent.js";
 
 export class OwnDay {
   constructor(life) {
@@ -139,6 +142,13 @@ export class OwnDay {
                 think: true,
                 game: !time.search.ready(now),
               },
+              busy: time.tasks
+                .slots(now)
+                .map(({ startAt, endAt, priority }) => ({
+                  startAt,
+                  endAt,
+                  priority,
+                })),
               pending: time.tasks
                 .list({ limit: 20 })
                 .filter(
@@ -151,7 +161,7 @@ export class OwnDay {
             };
         const instruction = reviewing
           ? '独处回看自己确实送达的话有没有漏下承诺。review.said是自己说的话，earlier是前面的真实语境。只提取明确接受的未来行动；玩笑、引用、别人的计划、作品情节、愿望和过去完成的事不算承诺。没有日期也可以有约定。已放下或已完成的事项不要复活，已经整理的事项不要重建。输出JSON {"commitments":[{"source":"m:消息seq","quote":"said中的原文片段","accepted":true,"kind":"promise|plan","activity":"write|read|think|game|unknown","title":"具体行动"}]}，没有遗漏则空数组。只整理，不发送、不声称兑现。'
-          : '这是留给自己的空隙，不需要有人先约你，也不需要新消息才有生活。根据自己的兴趣、好奇、已有作品与精力，决定想不想随手做一件有意思的小事。可以阅读、写个小场景、玩一段游戏、整理一个想法，也可以选择歇着。一次最多一件，不为填满时间而列清单，不把别人的建议冒充自己的愿望，不编造外部经历或无法执行的动作。输出JSON {"skip":false,"plan":{"activity":"write|read|think|game","title":"具体小行动，游戏写清名称","why":"自己的动机","sources":["s:本次self中thread"],"projectId":"本次项目ID或null"}}。没有想做的事就skip:true。';
+          : '这是留给自己的空隙，不需要有人先约你，也不需要新消息才有生活。根据自己的兴趣、好奇、已有作品与精力，决定想不想随手做一件有意思的小事。可以阅读、写个小场景、玩一段游戏、整理一个想法，也可以选择歇着。一次最多一件，不为填满时间而列清单，不把别人的建议冒充自己的愿望，不编造外部经历或无法执行的动作。自己决定几点开始、这次想投入多少分钟；durationMinutes是实际安排分钟，不是API耗时，不再除以加速倍数。游戏必须选定明确名字，已有项目可以接着做，不要只说“玩一会galgame”。输出JSON {"skip":false,"plan":{"activity":"write|read|think|game","title":"具体小行动","topic":"游戏名称或空","why":"自己的动机","startAt":"本地YYYY-MM-DD HH:mm","durationMinutes":20,"sources":["s:本次self中thread"],"projectId":"本次项目ID或null"}}。没有想做的事就skip:true。';
         const answer = await withFallback(
           life.chat.models,
           life.chat.fallbackFor(null, profile, trace),
@@ -218,6 +228,30 @@ export class OwnDay {
           project = projects.find(
             (p) => p.id === plan.projectId && p.kind === plan.activity,
           );
+        const topic =
+          plan.activity === "game"
+            ? text(
+                plan.topic || gameTopic(plan.title) || project?.bible?.topic,
+                80,
+              )
+            : "";
+        if (plan.activity === "game" && !topic)
+          throw Error("需要自己选定要玩的游戏");
+        const slot = chosenSlot(
+          {
+            ...plan,
+            durationMinutes:
+              plan.durationMinutes ??
+              Math.ceil(
+                activityEstimate(plan.activity, null, time.settings().paceSpeed)
+                  .plannedMs / 60000,
+              ),
+            reason: plan.why,
+          },
+          life,
+          life.now(),
+          now,
+        );
         this.db.exec("SAVEPOINT own_choice");
         try {
           const wish = life.mind.self.propose(
@@ -234,7 +268,10 @@ export class OwnDay {
             {
               kind: "plan",
               activity: plan.activity,
-              title: plan.title,
+              title:
+                topic && !gameTopic(plan.title)
+                  ? `${plan.title} ·《${topic}》`
+                  : plan.title,
               why: plan.why,
               sources: [`s:${wish.thread}`, ...(project?.sources || [])],
               projectId: project?.id || null,
@@ -243,6 +280,8 @@ export class OwnDay {
             life.now(),
           );
           const id = result.id || result.duplicate;
+          if (result.id)
+            time.tasks.arrange(result.id, { ...slot, topic }, life.now());
           if (result.id)
             time.event(
               id,
