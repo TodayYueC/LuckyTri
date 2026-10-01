@@ -34,6 +34,20 @@ export class TimeExecutor {
     const primary = time.primary();
     for (const candidate of primary ? [primary] : time.tasks.ready(now)) {
       if (candidate.next_step > now) continue;
+      if (
+        candidate.checkpoint.pendingStep?.chunk &&
+        !this.db
+          .prepare("SELECT 1 FROM core_chunks WHERE id=?")
+          .get(candidate.checkpoint.pendingStep.chunk.id)
+      ) {
+        time.tasks.wait(
+          candidate,
+          "书架这段内容已不可用",
+          Number.MAX_SAFE_INTEGER,
+          now,
+        );
+        continue;
+      }
       if (!time.allowed(candidate, now)) {
         time.tasks.control(
           candidate.id,
@@ -49,7 +63,10 @@ export class TimeExecutor {
         time.tasks.wait(candidate, "来源会话目前未启用", now + 60000, now);
         continue;
       }
-      if (!mind.budget.allows("inner", now)) {
+      if (
+        !candidate.checkpoint.pendingStep &&
+        !mind.budget.allows("inner", now)
+      ) {
         time.tasks.wait(candidate, "今日独处预算不足", now + 3600000, now);
         continue;
       }
@@ -74,7 +91,9 @@ export class TimeExecutor {
           continue;
         }
       }
-      chunk = candidate.activity === "read" ? mind.reading.next(now) : null;
+      chunk =
+        candidate.checkpoint.pendingStep?.chunk ||
+        (candidate.activity === "read" ? mind.reading.next(now) : null);
       if (candidate.activity === "read" && !chunk) {
         time.tasks.wait(candidate, "书架没有可读资料", now, now);
         continue;
@@ -85,7 +104,7 @@ export class TimeExecutor {
     if (!task) return time.sharing.run(life, now);
     let profile;
     try {
-      profile = life.profile();
+      if (!task.checkpoint.pendingStep) profile = life.profile();
     } catch {
       time.tasks.wait(task, "等待可用模型", now + 60000, now);
       return null;
@@ -109,40 +128,61 @@ export class TimeExecutor {
         return { ...outcome, runId };
       }
       const nature = mind.traits.effective(mind.nature.current(now), now);
-      const result = await withFallback(
-        life.chat.models,
-        life.chat.fallbackFor(null, profile, trace),
-      ).call(
-        profile,
-        "reflection",
-        replyPrompt(
-          nature,
-          { ...prompts(life.repo), activity: ACTIVITY_PROMPT },
-          "activity",
-        ),
-        {
-          clock: localClock(now, mind.timeZone()),
-          activity: task.activity,
-          affect: mind.affect.state(now),
-          task: {
-            id: task.id,
-            title: task.title,
-            why: task.why,
-            checkpoint: task.checkpoint,
+      const pending = task.checkpoint.pendingStep;
+      if (pending && time.clock.remaining(task, now) > 0) {
+        status = "engaged";
+        reason = "接着做这一段";
+        time.clock.release(task, task.checkpoint, now);
+        return {
+          status: "engaged",
+          reason: "接着做这一段",
+          task: task.id,
+          runId,
+        };
+      }
+      const result =
+        pending?.result ||
+        (await withFallback(
+          life.chat.models,
+          life.chat.fallbackFor(null, profile, trace),
+        ).call(
+          profile,
+          "reflection",
+          replyPrompt(
+            nature,
+            {
+              ...prompts(life.repo),
+              activity:
+                ACTIVITY_PROMPT +
+                '\n为本段行动估计通常需要的投入时长，输出duration:{minutes:15,basis:"按本段内容与行动估计的理由"}。只估计这一段阅读、写作或思考需要的时间，不用API处理秒数；她的实际节奏会按统一速度稍作加快。',
+            },
+            "activity",
+          ),
+          {
+            clock: localClock(now, mind.timeZone()),
+            activity: task.activity,
+            affect: mind.affect.state(now),
+            task: {
+              id: task.id,
+              title: task.title,
+              why: task.why,
+              checkpoint: task.checkpoint,
+            },
+            plan: {
+              ref: task.anticipation_id
+                ? `a:${task.anticipation_id}`
+                : task.sources[0],
+              content: task.title,
+            },
+            self: life
+              .selfView(now, { room: task.session_id || "" })
+              .slice(0, 8),
+            ...(chunk ? { reading: mind.reading.passage(chunk) } : {}),
+            creation: time.works.context(task),
+            currentLife: time.view({ session: task.session_id, now }),
           },
-          plan: {
-            ref: task.anticipation_id
-              ? `a:${task.anticipation_id}`
-              : task.sources[0],
-            content: task.title,
-          },
-          self: life.selfView(now, { room: task.session_id || "" }).slice(0, 8),
-          ...(chunk ? { reading: mind.reading.passage(chunk) } : {}),
-          creation: time.works.context(task),
-          currentLife: time.view({ session: task.session_id, now }),
-        },
-        trace,
-      );
+          trace,
+        ));
       const finished = life.now();
       if (
         task.activity === "write" &&
@@ -193,9 +233,52 @@ export class TimeExecutor {
           ...(chunk ? [`r:${chunk.id}`] : []),
           ...task.sources,
         ]);
+        if (!time.fixtureImmediate && !pending) {
+          this.db.exec("SAVEPOINT paced_draft");
+          try {
+            if (task.kind === "suggestion")
+              time.event(
+                task.id,
+                "suggestion-accepted",
+                text(result.reason, 240),
+                {},
+                finished,
+              );
+            const work = time.works.save(
+              task,
+              { ...result, done: false },
+              { sources, runId, now: finished },
+            );
+            const checkpoint = time.tasks.get(task.id).checkpoint;
+            time.clock.release(
+              task,
+              {
+                ...checkpoint,
+                activityClock: time.clock.plan(task, result.duration, finished),
+                pendingStep: {
+                  result: { ...result, title, content },
+                  workId: work.id,
+                  chunk,
+                  sources,
+                  runId,
+                },
+                next: result.next || "接着推敲与整理这一段",
+              },
+              finished,
+            );
+            status = "draft";
+            reason = "草稿已保存，接着完成这一段";
+            return { status, reason, task: task.id, runId, workId: work.id };
+          } catch (error) {
+            this.db.exec("ROLLBACK TO paced_draft");
+            throw error;
+          } finally {
+            this.db.exec("RELEASE paced_draft");
+          }
+        }
         this.db.exec("SAVEPOINT time_execution");
         try {
-          if (task.kind === "suggestion")
+          if (task.kind === "suggestion" && !pending)
             time.event(
               task.id,
               "suggestion-accepted",
@@ -203,11 +286,26 @@ export class TimeExecutor {
               {},
               finished,
             );
-          const work = time.works.save(task, result, {
-            sources,
-            runId,
-            now: finished,
-          });
+          if (pending) {
+            const checkpoint = {
+              ...task.checkpoint,
+              activityClock: {
+                ...task.checkpoint.activityClock,
+                phase: "finished",
+              },
+            };
+            delete checkpoint.pendingStep;
+            this.db
+              .prepare("UPDATE mind_time_tasks SET checkpoint=? WHERE id=?")
+              .run(JSON.stringify(checkpoint), task.id);
+          }
+          const work = pending
+            ? time.works.settle(task, pending.workId, result.done, finished)
+            : time.works.save(task, result, {
+                sources,
+                runId,
+                now: finished,
+              });
           if (chunk)
             mind.reading.record(chunk, text(content, 120), runId, finished);
           if (result.done) {

@@ -49,10 +49,7 @@ test("未配搜索使用模型，输入只有资料主题，保存明确来源�
   assert.equal(sources[0].url, "");
   assert.match(sources[0].uncertainty, /未经联网/);
   assert.equal(task.checkpoint.materialKind, "model");
-  assert.equal(
-    time.view({ session: "private:10001" }).current.materialKind,
-    "model",
-  );
+  assert.equal(time.view({ session: "private:10001" }).current.label, "正在玩");
   assert.equal(
     time.view({ session: "group:20002" }).current.materialKind,
     undefined,
@@ -62,7 +59,7 @@ test("未配搜索使用模型，输入只有资料主题，保存明确来源�
     time.tick();
   }
   w.answers.reflection = (data) => {
-    assert.equal(data.material[0].kind, "model");
+    assert.equal(data.activity, "gaming");
     assert.match(data.material[0].uncertainty, /章节/);
     return {
       sufficient: true,
@@ -73,14 +70,9 @@ test("未配搜索使用模型，输入只有资料主题，保存明确来源�
     };
   };
   assert.equal((await w.life.activities.run()).status, "experienced");
-  assert.match(
-    time.works.get(time.works.list()[0].id).content,
-    /^资料来源：模型知识整理，未经联网核验/,
-  );
-  assert.match(
-    time.works.fragments({ session: "private:10001" })[0].summary,
-    /未经联网核验/,
-  );
+  const work = time.works.get(time.works.list()[0].id);
+  assert.equal(work.provenance.materialKind, "model");
+  assert.ok(!work.content.includes("资料来源："));
   assert.equal(time.tasks.get(id).checkpoint.actualPlay, false);
   assert.equal(time.tasks.get(id).checkpoint.completedChapter, false);
   assert.equal(w.sent.length, 0);

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { world, MINUTE } from "./helpers/world.js";
+import { reviewReport } from "./helpers/report.js";
 function setup(t, { promise = false } = {}) {
   const w = world();
   t.after(w.close);
@@ -83,7 +84,7 @@ test("发送前只修正变化的活动事实与未完成作品，不重跑交�
   assert.equal(w.calls.length, 1);
   assert.equal(w.mind.time.tasks.get(id).state, "paused");
 });
-test("完成与交付分开；每轮最多1500字，全部确认才算兑现", async (t) => {
+test("完成与汇报分开；回看后逐句发送，保存已发位置，不复制正文", async (t) => {
   const { w, id } = setup(t, { promise: true });
   w.answers.reflection = {
     done: true,
@@ -98,16 +99,25 @@ test("完成与交付分开；每轮最多1500字，全部确认才算兑现", a
     choice: "send",
     reason: "想给他读",
   });
-  await w.mind.time.sharing.send(w.life, share);
+  await reviewReport(w, share, [
+    "写完啦。",
+    "我刚把故事重新看了一遍。",
+    "最喜欢月光落在门上的那句。",
+    "读着有点舍不得她离开。",
+  ]);
   let row = w.mind.time.sharing.list()[0];
   assert.equal(row.state, "pending");
-  assert.equal(row.offset, 1500);
+  assert.equal(row.offset, 0);
+  assert.equal(row.review_offset, 1700);
+  assert.equal(row.send_index, 3);
   assert.equal(w.sent.length, 3);
-  assert.ok(w.sent.every((m) => m.text.length <= 500));
+  assert.ok(w.sent.every((m) => m.text.length <= 80));
   await w.mind.time.sharing.send(w.life, row);
   row = w.mind.time.sharing.list()[0];
   assert.equal(row.state, "sent");
-  assert.equal(row.offset, 1700);
+  assert.equal(row.offset, 0);
+  assert.equal(row.send_index, 4);
+  assert.equal(w.mind.time.tasks.get(id).share_state, "reported");
   assert.throws(
     () =>
       w.mind.time.sharing.choose(task.work_id, "group:9", { choice: "send" }),
@@ -125,7 +135,7 @@ test("送达不确定不自动重发；权限撤销后不可携带作品", async
   w.system.send = async () => {
     throw Error("断开");
   };
-  await w.mind.time.sharing.send(w.life, share);
+  await reviewReport(w, share);
   assert.equal(w.mind.time.sharing.list()[0].state, "uncertain");
   assert.equal(
     w.mind.time.sharing.choose(task.work_id, "private:10001", {

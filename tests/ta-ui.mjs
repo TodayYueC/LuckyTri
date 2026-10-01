@@ -368,6 +368,15 @@ async function run() {
     await page.locator(".diary-day[data-day='2026-09-20']").click();
     await page.getByRole("button", { name: "那天的 TA" }).click();
     await page.getByText("这是 TA 留下快照的第一天").waitFor();
+    const refreshedDiary = page.waitForResponse(
+      (r) => new URL(r.url()).pathname === "/api/mind/life",
+    );
+    w.store.revision++;
+    await refreshedDiary;
+    assert.ok(
+      await page.getByText("这是 TA 留下快照的第一天").isVisible(),
+      "后台刷新保留已经展开的当天详情",
+    );
     await page.getByRole("tab", { name: /约定与期待/ }).click();
     const selectedDay = await page
       .locator(".calendar .cell.picked")

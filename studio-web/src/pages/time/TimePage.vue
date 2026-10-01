@@ -26,7 +26,12 @@ const overview = shallowRef<any>(readSnapshot("/mind/time")),
   source = shallowRef<any>(null),
   busy = ref(false),
   hasMore = ref(false),
-  settings = ref<any>({ focusMinutes: 25, breakMinutes: 5, stepMinutes: 5 });
+  settings = ref<any>({
+    focusMinutes: 25,
+    breakMinutes: 5,
+    stepMinutes: 5,
+    paceSpeed: 1.25,
+  });
 const zone = computed(() => presence.data?.clock?.timeZone || "Asia/Shanghai");
 const labels: Record<string, string> = {
   todo: "ToDo · 待办",
@@ -44,6 +49,7 @@ const shares: Record<string, string> = {
   declined: "暂不分享",
   pending: "待继续交付",
   sent: "已完整交付",
+  reported: "已整理并汇报",
   uncertain: "送达不确定，等待核对",
   sending: "正在交付",
 };
@@ -65,6 +71,7 @@ async function setPriority(row: any, priority: number) {
   }
 }
 const minutes = (n: number) => `${Math.floor((n || 0) / 60000)} 分钟`;
+const duration = (n: number) => `${Math.ceil((n || 0) / 60000)} 分钟`;
 let sequence = 0;
 function path() {
   const params = new URLSearchParams({
@@ -285,6 +292,10 @@ onUnmounted(() => {
               >{{ overview.current.label }} ·
               {{ minutes(overview.current.elapsedMs) }}</span
             >
+            <p v-if="overview.current.timing?.plannedMs" class="faint">
+              本段预计 {{ duration(overview.current.timing.plannedMs) }} ·
+              还需约 {{ duration(overview.current.timing.remainingMs) }}
+            </p>
             <p>{{ overview.current.why || "从自己的打算接着做。" }}</p>
             <p class="muted">
               {{ overview.current.checkpoint?.next || "正在推进当前步骤。" }}
@@ -385,8 +396,18 @@ onUnmounted(() => {
               v-model.number="settings.stepMinutes"
               type="number"
               min="1"
-              max="120" /></label
-          ><button class="primary">保存安排</button>
+              max="120"
+          /></label>
+          <label
+            >活动节奏<input
+              v-model.number="settings.paceSpeed"
+              type="number"
+              min="1"
+              max="2"
+              step="0.05"
+            /><small>默认 1.25 倍，所有活动按现实时间逐段推进。</small></label
+          >
+          <button class="primary">保存安排</button>
         </form>
       </details></template
     >
@@ -463,17 +484,23 @@ onUnmounted(() => {
                 ? "条件满足后再安排时间"
                 : "按优先级选择可执行事项"
             }}</template>
-            · 本段 {{ row.schedule?.focusMinutes || 25 }} 分钟 · 投入
-            {{ minutes(row.elapsedMs) }}
+            <template v-if="row.timing?.plannedMs">
+              · 本段预计 {{ duration(row.timing.plannedMs) }} · 已投入
+              {{ minutes(row.timing.elapsedMs)
+              }}<template v-if="row.timing.phase === 'engaged'">
+                · 还需约 {{ duration(row.timing.remainingMs) }}</template
+              ></template
+            >
+            <template v-else-if="row.timing?.phase === 'legacy'">
+              · 此前时长未单独记录</template
+            >
+            <template v-else>
+              · 专注段 {{ row.schedule?.focusMinutes || 25 }} 分钟 · 投入
+              {{ minutes(row.elapsedMs) }}</template
+            >
           </p>
           <p v-if="row.schedule?.outcome" class="muted">
             本段目标：{{ row.schedule.outcome }}
-          </p>
-          <p v-if="row.checkpoint?.contract?.originalGoal" class="faint">
-            {{
-              row.checkpoint.contract.boundary ||
-              "旧约定保留为来源；资料体验不等于真实游玩。"
-            }}
           </p>
           <p v-if="shares[row.share_state]" class="share-status">
             {{ shares[row.share_state] }} {{ row.share_reason }}
@@ -535,11 +562,7 @@ onUnmounted(() => {
         <article v-for="row in rows" :key="row.id" class="card">
           <span class="eyebrow"
             >{{
-              row.kind === "game"
-                ? "游戏 · 资料模式"
-                : row.serial
-                  ? "连载"
-                  : "持续项目"
+              row.kind === "game" ? "游戏" : row.serial ? "连载" : "持续项目"
             }}
             ·
             {{
@@ -560,14 +583,11 @@ onUnmounted(() => {
         <article v-for="row in rows" :key="row.id" class="card">
           <span class="eyebrow"
             >{{
-              row.kind === "reference-experience" ? "资料体验" : "实际活动"
+              row.kind === "reference-experience" ? "游玩经历" : "活动经历"
             }}
             · {{ when(row.created, zone) }}</span
           >
           <h2>{{ row.reason }}</h2>
-          <p v-if="row.data.mode === 'reference'" class="muted">
-            接触资料并留下感受，章节完整性尚未确认。
-          </p>
           <div class="row">
             <button v-if="row.data.workId" @click="openWork(row.data.workId)">
               阅读记录</button
@@ -581,11 +601,11 @@ onUnmounted(() => {
           </div>
         </article>
         <section class="card real-mode">
-          <h2>真实游玩</h2>
+          <h2>游戏客户端连接</h2>
           <label class="check"
-            ><input type="checkbox" disabled />启用真实游戏操作</label
+            ><input type="checkbox" disabled />启用游戏客户端控制</label
           >
-          <p class="muted">开发中 · 等待真实执行适配器。</p>
+          <p class="muted">开发中。</p>
         </section>
       </div>
       <Empty

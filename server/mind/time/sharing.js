@@ -2,14 +2,20 @@ import { randomUUID } from "node:crypto";
 import { deliver } from "../../core/message-scheduler.js";
 import { withFallback } from "../../core/model-manager.js";
 import { prompts, replyPrompt } from "../../core/persona-manager.js";
-import { parse, text } from "../util.js";
+import { parse, text, hasCredential } from "../util.js";
 import { parseSessionKey } from "../../channels/session-key.js";
 import { leaks } from "../guard.js";
+import { displayNames } from "../../studio/display-names.js";
 
 export class Sharing {
   constructor(time) {
     this.time = time;
     this.db = time.db;
+    this.db
+      .prepare(
+        "UPDATE mind_time_shares SET delivery_kind='report' WHERE state IN ('pending','deferred','declined') AND delivery_kind='body'",
+      )
+      .run();
     this.db
       .prepare(
         "UPDATE mind_time_shares SET state='uncertain',reason='实例中断，先核对送达情况' WHERE state='sending'",
@@ -47,7 +53,7 @@ export class Sharing {
       id = prior?.id || randomUUID();
     this.db
       .prepare(
-        "INSERT INTO mind_time_shares(id,created,updated,work_id,version,session_id,state,reason) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(work_id,version,session_id) DO UPDATE SET state=excluded.state,reason=excluded.reason,updated=excluded.updated",
+        "INSERT INTO mind_time_shares(id,created,updated,work_id,version,session_id,state,reason,delivery_kind) VALUES (?,?,?,?,?,?,?,?, 'report') ON CONFLICT(work_id,version,session_id) DO UPDATE SET state=excluded.state,reason=excluded.reason,updated=excluded.updated",
       )
       .run(
         id,
@@ -79,9 +85,9 @@ export class Sharing {
       return null;
     let share = this.db
       .prepare(
-        "SELECT * FROM mind_time_shares WHERE state='pending' ORDER BY created LIMIT 1",
+        "SELECT * FROM mind_time_shares WHERE state='pending' AND next_step<=? ORDER BY created LIMIT 1",
       )
-      .get();
+      .get(now);
     if (!share) {
       const task = this.db
         .prepare(
@@ -114,7 +120,8 @@ export class Sharing {
           ),
           {
             task: item.title,
-            person: item.subject,
+            person:
+              displayNames(this.db, now).get(String(item.subject)) || null,
             work: {
               id: work.id,
               title: work.title,
@@ -153,17 +160,34 @@ export class Sharing {
       !this.time.visible(work, share.session_id, life.now())
     )
       return null;
+    if (share.delivery_kind === "report" && !parse(share.report, []).length) {
+      try {
+        return await this.review(life, share, work);
+      } catch (error) {
+        const reason = text(error.message, 180);
+        this.db
+          .prepare(
+            "UPDATE mind_time_shares SET reason=?,next_step=? WHERE id=? AND state='pending'",
+          )
+          .run(reason, life.now() + 15 * 60000, share.id);
+        return { status: "waiting", reason };
+      }
+    }
     const task = this.time.tasks.get(work.task_id),
       trace = life.repo.trace(share.session_id, "live");
     trace.decision = { targetMessageIds: [] };
-    const chars = Array.from(work.content),
+    const report = parse(share.report, []),
+      chars = Array.from(work.content),
       bubbles = [];
-    for (
-      let pos = share.offset;
-      pos < chars.length && bubbles.length < 3;
-      pos += 500
-    )
-      bubbles.push(chars.slice(pos, pos + 500).join(""));
+    if (share.delivery_kind === "report")
+      bubbles.push(...report.slice(share.send_index, share.send_index + 3));
+    else
+      for (
+        let pos = share.offset;
+        pos < chars.length && bubbles.length < 3;
+        pos += 500
+      )
+        bubbles.push(chars.slice(pos, pos + 500).join(""));
     if (!bubbles.length) return null;
     const reserved = this.db
       .prepare(
@@ -231,24 +255,38 @@ export class Sharing {
         (n, s) => n + Array.from(s).length,
         0,
       ),
-      offset = share.offset + confirmed;
+      offset =
+        share.delivery_kind === "report"
+          ? share.offset
+          : share.offset + confirmed,
+      sendIndex = share.send_index + (trace.sent || []).length;
     const state =
       status === "error"
         ? "uncertain"
-        : offset >= chars.length
+        : (
+              share.delivery_kind === "report"
+                ? sendIndex >= report.length
+                : offset >= chars.length
+            )
           ? "sent"
           : "pending";
     this.db
       .prepare(
-        "UPDATE mind_time_shares SET state=?,offset=?,updated=?,reason=? WHERE id=?",
+        "UPDATE mind_time_shares SET state=?,offset=?,send_index=?,updated=?,reason=? WHERE id=?",
       )
-      .run(state, offset, life.now(), trace.error || "", share.id);
+      .run(state, offset, sendIndex, life.now(), trace.error || "", share.id);
     if (task) {
       this.db
         .prepare(
           "UPDATE mind_time_tasks SET share_state=?,share_reason=? WHERE id=?",
         )
-        .run(state, trace.error || "", task.id);
+        .run(
+          state === "sent" && share.delivery_kind === "report"
+            ? "reported"
+            : state,
+          trace.error || "",
+          task.id,
+        );
       if (
         state === "sent" &&
         task.anticipation_id &&
@@ -256,7 +294,10 @@ export class Sharing {
       )
         life.mind.anticipations.close(task.anticipation_id, {
           status: "done",
-          note: "作品已全部确认交付",
+          note:
+            share.delivery_kind === "report"
+              ? "回看成果后整理的汇报已确认送达"
+              : "作品已全部确认交付",
           sources: task.sources,
           time: life.now(),
         });
@@ -265,14 +306,156 @@ export class Sharing {
       task?.id,
       "delivery",
       state === "sent"
-        ? "作品已完整确认交付"
+        ? share.delivery_kind === "report"
+          ? "整理后的汇报已逐句送达"
+          : "作品已完整确认交付"
         : state === "uncertain"
           ? "送达状态不确定，需要核对"
           : "保存部分交付位置",
-      { workId: work.id, offset, state },
+      {
+        workId: work.id,
+        offset,
+        state,
+        deliveryKind: share.delivery_kind,
+        sendIndex,
+      },
       life.now(),
     );
     life.chat.finishQuietly(trace, status);
     return { status: "shared", state, workId: work.id, offset };
   }
+  async review(life, share, work) {
+    if (!life.mind.budget.allows("inner", life.now()))
+      return { status: "waiting", reason: "今日独处预算不足" };
+    const notes = parse(share.review_notes, []),
+      chars = Array.from(work.content),
+      reviewing = share.review_offset < chars.length,
+      end = Math.min(chars.length, share.review_offset + 2400),
+      trace = life.repo.trace(share.session_id, "activity"),
+      version = life.mind.nature.version();
+    let status = "error";
+    this.reviewing = {
+      share,
+      work,
+      phase: reviewing ? "reading" : "composing",
+    };
+    try {
+      const result = await withFallback(
+        life.chat.models,
+        life.chat.fallbackFor(null, life.profile(), trace),
+      ).call(
+        life.profile(),
+        "reflection",
+        replyPrompt(
+          life.mind.nature.current(),
+          {
+            ...prompts(life.repo),
+            activity: reviewing
+              ? '回看自己已经完成的成果中的这一段，抓住实际内容、感受和想分享的重点。只整理，不发消息，不复制全文。输出JSON {"note":"最多220字阅读整理"}。小说人物属于作品，游戏剧情属于游戏世界。'
+              : '你已逐段回看自己的成果。现在根据notes整理想告诉这个人的话，带自己的感受与具体内容，像日常聊天一样一句一句说。不要粘贴正文，不写大段汇报或列表，不解释实现方式，不暴露后台地址。输出JSON {"bubbles":["一句自然的话","再接一句"]}，2至6句，每句不超过80字，总计不超过350字。可以摘一句喜欢的台词，不复制整篇。不输出隐藏推理。',
+          },
+          "activity",
+        ),
+        reviewing
+          ? {
+              title: work.title,
+              passage: chars.slice(share.review_offset, end).join(""),
+              position: share.review_offset,
+              total: chars.length,
+            }
+          : {
+              title: work.title,
+              notes,
+              person:
+                displayNames(this.db, life.now()).get(
+                  String(this.time.tasks.get(work.task_id)?.subject),
+                ) || null,
+              currentLife: this.time.view({ session: share.session_id }),
+            },
+        trace,
+      );
+      const current = this.db
+        .prepare("SELECT * FROM mind_time_shares WHERE id=?")
+        .get(share.id);
+      if (
+        life.closed ||
+        version !== life.mind.nature.version() ||
+        current?.state !== "pending" ||
+        current.review_offset !== share.review_offset ||
+        current.report !== share.report ||
+        !this.time.visible(work, share.session_id, life.now())
+      )
+        return { status: "cancelled" };
+      if (reviewing) {
+        const note = text(result.note, 220);
+        if (
+          !note ||
+          hasCredential(note) ||
+          leaks(
+            [note],
+            this.time.mind.meetings.privateSayings(share.session_id),
+          ).length
+        )
+          throw Error("成果整理格式无效");
+        this.db
+          .prepare(
+            "UPDATE mind_time_shares SET review_offset=?,review_notes=?,updated=? WHERE id=?",
+          )
+          .run(end, JSON.stringify([...notes, note]), life.now(), share.id);
+        status = "complete";
+        return {
+          status: "reviewing",
+          reason: "正在回看自己的成果",
+          read: end,
+          total: chars.length,
+        };
+      }
+      const bubbles = naturalReport(result.bubbles, work.content);
+      if (
+        leaks(bubbles, this.time.mind.meetings.privateSayings(share.session_id))
+          .length
+      )
+        throw Error("汇报涉及私下内容");
+      this.db
+        .prepare("UPDATE mind_time_shares SET report=?,updated=? WHERE id=?")
+        .run(JSON.stringify(bubbles), life.now(), share.id);
+      status = "complete";
+      return { status: "reviewed", reason: "已整理成几句想说的话" };
+    } finally {
+      this.reviewing = null;
+      life.chat.finishQuietly(trace, status);
+    }
+  }
+}
+export function naturalReport(input, original) {
+  if (!Array.isArray(input)) throw Error("需要几句自然汇报");
+  const lines = input
+    .flatMap((value) =>
+      String(value)
+        .split(/[\r\n]+/)
+        .flatMap(
+          (s) =>
+            s.match(/[^。！？!?]+[。！？!?]+[”」』"']*|[^。！？!?]+$/gu) || [],
+        ),
+    )
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (
+    !lines.length ||
+    lines.length > 6 ||
+    lines.some((s) => Array.from(s).length > 80) ||
+    lines.join("").length > 350
+  )
+    throw Error("汇报需要简短的一句一句说");
+  if (
+    hasCredential(lines.join(" ")) ||
+    /https?:\/\/|127\.0\.0\.1|localhost|管理台地址/.test(lines.join(" "))
+  )
+    throw Error("汇报包含不适合公开的信息");
+  if (
+    lines.join("").replace(/\s/g, "") === String(original).replace(/\s/g, "") ||
+    lines.filter((s) => s.length > 40 && original.includes(s)).length > 1
+  )
+    throw Error("请回看后整理，不要复制正文");
+  return lines;
 }

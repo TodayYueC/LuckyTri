@@ -59,7 +59,9 @@ export class DeliveryLinks {
     const state =
       share?.state === "sent" && share.offset >= Array.from(work.content).length
         ? "sent"
-        : share?.state || "waiting";
+        : share?.state === "sent" && share.delivery_kind === "report"
+          ? "reported"
+          : share?.state || "waiting";
     const sources = evidence([...task.sources, `m:${row.seq}`]);
     this.db
       .prepare(

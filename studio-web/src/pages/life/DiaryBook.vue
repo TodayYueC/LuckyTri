@@ -10,6 +10,7 @@ const props = defineProps<{ diaries: any[] }>();
 const index = ref(0);
 const day = ref<any>(null);
 const loadingDay = ref(false);
+let dayRequest = 0;
 
 const entry = computed(() => props.diaries[index.value] || null);
 
@@ -19,23 +20,32 @@ watch(
     if (index.value >= list.length) index.value = 0;
   },
 );
-watch(entry, () => {
-  day.value = null;
-});
+watch(
+  () => entry.value?.id,
+  () => {
+    dayRequest++;
+    day.value = null;
+    loadingDay.value = false;
+  },
+);
 
 async function openDay() {
   if (!entry.value) return;
+  const selectedDay = entry.value.day,
+    request = ++dayRequest;
   if (day.value?.day === entry.value.day) {
     day.value = null;
     return;
   }
   loadingDay.value = true;
   try {
-    day.value = await mind.day(entry.value.day);
+    const result = await mind.day(selectedDay);
+    if (request === dayRequest && entry.value?.day === selectedDay)
+      day.value = result;
   } catch (error) {
-    toast((error as Error).message, true);
+    if (request === dayRequest) toast((error as Error).message, true);
   } finally {
-    loadingDay.value = false;
+    if (request === dayRequest) loadingDay.value = false;
   }
 }
 </script>

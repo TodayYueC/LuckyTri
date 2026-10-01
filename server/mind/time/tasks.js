@@ -6,6 +6,7 @@ import { taskIntent, intentRecipient } from "./intent.js";
 import { TaskLinks } from "./task-links.js";
 import { deadlineAt, taskSchedule } from "./schedule.js";
 import { DeliveryLinks } from "./delivery-links.js";
+import { activityPresentation } from "./presentation.js";
 
 export const TASK_STATES = [
   "todo",
@@ -21,7 +22,7 @@ export const ACTIVITY_LABELS = {
   write: "写作",
   read: "阅读",
   think: "独处思考",
-  game: "正在玩 · 资料模式",
+  game: "正在玩",
   unknown: "等待澄清",
 };
 export function classifyActivity(words) {
@@ -63,9 +64,10 @@ export class Tasks {
         Math.max(0, offset),
       );
     return rows.map(decode).map((row) => ({
-      ...row,
+      ...activityPresentation(row),
       priorityLabel: PRIORITIES[row.priority],
       schedule: taskSchedule(row, this.time),
+      timing: this.time.clock.view(row),
     }));
   }
   add(

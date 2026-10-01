@@ -1,9 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { evidence, hasCredential, parse, text } from "../util.js";
+import { activityPresentation, gameText } from "./presentation.js";
 
 const decode = (row) =>
   row
-    ? { ...row, sources: parse(row.sources, []), bible: parse(row.bible, {}) }
+    ? {
+        ...activityPresentation(row),
+        sources: parse(row.sources, []),
+        bible: parse(row.bible, {}),
+      }
     : null;
 export class Works {
   constructor(time) {
@@ -129,6 +134,15 @@ export class Works {
         ...(project ? [project] : []),
         Math.max(1, Math.min(100, Number(limit))),
         Math.max(0, Number(offset)),
+      )
+      .map((row) =>
+        row.kind === "game"
+          ? {
+              ...row,
+              title: gameText(row.title),
+              summary: gameText(row.summary),
+            }
+          : row,
       );
   }
   get(id, version) {
@@ -158,6 +172,7 @@ export class Works {
               : "draft"
             : work.state,
           sources: parse(v.sources, []),
+          provenance: parse(v.provenance, {}),
           versions: this.db
             .prepare(
               "SELECT version,created,title,length(content) characters FROM mind_time_versions WHERE work_id=? ORDER BY version DESC",
@@ -202,7 +217,7 @@ export class Works {
         : null,
     };
   }
-  save(task, result, { sources, runId, now }) {
+  save(task, result, { sources, runId, now, provenance = {} }) {
     if (!this.time.valid(task)) throw Error("任务租约已经改变");
     const title = text(result.title, 80),
       segment = text(result.content, 1800);
@@ -261,7 +276,7 @@ export class Works {
       };
     this.db
       .prepare(
-        "INSERT INTO mind_time_versions(id,work_id,version,created,title,content,summary,sources,run_id) VALUES (?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO mind_time_versions(id,work_id,version,created,title,content,summary,sources,run_id,provenance) VALUES (?,?,?,?,?,?,?,?,?,?)",
       )
       .run(
         randomUUID(),
@@ -273,6 +288,7 @@ export class Works {
         summary,
         JSON.stringify(evidence(sources)),
         runId,
+        JSON.stringify(provenance),
       );
     // Only supplied continuity fields change; omitted fields never erase established settings.
     const bible = { ...project.bible };
@@ -300,6 +316,26 @@ export class Works {
       now,
     );
     return this.get(id);
+  }
+  settle(task, workId, complete, now) {
+    if (!this.time.valid(task)) throw Error("任务租约已经改变");
+    const work = this.get(workId);
+    if (!work || work.task_id !== task.id) throw Error("活动草稿已不可用");
+    if (complete) {
+      this.db
+        .prepare(
+          "UPDATE mind_time_works SET state='complete',updated=? WHERE id=?",
+        )
+        .run(now, workId);
+      this.time.event(
+        task.id,
+        "draft",
+        "保存完成稿",
+        { workId, version: work.version, characters: work.content.length },
+        now,
+      );
+    }
+    return this.get(workId);
   }
   suggest(
     projectId,

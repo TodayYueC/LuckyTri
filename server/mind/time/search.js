@@ -202,6 +202,7 @@ export class Search {
             kind: "web",
             model: "",
             uncertainty: "",
+            timing: {},
             title: text(row.title, 200),
             url: String(row.url || ""),
             content: text(
@@ -233,7 +234,7 @@ export class Search {
         if (projectId) {
           this.db
             .prepare(
-              "INSERT OR IGNORE INTO mind_time_sources(id,project_id,created,title,url,content,hash,kind,model,uncertainty) VALUES (?,?,?,?,?,?,?,?,?,?)",
+              "INSERT OR IGNORE INTO mind_time_sources(id,project_id,created,title,url,content,hash,kind,model,uncertainty,timing) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             )
             .run(
               sourceId,
@@ -246,6 +247,7 @@ export class Search {
               row.kind,
               row.model,
               row.uncertainty,
+              JSON.stringify(row.timing || {}),
             );
           saved.push(
             this.db
@@ -278,7 +280,7 @@ export class Search {
   sources(projectId) {
     return this.db
       .prepare(
-        "SELECT id,created,title,url,length(content) characters,hash,kind,model,uncertainty FROM mind_time_sources WHERE project_id=? ORDER BY created DESC LIMIT 100",
+        "SELECT id,created,title,url,length(content) characters,hash,kind,model,uncertainty,timing FROM mind_time_sources WHERE project_id=? ORDER BY created DESC LIMIT 100",
       )
       .all(projectId);
   }

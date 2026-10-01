@@ -109,7 +109,7 @@ test("资料模式先接触实际内容再留札记，重启间隔不算体验�
     time.tick();
   }
   w.answers.reflection = (data) => {
-    assert.equal(data.mode, "reference");
+    assert.equal(data.activity, "gaming");
     assert.match(data.material[0].excerpt, /海面/);
     return {
       sufficient: true,

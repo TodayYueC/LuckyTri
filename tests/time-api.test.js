@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { world } from "./helpers/world.js";
 import { serve } from "./helpers/ta-world.mjs";
+import { reviewReport } from "./helpers/report.js";
 test("时间接口概览、分页摘要、正文与交付状态一致，管理操作不能伪造Done", async (t) => {
   const w = world();
   t.after(w.close);
@@ -49,7 +50,7 @@ test("时间接口概览、分页摘要、正文与交付状态一致，管理�
   const share = w.mind.time.sharing.choose(task.work_id, session, {
     choice: "send",
   });
-  await w.mind.time.sharing.send(w.life, share);
+  await reviewReport(w, share);
   assert.equal(w.sent[0].userId, "10001");
   const sent = w.store.db
     .prepare(

@@ -7,17 +7,21 @@ import { Sharing } from "./sharing.js";
 import { evidenceRoots } from "../evidence.js";
 import { Search } from "./search.js";
 import { Games } from "./games.js";
+import { ActivityClock } from "./activity-clock.js";
+import { activityPresentation, gameText } from "./presentation.js";
 
 export const TIME_DEFAULTS = {
   focusMinutes: 25,
   breakMinutes: 5,
   stepMinutes: 5,
+  paceSpeed: 1.25,
 };
 export class TimeSystem {
   constructor(mind) {
     this.mind = mind;
     this.db = mind.db;
     this.now = Date.now;
+    this.clock = new ActivityClock(this);
     this.attention = new Attention();
     this.tasks = new Tasks(this);
     this.works = new Works(this);
@@ -35,9 +39,15 @@ export class TimeSystem {
   }
   save(input) {
     const value = { ...this.settings(), ...input };
-    for (const key of Object.keys(TIME_DEFAULTS))
+    for (const key of ["focusMinutes", "breakMinutes", "stepMinutes"])
       if (!Number.isInteger(value[key]) || value[key] < 1 || value[key] > 120)
         throw Error("时间设置超出范围");
+    if (
+      !Number.isFinite(value.paceSpeed) ||
+      value.paceSpeed < 1 ||
+      value.paceSpeed > 2
+    )
+      throw Error("活动速度应在 1 至 2 之间");
     this.mind.repo.saveConfig(
       "time-system",
       Object.fromEntries(
@@ -98,11 +108,45 @@ export class TimeSystem {
       );
       return;
     }
-    this.db
-      .prepare(
-        "UPDATE mind_time_spans SET active_ms=active_ms+?,updated=? WHERE id=?",
-      )
-      .run(now - span.updated, now, span.id);
+    const credit = this.clock.credit(task, now - span.updated);
+    this.db.exec("SAVEPOINT activity_tick");
+    try {
+      this.db
+        .prepare(
+          "UPDATE mind_time_spans SET active_ms=active_ms+?,engaged_ms=engaged_ms+?,clocked=?,updated=? WHERE id=?",
+        )
+        .run(
+          now - span.updated,
+          credit,
+          task.checkpoint.activityClock ? 1 : span.clocked,
+          now,
+          span.id,
+        );
+      this.clock.record(span, credit);
+    } catch (error) {
+      this.db.exec("ROLLBACK TO activity_tick");
+      throw error;
+    } finally {
+      this.db.exec("RELEASE activity_tick");
+    }
+    const recorded = this.db
+      .prepare("SELECT engaged_ms FROM mind_time_spans WHERE id=?")
+      .get(span.id);
+    if (
+      !task.lease &&
+      task.checkpoint.activityClock?.phase === "engaged" &&
+      recorded.engaged_ms >= this.settings().focusMinutes * 60000 &&
+      this.clock.remaining(task, now) > 0
+    )
+      this.tasks.control(
+        task.id,
+        {
+          action: "pause",
+          readyAt: now + this.settings().breakMinutes * 60000,
+          reason: "专注段结束，歇一会再接着做",
+        },
+        now,
+      );
   }
   stopSpan(task, now = this.now()) {
     const span = this.db
@@ -112,14 +156,59 @@ export class TimeSystem {
       .get(task.id);
     if (!span) return;
     const delta = Math.max(0, Math.min(60000, now - span.updated));
-    this.db
-      .prepare(
-        "UPDATE mind_time_spans SET active_ms=active_ms+?,updated=?,ended=? WHERE id=?",
-      )
-      .run(delta, span.updated + delta, span.updated + delta, span.id);
+    const credit = this.clock.credit(this.tasks.get(task.id), delta);
+    this.db.exec("SAVEPOINT stop_activity_span");
+    try {
+      this.db
+        .prepare(
+          "UPDATE mind_time_spans SET active_ms=active_ms+?,engaged_ms=engaged_ms+?,clocked=?,updated=?,ended=? WHERE id=?",
+        )
+        .run(
+          delta,
+          credit,
+          task.checkpoint.activityClock ? 1 : span.clocked,
+          span.updated + delta,
+          span.updated + delta,
+          span.id,
+        );
+      this.clock.record(span, credit);
+    } catch (error) {
+      this.db.exec("ROLLBACK TO stop_activity_span");
+      throw error;
+    } finally {
+      this.db.exec("RELEASE stop_activity_span");
+    }
   }
   start(task, now = this.now()) {
     if (this.primary() && this.primary().id !== task.id) return null;
+    if (this.primary()) this.tick(now);
+    const refreshed = this.tasks.get(task.id);
+    if (
+      !refreshed ||
+      ["done", "abandoned"].includes(refreshed.state) ||
+      refreshed.lease
+    )
+      return null;
+    if (refreshed.state === "paused" && refreshed.ready_at > now) return null;
+    if (
+      !this.fixtureImmediate &&
+      !refreshed.checkpoint.pendingStep &&
+      !(refreshed.activity === "game" && refreshed.checkpoint.sourceIds?.length)
+    ) {
+      this.db.prepare("UPDATE mind_time_tasks SET checkpoint=? WHERE id=?").run(
+        JSON.stringify({
+          ...refreshed.checkpoint,
+          activityClock: {
+            ...(refreshed.checkpoint.activityClock || {}),
+            version: 1,
+            phase: "preparing",
+            baselineMs: this.clock.committed(task.id),
+            plannedMs: 0,
+          },
+        }),
+        task.id,
+      );
+    }
     const lease = randomUUID();
     const result = this.db
       .prepare(
@@ -151,6 +240,12 @@ export class TimeSystem {
     );
   }
   elapsed(id, now = this.now()) {
+    const task = this.tasks.get(id);
+    if (task?.checkpoint.activityClock) return this.clock.elapsed(task, now);
+    if (task && !this.fixtureImmediate) return 0;
+    return this.operationElapsed(id, now);
+  }
+  operationElapsed(id, now = this.now()) {
     const row = this.db
       .prepare(
         "SELECT COALESCE(SUM(active_ms),0) n FROM mind_time_spans WHERE task_id=?",
@@ -212,7 +307,7 @@ export class TimeSystem {
     const focus =
       (this.db
         .prepare(
-          "SELECT active_ms,updated FROM mind_time_spans WHERE task_id=? AND ended IS NULL",
+          `SELECT ${task.checkpoint.activityClock ? "engaged_ms" : "active_ms"} active_ms,updated FROM mind_time_spans WHERE task_id=? AND ended IS NULL`,
         )
         .get(task.id)?.active_ms || 0) >=
       this.settings().focusMinutes * 60000;
@@ -295,31 +390,53 @@ export class TimeSystem {
   view({ session, now = this.now(), cue = [] } = {}) {
     const primary = this.primary(),
       task = primary?.created <= now ? primary : null;
-    const current =
+    let current =
       task && this.visible(task, session, now)
         ? {
             id: task.id,
             activity: task.activity,
             label: ACTIVITY_LABELS[task.activity],
-            title: task.title,
-            why: task.why,
+            title: activityPresentation(task).title,
+            why: activityPresentation(task).why,
             state: task.state,
             checkpoint: {
               summary: text(task.checkpoint.summary, 300),
-              next: text(task.checkpoint.next, 160),
+              next: text(
+                task.activity === "game"
+                  ? gameText(task.checkpoint.next)
+                  : task.checkpoint.next,
+                160,
+              ),
               version: task.checkpoint.version,
               stage: task.checkpoint.stage,
               segments:
                 task.checkpoint.segments || task.checkpoint.segment || 0,
             },
             elapsedMs: this.elapsed(task.id, now),
-            mode: task.activity === "game" ? "reference" : "actual",
-            materialKind: task.checkpoint.materialKind,
-            materialLabel: task.checkpoint.materialLabel,
+            activityKind: task.activity === "game" ? "gaming" : task.activity,
+            timing: this.clock.view(task, now),
+            moment:
+              task.activity === "game" ? this.games.moment(task, now) : null,
           }
         : task
           ? { activity: task.activity, label: "在做自己的事", state: "doing" }
           : null;
+    const review = this.sharing.reviewing;
+    if (!current && review && this.visible(review.work, session, now))
+      current = {
+        id: "share:" + review.share.id,
+        activity: "report",
+        label: "整理想分享的话",
+        title: review.work.title,
+        why: "回看自己的成果，挑想聊的内容",
+        state: "doing",
+        checkpoint: {
+          next:
+            review.phase === "reading" ? "回看这一段" : "整理成几句自己的话",
+        },
+        elapsedMs: 0,
+        timing: { phase: "preparing", plannedMs: null },
+      };
     const pending = this.tasks
       .list({ limit: 100 })
       .filter(
@@ -327,15 +444,15 @@ export class TimeSystem {
           row.created <= now &&
           row.state !== "abandoned" &&
           (row.state !== "done" ||
-            !["none", "sent"].includes(row.share_state)) &&
+            !["none", "sent", "reported"].includes(row.share_state)) &&
           this.visible(row, session, now),
       )
       .slice(0, 3)
       .map((row) => ({
         id: row.id,
-        title: row.title,
+        title: activityPresentation(row).title,
         state: row.state,
-        why: row.why,
+        why: activityPresentation(row).why,
         wait: row.wait_reason,
         priority: row.priority,
         priorityLabel: row.priorityLabel,
@@ -449,8 +566,13 @@ export class TimeSystem {
       .all(now, start)
       .map((row) => ({
         ...row,
+        title: row.activity === "game" ? gameText(row.title) : row.title,
         todayMs: Math.min(
-          row.active_ms,
+          row.clocked
+            ? this.clock.today(row.id, start, now)
+            : this.fixtureImmediate
+              ? row.active_ms
+              : 0,
           Math.max(
             0,
             Math.min(row.updated, now) - Math.max(row.started, start),
@@ -496,18 +618,18 @@ export class TimeSystem {
           event?.kind === "checkpoint" ? "doing" : event?.kind || "doing";
         return {
           ref: `x:${task.id}`,
-          title: task.title,
-          why: task.why,
+          title: activityPresentation(task).title,
+          why: activityPresentation(task).why,
           activity: task.activity,
           state,
           share:
             task.completed && task.completed <= before
               ? task.share_state
               : "none",
-          mode: task.activity === "game" ? "reference" : "actual",
+          activityKind: task.activity === "game" ? "gaming" : task.activity,
           progress:
             task.activity === "game"
-              ? "接触游戏资料并留下札记，未实际操作客户端"
+              ? `玩过第 ${task.checkpoint.segment || 0} 段，留下自己的游玩记录`
               : `${work?.title || ""}，已保存 ${work?.characters || 0} 字${state === "done" ? "完成稿" : "正文"}`,
           project: task.project_id,
           work: work?.id || null,

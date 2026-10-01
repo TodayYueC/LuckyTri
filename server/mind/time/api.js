@@ -56,7 +56,14 @@ export function mountTime(app, life) {
             Math.max(1, Math.min(100, Number(req.query.limit) || 40)),
             Math.max(0, Number(req.query.offset) || 0),
           )
-          .map((row) => ({ ...row, data: JSON.parse(row.data) })),
+          .map((row) => ({
+            ...row,
+            reason:
+              row.kind === "reference-experience"
+                ? "玩过这一段，留下自己的感受"
+                : row.reason,
+            data: JSON.parse(row.data),
+          })),
       ),
     ),
   );
@@ -65,7 +72,7 @@ export function mountTime(app, life) {
     wrap((req, res) =>
       res.json({
         mode: "reference",
-        label: "正在玩 · 资料模式",
+        label: "正在玩",
         realEnabled: false,
         realStatus: "开发中",
       }),

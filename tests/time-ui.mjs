@@ -234,6 +234,58 @@ try {
       ),
     );
   }
+  const ongoing = w.mind.time.primary();
+  if (ongoing) w.mind.time.tasks.control(ongoing.id, { action: "pause" });
+  w.mind.time.fixtureImmediate = false;
+  const gameSource = w.say("private:10001", "10001", "接着玩Rewrite吧");
+  const game = w.mind.time.tasks.add({
+    activity: "game",
+    title: "Rewrite 第1章游玩",
+    session: "private:10001",
+    sources: [gameSource.seq],
+  }).id;
+  w.answers.reflection = {
+    sufficient: true,
+    materials: [
+      {
+        title: "Rewrite开篇",
+        content: "游戏里的场景与人物互动。".repeat(25),
+        timing: { minutes: 10, basis: "这一小段情节", chapterMinutes: 120 },
+      },
+    ],
+  };
+  await w.life.activities.run();
+  await page.goto(server.base + "#time/tasks");
+  const gameCard = page.locator('[data-task="' + game + '"]');
+  await gameCard.waitFor();
+  assert.match(await gameCard.innerText(), /本段预计 8 分钟/);
+  assert.ok(!(await gameCard.innerText()).includes("资料模式"));
+  for (const width of [1440, 900, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    assert.ok(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 2,
+      ),
+    );
+    await page.screenshot({
+      path: `workspace/ui-review/time-paced-${width}.png`,
+      fullPage: true,
+    });
+  }
+  await page.getByRole("tab", { name: "今日", exact: true }).click();
+  await page.locator(".main-activity").waitFor();
+  assert.match(await page.locator(".main-activity").innerText(), /正在玩/);
+  await page.locator(".time-settings summary").click();
+  const pace = page.getByRole("spinbutton", { name: "活动节奏" });
+  await pace.fill("1.5");
+  const savedPace = page.waitForResponse(
+    (r) =>
+      new URL(r.url()).pathname === "/api/mind/time/settings" &&
+      r.request().method() === "PUT",
+  );
+  await page.getByRole("button", { name: "保存安排", exact: true }).click();
+  await savedPace;
+  assert.equal(w.mind.time.settings().paceSpeed, 1.5);
   assert.deepEqual(errors, []);
   console.log(
     "PASS: TIME views, lazy works, versions/export, delivery status, linked projects, desktop/tablet/mobile, slow refresh and search layout",

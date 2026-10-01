@@ -594,7 +594,7 @@ export class Life {
         this.profile(),
         "reflection",
         replyPrompt(nature, prompts(this.repo), "reflection") +
-          '\nplans 可以是留给自己做的事；确实想在资料书架阅读、写短文、独处思考或接触游戏资料时，可加 activity:"read"|"write"|"think"|"game"，并写清content中的游戏名、why动机。game仅支持资料体验。不为增加任务而列计划。',
+          '\nplans 可以是留给自己做的事；确实想在资料书架阅读、写短文、独处思考或接触游戏资料时，可加 activity:"read"|"write"|"think"|"game"，并写清content中的游戏名、why动机。game通过剧情、场景与人物互动推进游玩，直接记录自己的进度和感受。不为增加任务而列计划。',
         input,
         trace,
       );

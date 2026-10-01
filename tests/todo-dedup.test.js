@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { world, MINUTE } from "./helpers/world.js";
 import { repairTodoGroup } from "../scripts/repair-current-todos.js";
 import { dayKey, zonedTime } from "../server/mind/util.js";
+import { reviewReport } from "./helpers/report.js";
 function make(w, title, extra = {}) {
   const session = extra.session || "private:10001";
   w.open(session);
@@ -254,7 +255,7 @@ test("已完成作品的分享承诺不生成空目标待办，历史孤立作�
   const share = w.mind.time.sharing.choose(workId, "private:10001", {
     choice: "send",
   });
-  await w.mind.time.sharing.send(w.life, share);
+  await reviewReport(w, share, ["我回看过这篇故事，想和你聊聊里面的月光。"]);
   w.store.db
     .prepare(
       "INSERT INTO mind_time_tasks(id,created,updated,kind,activity,title,state,ready_at,session_id,subject,sources) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
@@ -278,6 +279,6 @@ test("已完成作品的分享承诺不生成空目标待办，历史孤立作�
     w.mind.time.tasks.get("legacy-share").checkpoint.mergedInto,
     task,
   );
-  assert.equal(w.mind.time.tasks.get(task).share_state, "sent");
+  assert.equal(w.mind.time.tasks.get(task).share_state, "reported");
   assert.equal(w.sent.length, 1, "整理不会再次发送作品");
 });

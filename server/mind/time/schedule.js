@@ -1,5 +1,6 @@
 import { dayKey, zonedTime } from "../util.js";
 import { localClock } from "../../core/conversation-cues.js";
+import { gameText } from "./presentation.js";
 export function nextAwakeSlot(mind, now) {
   const zone = mind.timeZone(),
     rhythm = mind.nature.current(now).rhythm;
@@ -51,7 +52,11 @@ export function taskSchedule(task, time, now = time.now()) {
     deadlineAt: task.due_at,
     nextAttemptAt:
       task.next_step > now && task.next_step < 8e15 ? task.next_step : null,
-    outcome: plan?.outcome || task.checkpoint?.contract?.outcome || "",
+    outcome:
+      task.activity === "game"
+        ? gameText(plan?.outcome || task.checkpoint?.contract?.outcome || "")
+        : plan?.outcome || task.checkpoint?.contract?.outcome || "",
+    estimatedMs: task.checkpoint?.activityClock?.plannedMs || null,
     condition: waiting ? task.wait_reason : "",
   };
 }

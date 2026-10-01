@@ -19,6 +19,8 @@ export function migrateTime(db) {
     CREATE TABLE IF NOT EXISTS mind_time_shares(id TEXT PRIMARY KEY,created INTEGER NOT NULL,updated INTEGER NOT NULL,work_id TEXT NOT NULL,version INTEGER NOT NULL,session_id TEXT NOT NULL,offset INTEGER NOT NULL DEFAULT 0,state TEXT NOT NULL DEFAULT 'pending',reason TEXT NOT NULL DEFAULT '',trace_id TEXT,UNIQUE(work_id,version,session_id));
     CREATE TABLE IF NOT EXISTS mind_time_task_aliases(kind TEXT NOT NULL,alias_id TEXT NOT NULL,task_id TEXT NOT NULL,created INTEGER NOT NULL,PRIMARY KEY(kind,alias_id));
     CREATE INDEX IF NOT EXISTS mind_time_task_aliases_task ON mind_time_task_aliases(task_id);
+    CREATE TABLE IF NOT EXISTS mind_time_activity_ticks(span_id TEXT NOT NULL,started INTEGER NOT NULL,ended INTEGER NOT NULL,PRIMARY KEY(span_id,ended));
+    CREATE INDEX IF NOT EXISTS mind_time_activity_ticks_time ON mind_time_activity_ticks(ended,started);
   `);
   const columns = new Set(
     db
@@ -53,5 +55,26 @@ export function migrateTime(db) {
     if (!sourceColumns.has(name))
       db.exec(
         `ALTER TABLE mind_time_sources ADD COLUMN ${name} TEXT NOT NULL DEFAULT '${fallback}'`,
+      );
+  for (const [table, column, type, fallback] of [
+    ["mind_time_sources", "timing", "TEXT", "'{}'"],
+    ["mind_time_versions", "provenance", "TEXT", "'{}'"],
+    ["mind_time_spans", "engaged_ms", "INTEGER", "0"],
+    ["mind_time_spans", "clocked", "INTEGER", "0"],
+    ["mind_time_shares", "review_offset", "INTEGER", "0"],
+    ["mind_time_shares", "review_notes", "TEXT", "'[]'"],
+    ["mind_time_shares", "report", "TEXT", "'[]'"],
+    ["mind_time_shares", "send_index", "INTEGER", "0"],
+    ["mind_time_shares", "delivery_kind", "TEXT", "'body'"],
+    ["mind_time_shares", "next_step", "INTEGER", "0"],
+  ])
+    if (
+      !db
+        .prepare(`PRAGMA table_info(${table})`)
+        .all()
+        .some((c) => c.name === column)
+    )
+      db.exec(
+        `ALTER TABLE ${table} ADD COLUMN ${column} ${type} NOT NULL DEFAULT ${fallback}`,
       );
 }
