@@ -399,7 +399,7 @@ export class Tasks {
     );
     if (conflicts.some((slot) => slot.priority >= task.priority))
       throw Error("所选时间与已有安排重叠，需要重新选定");
-    const checkpoint = {
+    let checkpoint = {
       ...task.checkpoint,
       reschedule: false,
       schedule: {
@@ -417,6 +417,12 @@ export class Tasks {
     };
     if (task.checkpoint.activityClock?.phase === "preparing")
       delete checkpoint.activityClock;
+    if ((activity || task.activity) === "game")
+      checkpoint = this.time.games.contactWindow(
+        { ...task, checkpoint },
+        checkpoint,
+        now,
+      );
     this.db.exec("SAVEPOINT arrange_task");
     try {
       const updated = this.db

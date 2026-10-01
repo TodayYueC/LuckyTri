@@ -614,8 +614,8 @@ onUnmounted(() => {
                   : "已记下，等她选择具体时间"
             }}</template>
             <template v-if="row.timing?.plannedMs">
-              · 本段预计 {{ duration(row.timing.plannedMs) }} · 已投入
-              {{ minutes(row.timing.elapsedMs)
+              · 本段预计 {{ duration(row.timing.plannedMs) }} · 本段已投入
+              {{ minutes(row.timing.stepMs)
               }}<template v-if="row.timing.phase === 'engaged'">
                 · 还需约 {{ duration(row.timing.remainingMs) }}</template
               ></template

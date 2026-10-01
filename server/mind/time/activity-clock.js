@@ -146,6 +146,33 @@ export class ActivityClock {
     return this.view(task, now).remainingMs || 0;
   }
   release(task, checkpoint, now) {
+    const slot = checkpoint.schedule,
+      clock = checkpoint.activityClock;
+    if (
+      task.activity !== "game" &&
+      slot?.chosenAt &&
+      clock.phase === "engaged"
+    ) {
+      const base = Math.max(clock.baselineMs, slot.baselineMs || 0);
+      const remainingAtStart = Math.max(
+        0,
+        clock.plannedMs - (base - clock.baselineMs),
+      );
+      const quota = Math.max(
+        MINUTE,
+        this.time.focusMs(task) - Math.max(0, base - (slot.baselineMs || 0)),
+      );
+      if (remainingAtStart > quota)
+        checkpoint = {
+          ...checkpoint,
+          activityClock: {
+            ...clock,
+            originalEstimateMs: clock.originalEstimateMs || clock.plannedMs,
+            baselineMs: base,
+            plannedMs: quota,
+          },
+        };
+    }
     this.db
       .prepare(
         "UPDATE mind_time_spans SET updated=? WHERE task_id=? AND ended IS NULL",

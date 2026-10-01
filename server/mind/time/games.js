@@ -13,6 +13,70 @@ export class Games {
   topic(task) {
     return gameName(this.time, task);
   }
+  contactWindow(task, checkpoint, now) {
+    const slot = checkpoint.schedule;
+    if (!slot?.chosenAt) return checkpoint;
+    const old = checkpoint.activityClock,
+      window = checkpoint.readWindow;
+    if (!checkpoint.sourceIds?.length || !old || old.phase === "preparing")
+      return checkpoint;
+    if (
+      window &&
+      checkpoint.stage !== "notes" &&
+      window.slotChosenAt === slot.chosenAt
+    )
+      return checkpoint;
+    if (
+      window &&
+      checkpoint.stage !== "notes" &&
+      this.time.clock.remaining({ ...task, checkpoint }, now) === 0
+    )
+      return checkpoint;
+    const totalMs =
+      window?.totalMs ||
+      Math.ceil(
+        ((old.referenceMinutes ||
+          (old.plannedMs / 60000) * (old.speed || 1.25)) *
+          60000) /
+          (old.speed || 1.25),
+      );
+    const origin =
+      window?.materialBaseline ?? checkpoint.contactElapsed ?? old.baselineMs;
+    const recorded = this.time.clock.committed(task.id);
+    const base = Math.max(
+      origin,
+      slot.baselineMs || 0,
+      checkpoint.stage === "notes" ? recorded : 0,
+    );
+    const from = Math.max(0, Math.min(1, (base - origin) / totalMs));
+    const quota = Math.max(
+      60000,
+      this.time.focusMs(task) - Math.max(0, base - (slot.baselineMs || 0)),
+    );
+    const allocated = Math.min(totalMs * (1 - from), quota);
+    return {
+      ...checkpoint,
+      stage: "contact",
+      contactElapsed: base,
+      requiredMs: allocated,
+      readWindow: {
+        version: 1,
+        materialBaseline: origin,
+        totalMs,
+        from,
+        to: Math.min(1, from + allocated / totalMs),
+        noteFrom: window?.notedUntil || 0,
+        notedUntil: window?.notedUntil || 0,
+        slotChosenAt: slot.chosenAt,
+      },
+      activityClock: {
+        ...old,
+        phase: "engaged",
+        baselineMs: base,
+        plannedMs: allocated,
+      },
+    };
+  }
   moment(task, now) {
     if (
       !task.checkpoint.sourceIds?.length ||
@@ -25,11 +89,16 @@ export class Games {
       )
       .get(task.checkpoint.sourceIds[0], task.project_id);
     if (!source) return null;
-    const progress = this.time.clock.view(task, now).progress;
+    const active = this.time.clock.view(task, now).progress;
+    const window = task.checkpoint.readWindow;
+    const progress = window
+      ? window.from + (window.to - window.from) * active
+      : active;
+    const end = Math.max(80, Math.floor(source.content.length * progress));
     return {
       title: source.title,
       scene: text(
-        source.content,
+        source.content.slice(Math.max(0, end - 300), end),
         Math.min(
           300,
           Math.max(80, Math.floor(source.content.length * progress)),
@@ -42,10 +111,22 @@ export class Games {
     const time = this.time,
       now = life.now(),
       project = time.works.ensureProject(task, now),
-      checkpoint = task.checkpoint,
+      checkpoint = this.contactWindow(task, task.checkpoint, now),
       topic = project.bible.topic || this.topic(task);
     const contract = checkpoint.contract,
       version = life.mind.nature.version();
+    if (
+      checkpoint.readWindow &&
+      JSON.stringify(checkpoint.readWindow) !==
+        JSON.stringify(task.checkpoint.readWindow)
+    ) {
+      time.clock.release(task, checkpoint, now);
+      return {
+        status: "reading",
+        reason: "按这次安排接着体验这一小段",
+        task: task.id,
+      };
+    }
     if (checkpoint.suggestion?.accepted === null) {
       const answer = await withFallback(
         life.chat.models,
@@ -200,24 +281,30 @@ export class Games {
           : undefined,
         activityClock = time.clock.plan(task, hint, contactNow),
         minutes = activityClock.plannedMs / 60000;
-      const next = {
-        ...checkpoint,
-        mode: "reference",
-        topic,
-        materialKind: modelSources ? "model" : "web",
-        materialLabel: modelSources
-          ? "模型知识整理，未经联网核验"
-          : "联网检索资料",
-        stage: "contact",
-        sourceIds: fresh.map((s) => s.id),
-        contactCharacters: characters,
-        contactAt: contactNow,
-        contactElapsed: time.clock.committed(task.id),
-        requiredMs: minutes * 60000,
-        activityClock,
-        next: "接着体验这一段剧情，留下自己的感受",
-        targetCovered: !!contract?.unit,
-      };
+      const freshCheckpoint = { ...checkpoint };
+      delete freshCheckpoint.readWindow;
+      const next = this.contactWindow(
+        task,
+        {
+          ...freshCheckpoint,
+          mode: "reference",
+          topic,
+          materialKind: modelSources ? "model" : "web",
+          materialLabel: modelSources
+            ? "模型知识整理，未经联网核验"
+            : "联网检索资料",
+          stage: "contact",
+          sourceIds: fresh.map((s) => s.id),
+          contactCharacters: characters,
+          contactAt: contactNow,
+          contactElapsed: time.clock.committed(task.id),
+          requiredMs: minutes * 60000,
+          activityClock,
+          next: "接着体验这一段剧情，留下自己的感受",
+          targetCovered: !!contract?.unit,
+        },
+        contactNow,
+      );
       this.db
         .prepare("UPDATE mind_time_projects SET bible=? WHERE id=?")
         .run(
@@ -302,9 +389,20 @@ export class Games {
           url: s.url,
           title: s.title,
           uncertainty: s.uncertainty,
-          excerpt: text(s.content, 2400),
+          excerpt: text(
+            checkpoint.readWindow
+              ? s.content.slice(
+                  Math.floor(s.content.length * checkpoint.readWindow.noteFrom),
+                  Math.ceil(s.content.length * checkpoint.readWindow.to),
+                )
+              : s.content,
+            2400,
+          ),
         })),
         previous: text(project.summary, 500),
+        contactScope: checkpoint.readWindow
+          ? "只接触了这一小段，剩余内容已保留，不表示整份资料或整章结束"
+          : "本段实际接触的内容",
       },
       trace,
     );
@@ -318,7 +416,7 @@ export class Games {
     if (
       !result.content ||
       result.sufficient === false ||
-      checkpoint.contactCharacters < 120
+      (!checkpoint.readWindow && checkpoint.contactCharacters < 120)
     ) {
       time.tasks.wait(
         task,
@@ -350,6 +448,15 @@ export class Games {
             materialKind: modelSources ? "model" : "web",
             materialLabel,
             sourceIds: checkpoint.sourceIds,
+            ...(checkpoint.readWindow
+              ? {
+                  contactRange: {
+                    from: checkpoint.readWindow.noteFrom,
+                    to: checkpoint.readWindow.to,
+                    totalMs: checkpoint.readWindow.totalMs,
+                  },
+                }
+              : {}),
           },
         },
       );
@@ -357,10 +464,10 @@ export class Games {
         ...checkpoint,
         workId: contract?.stopAfterNote ? work.id : null,
         segment: (checkpoint.segment || 0) + 1,
-        sourceIds: [],
+        sourceIds: checkpoint.readWindow?.to < 1 ? checkpoint.sourceIds : [],
         seenSources: [
           ...(checkpoint.seenSources || []),
-          ...checkpoint.sourceIds,
+          ...(checkpoint.readWindow?.to < 1 ? [] : checkpoint.sourceIds),
         ].slice(-100),
         summary: text(result.summary, 350),
         next: text(result.next, 240) || "选择下一段资料",
@@ -370,6 +477,14 @@ export class Games {
         actualPlay: false,
         experienced: true,
         activityClock: { ...checkpoint.activityClock, phase: "finished" },
+        ...(checkpoint.readWindow
+          ? {
+              readWindow: {
+                ...checkpoint.readWindow,
+                notedUntil: checkpoint.readWindow.to,
+              },
+            }
+          : {}),
       };
       this.db
         .prepare("UPDATE mind_time_tasks SET checkpoint=? WHERE id=?")
