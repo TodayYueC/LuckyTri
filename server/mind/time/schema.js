@@ -70,6 +70,7 @@ export function migrateTime(db) {
     ["mind_time_shares", "send_index", "INTEGER", "0"],
     ["mind_time_shares", "delivery_kind", "TEXT", "'body'"],
     ["mind_time_shares", "next_step", "INTEGER", "0"],
+    ["mind_time_searches", "purpose", "TEXT", "'activity'"],
   ])
     if (
       !db

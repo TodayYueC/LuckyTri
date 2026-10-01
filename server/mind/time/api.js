@@ -41,13 +41,7 @@ export function mountTime(app, life) {
   app.post(
     "/api/mind/time/search/test",
     wrap(async (req, res) => {
-      const run = () => time.search.query("ATRI 游戏 资料简介");
-      const results =
-        time.search.mode() === "model"
-          ? await time.attention.activity(run)
-          : await run();
-      if (results === null) throw Error("正在推进活动步骤，请稍后测试");
-      res.json({ results, profile: time.search.public() });
+      res.json(await time.search.test(req.body));
     }),
   );
   app.get(

@@ -144,10 +144,13 @@
 .task-meta .task-priority span {
   flex: none;
 }
-.task-meta .task-priority select {
-  width: auto;
+.task-meta .task-priority .menu-select {
+  width: 100px;
   flex: none;
   min-width: 70px;
+}
+.task-meta .task-priority :deep(.menu-face) {
+  min-height: 34px;
   padding: 6px 10px;
 }
 .task-sources summary {

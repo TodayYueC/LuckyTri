@@ -9,6 +9,7 @@ import { askText } from "../../dialog";
 import Tabs from "../../components/ui/Tabs.vue";
 import Empty from "../../components/ui/Empty.vue";
 import Sheet from "../../components/ui/Sheet.vue";
+import Select from "../../components/ui/Select.vue";
 import DayAgenda from "./DayAgenda.vue";
 import ExperienceLog from "./ExperienceLog.vue";
 const views = ["today", "tasks", "works", "projects", "experiences"],
@@ -548,13 +549,18 @@ onUnmounted(() => {
             搜索
           </button></label
         ><label v-if="view === 'tasks'"
-          >任务状态<select v-model="state" @change="search">
-            <option value="">全部</option>
-            <option v-for="(label, key) in labels" :key="key" :value="key">
-              {{ label }}
-            </option>
-          </select></label
-        >
+          >任务状态<Select
+            v-model="state"
+            aria-label="任务状态"
+            :options="[
+              { value: '', label: '全部' },
+              ...Object.entries(labels).map(([value, label]) => ({
+                value,
+                label,
+              })),
+            ]"
+            @change="search"
+        /></label>
       </form>
       <div v-if="view === 'tasks'" class="time-cards">
         <article
@@ -578,25 +584,18 @@ onUnmounted(() => {
               }}{{ row.person ? " · " + row.person : "" }}</span
             ><label class="task-priority"
               ><span>优先级</span>
-              <select
-                :value="row.priority"
-                :disabled="!!row.checkpoint?.mergedInto"
-                @change="
-                  setPriority(
-                    row,
-                    Number(($event.target as HTMLSelectElement).value),
-                  )
+              <Select
+                :model-value="row.priority"
+                :aria-label="'优先级：' + row.title"
+                :options="
+                  Object.entries(priorities).map(([value, label]) => ({
+                    value,
+                    label,
+                  }))
                 "
-              >
-                <option
-                  v-for="(label, key) in priorities"
-                  :key="key"
-                  :value="key"
-                >
-                  {{ label }}
-                </option>
-              </select></label
-            >
+                :disabled="!!row.checkpoint?.mergedInto"
+                @update:model-value="setPriority(row, Number($event))"
+            /></label>
           </div>
           <h2>{{ row.title }}</h2>
           <p>{{ row.why }}</p>
@@ -766,23 +765,16 @@ onUnmounted(() => {
             >{{ piece.state === "complete" ? "完成稿" : "草稿" }} ·
             {{ piece.content.length }} 字</span
           ><label
-            >版本<select
-              :value="piece.version"
-              @change="
-                openWork(
-                  piece.id,
-                  Number(($event.target as HTMLSelectElement).value),
-                )
+            >版本<Select
+              :model-value="piece.version"
+              aria-label="作品版本"
+              :options="
+                piece.versions.map((v: any) => ({
+                  value: v.version,
+                  label: v.version + ' · ' + when(v.created, zone),
+                }))
               "
-            >
-              <option
-                v-for="v in piece.versions"
-                :key="v.version"
-                :value="v.version"
-              >
-                {{ v.version }} · {{ when(v.created, zone) }}
-              </option>
-            </select></label
+              @update:model-value="openWork(piece.id, Number($event))" /></label
           ><button @click="exportWork">导出正文</button>
         </div>
         <p class="work-body">{{ piece.content }}</p>

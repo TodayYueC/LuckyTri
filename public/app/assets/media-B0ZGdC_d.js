@@ -1,0 +1,1 @@
+import{ct as e,q as t}from"./Empty-CwcIIthb.js";function n(n){let r=matchMedia(n),i=e(r.matches),a=e=>i.value=e.matches;return r.addEventListener(`change`,a),t(()=>r.removeEventListener(`change`,a)),i}export{n as t};

@@ -168,7 +168,16 @@ try {
   await page.locator(".work-card").filter({ hasText: "月光之门" }).click();
   await page.locator(".work-body").waitFor();
   assert.match(await page.locator(".work-body").innerText(), /第二段/);
-  await page.locator(".sheet select").selectOption("1");
+  await page.getByRole("combobox", { name: "作品版本", exact: true }).click();
+  await page.keyboard.press("Escape");
+  assert.equal(await page.getByRole("listbox").count(), 0, "Escape 先关下拉框");
+  assert.equal(
+    await page.getByRole("dialog", { name: "月光之门", exact: true }).count(),
+    1,
+    "作品阅读窗口继续保留",
+  );
+  await page.getByRole("combobox", { name: "作品版本", exact: true }).click();
+  await page.getByRole("option", { name: /^1 ·/ }).click();
   await page.waitForFunction(
     () =>
       document.querySelector(".work-body")?.textContent.includes("第一段") &&
@@ -190,15 +199,24 @@ try {
   assert.equal(await page.getByRole("button", { name: "标记完成" }).count(), 0);
   assert.equal(await page.getByText("已逾期", { exact: true }).count(), 0);
   const priority = page.locator(
-    '[data-task="' + task + '"] .task-priority select',
+    '[data-task="' + task + '"] .task-priority .menu-face',
   );
+  let priorityRequests = 0;
+  page.on("request", (r) => {
+    if (
+      r.url().includes("/tasks/" + task + "/control") &&
+      r.postDataJSON()?.action === "priority"
+    )
+      priorityRequests++;
+  });
   const prioritySaved = page.waitForResponse(
     (r) =>
       new URL(r.url()).pathname ===
         "/api/mind/time/tasks/" + task + "/control" &&
       r.request().method() === "POST",
   );
-  await priority.selectOption("3");
+  await priority.click();
+  await page.getByRole("option", { name: "最高", exact: true }).click();
   await prioritySaved;
   await page.waitForFunction(
     (id) =>
@@ -207,13 +225,24 @@ try {
     task,
   );
   assert.equal(w.mind.time.tasks.get(task).priority, 3);
+  assert.equal(priorityRequests, 1, "一次选择只保存一次优先级");
+  const filter = page.getByRole("combobox", { name: "任务状态", exact: true });
+  await filter.click();
+  await page
+    .getByRole("option", { name: "Done · 已完成", exact: true })
+    .click();
+  await page.waitForFunction(
+    () => !document.querySelector(".time-task")?.textContent.includes("ToDo ·"),
+  );
+  await filter.click();
+  await page.getByRole("option", { name: "全部", exact: true }).click();
   for (const width of [1440, 1118, 900, 390, 320]) {
     await page.setViewportSize({ width, height: 1000 });
     const size = await page
       .locator('[data-task="' + task + '"] .task-priority')
       .evaluate((el) => {
         const label = el.querySelector("span"),
-          select = el.querySelector("select"),
+          select = el.querySelector(".menu-face"),
           range = document.createRange();
         range.selectNodeContents(label);
         return {
@@ -352,7 +381,7 @@ try {
   await page.locator(".search-profile form").waitFor();
   assert.match(
     await page.locator(".search-profile").innerText(),
-    /当前使用：模型知识整理/,
+    /当前生效：模型知识整理/,
   );
   await page.getByRole("button", { name: "测试连接", exact: true }).click();
   await page

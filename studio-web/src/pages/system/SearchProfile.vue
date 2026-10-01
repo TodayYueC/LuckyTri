@@ -1,47 +1,108 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { api, toast } from "../../api";
+import { studio } from "../../stores/studio";
+import Select from "../../components/ui/Select.vue";
+const fields = [
+  "provider",
+  "enabled",
+  "baseUrl",
+  "timeoutMs",
+  "maxResults",
+  "dailyLimit",
+];
 const draft = reactive<any>({
-    provider: "tavily",
-    enabled: true,
-    baseUrl: "",
-    apiKey: "",
-    timeoutMs: 20000,
-    maxResults: 5,
-    dailyLimit: 12,
-  }),
+  provider: "tavily",
+  enabled: true,
+  baseUrl: "",
+  apiKey: "",
+  timeoutMs: 20000,
+  maxResults: 5,
+  dailyLimit: 12,
+});
+const active = ref<any>(null),
   busy = ref(false),
   loaded = ref(false),
-  result = ref("");
+  result = ref(""),
+  failed = ref(false);
+const drafts = new Map<string, any>();
+let shownProvider = "tavily";
+const changed = computed(
+  () =>
+    loaded.value &&
+    (Boolean(draft.apiKey.trim()) ||
+      fields.some((key) => draft[key] !== active.value?.[key])),
+);
+const providerName = (value: string) =>
+  value === "brave" ? "Brave" : "Tavily";
+const limitLabel = computed(() =>
+  active.value?.dailyLimit === 0 ? "不限" : (active.value?.dailyLimit ?? 12),
+);
+watch(changed, (value) => {
+  studio.dirty = value;
+});
+watch(
+  () => [studio.tick, studio.pulse],
+  () => {
+    if (
+      loaded.value &&
+      !busy.value &&
+      studio.page === "system" &&
+      studio.sub === "search"
+    )
+      void syncActive().catch(() => {});
+  },
+);
+async function syncActive() {
+  active.value = await api("/mind/time/search");
+}
 async function load() {
   try {
-    Object.assign(draft, await api("/mind/time/search"), { apiKey: "" });
+    await syncActive();
+    Object.assign(draft, active.value, { apiKey: "" });
+    shownProvider = draft.provider;
     loaded.value = true;
   } catch (e) {
     toast((e as Error).message, true);
   }
 }
 async function provider() {
+  if (busy.value) return;
   busy.value = true;
+  const selected = draft.provider;
+  drafts.set(shownProvider, { ...draft, provider: shownProvider });
   try {
     Object.assign(
       draft,
-      await api("/mind/time/search?provider=" + draft.provider),
-      { apiKey: "" },
+      drafts.get(selected) || {
+        ...(await api("/mind/time/search?provider=" + selected)),
+        apiKey: "",
+      },
     );
+    shownProvider = selected;
+    result.value = "";
   } catch (e) {
+    draft.provider = shownProvider;
     toast((e as Error).message, true);
   } finally {
     busy.value = false;
   }
 }
+function input() {
+  return Object.fromEntries(
+    [...fields, "apiKey"].map((key) => [key, draft[key]]),
+  );
+}
 async function save() {
+  if (busy.value) return;
   busy.value = true;
   try {
-    Object.assign(draft, await api("/mind/time/search", "PATCH", draft), {
-      apiKey: "",
-    });
-    toast("独立搜索已保存");
+    const value = await api("/mind/time/search", "PATCH", input());
+    active.value = value;
+    Object.assign(draft, value, { apiKey: "" });
+    drafts.set(draft.provider, { ...draft });
+    shownProvider = draft.provider;
+    toast("搜索配置已保存并生效");
   } catch (e) {
     toast((e as Error).message, true);
   } finally {
@@ -49,81 +110,148 @@ async function save() {
   }
 }
 async function test() {
+  if (busy.value) return;
   busy.value = true;
+  result.value = "";
+  failed.value = false;
   try {
-    const r = await api("/mind/time/search/test", "POST", {});
-    result.value = `${r.profile.materialLabel}，返回 ${r.results.length} 条资料；今日查询 ${r.profile.used}/${r.profile.dailyLimit}`;
+    const r = await api("/mind/time/search/test", "POST", input());
+    result.value =
+      (r.profile.mode === "web"
+        ? providerName(r.profile.provider) + " 联网检索"
+        : r.profile.materialLabel) +
+      "测试通过，返回 " +
+      r.results.length +
+      " 条资料。测试不占用每日查询额度" +
+      (changed.value ? "；当前填写的配置尚未保存。" : "。");
   } catch (e) {
-    result.value = (e as Error).message;
+    failed.value = true;
+    result.value = (e as Error).message + "。本次测试不占用每日查询额度。";
   } finally {
+    try {
+      await syncActive();
+    } catch {
+      /* Keep the last observed usage while offline. */
+    }
     busy.value = false;
   }
 }
 onMounted(load);
+onUnmounted(() => {
+  studio.dirty = false;
+});
 </script>
 <template>
   <section class="card search-profile">
     <span class="eyebrow">SEARCH · 独立搜索</span>
     <h2>接触世界的资料</h2>
     <p class="muted">
-      配置后优先联网检索。未配置密钥或关闭独立搜索时，直接使用当前模型整理已有知识，继续推进资料体验。
+      配置后优先联网检索。未配置密钥或关闭独立搜索时，使用当前模型整理已有知识。
     </p>
     <p v-if="loaded" class="faint">
-      当前使用：{{ draft.materialLabel }}。模型资料保留来源与不确定之处。
+      当前生效：{{
+        active.mode === "web"
+          ? providerName(active.provider) + " · 联网检索资料"
+          : active.materialLabel
+      }}。表单修改保存后生效。
     </p>
     <form v-if="loaded" @submit.prevent="save">
       <label class="check"
-        ><input v-model="draft.enabled" type="checkbox" />启用独立搜索</label
+        ><input
+          v-model="draft.enabled"
+          type="checkbox"
+          :disabled="busy"
+        />启用独立搜索</label
       >
       <div class="search-fields">
         <label
-          >提供方<select v-model="draft.provider" @change="provider">
-            <option value="tavily">Tavily</option>
-            <option value="brave">Brave</option>
-          </select></label
-        ><label
+          >提供方<Select
+            v-model="draft.provider"
+            aria-label="搜索提供方"
+            :disabled="busy"
+            :options="[
+              { value: 'tavily', label: 'Tavily' },
+              { value: 'brave', label: 'Brave' },
+            ]"
+            @change="provider"
+        /></label>
+        <label
           >搜索地址<input
             v-model="draft.baseUrl"
             type="url"
             required
-            name="searchUrl" /></label
-        ><label
+            name="searchUrl"
+            :disabled="busy"
+        /></label>
+        <label
           >独立密钥<input
             v-model="draft.apiKey"
             type="password"
             autocomplete="new-password"
+            name="searchKey"
+            :disabled="busy"
             :placeholder="
               draft.hasApiKey ? '已保存，留空保留' : '填写该提供方的搜索密钥'
             "
-            name="searchKey" /></label
-        ><label
+        /></label>
+        <label
           >超时（毫秒）<input
             v-model.number="draft.timeoutMs"
             type="number"
             min="1000"
-            max="120000" /></label
-        ><label
+            max="120000"
+            :disabled="busy"
+        /></label>
+        <label
           >每次结果数<input
             v-model.number="draft.maxResults"
             type="number"
             min="1"
-            max="20" /></label
-        ><label
+            max="20"
+            :disabled="busy"
+        /></label>
+        <label
           >每日查询上限<input
             v-model.number="draft.dailyLimit"
+            name="searchDailyLimit"
             type="number"
-            min="1"
-            max="1000"
-        /></label>
-      </div>
-      <div class="row">
-        <button class="primary" :disabled="busy">保存搜索</button
-        ><button type="button" :disabled="busy" @click="test">测试连接</button
-        ><span class="faint"
-          >今日 {{ draft.used || 0 }} / {{ draft.dailyLimit }} 次</span
+            min="0"
+            max="100000"
+            :disabled="busy"
+          />
+          <small class="faint"
+            >可手动调整；0 表示不限。保存后立即生效。</small
+          ></label
         >
       </div>
-      <p v-if="result" role="status">{{ result }}</p>
+      <div class="search-usage" role="status">
+        <span class="chip"
+          >今日有效查询 {{ active.used || 0 }} / {{ limitLabel }}</span
+        >
+        <small class="faint"
+          >{{ active.usage?.running || 0 }} 次进行中 ·
+          {{ active.usage?.failed || 0 }} 次失败 ·
+          {{ active.usage?.diagnostics || 0 }} 次测试</small
+        >
+      </div>
+      <p class="faint">
+        测试当前填写的配置，不会自动保存。失败与连接测试不占本地每日额度；提供方的账户额度由提供方管理。
+      </p>
+      <div class="row">
+        <button class="primary" :disabled="busy">保存搜索</button>
+        <button type="button" :disabled="busy" @click="test">
+          {{ busy ? "处理中…" : "测试连接" }}
+        </button>
+        <span v-if="changed" class="faint">有尚未保存的修改</span>
+      </div>
+      <p
+        v-if="result"
+        :role="failed ? 'alert' : 'status'"
+        class="search-result"
+        :class="{ failed }"
+      >
+        {{ result }}
+      </p>
     </form>
   </section>
 </template>
@@ -148,9 +276,25 @@ onMounted(load);
   min-width: 0;
 }
 .search-fields input,
-.search-fields select {
+.search-fields .menu-select {
   width: 100%;
   min-width: 0;
+}
+.search-usage {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.search-result {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.search-result.failed {
+  border-color: color-mix(in srgb, var(--warn) 40%, var(--line));
 }
 @media (max-width: 620px) {
   .search-fields {
