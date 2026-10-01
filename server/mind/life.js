@@ -836,8 +836,17 @@ export class Life {
     // Anything grounded in a private room stays there, including a planned
     // sentence. A private message counts the same as a private meeting.
     if (reach) {
-      const roots = this.mind.meetings.privateRoots(sources);
-      if (roots.length && !roots.includes(reach.session)) reach = null;
+      if (
+        !this.initiative.audience(
+          {
+            sources: [...sources, ...(parent ? [`t:${parent.id}`] : [])],
+            created: now,
+          },
+          reach.session,
+          now,
+        ).allowed
+      )
+        reach = null;
     }
     if (!sources.length && !reach) return null;
     if (repeated && !reach) return null;

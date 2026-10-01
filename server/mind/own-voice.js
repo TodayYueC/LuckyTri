@@ -5,6 +5,7 @@ import { HOUR, evidence, hasCredential, text } from "./util.js";
 import { isPrivateSession } from "./memory.js";
 import { sameRecentTheme } from "./novelty.js";
 import { ownLife, sameSelf } from "./salience.js";
+import { conversationOrigin, originSummary } from "./conversation-origin.js";
 
 // After this many notes in a row that only take up her own last note, another
 // one has to pick up something new or it is not kept.
@@ -128,12 +129,16 @@ export class OwnVoice {
         kind: s.kind,
         content: s.content,
         emerging: s.status === "emerging",
+        origin: originSummary(conversationOrigin(this.mind.db, s.sources, now)),
       })),
       notes: notes.map((t) => ({
         ref: `t:${t.id}`,
         created: t.created,
         kind: t.kind,
         content: t.content,
+        origin: originSummary(
+          conversationOrigin(this.mind.db, [`t:${t.id}`], t.created),
+        ),
       })),
       recentExpressions: recent.map((t) => ({
         ref: `t:${t.id}`,

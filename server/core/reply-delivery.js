@@ -9,6 +9,7 @@ import {
 } from "./response-validator.js";
 import { deliver, sleep } from "./message-scheduler.js";
 import { leaks } from "../mind/guard.js";
+import { initiativeAudience } from "../mind/conversation-origin.js";
 function isFormatError(error) {
   return (
     error instanceof SyntaxError ||
@@ -53,13 +54,27 @@ export class ReplyDelivery {
           targetUsers.has(m.userId) ||
           (m.replyId && snapshot.batch.some((b) => b.platformId === m.replyId)),
       );
+    const audienceCurrent = () =>
+      !snapshot.initiative ||
+      initiativeAudience(
+        this.owner.mind,
+        {
+          sources: snapshot.initiative.expression?.sources || [],
+          created: snapshot.initiative.expression?.formedAt,
+        },
+        session,
+        this.owner.now(),
+      ).allowed;
     const isCurrent = () =>
       !this.owner.queue.closed &&
       (c.preview ||
         this.owner.enabled(session, { simulated: c.simulatedTurn })) &&
       this.owner.sessionState(session) === c.state &&
-      !hasRelevantUpdate();
+      !hasRelevantUpdate() &&
+      audienceCurrent();
     const staleExit = () => {
+      if (!audienceCurrent())
+        trace.steps.push("话题来源或参与者已改变，这份旧稿未继续发送");
       if (newerUserMessages().length)
         trace.steps.push("新消息已进入下一批，取消旧稿");
       if (
@@ -189,7 +204,7 @@ export class ReplyDelivery {
                   : undefined,
             ...(snapshot.initiative
               ? {
-                  task: "本轮没有收到新消息，是自己先形成念头再分享。逐项检查：有没有捏造对方刚说过或发过消息；有没有把旧消息当成当前提问而补答；有没有把自己的念头换成另一件事；有没有捏造亲历。expression.words 是已有草稿，保留其核心是合格的，不要求提供新事实。只有具体错误才给 issues。",
+                  task: "本轮没有收到新消息，是自己先形成念头再分享。逐项检查：有没有捏造对方刚说过或发过消息；有没有把旧消息当成当前提问而补答；有没有把自己的念头换成另一件事；有没有捏造亲历；有没有把其他会话的参与者、项目、约定误认成当前对象或咱们的事。依据 expression.audience.origin 核对真实来源与参与者：公开可知不代表当前对象参与过、知道上下文或想继续。expression.words 也可能误认对象，不可因它是已有草稿而免检；自己的新想法可以开新话题。只有具体错误才给 issues。",
                 }
               : {}),
           },

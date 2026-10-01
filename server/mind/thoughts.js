@@ -197,12 +197,12 @@ export class Thoughts {
       throw Error("这条手记有后续修正，请隐藏以保留轨迹");
     this.db.prepare("DELETE FROM mind_thoughts WHERE id=?").run(id);
   }
-  setOutreach(id, status) {
+  setOutreach(id, status, reason = "") {
     this.db
       .prepare(
-        "UPDATE mind_thoughts SET outreach_status=?,outreach_wait_reason='',outreach_retry_at=NULL WHERE id=?",
+        "UPDATE mind_thoughts SET outreach_status=?,outreach_wait_reason=?,outreach_retry_at=NULL WHERE id=?",
       )
-      .run(status, id);
+      .run(status, text(reason, 300), id);
   }
   planOutreach(id, { session, words, reason, time }) {
     const current = this.get(id);

@@ -15,6 +15,10 @@ import {
   visionWindow,
 } from "./vision-manager.js";
 import { normalizeTurn, takeTurn } from "./turn.js";
+import {
+  initiativeAudience,
+  originSummary,
+} from "../mind/conversation-origin.js";
 const OCCASIONS = {
   wake: "你刚睡醒，看到了睡着时收到的消息。它们是之前发的，按消息时间理解，可以自然地说刚看到。",
   backlog:
@@ -432,6 +436,19 @@ export class TurnProcessor {
           }
         : undefined;
       if (["presence", "outreach"].includes(occasion?.type)) {
+        const expression = occasionData.expression;
+        const audience = initiativeAudience(
+          this.owner.mind,
+          { sources: expression?.sources || [], created: expression?.formedAt },
+          session,
+          now,
+        );
+        if (!audience.allowed) return finish("silent", audience.reason);
+        if (expression)
+          expression.audience = {
+            ...audience,
+            origin: originSummary(audience.origin),
+          };
         snapshot.initiative = occasionData;
         trace.snapshot = initiativeContext(snapshot);
       }

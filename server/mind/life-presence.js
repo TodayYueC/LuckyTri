@@ -119,6 +119,11 @@ export class LifePresence {
     if (this.owner.phase(now).key === "asleep") return null;
     for (const t of this.owner.mind.thoughts.dueOutreach(now)) {
       const session = t.outreach_session;
+      const audience = this.owner.initiative.audience(t, session, now);
+      if (!audience.allowed) {
+        this.owner.mind.thoughts.setOutreach(t.id, "skipped", audience.reason);
+        continue;
+      }
       if (this.owner.initiative.recentlyToldAnotherGroup(t, now)) {
         this.owner.mind.thoughts.setOutreach(t.id, "declined");
         continue;
@@ -154,6 +159,7 @@ export class LifePresence {
               words: t.outreach_draft?.length ? t.outreach_draft : [t.outreach],
               reason: t.outreach_reason,
               sources: t.sources,
+              audience,
               sourceMaterial: this.owner.initiative.sourceMaterial(t, now),
             },
             initiative: this.owner.initiative.context(session, now),

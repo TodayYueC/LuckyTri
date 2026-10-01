@@ -2,6 +2,7 @@ import { HOUR, parse, text } from "./util.js";
 import { isPrivateSession } from "./memory.js";
 import { parseSessionKey, isGroupSession } from "../channels/session-key.js";
 import { sameRecentTheme } from "./novelty.js";
+import { initiativeAudience, originSummary } from "./conversation-origin.js";
 
 // A chance to start something is different from a request to answer someone.
 // Time changes what she can notice; it never increments a loneliness score or
@@ -12,7 +13,8 @@ occasion 中的 initiative 是现在的实际情况，历史 messages 只是回�
 想说就 speak，自然的一两句即可；没有想说的就 silent，说明自己的实际倾向。主动程度影响你有多愿意先开口，不是必须有人先问的门槛。
 主动是给对方一个可接也可不接的邀请，不是催促。底线里的“不索取陪伴”指不施压、不制造亏欠，不禁止你主动邀请、表达无聊或想聊。不装作刚看过、做过或经历过没有证据的事。
 initiative.awaitingReply 表示上一句主动消息尚未得到回应：不重问、不追责、不换句话催同一件事；隔了一段时间，有另一个自己确实想说的内容仍可以开口。对方明确不想被联系时尊重它。
-outreach 的 planned 是过去想说的话，不是必须照抄的命令；结合现在的消息和经过的时间重新判断。不要机械接最后一条旧消息，不把私聊里的信息拿到群里。`;
+outreach 的 planned 是过去想说的话，不是必须照抄的命令；结合现在的消息和经过的时间重新判断。不要机械接最后一条旧消息，不把私聊里的信息拿到群里。
+expression.audience 核实这段话题的来源和实际参与者。记忆相通不等于对方参与过：不能把别人的项目、约定、群聊问题说成“咱们的事”，也不能因亲近就认定对方知道上下文。共同经历可以换到私聊接着说；自己的新想法可以自然开一个新话题。来源只证明当时发生过什么，不证明当前对象想继续聊。`;
 
 export const SOLITUDE_INITIATIVE_PROMPT = `【独处也可以产生向外的愿望】
 initiative.contacts 是你曾来往、现在允许参与的地方，带有最后交流的时间和少量旧话。新消息很少不代表你停止存在：可以重新注意自己的兴趣、想做的事、想接近的人，也可以无聊或想聊一点普通的东西。没有新事实时不要强化旧猜测。
@@ -113,23 +115,18 @@ export class Initiative {
   // and whom she actually knows, rather than rotating through idle rooms.
   chooseContact(note, contacts, now = this.life.now()) {
     const kind = note?.audience;
+    const thought = note?.id ? this.life.mind.thoughts.get(note.id) : null;
     const candidates = contacts.filter(
-      (contact) => kind === "either" || contact.kind === kind,
+      (contact) =>
+        (kind === "either" || contact.kind === kind) &&
+        this.audience(thought, contact.session, now).allowed,
     );
     if (!candidates.length) return null;
-    const thought = note?.id ? this.life.mind.thoughts.get(note.id) : null;
-    const roots = new Set();
-    for (const ref of thought?.sources || []) {
-      if (ref.startsWith("m:")) {
-        const row = this.db
-          .prepare("SELECT session_id FROM core_events WHERE seq=?")
-          .get(Number(ref.slice(2)));
-        if (row) roots.add(row.session_id);
-      } else if (ref.startsWith("t:")) {
-        const parent = this.life.mind.thoughts.get(ref.slice(2));
-        for (const room of parent?.sessions || []) roots.add(room);
-      }
-    }
+    const roots = new Set(
+      this.audience(thought, candidates[0].session, now).origin.rooms.map(
+        (room) => room.sessionId,
+      ),
+    );
     const score = (contact) => {
       let bond = null;
       if (contact.kind === "private") {
@@ -169,6 +166,10 @@ export class Initiative {
           b.score - a.score ||
           a.contact.session.localeCompare(b.contact.session),
       )[0]?.contact;
+  }
+  audience(thought, session, now = this.life.now()) {
+    const result = initiativeAudience(this.life.mind, thought, session, now);
+    return { ...result, origin: originSummary(result.origin) };
   }
   recentlyToldAnotherGroup(thought, now = this.life.now()) {
     if (!isGroupSession(thought?.outreach_session)) return false;
@@ -211,6 +212,7 @@ export class Initiative {
           role: row.role,
           name: message.name,
           time: row.time,
+          sourceSession: row.session_id,
           content: text(message.text, 300),
           referenceOnly: true,
         });
