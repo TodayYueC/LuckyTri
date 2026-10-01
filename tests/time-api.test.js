@@ -31,6 +31,12 @@ test("时间接口概览、分页摘要、正文与交付状态一致，管理�
   const rows = await req("/works?limit=1");
   assert.equal(rows.length, 1);
   assert.equal(rows[0].content, undefined);
+  const experiences = await req("/experiences?limit=1&q=月光");
+  assert.equal(experiences.length, 1);
+  assert.equal(experiences[0].title, "月光");
+  assert.equal(experiences[0].work.id, task.work_id);
+  assert.equal(experiences[0].work.version, 1);
+  assert.equal(experiences[0].content, undefined);
   assert.equal(
     (await req("/works/" + task.work_id)).content,
     w.mind.time.works.get(task.work_id).content,

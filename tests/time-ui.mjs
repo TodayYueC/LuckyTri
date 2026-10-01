@@ -253,6 +253,41 @@ try {
     .getByRole("button", { name: "关闭", exact: true })
     .click();
   mkdirSync("workspace/ui-review", { recursive: true });
+  const beforeReading = bodies;
+  await page.getByRole("tab", { name: "体验记录", exact: true }).click();
+  await page.locator(".experience-entry").first().waitFor();
+  const oldDraft = page
+    .locator(".experience-entry")
+    .filter({ hasText: "找到门" });
+  assert.equal(await oldDraft.count(), 1);
+  assert.equal(await oldDraft.locator("h3").innerText(), "月光之门");
+  await page.waitForTimeout(100);
+  assert.equal(bodies, beforeReading, "体验摘要不请求作品正文");
+  await oldDraft.getByRole("button", { name: /阅读这一稿/ }).click();
+  await page.locator(".work-body").waitFor();
+  assert.match(await page.locator(".work-body").innerText(), /第一段/);
+  assert.ok(!(await page.locator(".work-body").innerText()).includes("第二段"));
+  await page
+    .getByRole("dialog", { name: "月光之门", exact: true })
+    .getByRole("button", { name: "关闭", exact: true })
+    .click();
+  await page.getByRole("textbox", { name: "搜索标题" }).fill("月光之门");
+  await page.getByRole("button", { name: "搜索", exact: true }).click();
+  await page.waitForFunction(
+    () => document.querySelectorAll(".experience-entry").length === 2,
+  );
+  for (const width of [1440, 900, 390, 320]) {
+    await page.setViewportSize({ width, height: 1000 });
+    assert.ok(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 2,
+      ),
+      `${width} 体验记录不应横向溢出`,
+    );
+    await page.locator(".experience-log").screenshot({
+      path: `workspace/ui-review/time-experiences-${width}.png`,
+    });
+  }
   for (const width of [1440, 900, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     for (const tab of ["今日", "待办", "作品库", "持续项目", "体验记录"]) {
@@ -381,9 +416,60 @@ try {
   assert.equal(savedSettings.status(), 200);
   assert.equal((await savedSettings.json()).paceSpeed, 1.5);
   assert.equal(w.mind.time.settings().paceSpeed, 1.5);
+  for (let n = 0; n < 10; n++) {
+    w.advance(MINUTE);
+    w.mind.time.tick();
+  }
+  w.answers.reflection = {
+    sufficient: true,
+    title: "Rewrite · 开篇的朋友们",
+    content: "在这段故事里遇到了新的朋友，想继续看看他们的日常。",
+    summary: "开篇的人物互动让我有点期待后续。",
+    continue: false,
+  };
+  assert.equal((await w.life.activities.run()).status, "experienced");
+  const beforeGameReading = bodies;
+  await page.goto(server.base + "#time/experiences");
+  const experience = page
+    .locator(".experience-entry")
+    .filter({ hasText: "Rewrite · 开篇的朋友们" });
+  await experience.waitFor();
+  assert.equal(
+    await experience.count(),
+    1,
+    "同一游玩的成果与经历只显示一张卡片",
+  );
+  assert.equal(bodies, beforeGameReading, "游玩摘要不请求正文");
+  assert.match(await experience.innerText(), /开篇的人物互动/);
+  await experience.locator(".experience-materials summary").click();
+  await experience
+    .getByRole("button", { name: "Rewrite开篇", exact: true })
+    .click();
+  const material = page.getByRole("dialog", {
+    name: "Rewrite开篇",
+    exact: true,
+  });
+  await material.waitFor();
+  assert.match(await material.innerText(), /游戏里的场景与人物互动/);
+  await material.getByRole("button", { name: "关闭", exact: true }).click();
+  for (const width of [1440, 900, 390, 320]) {
+    await page.setViewportSize({ width, height: 1000 });
+    assert.ok(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 2,
+      ),
+      `${width} 游玩记录不应横向溢出`,
+    );
+    await page.locator(".experience-log").screenshot({
+      path: `workspace/ui-review/time-experiences-game-${width}.png`,
+    });
+  }
+  await page.getByRole("textbox", { name: "搜索标题" }).fill("没有这样的记录");
+  await page.getByRole("button", { name: "搜索", exact: true }).click();
+  await page.getByText("这里还没有经历记录", { exact: true }).waitFor();
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: TIME views, lazy works, versions/export, delivery status, linked projects, desktop/tablet/mobile, slow refresh and search layout",
+    "PASS: TIME views, lazy works, historical experience versions, game dedup/materials/search, versions/export, delivery status, linked projects, desktop/tablet/mobile, slow refresh and search layout",
   );
 } finally {
   await browser.close();

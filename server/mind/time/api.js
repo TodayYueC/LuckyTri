@@ -1,6 +1,7 @@
 import { wrap } from "../../http.js";
 import { displayNames } from "../../studio/display-names.js";
 import { zonedTime } from "../util.js";
+import { experiences } from "./experiences.js";
 export function mountTime(app, life) {
   const time = life.mind.time;
   app.get(
@@ -65,26 +66,7 @@ export function mountTime(app, life) {
   );
   app.get(
     "/api/mind/time/experiences",
-    wrap((req, res) =>
-      res.json(
-        life.db
-          .prepare(
-            "SELECT * FROM mind_time_events WHERE kind IN ('reference-experience','done','checkpoint') ORDER BY created DESC,id DESC LIMIT ? OFFSET ?",
-          )
-          .all(
-            Math.max(1, Math.min(100, Number(req.query.limit) || 40)),
-            Math.max(0, Number(req.query.offset) || 0),
-          )
-          .map((row) => ({
-            ...row,
-            reason:
-              row.kind === "reference-experience"
-                ? "玩过这一段，留下自己的感受"
-                : row.reason,
-            data: JSON.parse(row.data),
-          })),
-      ),
-    ),
+    wrap((req, res) => res.json(experiences(life.db, req.query))),
   );
   app.get(
     "/api/mind/time/game-mode",

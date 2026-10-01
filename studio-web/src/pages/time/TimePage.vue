@@ -9,6 +9,7 @@ import Tabs from "../../components/ui/Tabs.vue";
 import Empty from "../../components/ui/Empty.vue";
 import Sheet from "../../components/ui/Sheet.vue";
 import DayAgenda from "./DayAgenda.vue";
+import ExperienceLog from "./ExperienceLog.vue";
 const views = ["today", "tasks", "works", "projects", "experiences"],
   view = ref(
     views.includes(studio.sub.split("/")[0])
@@ -533,7 +534,7 @@ onUnmounted(() => {
         >
           查看全部待办
         </button>
-        <label v-if="['works', 'projects'].includes(view)"
+        <label v-if="['works', 'projects', 'experiences'].includes(view)"
           ><span class="sr-only">搜索标题</span
           ><input v-model="q" placeholder="搜索标题或项目" /><button>
             搜索
@@ -710,37 +711,17 @@ onUnmounted(() => {
           <button @click="openProject(row.id)">打开项目</button>
         </article>
       </div>
-      <div v-else class="time-cards">
-        <article v-for="row in rows" :key="row.id" class="card">
-          <span class="eyebrow"
-            >{{
-              row.kind === "reference-experience" ? "游玩经历" : "活动经历"
-            }}
-            · {{ when(row.created, zone) }}</span
-          >
-          <h2>{{ row.reason }}</h2>
-          <div class="row">
-            <button v-if="row.data.workId" @click="openWork(row.data.workId)">
-              阅读记录</button
-            ><button
-              v-for="(id, index) in row.data.sourceIds || []"
-              :key="id"
-              @click="openSource(id)"
-            >
-              资料 {{ index + 1 }}
-            </button>
-          </div>
-        </article>
-        <section class="card real-mode">
-          <h2>游戏客户端连接</h2>
-          <label class="check"
-            ><input type="checkbox" disabled />启用游戏客户端控制</label
-          >
-          <p class="muted">开发中。</p>
-        </section>
-      </div>
+      <ExperienceLog
+        v-else
+        :rows="rows"
+        :zone="zone"
+        :loading="loading"
+        @work="openWork"
+        @project="openProject"
+        @source="openSource"
+      />
       <Empty
-        v-if="!loading && !rows.length"
+        v-if="view !== 'experiences' && !loading && !rows.length"
         :title="view === 'works' ? '作品还在等待第一笔' : '这里还没有记录'"
         text="实际发生并保存之后，这里才会出现内容。"
       />
