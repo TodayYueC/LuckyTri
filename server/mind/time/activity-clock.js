@@ -93,6 +93,18 @@ export class ActivityClock {
       hint,
       this.time.settings().paceSpeed,
     );
+    if (task.checkpoint.schedule?.chosenAt) {
+      const used =
+        this.db
+          .prepare(
+            "SELECT engaged_ms FROM mind_time_spans WHERE task_id=? AND ended IS NULL",
+          )
+          .get(task.id)?.engaged_ms || 0;
+      estimate.plannedMs = Math.min(
+        estimate.plannedMs,
+        Math.max(MINUTE, this.time.focusMs(task) - used),
+      );
+    }
     return {
       version: 1,
       phase: "engaged",

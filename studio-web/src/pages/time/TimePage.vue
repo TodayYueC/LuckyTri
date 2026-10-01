@@ -67,6 +67,18 @@ const priorities: Record<number, string> = {
   2: "高",
   3: "最高",
 };
+function taskLabel(row: any) {
+  if (row.state === "waiting")
+    return /执行能力|调整.*约定|仍未兑现/.test(row.wait_reason)
+      ? "需要调整约定"
+      : /选定|想具体|明确.*内容/.test(row.wait_reason)
+        ? "待想具体"
+        : "Waiting · 等条件";
+  if (row.state === "todo" && !row.schedule?.chosenAt) return "ToDo · 待选时间";
+  if (row.state === "scheduled") return "Scheduled · 已选时间";
+  if (row.state === "paused") return "Paused · 进度保留";
+  return labels[row.state];
+}
 async function setPriority(row: any, priority: number) {
   try {
     await api("/mind/time/tasks/" + row.id + "/control", "POST", {
@@ -157,6 +169,7 @@ async function openSource(id: string) {
 }
 async function control(row: any, action: string) {
   let readyAt: string | undefined;
+  let durationMinutes: number | undefined;
   if (action === "schedule") {
     const date = await askText(
       "最早开始时间（YYYY-MM-DD HH:mm）。截止时间保留原安排。",
@@ -168,6 +181,13 @@ async function control(row: any, action: string) {
     );
     if (date === null) return;
     readyAt = date;
+    const span = await askText("这次安排投入多少分钟（5 至 240）？", {
+      title: "投入时间",
+      confirmText: "继续",
+      placeholder: String(row.schedule?.durationMinutes || 25),
+    });
+    if (span === null) return;
+    durationMinutes = Number(span);
   }
   const reason = await askText(
     action === "abandon" ? "留下放下这件事的原因。" : "留下这次调整的原因。",
@@ -178,6 +198,7 @@ async function control(row: any, action: string) {
     await api("/mind/time/tasks/" + row.id + "/control", "POST", {
       action,
       ...(readyAt ? { readyAt } : {}),
+      ...(durationMinutes !== undefined ? { durationMinutes } : {}),
       reason: reason || "管理台调整",
     });
     await load();
@@ -254,6 +275,15 @@ async function requestCare() {
     toast((e as Error).message, true);
   }
 }
+async function requestPlan() {
+  try {
+    await api("/mind/time/plan", "POST", {});
+    toast("已记下，让她重新想具体时间与投入时长");
+    await load();
+  } catch (e) {
+    toast((e as Error).message, true);
+  }
+}
 function search() {
   offset.value = 0;
   void load();
@@ -295,7 +325,7 @@ let liveTimer = 0;
 onMounted(() => {
   liveTimer = window.setInterval(() => {
     if (view.value === "today" && !document.hidden) void load();
-  }, 30000);
+  }, 5000);
   void load();
   const id = studio.sub.split("/")[1];
   if (id && view.value === "works") void openWork(id);
@@ -340,8 +370,25 @@ onUnmounted(() => {
             ><h2>{{ overview.current.title || overview.current.label }}</h2>
             <span class="chip"
               >{{ overview.current.label }} ·
-              {{ minutes(overview.current.elapsedMs) }}</span
+              {{
+                overview.current.timing?.phase === "preparing"
+                  ? "正在准备"
+                  : (overview.current.sessionElapsedMs ??
+                        overview.current.elapsedMs) < 60000
+                    ? "刚开始这一段"
+                    : "本次已投入 " +
+                      minutes(
+                        overview.current.sessionElapsedMs ??
+                          overview.current.elapsedMs,
+                      )
+              }}</span
             >
+            <p v-if="overview.current.schedule?.chosenAt" class="faint">
+              她安排
+              {{ when(overview.current.schedule.proposedAt, zone) }}
+              开始，这次想投入
+              {{ overview.current.schedule.durationMinutes }} 分钟。
+            </p>
             <p v-if="overview.current.timing?.plannedMs" class="faint">
               本段预计 {{ duration(overview.current.timing.plannedMs) }} ·
               还需约 {{ duration(overview.current.timing.remainingMs) }}
@@ -353,11 +400,23 @@ onUnmounted(() => {
             <button class="text-button" @click="view = 'tasks'">
               查看安排 →
             </button></template
-          ><Empty
-            v-else
-            title="留着一段自己的时间"
-            text="按优先级、精力和自己的愿望选事做，也可以随手折腾或歇着。"
-          />
+          ><template v-else
+            ><h2>{{ overview.agenda?.idle?.title || "这会儿没有主活动" }}</h2>
+            <p class="muted">
+              {{
+                overview.agenda?.idle?.reason ||
+                "自己选择接下来做什么，也可以歇着。"
+              }}
+            </p>
+            <p v-if="overview.agenda?.idle?.next" class="faint">
+              下一项：{{ overview.agenda.idle.next.title }} ·
+              {{ when(overview.agenda.idle.next.chosenStart, zone) }} 开始 ·
+              {{ overview.agenda.idle.next.durationMinutes }} 分钟
+            </p>
+            <button class="text-button" @click="requestPlan">
+              让她重新想想安排
+            </button></template
+          >
         </article>
         <article class="card day-balance">
           <span class="eyebrow">今天</span>
@@ -411,11 +470,12 @@ onUnmounted(() => {
           @change="settingsDirty = true"
         >
           <label
-            >专注段（分钟）<input
+            >默认专注段（分钟）<input
               v-model.number="settings.focusMinutes"
               type="number"
               min="1"
-              max="120" /></label
+              max="120"
+            /><small>没有另行选择时使用；她自己的安排优先。</small></label
           ><label
             >休息建议（分钟）<input
               v-model.number="settings.breakMinutes"
@@ -498,7 +558,7 @@ onUnmounted(() => {
             <span
               class="chip"
               :data-tone="row.state === 'done' ? 'ok' : 'quiet'"
-              >{{ labels[row.state] }}</span
+              >{{ taskLabel(row) }}</span
             ><span class="faint"
               >{{
                 row.kind === "promise"
@@ -533,7 +593,14 @@ onUnmounted(() => {
           <p>{{ row.why }}</p>
           <p v-if="row.wait_reason" class="muted">{{ row.wait_reason }}</p>
           <p class="faint">
-            <template v-if="row.schedule?.startedAt"
+            <template
+              v-if="row.schedule?.chosenAt && !row.checkpoint?.reschedule"
+              >{{ row.schedule.chosenBy === "admin" ? "管理台安排" : "她选定" }}
+              {{ when(row.schedule.proposedAt, zone) }} —
+              {{ when(row.schedule.proposedEnd, zone) }} · 这次
+              {{ row.schedule.durationMinutes }} 分钟</template
+            >
+            <template v-else-if="row.schedule?.startedAt"
               >本段开始 {{ when(row.schedule.startedAt, zone) }}</template
             ><template v-else-if="row.schedule?.proposedAt"
               >{{ row.schedule.conditional ? "条件满足后建议" : "已安排" }}
@@ -541,8 +608,10 @@ onUnmounted(() => {
               {{ when(row.schedule.proposedEnd, zone) }}</template
             ><template v-else>{{
               row.state === "waiting"
-                ? "条件满足后再安排时间"
-                : "按优先级选择可执行事项"
+                ? "需要解决上面的条件，再选择时间"
+                : row.state === "paused"
+                  ? "进度已保存，之后再安排续接时间"
+                  : "已记下，等她选择具体时间"
             }}</template>
             <template v-if="row.timing?.plannedMs">
               · 本段预计 {{ duration(row.timing.plannedMs) }} · 已投入
@@ -555,8 +624,10 @@ onUnmounted(() => {
               · 此前时长未单独记录</template
             >
             <template v-else>
-              · 专注段 {{ row.schedule?.focusMinutes || 25 }} 分钟 · 投入
-              {{ minutes(row.elapsedMs) }}</template
+              ·
+              {{
+                row.state === "doing" ? "正在准备这一段" : "尚未开始本段投入"
+              }}</template
             >
           </p>
           <p v-if="row.schedule?.outcome" class="muted">

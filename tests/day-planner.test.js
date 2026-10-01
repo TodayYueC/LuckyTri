@@ -233,3 +233,27 @@ test("抢占理由不会把私人高优先级事项的内容泄露到公开活�
     ),
   );
 });
+test("重新安排后的本次投入从检查点继续，区别于任务累计时间", (t) => {
+  const w = world({ ownLife: true, paced: true });
+  t.after(w.close);
+  const id = add(w, "整理一个长一点的问题");
+  schedule(w, id, 30);
+  engage(w, id);
+  for (let i = 0; i < 3; i++) {
+    w.advance(MINUTE);
+    w.mind.time.tick();
+  }
+  w.mind.time.tasks.control(id, {
+    action: "pause",
+    readyAt: w.now() + MINUTE,
+    reason: "先处理另一件事",
+  });
+  schedule(w, id, 20, w.now() + MINUTE);
+  w.advance(MINUTE);
+  engage(w, id);
+  w.advance(MINUTE);
+  w.mind.time.tick();
+  const current = w.mind.time.view().current;
+  assert.equal(current.elapsedMs, 4 * MINUTE);
+  assert.equal(current.sessionElapsedMs, MINUTE);
+});

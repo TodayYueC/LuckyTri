@@ -113,6 +113,14 @@ test(
       401,
     );
     assert.equal(
+      (await fetch(base + "/api/mind/time/plan", { method: "POST" })).status,
+      401,
+    );
+    assert.equal(
+      (await request("/mind/time/plan", "POST", {})).data.queued,
+      true,
+    );
+    assert.equal(
       (
         await fetch(base + "/api/state", {
           headers: {

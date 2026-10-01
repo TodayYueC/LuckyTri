@@ -59,7 +59,11 @@ export function api(
       path.startsWith("/mind/time") &&
       !path.startsWith("/mind/time/search"))
   )
-    return reads.get(path, () => request(path, method, body));
+    return reads.get(
+      path,
+      () => request(path, method, body),
+      path === "/mind/time" ? 2000 : 15000,
+    );
   return request(path, method, body);
 }
 

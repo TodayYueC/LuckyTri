@@ -10,6 +10,7 @@ import { Games } from "./games.js";
 import { ActivityClock } from "./activity-clock.js";
 import { activityPresentation, gameText } from "./presentation.js";
 import { Agenda } from "./agenda.js";
+import { localClock } from "../../core/conversation-cues.js";
 
 export const TIME_DEFAULTS = {
   focusMinutes: 25,
@@ -97,6 +98,17 @@ export class TimeSystem {
         ? chosen
         : this.settings().focusMinutes) * 60000
     );
+  }
+  planView(task) {
+    const slot = task.checkpoint.schedule;
+    return slot?.chosenAt && !task.checkpoint.reschedule
+      ? {
+          localStart: localClock(slot.proposedAt, this.mind.timeZone()).local,
+          expectedMinutes: slot.durationMinutes,
+          reason: slot.reason,
+          chosenBy: slot.chosenBy,
+        }
+      : null;
   }
   tick(now = this.now()) {
     const task = this.primary();
@@ -432,9 +444,15 @@ export class TimeSystem {
                 task.checkpoint.segments || task.checkpoint.segment || 0,
             },
             elapsedMs: this.elapsed(task.id, now),
+            sessionElapsedMs: Math.max(
+              0,
+              this.elapsed(task.id, now) -
+                (task.checkpoint.schedule?.baselineMs || 0),
+            ),
             activityKind: task.activity === "game" ? "gaming" : task.activity,
             timing: this.clock.view(task, now),
             schedule: task.checkpoint.schedule || null,
+            plannedFor: this.planView(task),
             moment:
               task.activity === "game" ? this.games.moment(task, now) : null,
           }
@@ -492,6 +510,7 @@ export class TimeSystem {
         priorityLabel: row.priorityLabel,
         kind: row.kind,
         share: row.share_state,
+        plannedFor: this.planView(row),
       }));
     return {
       current,
@@ -516,6 +535,7 @@ export class TimeSystem {
           state: row.state,
           earliestAt: row.ready_at,
           wait: row.wait_reason,
+          plannedFor: this.planView(row),
         })),
       works: this.works.fragments({ session, now, cue }),
     };

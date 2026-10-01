@@ -190,6 +190,8 @@ export class DayPlanner {
               wait: task.wait_reason,
               checkpoint: task.checkpoint,
               earliestAt: task.ready_at,
+              elapsedMs: time.elapsed(task.id, now),
+              timing: time.clock.view(task, now),
               original: this.context(task, now),
             },
             affect: life.mind.affect.state(now),

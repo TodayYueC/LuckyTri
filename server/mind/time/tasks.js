@@ -408,6 +408,7 @@ export class Tasks {
         durationMinutes,
         chosenAt: now,
         chosenBy: "self",
+        baselineMs: this.time.clock.committed(id),
         reason: text(reason, 240),
         focusMinutes: durationMinutes,
         outcome: task.checkpoint.schedule?.outcome || "",
@@ -484,7 +485,7 @@ export class Tasks {
   }
   control(
     id,
-    { action, reason = "", readyAt, dueAt, priority },
+    { action, reason = "", readyAt, dueAt, priority, durationMinutes },
     now = this.time.now(),
   ) {
     const task = this.get(id);
@@ -515,6 +516,14 @@ export class Tasks {
       wait: "waiting",
     }[action];
     if (!state) throw Error("不能直接标记完成");
+    if (
+      action === "schedule" &&
+      durationMinutes !== undefined &&
+      (!Number.isInteger(durationMinutes) ||
+        durationMinutes < 5 ||
+        durationMinutes > 240)
+    )
+      throw Error("投入时间应为 5 至 240 分钟");
     this.time.stopSpan(task, now);
     const ready = Number.isFinite(readyAt) ? readyAt : now;
     const next =
@@ -524,6 +533,24 @@ export class Tasks {
     const checkpoint = { ...task.checkpoint };
     if (state === "paused" && checkpoint.schedule?.chosenAt)
       checkpoint.reschedule = true;
+    if (action === "schedule") {
+      const minutes =
+        durationMinutes ||
+        checkpoint.schedule?.durationMinutes ||
+        this.time.settings().focusMinutes;
+      checkpoint.reschedule = false;
+      checkpoint.schedule = {
+        ...checkpoint.schedule,
+        proposedAt: Math.max(now, ready),
+        endedAt: Math.max(now, ready) + minutes * 60000,
+        durationMinutes: minutes,
+        focusMinutes: minutes,
+        chosenAt: now,
+        chosenBy: "admin",
+        baselineMs: this.time.clock.committed(id),
+        reason: text(reason, 240) || "管理台安排",
+      };
+    }
     this.db
       .prepare(
         "UPDATE mind_time_tasks SET state=?,updated=?,ready_at=?,next_step=?,due_at=?,wait_reason=?,checkpoint=?,revision=revision+1,lease=NULL,lease_at=NULL WHERE id=?",

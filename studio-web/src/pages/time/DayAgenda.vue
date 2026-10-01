@@ -29,13 +29,16 @@ const position = (at: number) =>
     (windowRange.value[1] - windowRange.value[0])) *
   100;
 const shown = (b: any) =>
-  b.end > windowRange.value[0] && b.start < windowRange.value[1];
+  (b.chartEnd ?? b.end) > b.start &&
+  (b.chartEnd ?? b.end) > windowRange.value[0] &&
+  b.start < windowRange.value[1];
 const style = (b: any) => ({
   left: Math.max(0, position(b.start)) + "%",
   width:
     Math.max(
       0.3,
-      Math.min(100, position(b.end)) - Math.max(0, position(b.start)),
+      Math.min(100, position(b.chartEnd ?? b.end)) -
+        Math.max(0, position(b.start)),
     ) + "%",
 });
 const ticks = computed(() =>
@@ -71,8 +74,8 @@ const investment = (b: any) =>
     <p class="muted">{{ agenda.note }}</p>
     <div class="agenda-legend">
       <span class="legend-actual">实际时段</span
-      ><span class="legend-plan">预计安排</span
-      ><span class="legend-free">留白 / 休息</span
+      ><span class="legend-plan">选定的安排</span
+      ><span class="legend-free">作息 / 空白</span
       ><span class="legend-point">● 伴随交流</span>
     </div>
     <div class="agenda-chart">
@@ -163,7 +166,10 @@ const investment = (b: any) =>
       </ol>
     </details>
     <p v-else class="faint">今天还没有活动记录，实际开始后会显示在上方。</p>
-    <h3>接下来的时间</h3>
+    <h3>她定下的安排</h3>
+    <p v-if="!upcoming.length" class="faint">
+      还没有选定活动时间，留白由她再决定，不按待办队列填满。
+    </p>
     <ol class="agenda-itinerary">
       <li v-for="b in upcoming" :key="b.id" :data-kind="b.kind">
         <time>{{ clock(b.start) }}<br />{{ clock(b.end) }}</time>
@@ -180,7 +186,7 @@ const investment = (b: any) =>
                     ? "答应的事"
                     : "外部建议"
               }}
-              · {{ b.scope }}{{ b.estimated ? "时长暂估" : "" }}</small
+              · {{ b.durationMinutes }} 分钟 · {{ b.scope }}</small
             >
             <p v-if="b.why" class="muted">{{ b.why }}</p></template
           >
@@ -192,6 +198,14 @@ const investment = (b: any) =>
                 : "预计，做完眼前这段再调整"
             }}</small></template
           >
+          <p v-if="b.interruptedAt" class="faint">
+            {{ clock(b.interruptedAt) }}
+            {{
+              b.interruption === "sleep"
+                ? "进入睡眠安排，醒来后再选择续接时间。"
+                : "有更高优先级安排，届时先让位，之后再选续接时间。"
+            }}
+          </p>
         </div>
       </li>
     </ol>
@@ -203,8 +217,30 @@ const investment = (b: any) =>
           .join("、")
       }}
     </p>
-    <details v-if="agenda.waiting.length" class="agenda-waiting">
-      <summary>还没有放进今天的安排 · {{ agenda.waiting.length }} 件</summary>
+    <details v-if="agenda.unarranged?.length" class="agenda-waiting" open>
+      <summary>已记下，还没选时间 · {{ agenda.unarranged.length }} 件</summary>
+      <ul>
+        <li v-for="item in agenda.unarranged" :key="item.id">
+          <button class="text-button" @click="emit('task', item.id)">
+            {{ item.title }}
+          </button>
+          <p class="muted">{{ item.reason }}</p>
+        </li>
+      </ul>
+    </details>
+    <details v-if="agenda.paused?.length" class="agenda-waiting" open>
+      <summary>暂时停下来，进度保留 · {{ agenda.paused.length }} 件</summary>
+      <ul>
+        <li v-for="item in agenda.paused" :key="item.id">
+          <button class="text-button" @click="emit('task', item.id)">
+            {{ item.title }}
+          </button>
+          <p class="muted">{{ item.reason }}</p>
+        </li>
+      </ul>
+    </details>
+    <details v-if="agenda.waiting.length" class="agenda-waiting" open>
+      <summary>需要条件或调整约定 · {{ agenda.waiting.length }} 件</summary>
       <ul>
         <li v-for="item in agenda.waiting" :key="item.id">
           <button class="text-button" @click="emit('task', item.id)">

@@ -65,6 +65,11 @@ const ownTask = w.mind.time.tasks.add({
   kind: "plan",
   sources: [ownSource.seq],
 }).id;
+w.mind.time.tasks.arrange(ownTask, {
+  startAt: w.now() + 30 * MINUTE,
+  durationMinutes: 20,
+  reason: "等手头这段结束后，给自己留一点时间",
+});
 const server = await serve(w),
   browser = await chromium.launch({
     channel:
