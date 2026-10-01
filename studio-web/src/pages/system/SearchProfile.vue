@@ -52,7 +52,7 @@ async function test() {
   busy.value = true;
   try {
     const r = await api("/mind/time/search/test", "POST", {});
-    result.value = `连接成功，返回 ${r.results.length} 条资料；今日查询 ${r.profile.used}/${r.profile.dailyLimit}`;
+    result.value = `${r.profile.materialLabel}，返回 ${r.results.length} 条资料；今日查询 ${r.profile.used}/${r.profile.dailyLimit}`;
   } catch (e) {
     result.value = (e as Error).message;
   } finally {
@@ -65,7 +65,12 @@ onMounted(load);
   <section class="card search-profile">
     <span class="eyebrow">SEARCH · 独立搜索</span>
     <h2>接触世界的资料</h2>
-    <p class="muted">阅读和游戏资料使用这里的连接。密钥与对话模型分别保存。</p>
+    <p class="muted">
+      配置后优先联网检索。未配置密钥或关闭独立搜索时，直接使用当前模型整理已有知识，继续推进资料体验。
+    </p>
+    <p v-if="loaded" class="faint">
+      当前使用：{{ draft.materialLabel }}。模型资料保留来源与不确定之处。
+    </p>
     <form v-if="loaded" @submit.prevent="save">
       <label class="check"
         ><input v-model="draft.enabled" type="checkbox" />启用独立搜索</label

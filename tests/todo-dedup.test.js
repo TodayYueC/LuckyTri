@@ -114,8 +114,8 @@ test("整理保留原记录，明确外部建议、资源条件和首段成果�
     );
   const result = repairTodoGroup(w.mind.time, [one, id2]);
   assert.equal(result.task.kind, "suggestion");
-  assert.equal(result.task.state, "waiting");
-  assert.match(result.task.wait_reason, /密钥/);
+  assert.equal(result.task.state, "todo");
+  assert.equal(result.task.wait_reason, "");
   assert.equal(result.task.checkpoint.suggestion.origin, "admin");
   assert.equal(result.task.checkpoint.contract.stopAfterNote, true);
   assert.equal(result.task.due_at, null);

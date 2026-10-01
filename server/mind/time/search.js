@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { dayKey, hasCredential, text } from "../util.js";
 import { sanitizeDetail } from "../../core/network.js";
+import { modelMaterial, MODEL_MATERIAL_LABEL } from "./model-material.js";
 export const SEARCH_DEFAULTS = {
   enabled: true,
   provider: "tavily",
@@ -20,6 +21,31 @@ export class Search {
     this.db = time.db;
     this.fetch = (...args) => fetch(...args);
   }
+  bind(life) {
+    this.life = life;
+    this.wake();
+  }
+  mode(profile = this.profile()) {
+    return profile.enabled && profile.apiKey ? "web" : "model";
+  }
+  wake() {
+    const now = this.time.now();
+    if (this.ready(now)) return;
+    for (const row of this.db
+      .prepare(
+        "SELECT id,ready_at FROM mind_time_tasks WHERE activity='game' AND state='waiting' AND wait_reason IN ('等待独立搜索密钥','独立搜索尚未启用') AND json_extract(checkpoint,'$.mergedInto') IS NULL",
+      )
+      .all())
+      this.time.tasks.control(
+        row.id,
+        {
+          action: "resume",
+          readyAt: Math.max(now, row.ready_at),
+          reason: "资料连接已可用，重新按优先级安排",
+        },
+        now,
+      );
+  }
   profile(provider) {
     const saved = this.time.mind.repo.config("search-profile", {});
     const chosen = provider || saved.provider || "tavily";
@@ -35,6 +61,11 @@ export class Search {
     return {
       ...profile,
       hasApiKey: !!apiKey,
+      mode: this.mode({ ...profile, apiKey }),
+      materialLabel:
+        this.mode({ ...profile, apiKey }) === "model"
+          ? MODEL_MATERIAL_LABEL
+          : "联网检索资料",
       used: this.used(this.time.now()),
     };
   }
@@ -75,6 +106,7 @@ export class Search {
       provider,
       profiles: { ...old.profiles, [provider]: profile },
     });
+    this.wake();
     return this.public();
   }
   used(now) {
@@ -89,15 +121,23 @@ export class Search {
   }
   ready(now = this.time.now()) {
     const p = this.profile();
-    return !p.enabled
-      ? "独立搜索尚未启用"
-      : !p.apiKey
-        ? "等待独立搜索密钥"
-        : this.used(now) >= p.dailyLimit
-          ? "今日独立搜索次数已用完"
-          : "";
+    if (this.used(now) >= p.dailyLimit) return "今日资料查询次数已用完";
+    if (this.mode(p) === "model") {
+      try {
+        const model = this.life?.profile();
+        if (!model || !(model.apiKey || process.env.LLM_API_KEY))
+          return "等待可用模型";
+        if (this.life.closed) return "等待可用模型";
+      } catch {
+        return "等待可用模型";
+      }
+    }
+    return "";
   }
-  async query(topic, { projectId = null, now = this.time.now() } = {}) {
+  async query(
+    topic,
+    { projectId = null, now = this.time.now(), trace, valid = () => true } = {},
+  ) {
     const why = this.ready(now);
     if (why) throw Error(why);
     topic = text(topic, 180);
@@ -113,7 +153,8 @@ export class Search {
           .prepare(
             "INSERT INTO mind_time_searches(created,provider,query,state) VALUES (?,?,?,'running')",
           )
-          .run(now, p.provider, topic).lastInsertRowid,
+          .run(now, this.mode(p) === "model" ? "model" : p.provider, topic)
+          .lastInsertRowid,
       );
     const headers =
       p.provider === "tavily"
@@ -138,41 +179,53 @@ export class Search {
       endpoint.searchParams.set("extra_snippets", "true");
     }
     try {
-      const response = await this.fetch(endpoint, {
-        method: p.provider === "tavily" ? "POST" : "GET",
-        headers,
-        ...(body ? { body } : {}),
-        signal: AbortSignal.timeout(p.timeoutMs),
-        redirect: "error",
-      });
-      if (!response.ok) throw Error("搜索接口 HTTP " + response.status);
-      const data = await response.json(),
-        raw = p.provider === "tavily" ? data.results : data.web?.results;
-      const results = (Array.isArray(raw) ? raw : [])
-        .slice(0, p.maxResults)
-        .map((row) => ({
-          title: text(row.title, 200),
-          url: String(row.url || ""),
-          content: text(
-            p.provider === "tavily"
-              ? row.content
-              : [row.description, ...(row.extra_snippets || [])]
-                  .filter(Boolean)
-                  .join("\n"),
-            6000,
-          ),
-        }))
-        .filter((row) => {
-          try {
-            return (
-              ["https:", "http:"].includes(new URL(row.url).protocol) &&
-              row.content &&
-              !hasCredential(row.content)
-            );
-          } catch {
-            return false;
-          }
+      let results;
+      if (this.mode(p) === "model") {
+        results = await modelMaterial(this.life, topic, {
+          trace,
+          maxResults: p.maxResults,
         });
+      } else {
+        const response = await this.fetch(endpoint, {
+          method: p.provider === "tavily" ? "POST" : "GET",
+          headers,
+          ...(body ? { body } : {}),
+          signal: AbortSignal.timeout(p.timeoutMs),
+          redirect: "error",
+        });
+        if (!response.ok) throw Error("搜索接口 HTTP " + response.status);
+        const data = await response.json(),
+          raw = p.provider === "tavily" ? data.results : data.web?.results;
+        results = (Array.isArray(raw) ? raw : [])
+          .slice(0, p.maxResults)
+          .map((row) => ({
+            kind: "web",
+            model: "",
+            uncertainty: "",
+            title: text(row.title, 200),
+            url: String(row.url || ""),
+            content: text(
+              p.provider === "tavily"
+                ? row.content
+                : [row.description, ...(row.extra_snippets || [])]
+                    .filter(Boolean)
+                    .join("\n"),
+              6000,
+            ),
+          }))
+          .filter((row) => {
+            try {
+              return (
+                ["https:", "http:"].includes(new URL(row.url).protocol) &&
+                row.content &&
+                !hasCredential(row.content)
+              );
+            } catch {
+              return false;
+            }
+          });
+      }
+      if (!valid()) throw Error("任务已经变化，资料结果未提交");
       const saved = [];
       for (const row of results) {
         const hash = createHash("sha256").update(row.content).digest("hex"),
@@ -180,7 +233,7 @@ export class Search {
         if (projectId) {
           this.db
             .prepare(
-              "INSERT OR IGNORE INTO mind_time_sources(id,project_id,created,title,url,content,hash) VALUES (?,?,?,?,?,?,?)",
+              "INSERT OR IGNORE INTO mind_time_sources(id,project_id,created,title,url,content,hash,kind,model,uncertainty) VALUES (?,?,?,?,?,?,?,?,?,?)",
             )
             .run(
               sourceId,
@@ -190,6 +243,9 @@ export class Search {
               row.url,
               row.content,
               hash,
+              row.kind,
+              row.model,
+              row.uncertainty,
             );
           saved.push(
             this.db
@@ -206,7 +262,9 @@ export class Search {
       return saved;
     } catch (error) {
       const reason = sanitizeDetail(
-        String(error.message).split(p.apiKey).join("[密钥已隐藏]"),
+        p.apiKey
+          ? String(error.message).split(p.apiKey).join("[密钥已隐藏]")
+          : String(error.message),
         160,
       );
       this.db
@@ -220,7 +278,7 @@ export class Search {
   sources(projectId) {
     return this.db
       .prepare(
-        "SELECT id,created,title,url,length(content) characters,hash FROM mind_time_sources WHERE project_id=? ORDER BY created DESC LIMIT 100",
+        "SELECT id,created,title,url,length(content) characters,hash,kind,model,uncertainty FROM mind_time_sources WHERE project_id=? ORDER BY created DESC LIMIT 100",
       )
       .all(projectId);
   }

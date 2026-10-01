@@ -44,6 +44,20 @@ w.answers.reflection = {
   summary: "新的开头",
 };
 await w.life.activities.run();
+// The library exposes the actual origin of fallback material without a fake link.
+w.answers.reflection = {
+  sufficient: true,
+  materials: [
+    {
+      title: "月光资料整理",
+      content: "模型已有知识整理的月光背景资料，具体信息未经联网核验。".repeat(
+        8,
+      ),
+      uncertainty: "仅供背景参考。",
+    },
+  ],
+};
+await w.mind.time.search.query("月光 创作背景", { projectId });
 const server = await serve(w),
   browser = await chromium.launch({
     channel:
@@ -107,9 +121,44 @@ try {
     task,
   );
   assert.equal(w.mind.time.tasks.get(task).priority, 3);
+  for (const width of [1440, 1118, 900, 390, 320]) {
+    await page.setViewportSize({ width, height: 1000 });
+    const size = await page
+      .locator('[data-task="' + task + '"] .task-priority')
+      .evaluate((el) => {
+        const label = el.querySelector("span"),
+          select = el.querySelector("select"),
+          range = document.createRange();
+        range.selectNodeContents(label);
+        return {
+          lines: range.getClientRects().length,
+          width: el.getBoundingClientRect().width,
+          select: select.getBoundingClientRect().width,
+        };
+      });
+    assert.equal(size.lines, 1, `${width} 优先级必须横向显示`);
+    assert.ok(size.width > size.select + 30, `${width} 下拉框不能挤压文字`);
+    assert.ok(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 2,
+      ),
+    );
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole("tab", { name: "持续项目", exact: true }).click();
   await page.getByRole("button", { name: "打开项目" }).first().click();
   await page.getByRole("heading", { name: "已经留下的篇章" }).waitFor();
+  await page.getByRole("button", { name: "月光资料整理", exact: true }).click();
+  const sourceDialog = page.getByRole("dialog", {
+    name: "月光资料整理",
+    exact: true,
+  });
+  assert.match(await sourceDialog.innerText(), /模型知识整理 · 未经联网核验/);
+  assert.equal(
+    await sourceDialog.getByRole("link", { name: "打开来源" }).count(),
+    0,
+  );
+  await sourceDialog.getByRole("button", { name: "关闭", exact: true }).click();
   await page.getByRole("button", { name: /第 1 篇 · 月光之门/ }).click();
   await page.locator(".work-body").waitFor();
   assert.match(await page.locator(".work-body").innerText(), /第二段/);
@@ -132,6 +181,12 @@ try {
     await page.getByRole("tab", { name: "今日", exact: true }).click();
     await page.screenshot({
       path: `workspace/ui-review/time-${width}.png`,
+      fullPage: true,
+    });
+    await page.getByRole("tab", { name: "待办", exact: true }).click();
+    await page.locator(".task-priority span").first().waitFor();
+    await page.screenshot({
+      path: `workspace/ui-review/time-tasks-${width}.png`,
       fullPage: true,
     });
   }
@@ -162,6 +217,15 @@ try {
   await page.unroute("**/api/mind/time/works?*");
   await page.goto(server.base + "#system/search");
   await page.locator(".search-profile form").waitFor();
+  assert.match(
+    await page.locator(".search-profile").innerText(),
+    /当前使用：模型知识整理/,
+  );
+  await page.getByRole("button", { name: "测试连接", exact: true }).click();
+  await page
+    .locator(".search-profile [role=status]")
+    .filter({ hasText: "返回 1 条资料" })
+    .waitFor();
   for (const width of [1440, 900, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     assert.ok(

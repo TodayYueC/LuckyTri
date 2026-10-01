@@ -39,4 +39,19 @@ export function migrateTime(db) {
   db.exec(
     "CREATE INDEX IF NOT EXISTS mind_time_tasks_intent ON mind_time_tasks(intent_key);",
   );
+  const sourceColumns = new Set(
+    db
+      .prepare("PRAGMA table_info(mind_time_sources)")
+      .all()
+      .map((c) => c.name),
+  );
+  for (const [name, fallback] of [
+    ["kind", "web"],
+    ["model", ""],
+    ["uncertainty", ""],
+  ])
+    if (!sourceColumns.has(name))
+      db.exec(
+        `ALTER TABLE mind_time_sources ADD COLUMN ${name} TEXT NOT NULL DEFAULT '${fallback}'`,
+      );
 }

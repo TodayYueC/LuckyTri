@@ -5,7 +5,8 @@ test("独立搜索密钥与提供方分离、次数限额、失败脱敏和资�
   const w = world();
   t.after(w.close);
   const search = w.mind.time.search;
-  assert.match(search.ready(), /密钥/);
+  assert.equal(search.ready(), "");
+  assert.equal(search.public().mode, "model");
   assert.equal(search.public().apiKey, undefined);
   search.save({ apiKey: "tavily-private", dailyLimit: 2 });
   let called;
@@ -39,7 +40,8 @@ test("独立搜索密钥与提供方分离、次数限额、失败脱敏和资�
   assert.equal(search.sources(project.id).length, 1);
   await assert.rejects(search.query("ATRI 剧情"), /次数/);
   search.save({ provider: "brave" });
-  assert.match(search.ready(), /密钥|次数/);
+  assert.equal(search.ready(), "");
+  assert.equal(search.public().mode, "model");
   assert.equal(search.profile().apiKey, "");
   w.advance(24 * 60 * MINUTE);
   search.save({ apiKey: "brave-private" });
@@ -84,8 +86,6 @@ test("资料模式先接触实际内容再留札记，重启间隔不算体验�
     activity: "game",
     sources: [`s:${wish.thread}`],
   }).id;
-  assert.equal(await w.life.activities.run(), null);
-  assert.match(time.tasks.get(id).wait_reason, /密钥/);
   time.search.save({ apiKey: "search-test" });
   time.search.fetch = async () =>
     Response.json({

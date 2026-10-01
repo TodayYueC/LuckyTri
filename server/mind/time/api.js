@@ -20,12 +20,15 @@ export function mountTime(app, life) {
   );
   app.post(
     "/api/mind/time/search/test",
-    wrap(async (req, res) =>
-      res.json({
-        results: await time.search.query("ATRI 游戏 资料简介"),
-        profile: time.search.public(),
-      }),
-    ),
+    wrap(async (req, res) => {
+      const run = () => time.search.query("ATRI 游戏 资料简介");
+      const results =
+        time.search.mode() === "model"
+          ? await time.attention.activity(run)
+          : await run();
+      if (results === null) throw Error("正在推进活动步骤，请稍后测试");
+      res.json({ results, profile: time.search.public() });
+    }),
   );
   app.get(
     "/api/mind/time/projects/:id/sources",

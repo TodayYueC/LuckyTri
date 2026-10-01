@@ -170,14 +170,21 @@
 .share-status {
   color: var(--accent);
 }
-.task-priority {
+.task-meta .task-priority {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 8px;
   font-size: 12px;
   color: var(--muted);
+  white-space: nowrap;
 }
-.task-priority select {
+.task-meta .task-priority span {
+  flex: none;
+}
+.task-meta .task-priority select {
+  width: auto;
+  flex: none;
   min-width: 70px;
   padding: 6px 10px;
 }

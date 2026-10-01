@@ -413,7 +413,7 @@ onUnmounted(() => {
           class="card time-task"
           :data-task="row.id"
         >
-          <div class="row">
+          <div class="row task-meta">
             <span
               class="chip"
               :data-tone="row.state === 'done' ? 'ok' : 'quiet'"
@@ -427,7 +427,7 @@ onUnmounted(() => {
                     : "自己的计划"
               }}{{ row.person ? " · " + row.person : "" }}</span
             ><label class="task-priority"
-              >优先级
+              ><span>优先级</span>
               <select
                 :value="row.priority"
                 :disabled="!!row.checkpoint?.mergedInto"
@@ -707,13 +707,26 @@ onUnmounted(() => {
     <Sheet
       :open="!!source"
       :title="source?.title || '资料'"
-      eyebrow="实际返回的摘录"
+      :eyebrow="
+        source?.kind === 'model'
+          ? '模型知识整理 · 未经联网核验'
+          : '实际返回的摘录'
+      "
       width="740px"
       @close="source = null"
       ><template v-if="source"
-        ><a :href="source.url" target="_blank" rel="noopener noreferrer"
+        ><a
+          v-if="source.url"
+          :href="source.url"
+          target="_blank"
+          rel="noopener noreferrer"
           >打开来源</a
         >
+        <p v-if="source.kind === 'model'" class="muted">
+          {{
+            source.uncertainty || "基于模型已有知识，具体剧情与章节仍需核验。"
+          }}
+        </p>
         <p class="faint">{{ when(source.created, zone) }}</p>
         <p class="work-body">{{ source.content }}</p></template
       ></Sheet

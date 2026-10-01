@@ -51,6 +51,7 @@ export class Life {
     this.db = chat.repo.db;
     this.now = now;
     this.mind.time.now = now;
+    this.mind.time.search.bind(this);
     this.online = online;
     this.busy = false;
     this.closed = false;

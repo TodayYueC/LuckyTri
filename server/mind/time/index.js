@@ -314,6 +314,8 @@ export class TimeSystem {
             },
             elapsedMs: this.elapsed(task.id, now),
             mode: task.activity === "game" ? "reference" : "actual",
+            materialKind: task.checkpoint.materialKind,
+            materialLabel: task.checkpoint.materialLabel,
           }
         : task
           ? { activity: task.activity, label: "在做自己的事", state: "doing" }
