@@ -15,6 +15,8 @@ export const TIME_DEFAULTS = {
   breakMinutes: 5,
   stepMinutes: 5,
   paceSpeed: 1.25,
+  ownPlanMinutes: 45,
+  commitmentReviewMinutes: 30,
 };
 export class TimeSystem {
   constructor(mind) {
@@ -39,7 +41,13 @@ export class TimeSystem {
   }
   save(input) {
     const value = { ...this.settings(), ...input };
-    for (const key of ["focusMinutes", "breakMinutes", "stepMinutes"])
+    for (const key of [
+      "focusMinutes",
+      "breakMinutes",
+      "stepMinutes",
+      "ownPlanMinutes",
+      "commitmentReviewMinutes",
+    ])
       if (!Number.isInteger(value[key]) || value[key] < 1 || value[key] > 120)
         throw Error("时间设置超出范围");
     if (

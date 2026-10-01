@@ -11,6 +11,7 @@ export function world({
   online = true,
   path = ":memory:",
   paced = false,
+  ownLife = false,
 } = {}) {
   let now = Date.parse(start);
   const store = createStore(path);
@@ -54,6 +55,7 @@ export function world({
   // Existing content/policy tests execute a scripted step directly. Pacing
   // acceptance worlds explicitly use paced:true and advance a real clock.
   system.mind.time.fixtureImmediate = !paced;
+  life.ownDay.disabledForTest = !ownLife;
   let n = 0;
   const open = (session, name = session) =>
     store.db

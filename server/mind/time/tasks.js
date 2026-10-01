@@ -195,6 +195,7 @@ export class Tasks {
       );
     if (anticipationId)
       this.links.link("anticipation", anticipationId, id, now);
+    for (const ref of refs) this.links.link("source", id + ":" + ref, id, now);
     this.time.event(
       id,
       "created",
@@ -364,7 +365,13 @@ export class Tasks {
     return (
       own +
       age +
-      task.priority * 100 +
+      (task.kind === "plan" &&
+      task.priority === 1 &&
+      recent.length === 2 &&
+      recent.every((t) => t.kind === "promise")
+        ? 2
+        : task.priority) *
+        100 +
       Math.min(8, Number(person?.closeness || 0) * 8)
     );
   }

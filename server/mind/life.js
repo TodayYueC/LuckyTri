@@ -42,6 +42,7 @@ import { LifeGrowth } from "./life-growth.js";
 import { LifeDiary } from "./life-diary.js";
 import { LifePresence } from "./life-presence.js";
 import { LifeActivities } from "./life-activities.js";
+import { OwnDay } from "./own-day.js";
 
 export class Life {
   constructor(chat, { now = chat.now || Date.now, online = () => false } = {}) {
@@ -62,6 +63,7 @@ export class Life {
     this.journal = new LifeDiary(this);
     this.presence = new LifePresence(this);
     this.activities = new LifeActivities(this);
+    this.ownDay = new OwnDay(this);
   }
   settings() {
     return { ...LIFE_DEFAULTS, ...this.repo.config("life", {}) };
@@ -203,6 +205,8 @@ export class Life {
       return night.kind === "memory"
         ? this.rememberAtNight(night.session, night.day, now)
         : this.reviewPeriod(now);
+    const care = await this.ownDay.run(now);
+    if (care) return care;
     const activity = await this.activities.run(now);
     if (activity) return activity;
     if (this.mind.time.primary())

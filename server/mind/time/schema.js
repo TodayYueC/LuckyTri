@@ -21,6 +21,9 @@ export function migrateTime(db) {
     CREATE INDEX IF NOT EXISTS mind_time_task_aliases_task ON mind_time_task_aliases(task_id);
     CREATE TABLE IF NOT EXISTS mind_time_activity_ticks(span_id TEXT NOT NULL,started INTEGER NOT NULL,ended INTEGER NOT NULL,PRIMARY KEY(span_id,ended));
     CREATE INDEX IF NOT EXISTS mind_time_activity_ticks_time ON mind_time_activity_ticks(ended,started);
+    CREATE TABLE IF NOT EXISTS mind_time_commitment_reviews(seq INTEGER PRIMARY KEY,reviewed INTEGER NOT NULL,task_ids TEXT NOT NULL DEFAULT '[]');
+    CREATE INDEX IF NOT EXISTS mind_time_assistant_review ON core_events(seq,time,session_id) WHERE role='assistant';
+    CREATE INDEX IF NOT EXISTS mind_time_source_lookup ON mind_time_task_aliases(kind,substr(alias_id,instr(alias_id,':')+1));
   `);
   const columns = new Set(
     db
