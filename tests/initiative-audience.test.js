@@ -90,7 +90,7 @@ test("群聊建议经assistant、self与手记传播后，仍只认实际参与�
       w.mind.thoughts.get(note),
       "private:10001",
       w.now(),
-    ).allowed,
+    ).shared,
     false,
   );
   const chosen = w.life.initiative.chooseContact(
@@ -98,13 +98,21 @@ test("群聊建议经assistant、self与手记传播后，仍只认实际参与�
     contacts,
     w.now(),
   );
-  assert.equal(chosen.session, "private:10002");
   assert.equal(
+    chosen.session,
+    "private:10001",
+    "非参与者保留为候选，最后由主动回合判断是否值得聊",
+  );
+  assert.equal(
+    w.life.initiative.audience(w.mind.thoughts.get(note), chosen.session)
+      .shared,
+    false,
+  );
+  assert.ok(
     w.life.initiative.chooseContact(
       { id: note, audience: "private" },
       contacts.slice(0, 2),
     ),
-    null,
   );
   assert.equal(
     w.store.db.prepare("SELECT total_changes() n").get().n,
@@ -114,7 +122,7 @@ test("群聊建议经assistant、self与手记传播后，仍只认实际参与�
   assert.equal(w.calls.length, 0);
 });
 
-test("历史待发草稿选错对象时不发，不改派、不重试，想法和拒绝原因仍保留", async (t) => {
+test("历史草稿带错共同经历时可以改成新话题，未参与者仍可收到值得分享的想法", async (t) => {
   const { w, note } = scenario(t);
   w.mind.thoughts.planOutreach(note, {
     session: "private:10001",
@@ -122,13 +130,35 @@ test("历史待发草稿选错对象时不发，不改派、不重试，想法�
     reason: "错误地把别人的事认成当前对象的项目",
     time: w.now(),
   });
-  assert.equal(await w.life.reachOut(), null);
+  w.answers.turn = (data) => {
+    assert.equal(data.context.expression.audience.shared, false);
+    assert.equal(data.context.expression.audience.mode, "new_topic");
+    assert.match(data.context.expression.audience.guidance, /是否值得分享/);
+    return {
+      choice: "speak",
+      reason: "他也关心开发工具，这个取舍值得分享",
+      bubbles: data.context.expression.words,
+    };
+  };
+  w.answers.validation = (data) => {
+    assert.match(data.task, /未参与者也可以聊/);
+    return {
+      ok: !data.response.bubbles.join("").includes("咱们"),
+      issues: ["对方未参与，不能假装这是咱们的项目，改为介绍新想法"],
+    };
+  };
+  w.answers.rewrite = () => ({
+    bubbles: ["刚聊到远程连接，我觉得少一个客户端依赖会省事些，想听听你的看法"],
+    reason: "给背景再分享自己的取舍",
+  });
+  assert.equal((await w.life.reachOut()).status, "outreach-sent");
   const saved = w.mind.thoughts.get(note);
-  assert.equal(saved.outreach_status, "skipped");
+  assert.equal(saved.outreach_status, "sent");
   assert.equal(saved.status, "open");
-  assert.match(saved.outreach_wait_reason, /未参与/);
-  assert.equal(w.sent.length, 0);
-  assert.equal(w.calls.length, 0);
+  assert.equal(w.sent.length, 1);
+  assert.equal(w.sent[0].session, "private:10001");
+  assert.ok(!w.sent[0].text.includes("咱们"));
+  assert.match(w.sent[0].text, /刚聊到/);
   w.advance(30 * MINUTE);
   assert.equal(await w.life.reachOut(), null);
 });
@@ -153,8 +183,16 @@ test("实际群聊参与者可以换到私聊接续，发送语境保留原会�
   assert.match(turn.system, /当前对象参与过/);
 });
 
-test("绕过生活调度或伪造audience字段也不能向未参与者发旧话题", async (t) => {
+test("主动回合重算参与信息，非参与者可以聊但不能伪造shared字段", async (t) => {
   const { w, note } = scenario(t);
+  w.answers.turn = (data) => {
+    assert.equal(data.context.expression.audience.shared, false);
+    assert.equal(data.context.expression.audience.mode, "new_topic");
+    return {
+      choice: "silent",
+      reason: "现在没有足够分享动机，不想为了开口搬运技术建议",
+    };
+  };
   const trace = await w.system.initiate("private:10001", {
     type: "presence",
     data: {
@@ -168,12 +206,12 @@ test("绕过生活调度或伪造audience字段也不能向未参与者发旧话
     },
   });
   assert.equal(trace.status, "silent");
-  assert.match(trace.reason, /未参与/);
+  assert.match(trace.reason, /没有足够分享动机/);
   assert.equal(w.sent.length, 0);
-  assert.equal(w.calls.length, 0);
+  assert.equal(w.calls.filter((call) => call.stage === "turn").length, 1);
 });
 
-test("独处整理发现对象错配时保留理解，不生成向未参与者发送的安排", (t) => {
+test("独处可以计划向未参与者分享公开话题，是否实际聊由主动回合再决定", (t) => {
   const { w, note } = scenario(t);
   const added = w.life.writeThought(
     { content: "直连配置有新的理解", sources: [`t:${note}`] },
@@ -184,11 +222,16 @@ test("独处整理发现对象错配时保留理解，不生成向未参与者�
       reachable: new Set(["private:10001"]),
       id: "audit",
       now: w.now(),
-      outreach: { session: "private:10001", text: "你的ssh项目我后来想了下" },
+      outreach: {
+        session: "private:10001",
+        text: "刚聊到ssh直连，想听听你怎么看",
+        reason: "对方可能会对开发工具的取舍有想法",
+      },
     },
   );
   assert.ok(added);
-  assert.equal(w.mind.thoughts.get(added).outreach_status, "none");
+  assert.equal(w.mind.thoughts.get(added).outreach_status, "planned");
+  assert.equal(w.mind.thoughts.get(added).outreach_session, "private:10001");
 });
 
 test("自己的愿望、阅读与执行经历仍可以开新话题；首次分享不会凭空成为共同项目", async (t) => {
@@ -257,7 +300,7 @@ test("生成期间来源撤销不继续发送；被删除和模拟的来源不�
       w.mind.thoughts.get(note),
       "private:10002",
       w.now(),
-    ).allowed,
+    ).shared,
     false,
   );
   assert.equal(
@@ -279,7 +322,7 @@ test("参与过也不能跨出保密范围，同号跨平台也不会被认成�
       w.mind.thoughts.get(note),
       "discord:bot:private:10002",
       w.now(),
-    ).allowed,
+    ).shared,
     false,
   );
   w.store.db
@@ -298,16 +341,24 @@ test("参与过也不能跨出保密范围，同号跨平台也不会被认成�
   );
 });
 
-test("复现先生成SSH想法再因熟悉程度找错人：独处输入有参与者，未参与对象不收到主动消息", async (t) => {
+test("即使只有未参与者可联系，也由她判断不值得时沉默并留下自己的理由", async (t) => {
   const { w, self } = scenario(t);
   w.life.initiative.contacts = () => contacts.slice(0, 1);
   w.answers.expression = {
     note: "我想把连接方式的边界想清楚，先确认何时确实需要穿透而何时还可以直连",
     share: true,
     words: ["对了，ssh那个咱们两三个人可以直接连接"],
-    reason: "误以为是阿明的项目",
+    reason: "想把连接方式的取舍拿出来聊聊",
     audience: "private",
     sources: [`s:${self.thread}`],
+  };
+  w.answers.turn = (data) => {
+    assert.equal(data.context.expression.audience.shared, false);
+    assert.match(data.context.expression.audience.guidance, /也可以选择不聊/);
+    return {
+      choice: "silent",
+      reason: "他最近在看小说，这段技术取舍暂时没什么值得找他聊的",
+    };
   };
   const result = await w.life.considerPresence();
   assert.equal(result.status, "presence-silent");
@@ -321,11 +372,12 @@ test("复现先生成SSH想法再因熟悉程度找错人：独处输入有参�
   );
   assert.equal(
     w.calls.filter((c) => c.stage === "turn").length,
-    0,
-    "没有合适对象时不进入私聊生成",
+    1,
+    "未参与并非硬性禁止；进入判断后由她选择不聊",
   );
   const kept = w.mind.thoughts.list()[0];
-  assert.equal(kept.outreach_status, "none");
+  assert.equal(kept.outreach_status, "declined");
+  assert.match(kept.outreach_wait_reason, /暂时没什么值得/);
 });
 
 test("共同话题的审核仍核对项目归属，已有主动草稿不豁免对象检查", async (t) => {

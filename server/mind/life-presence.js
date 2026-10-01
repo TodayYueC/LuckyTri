@@ -214,7 +214,11 @@ export class LifePresence {
             : trace?.status === "silent"
               ? "declined"
               : "cancelled";
-        this.owner.mind.thoughts.setOutreach(t.id, status);
+        this.owner.mind.thoughts.setOutreach(
+          t.id,
+          status,
+          status === "declined" ? trace?.reason || "此刻不想聊这件事" : "",
+        );
         return {
           status: `outreach-${status}`,
           reason: trace?.reason || "没能联系",

@@ -161,14 +161,14 @@ export function initiativeAudience(mind, thought, session, now = Date.now()) {
         : aliases.has(room.sessionId)),
   );
   return {
-    allowed: shared,
+    allowed: true,
     shared,
     origin,
-    mode: "continuation",
+    mode: shared ? "continuation" : "new_topic",
     ...(!shared
       ? {
-          reason:
-            "话题来自其他会话，当前对象未参与；保留想法，不继续向他接这个话题",
+          guidance:
+            "对方未参与原话题。由她判断是否值得分享、是否适合这个人；值得就自然开启新话题并给必要背景，不能当成之前共同聊过、共同项目或对方的约定。也可以选择不聊。",
         }
       : {}),
   };
