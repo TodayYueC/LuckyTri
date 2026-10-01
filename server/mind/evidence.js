@@ -1,4 +1,5 @@
 import { evidence, parse } from "./util.js";
+import { evidenceReader } from "./evidence-read.js";
 
 // A retelling is an interpretation of an experience, not another experience.
 // Resolve all derivative citations to the same roots, without writing history.
@@ -11,6 +12,7 @@ export function evidenceRoots(
   const queue = [...evidence(sources)];
   const visited = new Set();
   const roots = new Set();
+  const read = evidenceReader(db);
   for (let cursor = 0; cursor < queue.length; cursor++) {
     if (visited.size >= 2048) return []; // Fail closed on damaged/unbounded graphs.
     const ref = queue[cursor];
@@ -20,14 +22,15 @@ export function evidenceRoots(
       id = ref.slice(2);
     if (["m", "r", "f"].includes(kind)) {
       if (kind === "m") {
-        const event = db
-            .prepare("SELECT payload FROM core_events WHERE seq=? AND time<=?")
-            .get(Number(id), before),
-          workId = parse(event?.payload, {})?.artifact?.workId;
+        const event = read(
+            "SELECT time,CASE WHEN json_valid(payload) THEN json_extract(payload,'$.artifact.workId') END work_id FROM core_events WHERE seq=?",
+            [Number(id)],
+          ),
+          workId = event?.time <= before ? event.work_id : null;
         if (workId) {
-          const work = db
-            .prepare("SELECT task_id FROM mind_time_works WHERE id=?")
-            .get(workId);
+          const work = read("SELECT task_id FROM mind_time_works WHERE id=?", [
+            workId,
+          ]);
           if (work?.task_id) {
             queue.push(`x:${work.task_id}`);
             continue;
@@ -39,40 +42,48 @@ export function evidenceRoots(
     }
     let rows = [];
     if (kind === "x") {
-      rows = db
-        .prepare(
-          "SELECT sources FROM mind_time_tasks WHERE id=? AND created<=? AND EXISTS (SELECT 1 FROM mind_time_versions v JOIN mind_time_works w ON w.id=v.work_id WHERE w.task_id=mind_time_tasks.id AND v.created<=?)",
-        )
-        .all(id, before, before);
+      rows = read(
+        "SELECT sources,created,(SELECT MIN(v.created) FROM mind_time_versions v JOIN mind_time_works w ON w.id=v.work_id WHERE w.task_id=mind_time_tasks.id) first_version FROM mind_time_tasks WHERE id=?",
+        [id],
+        true,
+      ).filter(
+        (row) =>
+          row.created <= before &&
+          row.first_version !== null &&
+          row.first_version <= before,
+      );
       if (rows.length) roots.add(ref);
     } else if (kind === "t")
-      rows = db
-        .prepare(
-          "SELECT sources,parent_id FROM mind_thoughts WHERE id=? AND created<=? AND hidden=0",
-        )
-        .all(id, before);
+      rows = read(
+        "SELECT sources,parent_id,created FROM mind_thoughts WHERE id=? AND hidden=0",
+        [id],
+        true,
+      );
     else if (kind === "d")
-      rows = db
-        .prepare("SELECT sources FROM mind_diary WHERE day=? AND created<=?")
-        .all(id, before);
+      rows = read(
+        "SELECT sources,created FROM mind_diary WHERE day=?",
+        [id],
+        true,
+      );
     else if (kind === "s")
-      rows = db
-        .prepare(
-          "SELECT sources FROM mind_self WHERE thread=? AND created<=? AND thread NOT IN (SELECT target_id FROM mind_revocations WHERE target_kind='self')",
-        )
-        .all(id, before);
+      rows = read(
+        "SELECT sources,created FROM mind_self WHERE thread=? AND thread NOT IN (SELECT target_id FROM mind_revocations WHERE target_kind='self')",
+        [id],
+        true,
+      );
     else if (kind === "g")
-      rows = db
-        .prepare(
-          "SELECT sources FROM mind_meetings WHERE id=? AND created<=? AND id NOT IN (SELECT target_id FROM mind_revocations WHERE target_kind='meeting')",
-        )
-        .all(id, before);
+      rows = read(
+        "SELECT sources,created FROM mind_meetings WHERE id=? AND id NOT IN (SELECT target_id FROM mind_revocations WHERE target_kind='meeting')",
+        [id],
+        true,
+      );
     else if (kind === "a")
-      rows = db
-        .prepare(
-          "SELECT sources FROM mind_anticipations WHERE id=? AND created<=?",
-        )
-        .all(id, before);
+      rows = read(
+        "SELECT sources,created FROM mind_anticipations WHERE id=?",
+        [id],
+        true,
+      );
+    rows = rows.filter((row) => row.created <= before);
     // A self-originated wish is one stable internal source. Retelling it
     // must not mint another one; it is distinguishable from external roots.
     if (

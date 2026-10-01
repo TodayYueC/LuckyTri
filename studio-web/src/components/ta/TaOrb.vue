@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  computed,
+  onActivated,
+  onDeactivated,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from "vue";
 import { motionOn } from "../../mood/useMood";
 import type { MoodKey } from "../../mood/themes";
 import { reactionLine } from "./reactions";
@@ -310,15 +318,19 @@ function draw(now: number, still = false) {
 
 function loop(now: number) {
   raf = requestAnimationFrame(loop);
-  if (now - last < 32) return;
+  if (now - last < 1000 / 60 - 1) return;
   last = now;
   draw(now);
 }
 
+let orbVisible = true,
+  orbActive = true;
+let visibilityObserver: IntersectionObserver | null = null;
 function animate() {
   cancelAnimationFrame(raf);
   raf = 0;
-  if (motionOn.value) raf = requestAnimationFrame(loop);
+  if (motionOn.value && orbVisible && orbActive && !document.hidden)
+    raf = requestAnimationFrame(loop);
   else draw(performance.now(), true);
 }
 
@@ -346,7 +358,7 @@ function follow(event: PointerEvent) {
 
 function watchPointer(on: boolean) {
   window.removeEventListener("pointermove", follow);
-  if (on && props.size >= 56)
+  if (on && orbVisible && orbActive && !document.hidden && props.size >= 56)
     window.addEventListener("pointermove", follow, { passive: true });
   else look.value = { x: 0, y: 0 };
 }
@@ -405,14 +417,36 @@ function heart(x: number, y: number, s: number) {
 
 watch([face, motionOn], animate);
 watch(motionOn, watchPointer);
+function visibility() {
+  animate();
+  watchPointer(motionOn.value);
+}
+onActivated(() => {
+  orbActive = true;
+  visibility();
+});
+onDeactivated(() => {
+  orbActive = false;
+  visibility();
+});
 onMounted(() => {
   animate();
   watchPointer(motionOn.value);
+  if (root.value && "IntersectionObserver" in window) {
+    visibilityObserver = new IntersectionObserver((entries) => {
+      orbVisible = entries[0].isIntersecting;
+      visibility();
+    });
+    visibilityObserver.observe(root.value);
+  }
+  document.addEventListener("visibilitychange", visibility);
 });
 onBeforeUnmount(() => {
   cancelAnimationFrame(raf);
   cancelAnimationFrame(lookFrame);
   window.removeEventListener("pointermove", follow);
+  visibilityObserver?.disconnect();
+  document.removeEventListener("visibilitychange", visibility);
   clearTimeout(sayTimer);
   clearTimeout(reactTimer);
   clearTimeout(pressTimer);

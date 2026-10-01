@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, shallowRef, watch } from "vue";
+import { computed, ref, shallowRef, watch } from "vue";
+import { usePageActivity } from "../../page-activity";
 import { readSnapshot } from "../../api";
 import { go, studio } from "../../stores/studio";
 import { presence } from "../../stores/presence";
@@ -134,10 +135,7 @@ async function load() {
   today.value = t;
 }
 
-onMounted(() => {
-  void load();
-});
-watch(() => [studio.tick, studio.pulse], load);
+usePageActivity("now", load);
 </script>
 
 <template>

@@ -92,7 +92,7 @@ watch(search, () => (visible.value = 20));
 onMounted(() => {
   load();
   timer = window.setInterval(() => {
-    if (!studio.dirty && !adding.value) load();
+    if (!document.hidden && !studio.dirty && !adding.value) load();
   }, 4000);
 });
 onUnmounted(() => clearInterval(timer));
@@ -272,9 +272,9 @@ async function consolidate() {
           <span class="eyebrow">最近发生了什么</span>
           <h2>
             {{
-              (sessions.find((s: any) => s.id === sessionId)
+              sessions.find((s: any) => s.id === sessionId)
                 ? placeName(sessions.find((s: any) => s.id === sessionId))
-                : "记忆档案")
+                : "记忆档案"
             }}
           </h2>
         </div>

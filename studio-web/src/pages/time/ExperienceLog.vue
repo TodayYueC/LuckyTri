@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { dateFormatter } from "../../formatters";
 import Empty from "../../components/ui/Empty.vue";
 const props = defineProps<{ rows: any[]; zone: string; loading: boolean }>();
 const emit = defineEmits<{
@@ -8,7 +9,7 @@ const emit = defineEmits<{
   source: [id: string];
 }>();
 const days = computed(() => {
-  const formatter = new Intl.DateTimeFormat("zh-CN", {
+  const formatter = dateFormatter("zh-CN", {
     timeZone: props.zone,
     year: "numeric",
     month: "long",
@@ -24,7 +25,7 @@ const days = computed(() => {
   return groups;
 });
 function clock(time: number) {
-  return new Intl.DateTimeFormat("zh-CN", {
+  return dateFormatter("zh-CN", {
     timeZone: props.zone,
     hour: "2-digit",
     minute: "2-digit",

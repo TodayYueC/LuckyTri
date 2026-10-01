@@ -105,6 +105,9 @@ export function mountMind(app, chat, life) {
       const thought = mind.thoughts.latest(now);
       res.json({
         name: nature.name,
+        nature: { rhythm: nature.rhythm },
+        busy: Boolean(life.busy),
+        reason: life.eligible(now),
         now,
         clock: localClock(now, mind.timeZone()),
         affect: {
@@ -380,6 +383,29 @@ export function mountMind(app, chat, life) {
       });
     }),
   );
+  // A page asks only for the projections it renders. The dock shares presence;
+  // weather and notes don't need unread messages, task history or self counts.
+  app.get(
+    "/api/mind/mood",
+    wrap((req, res) => {
+      const now = life.now(),
+        nature = mind.nature.current(now);
+      res.json({
+        clock: localClock(now, mind.timeZone()),
+        affect: mind.affect.state(now, { nature }),
+        moods: mind.affect.history({ limit: 24 }),
+        kinds: { thoughts: THOUGHT_KINDS },
+      });
+    }),
+  );
+  app.get(
+    "/api/mind/thoughts",
+    wrap((req, res) => {
+      const q = String(req.query.q || "").slice(0, 200),
+        before = Number(req.query.before) || Number.MAX_SAFE_INTEGER;
+      res.json(mind.thoughts.list({ before, q, limit: 30 }));
+    }),
+  );
   app.get(
     "/api/mind/self",
     wrap((req, res) => {
@@ -456,15 +482,13 @@ export function mountMind(app, chat, life) {
       const before = Number(req.query.before) || Number.MAX_SAFE_INTEGER;
       const now = life.now();
       res.json({
-        diaries: life
-          .diaries({ limit: 30 })
-          .map((d) => ({
-            ...d,
-            actions: mind.time.lived({
-              since: life.dayStart(d.created),
-              before: d.created,
-            }),
-          })),
+        diaries: life.diaries({ limit: 30 }).map((d) => ({
+          ...d,
+          actions: mind.time.lived({
+            since: life.dayStart(d.created),
+            before: d.created,
+          }),
+        })),
         creations: life.activities.list({ before: now }),
         chapters: life.chapters().map((c) => ({
           ...c,

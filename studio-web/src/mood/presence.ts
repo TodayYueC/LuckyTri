@@ -37,6 +37,9 @@ export interface PresenceAffect {
 }
 
 export interface Presence {
+  nature?: { rhythm?: { enabled?: boolean; wake?: string; sleep?: string } };
+  busy?: boolean;
+  reason?: string;
   currentLife?: {
     current?: {
       id?: string;

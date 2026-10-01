@@ -622,15 +622,50 @@ details > summary::-webkit-details-marker {
 }
 
 /* ---------- motion ---------- */
-.view {
-  animation: page-arrive 120ms ease-out;
+.route-page {
+  animation: page-arrive 320ms var(--spring) both;
 }
-@keyframes page-arrive {
+[data-visibility="hidden"] *,
+[data-visibility="hidden"] *::before,
+[data-visibility="hidden"] *::after {
+  animation-play-state: paused !important;
+}
+.route-page > :nth-child(-n + 6) {
+  animation: section-arrive 400ms var(--spring) both;
+}
+.route-page > :nth-child(2) {
+  animation-delay: 25ms;
+}
+.route-page > :nth-child(3) {
+  animation-delay: 45ms;
+}
+.route-page > :nth-child(4) {
+  animation-delay: 65ms;
+}
+.route-page > :nth-child(5) {
+  animation-delay: 85ms;
+}
+.route-page > :nth-child(6) {
+  animation-delay: 105ms;
+}
+@keyframes section-arrive {
   from {
-    opacity: 0.7;
+    opacity: 0.45;
+    transform: translateY(12px) scale(0.99);
   }
   to {
     opacity: 1;
+    transform: none;
+  }
+}
+@keyframes page-arrive {
+  from {
+    opacity: 0.5;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 .rise-enter-active,

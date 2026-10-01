@@ -169,6 +169,21 @@ export class Repository {
       .all(...args, ...(bounded ? [limit] : []))
       .map(eventRow);
   }
+  // Unread attention needs the last matching users, not every event since its
+  // cursor. Apply role/time filters before decoding and before the row limit.
+  unreadEvents(session, after, since, limit = 40) {
+    if (!Number.isSafeInteger(limit) || limit <= 0)
+      return this.eventsAfter(session, after, { simulated: false })
+        .filter((m) => m.role === "user" && m.time >= since)
+        .slice(-limit);
+    return this.db
+      .prepare(
+        "SELECT * FROM core_events WHERE session_id=? AND seq>? AND role='user' AND time>=? AND COALESCE(json_extract(payload,'$.simulated'),0)=0 ORDER BY seq DESC LIMIT ?",
+      )
+      .all(session, after, since, limit)
+      .reverse()
+      .map(eventRow);
+  }
   // The last few events of a session, oldest first, without reading the rest.
   recentEvents(session, limit = 20, { simulated = null, role = null } = {}) {
     const args = [session];

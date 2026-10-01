@@ -62,9 +62,36 @@ try {
   release();
   await response;
   await page.unroute("**/api/mind/bonds");
+  // A return can fetch halfway through a coalesced change burst. A later
+  // change in that same burst must still get its trailing revalidation.
+  await page.waitForTimeout(2600);
+  await page.locator('.dock-link[data-page="life"]').click();
+  await page.locator(".life").waitFor();
+  let intervened = false;
+  await page.route("**/api/mind/bonds", async (route) => {
+    const response = await route.fetch();
+    const snapshot = await response.json();
+    if (!intervened) {
+      intervened = true;
+      w.store.db
+        .prepare("UPDATE sessions SET name=? WHERE id=?")
+        .run("春日聊天室的新名字", "group:12345");
+      w.store.revision++;
+    }
+    await route.fulfill({ response, json: snapshot });
+  });
+  w.store.revision++;
+  await page.waitForTimeout(1800);
+  await page.locator('.dock-link[data-page="people"]').click();
+  await page
+    .locator(".faces h3")
+    .filter({ hasText: "春日聊天室的新名字" })
+    .waitFor({ timeout: 6500 });
+  assert.ok(intervened);
+  await page.unroute("**/api/mind/bonds");
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: cached page return, stale snapshot during slow refresh, live invalidation, isolated identities",
+    "PASS: cached page return, stale snapshot during slow refresh, trailing burst invalidation, isolated identities",
   );
 } finally {
   await browser.close();

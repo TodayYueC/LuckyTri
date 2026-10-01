@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
+import { usePageActivity } from "../../page-activity";
 import { api, readSnapshot, toast } from "../../api";
 import { go, setSub, studio } from "../../stores/studio";
 import { presence } from "../../stores/presence";
@@ -290,6 +291,7 @@ function search() {
   void load();
 }
 watch(view, (next) => {
+  if (studio.page !== "time") return;
   offset.value = 0;
   rows.value = [];
   q.value = "";
@@ -300,13 +302,16 @@ watch(view, (next) => {
       ? ""
       : next === "tasks" && taskFocus.value
         ? "tasks/" + taskFocus.value
-        : next,
+        : next === "works" && studio.sub.startsWith("works/")
+          ? studio.sub
+          : next,
   );
   void load();
 });
 watch(
-  () => studio.sub,
-  (sub) => {
+  () => [studio.page, studio.sub],
+  ([page, sub]) => {
+    if (page !== "time") return;
     const tab = sub.split("/")[0] || "today";
     if (tab === "tasks") {
       const id = sub.split("/")[1] || "";
@@ -316,18 +321,21 @@ watch(
       }
     }
     if (views.includes(tab)) view.value = tab;
+    if (
+      tab === "works" &&
+      sub.split("/")[1] &&
+      piece.value?.id !== sub.split("/")[1]
+    )
+      void openWork(sub.split("/")[1]);
   },
 );
-watch(
-  () => [studio.tick, studio.pulse],
-  () => void load(),
-);
+const pageVisible = usePageActivity("time", load);
 let liveTimer = 0;
 onMounted(() => {
   liveTimer = window.setInterval(() => {
-    if (view.value === "today" && !document.hidden) void load();
+    if (pageVisible.value && view.value === "today" && !document.hidden)
+      void load();
   }, 5000);
-  void load();
   const id = studio.sub.split("/")[1];
   if (id && view.value === "works") void openWork(id);
 });

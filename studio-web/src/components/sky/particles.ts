@@ -94,7 +94,7 @@ export class ParticleField {
       if (!this.running) return;
       this.raf = requestAnimationFrame(tick);
       const elapsed = now - this.last;
-      if (elapsed < 50) return;
+      if (elapsed < 1000 / 60 - 1) return;
       this.last = now;
       this.step(Math.min(0.05, elapsed / 1000), now / 1000);
     };

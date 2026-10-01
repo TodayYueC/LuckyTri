@@ -156,10 +156,7 @@ export class Mind {
   unread(session, { after, limit = 40, now = Date.now() } = {}) {
     const since = after ?? this.attention(session).looked_seq;
     // Anything older than half a day is history, not something to answer.
-    return this.repo
-      .eventsAfter(session, since, { simulated: false })
-      .filter((m) => m.role === "user" && m.time >= now - 12 * 3600000)
-      .slice(-limit);
+    return this.repo.unreadEvents(session, since, now - 12 * 3600000, limit);
   }
   choose({
     session,

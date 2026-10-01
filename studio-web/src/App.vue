@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, onUnmounted } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { followHash, go, reload, studio } from "./stores/studio";
 import { presence, refreshPresence, watchPresence } from "./stores/presence";
 import { AREAS, MOBILE_MORE, MOBILE_TABS, NAV, type Page } from "./router";
@@ -17,19 +17,7 @@ import NowStatusDock from "./components/shell/NowStatusDock.vue";
 import Confirm from "./components/ui/Confirm.vue";
 import Icon from "./components/ui/Icon.vue";
 import Sheet from "./components/ui/Sheet.vue";
-import NowPage from "./pages/now/NowPage.vue";
-
-const views: Record<Page, object> = {
-  now: NowPage,
-  chats: defineAsyncComponent(() => import("./pages/chats/ChatsPage.vue")),
-  heart: defineAsyncComponent(() => import("./pages/heart/HeartPage.vue")),
-  people: defineAsyncComponent(() => import("./pages/people/PeoplePage.vue")),
-  life: defineAsyncComponent(() => import("./pages/life/LifePage.vue")),
-  time: defineAsyncComponent(() => import("./pages/time/TimePage.vue")),
-  memory: defineAsyncComponent(() => import("./pages/memory/MemoryPage.vue")),
-  nature: defineAsyncComponent(() => import("./pages/nature/NaturePage.vue")),
-  system: defineAsyncComponent(() => import("./pages/system/SystemPage.vue")),
-};
+import { views, preloadPage, warmPages } from "./pages";
 
 applyTheme();
 
@@ -41,11 +29,11 @@ const name = computed(
 const activity = computed(() => presence.data?.activity?.kind || "idle");
 const moreActive = computed(() => MOBILE_MORE.includes(studio.page));
 
-let presenceTimer = 0;
-let reloadTimer = 0;
 let pulseTimer = 0;
-let lastPresence = 0;
 let streamStarted = false;
+const streamAbort = new AbortController();
+let stopPresence = () => {};
+const refreshing = ref(false);
 
 // Server changes arrive in bursts; each follower gets its own pace.
 function onServerChange(value: unknown) {
@@ -54,35 +42,36 @@ function onServerChange(value: unknown) {
     if ((value as { revision?: number })?.revision === studio.core?.revision)
       return;
   }
-  expireReads();
-  const now = Date.now();
-  clearTimeout(presenceTimer);
-  presenceTimer = window.setTimeout(
-    () => {
-      lastPresence = Date.now();
-      refreshPresence();
-    },
-    now - lastPresence > 2000 ? 0 : 1200,
-  );
-  if (!studio.dirty && studio.page !== "chats") {
-    clearTimeout(reloadTimer);
-    reloadTimer = window.setTimeout(() => reload().catch(() => {}), 1200);
-  }
-  if (!pulseTimer)
+  if (!pulseTimer) {
+    expireReads();
     pulseTimer = window.setTimeout(() => {
       pulseTimer = 0;
+      if (document.hidden) return;
+      // A navigation may have read halfway through this burst. Expire again
+      // at its trailing refresh so later events aren't hidden by that read.
+      expireReads();
+      void refreshPresence();
+      if (!studio.dirty && studio.page !== "chats")
+        void reload().catch(() => {});
       studio.pulse += 1;
-    }, 3000);
+    }, 2000);
+  }
 }
 
 async function refresh() {
+  if (refreshing.value) return;
   if (studio.dirty) {
     toast("请先保存草稿");
     return;
   }
-  clearReads();
-  await Promise.all([reload(), refreshPresence()]);
-  studio.tick += 1;
+  refreshing.value = true;
+  try {
+    clearReads();
+    await Promise.all([reload(), refreshPresence()]);
+    studio.tick += 1;
+  } finally {
+    refreshing.value = false;
+  }
 }
 
 function focusMain() {
@@ -92,25 +81,42 @@ function focusMain() {
 function reloadPage() {
   window.location.reload();
 }
+function visibleAgain() {
+  document.documentElement.dataset.visibility = document.hidden
+    ? "hidden"
+    : "visible";
+  if (!document.hidden) {
+    expireReads();
+    if (!studio.dirty && studio.page !== "chats") void reload().catch(() => {});
+    studio.pulse++;
+  }
+}
 
 onMounted(async () => {
   void loadWallpapers();
   followHash();
   window.addEventListener("hashchange", followHash);
   window.addEventListener("popstate", followHash);
+  void preloadPage(studio.page).catch(() => {});
+  warmPages();
   try {
     await reload();
   } catch (error) {
     studio.error = (error as Error).message;
     return;
   }
-  watchPresence();
-  subscribe(onServerChange);
+  stopPresence = watchPresence();
+  document.addEventListener("visibilitychange", visibleAgain);
+  void subscribe(onServerChange, { signal: streamAbort.signal });
 });
 
 onUnmounted(() => {
   window.removeEventListener("hashchange", followHash);
   window.removeEventListener("popstate", followHash);
+  streamAbort.abort();
+  clearTimeout(pulseTimer);
+  stopPresence();
+  document.removeEventListener("visibilitychange", visibleAgain);
 });
 </script>
 
@@ -162,6 +168,8 @@ onUnmounted(() => {
             :aria-current="studio.page === key ? 'page' : undefined"
             :title="AREAS[key].label"
             @click="go(key)"
+            @pointerenter="preloadPage(key).catch(() => {})"
+            @focus="preloadPage(key).catch(() => {})"
           >
             <Icon :name="key" />
             <span class="rail-label">{{ AREAS[key].label }}</span>
@@ -220,6 +228,8 @@ onUnmounted(() => {
               class="icon-button"
               aria-label="刷新当前数据"
               title="刷新"
+              :disabled="refreshing"
+              :class="{ spinning: refreshing }"
               @click="refresh"
             >
               <Icon name="refresh" />
@@ -229,8 +239,23 @@ onUnmounted(() => {
         <div v-if="studio.dirty" class="draft-banner" role="status">
           <span class="dot warn"></span>草稿还没保存，保存后才会生效
         </div>
-        <div :key="studio.page" class="view" :class="'page-' + studio.page">
-          <component :is="views[studio.page]" />
+        <div class="view" :class="'page-' + studio.page">
+          <KeepAlive
+            :max="5"
+            :include="[
+              'NowPage',
+              'HeartPage',
+              'PeoplePage',
+              'LifePage',
+              'TimePage',
+            ]"
+          >
+            <component
+              :is="views[studio.page]"
+              :key="studio.page"
+              class="route-page"
+            />
+          </KeepAlive>
         </div>
       </main>
     </div>
@@ -298,6 +323,14 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.spinning :deep(svg) {
+  animation: refresh-turn 700ms linear infinite;
+}
+@keyframes refresh-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .startup {
   position: relative;
   z-index: 1;

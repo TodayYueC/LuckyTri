@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, shallowRef, watch } from "vue";
+import { computed, ref, shallowRef, watch } from "vue";
+import { usePageActivity } from "../../page-activity";
 import { readSnapshot } from "../../api";
 import { go, setSub, studio } from "../../stores/studio";
 import { presence } from "../../stores/presence";
@@ -47,15 +48,17 @@ async function toggleStory() {
   storyVersions.value = storyVersions.value ? null : await mind.story();
 }
 
-watch(view, (next) => setSub(next === "diary" ? "" : next));
+watch(view, (next) => {
+  if (studio.page === "life") setSub(next === "diary" ? "" : next);
+});
 watch(
-  () => studio.sub,
-  (sub) => {
+  () => [studio.page, studio.sub],
+  ([page, sub]) => {
+    if (page !== "life") return;
     view.value = VIEWS.includes(sub) ? sub : "diary";
   },
 );
-watch(() => [studio.tick, studio.pulse], load);
-onMounted(load);
+usePageActivity("life", load);
 </script>
 
 <template>

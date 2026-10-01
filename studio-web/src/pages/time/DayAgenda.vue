@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { dateFormatter } from "../../formatters";
 const props = defineProps<{ agenda: any }>();
 const emit = defineEmits<{ task: [id: string] }>();
 const nearby = ref(true);
@@ -18,7 +19,7 @@ const windowRange = computed(() => {
 const clock = (at: number) =>
   at === props.agenda.end
     ? "24:00"
-    : new Intl.DateTimeFormat("zh-CN", {
+    : dateFormatter("zh-CN", {
         timeZone: props.agenda.zone,
         hour: "2-digit",
         minute: "2-digit",

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, ref } from "vue";
 import { toast } from "../../api";
 import { presence, refreshPresence } from "../../stores/presence";
 import { studio } from "../../stores/studio";
@@ -8,7 +8,7 @@ import { activityLine, latelyLine, statusLine } from "../../mood/presence";
 import { mind } from "../../plates/mind";
 import { ago, placeName } from "../../format";
 
-const overview = ref<any>(null);
+const overview = computed(() => presence.data);
 const running = ref(false);
 const p = computed(() => presence.data);
 const affect = computed(() => p.value?.affect || overview.value?.affect || {});
@@ -21,14 +21,6 @@ const busyMind = computed(
     ["solitude", "diary", "review", "night"].includes(activity.value),
 );
 
-async function load() {
-  try {
-    overview.value = await mind.overview();
-  } catch {
-    // The shared presence store remains available while the overview refreshes.
-  }
-}
-
 async function run(kind: "reflect" | "review") {
   running.value = true;
   try {
@@ -38,15 +30,9 @@ async function run(kind: "reflect" | "review") {
     toast((error as Error).message, true);
   } finally {
     running.value = false;
-    await Promise.all([load(), refreshPresence()]);
+    await refreshPresence();
   }
 }
-
-onMounted(() => void load());
-watch(
-  () => [studio.tick, studio.pulse],
-  () => void load(),
-);
 </script>
 
 <template>

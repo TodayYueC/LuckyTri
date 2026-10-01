@@ -34,7 +34,12 @@ export function watchPresence() {
   timer = window.setInterval(() => {
     if (!document.hidden) refreshPresence();
   }, 30000);
-  document.addEventListener("visibilitychange", () => {
+  const visible = () => {
     if (!document.hidden) refreshPresence();
-  });
+  };
+  document.addEventListener("visibilitychange", visible);
+  return () => {
+    clearInterval(timer);
+    document.removeEventListener("visibilitychange", visible);
+  };
 }

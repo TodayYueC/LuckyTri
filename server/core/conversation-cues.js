@@ -1,9 +1,11 @@
 import { claimedPlay } from "../mind/guard.js";
 
 // Stable message timestamps stay with history; changing clock/style cues belong at the tail.
+const clockFormats = new Map();
 export function localClock(time, timeZone = "Asia/Shanghai") {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat("zh-CN", {
+  let formatter = clockFormats.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("zh-CN", {
       timeZone,
       year: "numeric",
       month: "2-digit",
@@ -11,9 +13,13 @@ export function localClock(time, timeZone = "Asia/Shanghai") {
       hour: "2-digit",
       minute: "2-digit",
       hourCycle: "h23",
-    })
-      .formatToParts(new Date(time))
-      .map((p) => [p.type, p.value]),
+    });
+    clockFormats.set(timeZone, formatter);
+    if (clockFormats.size > 32)
+      clockFormats.delete(clockFormats.keys().next().value);
+  }
+  const parts = Object.fromEntries(
+    formatter.formatToParts(new Date(time)).map((p) => [p.type, p.value]),
   );
   const hour = Number(parts.hour);
   return {

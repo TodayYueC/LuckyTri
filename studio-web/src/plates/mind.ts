@@ -1,7 +1,10 @@
 import { api } from "../api";
+import { dateFormatter } from "../formatters";
 
 export const mind = {
   overview: () => api("/mind"),
+  mood: () => api("/mind/mood"),
+  notes: (q = "") => api("/mind/thoughts?q=" + encodeURIComponent(q)),
   presence: () => api("/mind/presence"),
   today: () => api("/mind/today"),
   person: (id: string) => api("/mind/people/" + encodeURIComponent(id)),
@@ -156,7 +159,7 @@ export function when(
   timeZone = "Asia/Shanghai",
 ) {
   if (!value) return "还没有";
-  return new Intl.DateTimeFormat("zh-CN", {
+  return dateFormatter("zh-CN", {
     timeZone,
     month: "2-digit",
     day: "2-digit",

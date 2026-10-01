@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, shallowRef, watch } from "vue";
+import { computed, ref, shallowRef, watch } from "vue";
+import { usePageActivity } from "../../page-activity";
 import { readSnapshot } from "../../api";
 import { setSub, studio } from "../../stores/studio";
 import { presence } from "../../stores/presence";
@@ -48,17 +49,18 @@ function close() {
 }
 
 watch(view, (next) => {
+  if (studio.page !== "people") return;
   if (!personId.value) setSub(next === "list" ? "list" : "");
 });
 watch(
-  () => studio.sub,
-  (sub) => {
+  () => [studio.page, studio.sub],
+  ([page, sub]) => {
+    if (page !== "people") return;
     if (sub === "list") view.value = "list";
     personId.value = sub && sub !== "list" ? sub : null;
   },
 );
-watch(() => [studio.tick, studio.pulse], load);
-onMounted(load);
+usePageActivity("people", load);
 </script>
 
 <template>

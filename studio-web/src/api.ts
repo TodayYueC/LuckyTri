@@ -3,10 +3,13 @@ import { reads } from "./read-cache";
 
 const cachedPaths = new Set([
   "/mind",
+  "/mind/mood",
   "/mind/today",
   "/mind/self",
   "/mind/bonds",
   "/mind/nature",
+  "/core/state",
+  "/state",
 ]);
 let cacheToken = "";
 function checkToken() {
@@ -27,6 +30,12 @@ export function clearReads() {
 }
 export function readVersion() {
   return reads.version;
+}
+
+// Explicit views such as feedback need a new observation, even just after boot.
+export function freshRead(path: string): Promise<any> {
+  checkToken();
+  return request(path, "GET");
 }
 
 let asking: Promise<string | null> | null = null;
@@ -53,6 +62,9 @@ export function api(
   if (
     (method === "GET" &&
       (cachedPaths.has(path) ||
+        path.startsWith("/core/memories?") ||
+        path.startsWith("/core/memory-summary?") ||
+        path.startsWith("/mind/thoughts?") ||
         path.startsWith("/mind/life?") ||
         path.startsWith("/mind/people/"))) ||
     (method === "GET" &&
@@ -62,7 +74,7 @@ export function api(
     return reads.get(
       path,
       () => request(path, method, body),
-      path === "/mind/time" ? 2000 : 15000,
+      ["/mind/time", "/state", "/core/state"].includes(path) ? 2000 : 15000,
     );
   return request(path, method, body);
 }

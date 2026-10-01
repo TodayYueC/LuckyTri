@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, shallowRef, watch } from "vue";
+import { computed, ref, shallowRef, watch } from "vue";
+import { usePageActivity } from "../../page-activity";
 import { readSnapshot } from "../../api";
 import { toast } from "../../api";
 import { askText } from "../../dialog";
@@ -24,10 +25,8 @@ import NotesWall from "./NotesWall.vue";
 
 const narrow = useMedia("(max-width: 760px)");
 const self = shallowRef<any>(readSnapshot("/mind/self") || null);
-const overview = shallowRef<any>(readSnapshot("/mind") || null);
-const thoughts = shallowRef<any[]>(
-  readSnapshot("/mind/life?q=")?.thoughts || [],
-);
+const overview = shallowRef<any>(readSnapshot("/mind/mood") || null);
+const thoughts = shallowRef<any[]>(readSnapshot("/mind/thoughts?q=") || []);
 const query = ref("");
 const view = ref(
   studio.sub === "notes"
@@ -83,13 +82,13 @@ async function load() {
   const sequence = ++loadSequence;
   const [s, o, l] = await Promise.all([
     mind.self(),
-    mind.overview(),
-    mind.life(query.value),
+    mind.mood(),
+    mind.notes(query.value),
   ]);
   if (sequence !== loadSequence) return;
   self.value = s;
   overview.value = o;
-  thoughts.value = l.thoughts;
+  thoughts.value = l;
   if (chosen.value)
     chosen.value =
       s.threads.find((t: any) => t.thread === chosen.value.thread) || null;
@@ -98,8 +97,8 @@ async function load() {
 async function search(q: string) {
   const sequence = ++loadSequence;
   query.value = q;
-  const result = await mind.life(q);
-  if (sequence === loadSequence) thoughts.value = result.thoughts;
+  const result = await mind.notes(q);
+  if (sequence === loadSequence) thoughts.value = result;
 }
 
 async function open(t: any) {
@@ -129,16 +128,18 @@ async function revoke(t: any) {
   }
 }
 
-watch(view, (next) => setSub(next === "stars" ? "" : next));
+watch(view, (next) => {
+  if (studio.page === "heart") setSub(next === "stars" ? "" : next);
+});
 watch(
-  () => studio.sub,
-  (sub) => {
+  () => [studio.page, studio.sub],
+  ([page, sub]) => {
+    if (page !== "heart") return;
     if (sub === "notes" || sub === "list") view.value = sub;
     else if (!sub && view.value === "notes") view.value = "stars";
   },
 );
-watch(() => [studio.tick, studio.pulse], load);
-onMounted(load);
+usePageActivity("heart", load);
 </script>
 
 <template>

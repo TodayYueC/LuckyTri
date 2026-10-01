@@ -1,9 +1,10 @@
+import { dateFormatter } from "./formatters";
 export function clockTime(
   value: number | null | undefined,
   timeZone = "Asia/Shanghai",
 ) {
   if (!value) return "";
-  return new Intl.DateTimeFormat("zh-CN", {
+  return dateFormatter("zh-CN", {
     timeZone,
     hour: "2-digit",
     minute: "2-digit",
@@ -20,7 +21,7 @@ export function weekday(day: string) {
   const d = new Date(day + "T12:00:00");
   return Number.isNaN(d.getTime())
     ? ""
-    : new Intl.DateTimeFormat("zh-CN", { weekday: "short" }).format(d);
+    : dateFormatter("zh-CN", { weekday: "short" }).format(d);
 }
 
 export function ago(value: number | null | undefined, now = Date.now()) {
@@ -63,7 +64,9 @@ export function placeName(input: {
   const native = nativeId(input.id || "");
   const raw = String(input.name || "").trim();
   const stripped = raw.replace(/^(群聊|私聊)\s+/, "");
-  const kind = input.kind || (String(input.id || "").startsWith("private:") ? "private" : "group");
+  const kind =
+    input.kind ||
+    (String(input.id || "").startsWith("private:") ? "private" : "group");
   if (!raw || stripped === native || NUMERIC_ID.test(stripped))
     return kind === "private" ? "未命名的人" : "未命名的群";
   return raw;
