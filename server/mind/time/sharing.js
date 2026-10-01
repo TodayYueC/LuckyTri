@@ -249,7 +249,11 @@ export class Sharing {
           "UPDATE mind_time_tasks SET share_state=?,share_reason=? WHERE id=?",
         )
         .run(state, trace.error || "", task.id);
-      if (state === "sent" && task.anticipation_id)
+      if (
+        state === "sent" &&
+        task.anticipation_id &&
+        !task.checkpoint.contract?.originalGoal
+      )
         life.mind.anticipations.close(task.anticipation_id, {
           status: "done",
           note: "作品已全部确认交付",

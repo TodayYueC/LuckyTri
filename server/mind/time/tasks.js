@@ -2,6 +2,10 @@ import { randomUUID } from "node:crypto";
 import { evidenceRoots } from "../evidence.js";
 import { dayKey, evidence, parse, similar, text, zonedTime } from "../util.js";
 import { hasCredential } from "../guard.js";
+import { taskIntent, intentRecipient } from "./intent.js";
+import { TaskLinks } from "./task-links.js";
+import { deadlineAt, taskSchedule } from "./schedule.js";
+import { DeliveryLinks } from "./delivery-links.js";
 
 export const TASK_STATES = [
   "todo",
@@ -12,6 +16,7 @@ export const TASK_STATES = [
   "done",
   "abandoned",
 ];
+export const PRIORITIES = { 0: "低", 1: "普通", 2: "高", 3: "最高" };
 export const ACTIVITY_LABELS = {
   write: "写作",
   read: "阅读",
@@ -39,6 +44,8 @@ export class Tasks {
   constructor(time) {
     this.time = time;
     this.db = time.db;
+    this.links = new TaskLinks(this);
+    this.delivery = new DeliveryLinks(this);
   }
   get(id) {
     return decode(
@@ -48,7 +55,7 @@ export class Tasks {
   list({ state = "", limit = 40, offset = 0 } = {}) {
     const rows = this.db
       .prepare(
-        `SELECT * FROM mind_time_tasks ${state ? "WHERE state=?" : ""} ORDER BY CASE state WHEN 'doing' THEN 0 WHEN 'done' THEN 2 WHEN 'abandoned' THEN 3 ELSE 1 END,COALESCE(due_at,9223372036854775807),created DESC LIMIT ? OFFSET ?`,
+        `SELECT * FROM mind_time_tasks WHERE ${state ? "state=?" : "json_extract(checkpoint,'$.mergedInto') IS NULL"} ORDER BY CASE state WHEN 'doing' THEN 0 WHEN 'done' THEN 2 WHEN 'abandoned' THEN 3 ELSE 1 END,priority DESC,created LIMIT ? OFFSET ?`,
       )
       .all(
         ...(state ? [state] : []),
@@ -57,13 +64,8 @@ export class Tasks {
       );
     return rows.map(decode).map((row) => ({
       ...row,
-      overdue:
-        !!row.due_at &&
-        row.due_at < this.time.now() &&
-        row.state !== "abandoned" &&
-        (row.state !== "done" ||
-          (row.kind === "promise" &&
-            !["none", "sent"].includes(row.share_state))),
+      priorityLabel: PRIORITIES[row.priority],
+      schedule: taskSchedule(row, this.time),
     }));
   }
   add(
@@ -82,6 +84,9 @@ export class Tasks {
       projectId = null,
       dependsOn = null,
       activeOnly = false,
+      duePrecision = "time",
+      priority,
+      origin = "plan",
     },
     now = this.time.now(),
   ) {
@@ -91,31 +96,77 @@ export class Tasks {
     const refs = evidence(sources),
       roots = new Set(evidenceRoots(this.db, refs, now));
     if (!refs.length) return { rejected: "缺少真实来源" };
+    const privateRoots = this.time.mind.meetings.privateRoots(refs, now);
+    session = privateRoots[0] || session;
+    if (privateRoots.length && discretion !== "secret") discretion = "private";
+    const type =
+      activity && ACTIVITY_LABELS[activity]
+        ? activity
+        : classifyActivity(title);
+    subject =
+      intentRecipient(this.db, { session, subject, title, sources: refs }) ||
+      null;
+    const intent = taskIntent(this.db, {
+      title,
+      activity: type,
+      session,
+      subject,
+      sources: refs,
+      projectId,
+    });
     const prior = this.db
       .prepare(
-        `SELECT * FROM mind_time_tasks WHERE state!='abandoned' ${activeOnly ? "AND state!='done'" : ""} AND kind=? AND COALESCE(subject,'')=?`,
+        `SELECT * FROM mind_time_tasks WHERE json_extract(checkpoint,'$.mergedInto') IS NULL ${activeOnly ? "AND state NOT IN ('done','abandoned')" : ""} ${intent.key ? "AND intent_key=?" : ""} ORDER BY CASE state WHEN 'doing' THEN 0 WHEN 'done' THEN 1 WHEN 'abandoned' THEN 3 ELSE 2 END,created`,
       )
-      .all(kind, String(subject || ""))
+      .all(...(intent.key ? [intent.key] : []))
       .find(
         (row) =>
           (anticipationId && row.anticipation_id === anticipationId) ||
-          (similar(row.title, title, 0.6) &&
+          (intent.key &&
+            row.intent_key === intent.key &&
+            (!projectId || !row.project_id || projectId === row.project_id)) ||
+          (row.activity === type &&
+            taskIntent(this.db, { ...row, sources: parse(row.sources, []) })
+              .scope === intent.scope &&
+            String(row.subject || "") === String(subject || "") &&
+            !(intent.key && row.intent_key && intent.key !== row.intent_key) &&
+            similar(row.title, title, 0.6) &&
             evidenceRoots(this.db, parse(row.sources, []), now).some((ref) =>
               roots.has(ref),
             )),
       );
-    if (prior) return { duplicate: prior.id };
-    const privateRoots = this.time.mind.meetings.privateRoots(refs, now);
-    session = privateRoots[0] || session;
-    if (privateRoots.length && discretion !== "secret") discretion = "private";
-    const id = randomUUID(),
-      type =
-        activity && ACTIVITY_LABELS[activity]
-          ? activity
-          : classifyActivity(title);
+    if (prior) {
+      const existing = this.get(prior.id);
+      this.links.mergeSource(
+        existing,
+        {
+          sources: refs,
+          kind,
+          subject,
+          dueAt,
+          duePrecision,
+          anticipationId,
+          origin,
+        },
+        now,
+      );
+      if (existing.state === "abandoned") {
+        this.links.close(
+          this.get(existing.id),
+          "事项已放下，不因重新整理来源而恢复",
+          now,
+        );
+        return { suppressed: existing.id, duplicate: existing.id };
+      }
+      return { duplicate: existing.id };
+    }
+    const id = randomUUID();
+    priority ??= kind === "promise" ? 2 : 1;
+    if (!Number.isInteger(priority) || priority < 0 || priority > 3)
+      throw Error("优先级无效");
     this.db
       .prepare(
-        "INSERT INTO mind_time_tasks(id,created,updated,kind,activity,title,why,ready_at,due_at,session_id,subject,discretion,sources,anticipation_id,project_id,depends_on,state,wait_reason) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO mind_time_tasks(id,created,updated,kind,activity,title,why,ready_at,due_at,session_id,subject,discretion,sources,anticipation_id,project_id,depends_on,state,wait_reason,intent_key,due_precision,priority) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
       )
       .run(
         id,
@@ -126,7 +177,7 @@ export class Tasks {
         title,
         text(why, 300),
         Number.isFinite(readyAt) ? readyAt : now,
-        Number.isFinite(dueAt) ? dueAt : null,
+        deadlineAt(dueAt, duePrecision, this.time.mind.timeZone()),
         session,
         subject ? String(subject) : null,
         discretion,
@@ -136,7 +187,12 @@ export class Tasks {
         dependsOn,
         type === "unknown" ? "waiting" : "todo",
         type === "unknown" ? "需要明确可以执行的内容" : "",
+        intent.key,
+        duePrecision,
+        priority,
       );
+    if (anticipationId)
+      this.links.link("anticipation", anticipationId, id, now);
     this.time.event(
       id,
       "created",
@@ -152,9 +208,8 @@ export class Tasks {
         "SELECT * FROM mind_anticipations WHERE kind IN ('plan','promise') AND created<=? ORDER BY created",
       )
       .all(now)) {
-      const old = this.db
-        .prepare("SELECT id,state FROM mind_time_tasks WHERE anticipation_id=?")
-        .get(a.id);
+      const link = this.links.byAnticipation(a.id),
+        old = link ? this.get(this.links.canonical(link.id)) : null;
       if (old) {
         if (
           a.status === "revoked" &&
@@ -165,6 +220,8 @@ export class Tasks {
             { action: "abandon", reason: "原约定已撤销" },
             now,
           );
+        if (old.state === "abandoned")
+          this.links.close(old, "事项已放下，不自动重建待办", now);
         continue;
       }
       if (a.status !== "pending") continue;
@@ -178,6 +235,8 @@ export class Tasks {
           subject: a.subject,
           discretion: a.discretion,
           dueAt: a.due_at,
+          duePrecision: a.due_precision,
+          origin: "sync",
           anticipationId: a.id,
           why: "从自己留下的约定继续做",
         },
@@ -203,10 +262,12 @@ export class Tasks {
         words = String(m.text || "");
       if (
         m.simulated ||
+        m.artifact ||
         row.time > now ||
         /(?:不|没|别)(?:会|想|打算|准备)|开玩笑/.test(words)
       )
         continue;
+      if (this.delivery.resolve(row, m, turn, now)) continue;
       if (/(?:小说里|故事里|角色台词|模拟对话|假如我是|假设我是)/.test(words))
         continue;
       if (
@@ -224,15 +285,19 @@ export class Tasks {
         continue;
       const activity = classifyActivity(words);
       const promise = /给你|发给|答应|帮你|让你看/.test(words);
-      let dueAt = null;
+      let dueAt = null,
+        duePrecision = "none";
       const absolute = words.match(/20\d{2}-\d{2}-\d{2}(?: \d{2}:\d{2})?/);
-      if (absolute) dueAt = zonedTime(absolute[0], this.time.mind.timeZone());
-      else if (/明天|明晚|今晚|今天/.test(words)) {
+      if (absolute) {
+        dueAt = zonedTime(absolute[0], this.time.mind.timeZone());
+        duePrecision = absolute[0].includes(":") ? "time" : "day";
+      } else if (/明天|明晚|今晚|今天/.test(words)) {
         const day = dayKey(
           now + (/明天|明晚/.test(words) ? 86400000 : 0),
           this.time.mind.timeZone(),
         );
         dueAt = zonedTime(day + " 23:59", this.time.mind.timeZone());
+        duePrecision = "day";
       }
       const result = this.add(
         {
@@ -244,6 +309,8 @@ export class Tasks {
           session: row.session_id,
           subject: promise ? turn.targetUserIds?.[0] : null,
           dueAt,
+          duePrecision,
+          origin: "capture",
         },
         now,
       );
@@ -263,7 +330,7 @@ export class Tasks {
   ready(now = this.time.now()) {
     return this.db
       .prepare(
-        "SELECT * FROM mind_time_tasks WHERE state IN ('todo','scheduled','waiting','paused') AND ready_at<=? AND next_step<=? AND activity!='unknown' ORDER BY created LIMIT 100",
+        "SELECT * FROM mind_time_tasks WHERE state IN ('todo','scheduled','waiting','paused') AND ready_at<=? AND next_step<=? AND activity!='unknown' AND json_extract(checkpoint,'$.mergedInto') IS NULL ORDER BY priority DESC,created LIMIT 100",
       )
       .all(now, now)
       .map(decode)
@@ -275,9 +342,6 @@ export class Tasks {
   }
   score(task, now) {
     const age = Math.max(0, Math.min(20, (now - task.created) / 3600000));
-    const due = task.due_at
-      ? Math.max(0, 30 - (task.due_at - now) / 3600000)
-      : 0;
     const recent = this.db
       .prepare(
         "SELECT t.kind FROM mind_time_events e JOIN mind_time_tasks t ON t.id=e.task_id WHERE e.kind='done' ORDER BY e.created DESC LIMIT 2",
@@ -298,13 +362,34 @@ export class Tasks {
     return (
       own +
       age +
-      Math.min(40, due) +
+      task.priority * 100 +
       Math.min(8, Number(person?.closeness || 0) * 8)
     );
   }
-  control(id, { action, reason = "", readyAt, dueAt }, now = this.time.now()) {
+  control(
+    id,
+    { action, reason = "", readyAt, dueAt, priority },
+    now = this.time.now(),
+  ) {
     const task = this.get(id);
     if (!task) throw Error("任务不存在");
+    if (task.checkpoint.mergedInto)
+      throw Error("这条记录已合并，请调整唯一任务");
+    if (action === "priority") {
+      if (!Number.isInteger(priority) || priority < 0 || priority > 3)
+        throw Error("优先级无效");
+      this.db
+        .prepare("UPDATE mind_time_tasks SET priority=?,updated=? WHERE id=?")
+        .run(priority, now, id);
+      this.time.event(
+        id,
+        "priority",
+        reason || "调整优先级",
+        { previous: task.priority, priority },
+        now,
+      );
+      return this.get(id);
+    }
     if (["done", "abandoned"].includes(task.state)) throw Error("任务已经结束");
     const state = {
       pause: "paused",
@@ -334,6 +419,8 @@ export class Tasks {
         id,
       );
     this.time.event(id, state, reason, {}, now);
+    if (state === "abandoned")
+      this.links.close(task, reason || "这件事被放下了", now);
     return this.get(id);
   }
   wait(task, reason, next = 0, now = this.time.now()) {

@@ -17,5 +17,26 @@ export function migrateTime(db) {
     CREATE TABLE IF NOT EXISTS mind_time_sources(id TEXT PRIMARY KEY,project_id TEXT NOT NULL,created INTEGER NOT NULL,title TEXT NOT NULL,url TEXT NOT NULL,content TEXT NOT NULL,hash TEXT NOT NULL,UNIQUE(project_id,url,hash));
     CREATE TABLE IF NOT EXISTS mind_time_searches(id INTEGER PRIMARY KEY,created INTEGER NOT NULL,provider TEXT NOT NULL,query TEXT NOT NULL,state TEXT NOT NULL,error TEXT NOT NULL DEFAULT '');
     CREATE TABLE IF NOT EXISTS mind_time_shares(id TEXT PRIMARY KEY,created INTEGER NOT NULL,updated INTEGER NOT NULL,work_id TEXT NOT NULL,version INTEGER NOT NULL,session_id TEXT NOT NULL,offset INTEGER NOT NULL DEFAULT 0,state TEXT NOT NULL DEFAULT 'pending',reason TEXT NOT NULL DEFAULT '',trace_id TEXT,UNIQUE(work_id,version,session_id));
+    CREATE TABLE IF NOT EXISTS mind_time_task_aliases(kind TEXT NOT NULL,alias_id TEXT NOT NULL,task_id TEXT NOT NULL,created INTEGER NOT NULL,PRIMARY KEY(kind,alias_id));
+    CREATE INDEX IF NOT EXISTS mind_time_task_aliases_task ON mind_time_task_aliases(task_id);
   `);
+  const columns = new Set(
+    db
+      .prepare("PRAGMA table_info(mind_time_tasks)")
+      .all()
+      .map((c) => c.name),
+  );
+  if (!columns.has("intent_key"))
+    db.exec("ALTER TABLE mind_time_tasks ADD COLUMN intent_key TEXT");
+  if (!columns.has("due_precision"))
+    db.exec(
+      "ALTER TABLE mind_time_tasks ADD COLUMN due_precision TEXT NOT NULL DEFAULT 'time'",
+    );
+  if (!columns.has("priority"))
+    db.exec(
+      "ALTER TABLE mind_time_tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 1 CHECK(priority BETWEEN 0 AND 3); UPDATE mind_time_tasks SET priority=2 WHERE kind='promise';",
+    );
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS mind_time_tasks_intent ON mind_time_tasks(intent_key);",
+  );
 }

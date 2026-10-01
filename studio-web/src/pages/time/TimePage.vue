@@ -47,6 +47,23 @@ const shares: Record<string, string> = {
   uncertain: "送达不确定，等待核对",
   sending: "正在交付",
 };
+const priorities: Record<number, string> = {
+  0: "低",
+  1: "普通",
+  2: "高",
+  3: "最高",
+};
+async function setPriority(row: any, priority: number) {
+  try {
+    await api("/mind/time/tasks/" + row.id + "/control", "POST", {
+      action: "priority",
+      priority,
+    });
+    await load();
+  } catch (e) {
+    toast((e as Error).message, true);
+  }
+}
 const minutes = (n: number) => `${Math.floor((n || 0) / 60000)} 分钟`;
 let sequence = 0;
 function path() {
@@ -399,9 +416,7 @@ onUnmounted(() => {
           <div class="row">
             <span
               class="chip"
-              :data-tone="
-                row.state === 'done' ? 'ok' : row.overdue ? 'danger' : 'quiet'
-              "
+              :data-tone="row.state === 'done' ? 'ok' : 'quiet'"
               >{{ labels[row.state] }}</span
             ><span class="faint"
               >{{
@@ -411,19 +426,54 @@ onUnmounted(() => {
                     ? "外部建议"
                     : "自己的计划"
               }}{{ row.person ? " · " + row.person : "" }}</span
-            ><span v-if="row.overdue" class="chip" data-tone="danger"
-              >已逾期</span
+            ><label class="task-priority"
+              >优先级
+              <select
+                :value="row.priority"
+                :disabled="!!row.checkpoint?.mergedInto"
+                @change="
+                  setPriority(
+                    row,
+                    Number(($event.target as HTMLSelectElement).value),
+                  )
+                "
+              >
+                <option
+                  v-for="(label, key) in priorities"
+                  :key="key"
+                  :value="key"
+                >
+                  {{ label }}
+                </option>
+              </select></label
             >
           </div>
           <h2>{{ row.title }}</h2>
           <p>{{ row.why }}</p>
           <p v-if="row.wait_reason" class="muted">{{ row.wait_reason }}</p>
           <p class="faint">
-            最早 {{ when(row.ready_at, zone)
-            }}<template v-if="row.due_at">
-              · 截止 {{ when(row.due_at, zone) }}</template
-            >
-            · 投入 {{ minutes(row.elapsedMs) }}
+            <template v-if="row.schedule?.startedAt"
+              >本段开始 {{ when(row.schedule.startedAt, zone) }}</template
+            ><template v-else-if="row.schedule?.proposedAt"
+              >{{ row.schedule.conditional ? "条件满足后建议" : "已安排" }}
+              {{ when(row.schedule.proposedAt, zone) }} —
+              {{ when(row.schedule.proposedEnd, zone) }}</template
+            ><template v-else>{{
+              row.state === "waiting"
+                ? "条件满足后再安排时间"
+                : "按优先级选择可执行事项"
+            }}</template>
+            · 本段 {{ row.schedule?.focusMinutes || 25 }} 分钟 · 投入
+            {{ minutes(row.elapsedMs) }}
+          </p>
+          <p v-if="row.schedule?.outcome" class="muted">
+            本段目标：{{ row.schedule.outcome }}
+          </p>
+          <p v-if="row.checkpoint?.contract?.originalGoal" class="faint">
+            {{
+              row.checkpoint.contract.boundary ||
+              "旧约定保留为来源；资料体验不等于真实游玩。"
+            }}
           </p>
           <p v-if="shares[row.share_state]" class="share-status">
             {{ shares[row.share_state] }} {{ row.share_reason }}
@@ -431,7 +481,16 @@ onUnmounted(() => {
           <p v-if="row.checkpoint?.next" class="muted">
             下一步：{{ row.checkpoint.next }}
           </p>
-          <small class="faint">来源 {{ row.sources.join(" · ") }}</small>
+          <details class="task-sources">
+            <summary>来源与原安排 · {{ row.sources.length }} 条</summary>
+            <p v-if="row.due_at" class="faint">
+              原话日期参考 {{ when(row.due_at, zone) }}，不作为逾期判断。
+            </p>
+            <small class="faint">{{ row.sources.join(" · ") }}</small>
+            <p v-if="row.checkpoint?.mergedInto" class="muted">
+              已合并到唯一事项，保留这条原记录。
+            </p>
+          </details>
           <div class="row">
             <button v-if="row.work_id" @click="openWork(row.work_id)">
               阅读已有正文</button

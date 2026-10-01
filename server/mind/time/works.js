@@ -10,6 +10,29 @@ export class Works {
     this.time = time;
     this.db = time.db;
     this.migrate();
+    this.linkLegacy();
+  }
+  linkLegacy() {
+    for (const row of this.db
+      .prepare(
+        "SELECT w.id,c.plan_id FROM mind_time_works w JOIN mind_creations c ON c.id=w.legacy_creation WHERE w.task_id IS NULL",
+      )
+      .all()) {
+      const task = this.db
+        .prepare(
+          "SELECT id FROM mind_time_tasks WHERE anticipation_id=? OR id=? ORDER BY created LIMIT 1",
+        )
+        .get(row.plan_id, row.plan_id);
+      if (!task) continue;
+      this.db
+        .prepare("UPDATE mind_time_works SET task_id=? WHERE id=?")
+        .run(task.id, row.id);
+      this.db
+        .prepare(
+          "UPDATE mind_time_tasks SET work_id=COALESCE(work_id,?) WHERE id=?",
+        )
+        .run(row.id, task.id);
+    }
   }
   migrate() {
     for (const row of this.db

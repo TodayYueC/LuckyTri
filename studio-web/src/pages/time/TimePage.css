@@ -170,6 +170,21 @@
 .share-status {
   color: var(--accent);
 }
+.task-priority {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.task-priority select {
+  min-width: 70px;
+  padding: 6px 10px;
+}
+.task-sources summary {
+  font-size: 12px;
+  color: var(--muted);
+}
 .time-page .list li {
   display: flex;
   flex-wrap: wrap;

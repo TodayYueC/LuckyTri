@@ -4,6 +4,7 @@ import { hasCredential } from "./guard.js";
 import { isPrivateSession } from "./memory.js";
 import { lifeSpan } from "./nature.js";
 import { classifyActivity } from "./time/tasks.js";
+import { taskIntent } from "./time/intent.js";
 import { DAY, evidence, parse, similar, text, zonedTime } from "./util.js";
 
 // What she is looking ahead to: promises she made, things she means to do,
@@ -165,6 +166,74 @@ export class Anticipations {
       )
     )
       return { rejected: "与撤销过的内容相同" };
+    if (!yearly && ["plan", "promise"].includes(kind)) {
+      const input = {
+          title: words,
+          activity: activity || classifyActivity(words),
+          subject,
+          session,
+          sources: refs,
+        },
+        intent = taskIntent(this.db, input);
+      if (intent.key) {
+        const tracked = this.mind.time?.tasks.links.find(input);
+        const prior = tracked
+          ? this.mind.time.tasks.links
+              .anticipations(tracked)
+              .map((id) => this.get(id))
+              .find((a) => a && a.status !== "revoked")
+          : this.db
+              .prepare(
+                "SELECT * FROM mind_anticipations WHERE kind IN ('plan','promise') AND status='pending' ORDER BY created",
+              )
+              .all()
+              .find(
+                (a) =>
+                  taskIntent(this.db, {
+                    title: a.content,
+                    activity: a.activity || classifyActivity(a.content),
+                    subject: a.subject,
+                    session: a.session_id,
+                    sources: parse(a.sources, []),
+                  }).key === intent.key,
+              );
+        if (tracked || prior) {
+          if (tracked) {
+            this.mind.time.tasks.links.mergeSource(
+              tracked,
+              {
+                sources: refs,
+                kind,
+                subject: who || intent.recipient,
+                dueAt: at,
+                duePrecision: precision,
+                origin,
+              },
+              time,
+            );
+            if (tracked.state === "abandoned")
+              this.mind.time.tasks.links.close(
+                tracked,
+                "原事项已放下，重复整理不能恢复",
+                time,
+              );
+          } else
+            this.db
+              .prepare("UPDATE mind_anticipations SET sources=? WHERE id=?")
+              .run(
+                JSON.stringify(
+                  evidence([...parse(prior.sources, []), ...refs]),
+                ),
+                prior.id,
+              );
+          return {
+            duplicate: prior?.id || tracked.id,
+            task: tracked?.id,
+            suppressed: tracked?.state === "abandoned",
+          };
+        }
+      }
+    }
     const key = yearly ? this.day(at).slice(5) : this.day(at);
     const same = this.db
       .prepare(

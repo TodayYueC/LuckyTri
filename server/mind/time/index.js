@@ -24,6 +24,7 @@ export class TimeSystem {
     this.sharing = new Sharing(this);
     this.search = new Search(this);
     this.games = new Games(this);
+    this.tasks.delivery.reconcile();
     // A stopped process cannot keep reading, creating or playing in the gap.
     this.db.exec(
       "UPDATE mind_time_spans SET ended=updated WHERE ended IS NULL; UPDATE mind_time_tasks SET state='paused',lease=NULL,lease_at=NULL,wait_reason='实例中断，进度已保留',revision=revision+1 WHERE state='doing';",
@@ -334,7 +335,8 @@ export class TimeSystem {
         state: row.state,
         why: row.why,
         wait: row.wait_reason,
-        overdue: row.overdue,
+        priority: row.priority,
+        priorityLabel: row.priorityLabel,
         kind: row.kind,
         share: row.share_state,
       }));
@@ -396,7 +398,11 @@ export class TimeSystem {
         .get(creation, task.id, task.anticipation_id || task.id);
     if (!actualWork && !actualCreation) throw Error("完成需要已提交的实际成果");
     this.stopSpan(task, now);
-    const share = task.kind === "promise" && task.subject ? "waiting" : "none";
+    const share =
+      (task.kind === "promise" || task.checkpoint.contract?.delivery) &&
+      task.subject
+        ? "waiting"
+        : "none";
     this.db
       .prepare(
         "UPDATE mind_time_tasks SET state='done',completed=?,updated=?,work_id=?,share_state=?,lease=NULL,lease_at=NULL,revision=revision+1 WHERE id=?",
@@ -409,7 +415,11 @@ export class TimeSystem {
       { workId, creation, sources },
       now,
     );
-    if (task.anticipation_id && share === "none")
+    if (
+      task.anticipation_id &&
+      share === "none" &&
+      !task.checkpoint.contract?.originalGoal
+    )
       this.mind.anticipations.close(task.anticipation_id, {
         status: "done",
         note: "实际活动已完成",

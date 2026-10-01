@@ -121,13 +121,14 @@ export function mountTime(app, life) {
             state: t.state,
             why: t.why,
             due_at: t.due_at,
+            priority: t.priority,
           })),
         settings: time.settings(),
         events: time.events({ limit: 20 }),
         affect: life.mind.affect.state(life.now()),
         counts: life.db
           .prepare(
-            "SELECT state,COUNT(*) count FROM mind_time_tasks GROUP BY state",
+            "SELECT state,COUNT(*) count FROM mind_time_tasks WHERE json_extract(checkpoint,'$.mergedInto') IS NULL GROUP BY state",
           )
           .all(),
       });

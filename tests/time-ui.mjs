@@ -88,6 +88,25 @@ try {
     /完成，尚未交付/,
   );
   assert.equal(await page.getByRole("button", { name: "标记完成" }).count(), 0);
+  assert.equal(await page.getByText("已逾期", { exact: true }).count(), 0);
+  const priority = page.locator(
+    '[data-task="' + task + '"] .task-priority select',
+  );
+  const prioritySaved = page.waitForResponse(
+    (r) =>
+      new URL(r.url()).pathname ===
+        "/api/mind/time/tasks/" + task + "/control" &&
+      r.request().method() === "POST",
+  );
+  await priority.selectOption("3");
+  await prioritySaved;
+  await page.waitForFunction(
+    (id) =>
+      document.querySelector('[data-task="' + id + '"] .task-priority select')
+        ?.value === "3",
+    task,
+  );
+  assert.equal(w.mind.time.tasks.get(task).priority, 3);
   await page.getByRole("tab", { name: "持续项目", exact: true }).click();
   await page.getByRole("button", { name: "打开项目" }).first().click();
   await page.getByRole("heading", { name: "已经留下的篇章" }).waitFor();
