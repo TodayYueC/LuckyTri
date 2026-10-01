@@ -67,6 +67,10 @@ test("旧96分钟资料进度恢复到40分钟安排，保留已接触位置且�
   const id = setup(w),
     { content, source } = legacy(w, id),
     time = w.mind.time;
+  assert.equal(
+    time.tasks.present(time.tasks.get(id)).timing.plannedMs,
+    40 * MINUTE,
+  );
   await w.life.activities.run();
   let task = time.tasks.get(id);
   assert.equal(task.checkpoint.activityClock.plannedMs, 40 * MINUTE);

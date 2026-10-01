@@ -67,11 +67,16 @@ export class Tasks {
   }
   present(row) {
     if (!row) return null;
+    const checkpoint =
+      row.activity === "game" && !row.checkpoint.reschedule
+        ? this.time.games.contactWindow(row, row.checkpoint, this.time.now())
+        : row.checkpoint;
+    const display = { ...row, checkpoint };
     return {
-      ...activityPresentation(row),
+      ...activityPresentation(display),
       priorityLabel: PRIORITIES[row.priority],
       schedule: taskSchedule(row, this.time),
-      timing: this.time.clock.view(row),
+      timing: this.time.clock.view(display),
     };
   }
   add(
