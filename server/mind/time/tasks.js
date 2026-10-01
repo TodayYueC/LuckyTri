@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { evidenceRoots } from "../evidence.js";
-import { dayKey, evidence, parse, similar, text, zonedTime } from "../util.js";
+import { evidence, parse, similar, text } from "../util.js";
 import { hasCredential } from "../guard.js";
-import { taskIntent, intentRecipient } from "./intent.js";
+import { taskIntent, intentRecipient, intentMessageSources } from "./intent.js";
 import { TaskLinks } from "./task-links.js";
-import { deadlineAt, taskSchedule } from "./schedule.js";
+import { deadlineAt, taskSchedule, spokenDate } from "./schedule.js";
 import { DeliveryLinks } from "./delivery-links.js";
 import { activityPresentation } from "./presentation.js";
 
@@ -63,12 +63,16 @@ export class Tasks {
         Math.max(1, Math.min(100, limit)),
         Math.max(0, offset),
       );
-    return rows.map(decode).map((row) => ({
+    return rows.map(decode).map((row) => this.present(row));
+  }
+  present(row) {
+    if (!row) return null;
+    return {
       ...activityPresentation(row),
       priorityLabel: PRIORITIES[row.priority],
       schedule: taskSchedule(row, this.time),
       timing: this.time.clock.view(row),
-    }));
+    };
   }
   add(
     {
@@ -288,27 +292,18 @@ export class Tasks {
         continue;
       const activity = classifyActivity(words);
       const promise = /给你|发给|答应|帮你|让你看/.test(words);
-      let dueAt = null,
-        duePrecision = "none";
-      const absolute = words.match(/20\d{2}-\d{2}-\d{2}(?: \d{2}:\d{2})?/);
-      if (absolute) {
-        dueAt = zonedTime(absolute[0], this.time.mind.timeZone());
-        duePrecision = absolute[0].includes(":") ? "time" : "day";
-      } else if (/明天|明晚|今晚|今天/.test(words)) {
-        const day = dayKey(
-          now + (/明天|明晚/.test(words) ? 86400000 : 0),
-          this.time.mind.timeZone(),
-        );
-        dueAt = zonedTime(day + " 23:59", this.time.mind.timeZone());
-        duePrecision = "day";
-      }
+      const { dueAt, duePrecision } = spokenDate(
+        words,
+        row.time,
+        this.time.mind.timeZone(),
+      );
       const result = this.add(
         {
           kind: promise ? "promise" : "plan",
           activity,
           title: words,
           why: "这是我实际说出口的打算",
-          sources: [row.seq],
+          sources: intentMessageSources(this.db, row, m),
           session: row.session_id,
           subject: promise ? turn.targetUserIds?.[0] : null,
           dueAt,

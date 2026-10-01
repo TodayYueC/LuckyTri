@@ -58,6 +58,13 @@ w.answers.reflection = {
   ],
 };
 await w.mind.time.search.query("月光 创作背景", { projectId });
+const ownSource = w.say("private:10001", "10001", "还想折腾点什么");
+const ownTask = w.mind.time.tasks.add({
+  title: "想一想窗外的雨",
+  activity: "think",
+  kind: "plan",
+  sources: [ownSource.seq],
+}).id;
 const server = await serve(w),
   browser = await chromium.launch({
     channel:
@@ -66,6 +73,7 @@ const server = await serve(w),
     headless: true,
   });
 try {
+  mkdirSync("workspace/ui-review", { recursive: true });
   const page = await browser.newPage({
       viewport: { width: 1440, height: 1000 },
     }),
@@ -75,6 +83,79 @@ try {
   page.on("request", (r) => {
     if (/\/api\/mind\/time\/works\/[\w-]+/.test(new URL(r.url()).pathname))
       bodies++;
+  });
+  await page.goto(server.base + "#time");
+  await page
+    .getByRole("heading", { name: "今日时间表", exact: true })
+    .waitFor();
+  assert.ok(await page.locator(".day-agenda .agenda-block.plan").count());
+  assert.match(await page.locator(".day-agenda").innerText(), /自己的安排/);
+  await page.getByRole("button", { name: "全天", exact: true }).click();
+  assert.equal(
+    await page
+      .getByRole("button", { name: "全天", exact: true })
+      .getAttribute("aria-pressed"),
+    "true",
+  );
+  for (const width of [1440, 900, 390, 320]) {
+    await page.setViewportSize({ width, height: 1000 });
+    assert.ok(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 2,
+      ),
+      `时间表 ${width} 不应横向溢出`,
+    );
+    const sizes = await page
+      .locator(".agenda-axis time")
+      .evaluateAll((elements) =>
+        elements
+          .filter((el) => el.getBoundingClientRect().width > 0)
+          .map((el) => ({
+            left: el.getBoundingClientRect().left,
+            right: el.getBoundingClientRect().right,
+          })),
+      );
+    assert.ok(
+      sizes.every((s, i) => !i || sizes[i - 1].right <= s.left + 1),
+      `时间刻度 ${width} 不应重叠`,
+    );
+    await page
+      .locator(".day-agenda")
+      .screenshot({ path: `workspace/ui-review/time-agenda-${width}.png` });
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page
+    .locator(".agenda-itinerary button")
+    .filter({ hasText: "想一想窗外的雨" })
+    .first()
+    .click();
+  await page.locator('[data-task="' + ownTask + '"]').waitFor();
+  assert.equal(
+    await page.locator(".time-task").count(),
+    1,
+    "时间表打开所选事项",
+  );
+  await page.getByRole("button", { name: "查看全部待办", exact: true }).click();
+  await page.waitForFunction(
+    () => document.querySelectorAll(".time-task").length > 1,
+  );
+  await page.getByRole("tab", { name: "今日", exact: true }).click();
+  const queued = page.waitForResponse(
+    (r) =>
+      new URL(r.url()).pathname === "/api/mind/time/care" &&
+      r.request().method() === "POST",
+  );
+  await page
+    .getByRole("button", { name: "空下来整理一下约定", exact: true })
+    .click();
+  await queued;
+  assert.equal(w.life.ownDay.status().queued, true);
+  await page
+    .getByRole("button", { name: "已记下，空下来时整理", exact: true })
+    .waitFor();
+  w.mind.time.tasks.control(ownTask, {
+    action: "abandon",
+    reason: "时间表测试场景结束",
   });
   await page.goto(server.base + "#time/works");
   await page.locator(".work-card").first().waitFor();
@@ -278,13 +359,22 @@ try {
   await page.locator(".time-settings summary").click();
   const pace = page.getByRole("spinbutton", { name: "活动节奏" });
   await pace.fill("1.5");
+  w.store.revision++;
+  await page.waitForTimeout(1800);
+  assert.equal(
+    await pace.inputValue(),
+    "1.5",
+    "后台刷新不能覆盖正在编辑的安排",
+  );
   const savedPace = page.waitForResponse(
     (r) =>
       new URL(r.url()).pathname === "/api/mind/time/settings" &&
       r.request().method() === "PUT",
   );
   await page.getByRole("button", { name: "保存安排", exact: true }).click();
-  await savedPace;
+  const savedSettings = await savedPace;
+  assert.equal(savedSettings.status(), 200);
+  assert.equal((await savedSettings.json()).paceSpeed, 1.5);
   assert.equal(w.mind.time.settings().paceSpeed, 1.5);
   assert.deepEqual(errors, []);
   console.log(

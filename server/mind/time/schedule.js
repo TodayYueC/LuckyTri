@@ -1,6 +1,22 @@
 import { dayKey, zonedTime } from "../util.js";
 import { localClock } from "../../core/conversation-cues.js";
 import { gameText } from "./presentation.js";
+export function spokenDate(words, at, zone) {
+  const absolute = String(words).match(/20\d{2}-\d{2}-\d{2}(?: \d{2}:\d{2})?/);
+  if (absolute)
+    return {
+      dueAt: zonedTime(absolute[0], zone),
+      duePrecision: absolute[0].includes(":") ? "time" : "day",
+    };
+  if (/后天|明天|明晚|今晚|今天/.test(words)) {
+    const offset = /后天/.test(words) ? 2 : /明天|明晚/.test(words) ? 1 : 0;
+    return {
+      dueAt: zonedTime(dayKey(at + offset * 86400000, zone) + " 23:59", zone),
+      duePrecision: "day",
+    };
+  }
+  return { dueAt: null, duePrecision: "none" };
+}
 export function nextAwakeSlot(mind, now) {
   const zone = mind.timeZone(),
     rhythm = mind.nature.current(now).rhythm;

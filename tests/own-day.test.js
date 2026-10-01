@@ -2,6 +2,103 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { world, MINUTE } from "./helpers/world.js";
 import { OwnDay } from "../server/mind/own-day.js";
+test("群里的间接接受也记得答应了谁，引用不能借用另一会话的人", async (t) => {
+  const w = world({ ownLife: true });
+  t.after(w.close);
+  w.open("group:1");
+  w.open("private:10002");
+  const other = w.say("private:10002", "10002", "帮我写诗");
+  const asked = w.say("group:1", "10001", "能不能帮我写个小场景");
+  const said = w.say("group:1", "bot", "行，那我晚点弄", {
+    replyTargetIds: [asked.seq, other.seq],
+  });
+  w.answers.reflection = {
+    commitments: [
+      {
+        source: `m:${said.seq}`,
+        quote: said.text,
+        accepted: true,
+        kind: "promise",
+        activity: "write",
+        title: "写一个小场景",
+      },
+    ],
+  };
+  await w.life.ownDay.run();
+  const task = w.mind.time.tasks.list()[0];
+  assert.equal(task.subject, "10001");
+  assert.equal(task.state, "todo");
+  assert.ok(task.sources.includes(`m:${asked.seq}`));
+  assert.ok(!task.sources.includes(`m:${other.seq}`));
+  const repeated = w.say("group:1", "bot", "好，那我晚点弄", {
+    replyTargetIds: [asked.seq],
+  });
+  w.life.ownDay.request();
+  w.answers.reflection.commitments = [
+    {
+      source: `m:${repeated.seq}`,
+      quote: repeated.text,
+      accepted: true,
+      kind: "promise",
+      activity: "write",
+      title: "写一个小场景",
+    },
+  ];
+  await w.life.ownDay.run();
+  assert.equal(
+    w.mind.time.tasks.list().length,
+    1,
+    "重复接受同一请求归入同一个待办",
+  );
+  w.open("private:10003");
+  const unclear = w.say("private:10003", "bot", "行，那我晚点弄");
+  w.life.ownDay.request();
+  w.answers.reflection.commitments = [
+    {
+      source: `m:${unclear.seq}`,
+      quote: unclear.text,
+      accepted: true,
+      kind: "promise",
+      activity: "write",
+      title: "写一个凭空猜到的故事",
+    },
+  ];
+  await w.life.ownDay.run();
+  assert.equal(
+    w.mind.time.tasks.list().length,
+    1,
+    "没有行动内容或接受语境不能猜出任务",
+  );
+});
+test("补回约定的相对日期依据原话时间，保留引用日期而不制造逾期", async (t) => {
+  const w = world({ ownLife: true });
+  t.after(w.close);
+  w.open("private:10001");
+  const said = w.say("private:10001", "bot", "明天给你写一首雨夜小诗");
+  w.advance(2 * 86400000);
+  w.answers.reflection = {
+    commitments: [
+      {
+        source: `m:${said.seq}`,
+        quote: said.text,
+        accepted: true,
+        kind: "promise",
+        activity: "write",
+        title: "写一首雨夜小诗",
+      },
+    ],
+  };
+  await w.life.ownDay.run();
+  const task = w.mind.time.tasks.list()[0];
+  assert.equal(task.due_at, Date.parse("2026-09-23T23:59:59.999+08:00"));
+  assert.equal(task.due_precision, "day");
+  assert.equal(task.state, "todo");
+  assert.equal(task.overdue, undefined);
+  const journal = w.store.db
+    .prepare("SELECT task_ids FROM mind_time_commitment_reviews WHERE seq=?")
+    .get(said.seq);
+  assert.deepEqual(JSON.parse(journal.task_ids), [task.id]);
+});
 test("没有人约、没有新消息也能根据自己的愿望创建待办；连续群聊不阻止", async (t) => {
   const w = world({ ownLife: true, paced: true });
   t.after(w.close);

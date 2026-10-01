@@ -38,6 +38,20 @@ test("时间接口概览、分页摘要、正文与交付状态一致，管理�
   const overview = await req("");
   assert.equal(overview.counts.find((s) => s.state === "done").count, 1);
   assert.ok(overview.today.spans.length);
+  assert.equal(overview.agenda.date, w.mind.time.agenda.view().date);
+  assert.deepEqual(await req("/agenda"), overview.agenda);
+  const focused = await req("/tasks?id=" + id);
+  assert.equal(focused.length, 1);
+  assert.equal(focused[0].id, id);
+  assert.ok(focused[0].schedule && focused[0].timing);
+  assert.deepEqual(await req("/tasks?id=missing"), []);
+  const requested = await fetch(app.base + "/api/mind/time/care", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  }).then((r) => r.json());
+  assert.equal(requested.queued, true);
+  assert.equal((await req("/care")).queued, true);
   const response = await fetch(
     app.base + "/api/mind/time/tasks/" + id + "/control",
     {

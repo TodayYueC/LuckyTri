@@ -20,6 +20,27 @@ export class OwnDay {
     this.save({ reviewRequested: true });
     return { queued: true };
   }
+  status(now = this.life.now()) {
+    const state = this.state();
+    const pending = this.db
+      .prepare(
+        "SELECT COUNT(*) n FROM core_events WHERE role='assistant' AND seq>? AND time<=? AND seq NOT IN (SELECT seq FROM mind_unlived) AND seq NOT IN (SELECT seq FROM mind_time_commitment_reviews) AND COALESCE(json_extract(payload,'$.simulated'),0)=0 AND json_extract(payload,'$.artifact') IS NULL",
+      )
+      .get(state.reviewSeq || 0, now).n;
+    const last = this.db
+      .prepare(
+        "SELECT finished,status,reason FROM mind_runs WHERE kind='day-care' AND started<=? ORDER BY started DESC LIMIT 1",
+      )
+      .get(now);
+    return {
+      queued: !!state.reviewRequested,
+      working: this.working || null,
+      reviewAt: state.reviewAt || null,
+      planAt: state.planAt || null,
+      pendingReplies: pending,
+      last: last || null,
+    };
+  }
   async run(now = this.life.now()) {
     const life = this.life,
       time = life.mind.time;
@@ -75,6 +96,7 @@ export class OwnDay {
           "day-care",
           reviewing ? "独处回看有没有漏下约定" : "想想接下来愿意做点什么",
         );
+      this.working = reviewing ? "review" : "plan";
       this.save(
         reviewing ? { reviewAt: now, reviewRequested: false } : { planAt: now },
       );
@@ -243,6 +265,7 @@ export class OwnDay {
         trace.error = reason;
         return { status: "error", reason };
       } finally {
+        this.working = null;
         life.chat.finishQuietly(
           trace,
           status === "error" ? "error" : "complete",

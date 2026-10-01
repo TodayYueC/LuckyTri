@@ -1,5 +1,6 @@
 import { parse, text, hasCredential } from "../util.js";
-import { intentRecipient } from "./intent.js";
+import { intentRecipient, intentMessageSources } from "./intent.js";
+import { spokenDate } from "./schedule.js";
 const ACTION =
   /写|读|玩|看|整理|想一想|解释|分析|发|给你|做|聊|陪|提醒|联系|分享|检查/;
 const FUTURE =
@@ -84,7 +85,8 @@ export class CommitmentReview {
   }
   apply(batch, result, now) {
     if (!Array.isArray(result?.commitments)) throw Error("约定回看格式无效");
-    const added = [];
+    const added = [],
+      perSource = new Map();
     for (const item of result.commitments.slice(0, 6)) {
       const row = batch.rows.find((r) => `m:${r.seq}` === item.source),
         quote = text(item.quote, 240),
@@ -107,7 +109,7 @@ export class CommitmentReview {
         )
       )
         continue;
-      const future = FUTURE.test(m.text);
+      const future = FUTURE.test(m.text) && ACTION.test(m.text);
       const accepted =
         /^(?:嗯[，,]?|好|行|可以|没问题|会的|答应)/.test(m.text) &&
         message.earlier.some(
@@ -129,6 +131,10 @@ export class CommitmentReview {
         .filter(Boolean);
       if (linked.length) {
         added.push(...linked.map((t) => t.id));
+        perSource.set(
+          row.seq,
+          linked.map((t) => t.id),
+        );
         continue;
       }
       if (
@@ -142,6 +148,7 @@ export class CommitmentReview {
                 session: row.session_id,
                 title: m.text,
                 sources: [row.seq],
+                accepted: true,
               })
             : null;
       const result = this.time.tasks.add(
@@ -150,16 +157,18 @@ export class CommitmentReview {
           activity: item.activity,
           title,
           why: "独处回看时补回自己实际说出口的约定",
-          sources: [row.seq],
+          sources: intentMessageSources(this.db, row, m),
           session: row.session_id,
           subject,
           origin: "commitment-review",
+          ...spokenDate(m.text, row.time, this.time.mind.timeZone()),
         },
         now,
       );
       const id = result.id || result.duplicate;
       if (id) {
         added.push(id);
+        perSource.set(row.seq, [...(perSource.get(row.seq) || []), id]);
         if (result.id && kind === "promise" && !subject)
           this.time.tasks.wait(
             this.time.tasks.get(id),
@@ -181,7 +190,11 @@ export class CommitmentReview {
         .prepare(
           "INSERT OR IGNORE INTO mind_time_commitment_reviews(seq,reviewed,task_ids) VALUES(?,?,?)",
         )
-        .run(row.seq, now, JSON.stringify([...new Set(added)]));
+        .run(
+          row.seq,
+          now,
+          JSON.stringify([...new Set(perSource.get(row.seq) || [])]),
+        );
     return [...new Set(added)];
   }
 }

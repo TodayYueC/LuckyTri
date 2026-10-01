@@ -8,6 +8,7 @@ import { askText } from "../../dialog";
 import Tabs from "../../components/ui/Tabs.vue";
 import Empty from "../../components/ui/Empty.vue";
 import Sheet from "../../components/ui/Sheet.vue";
+import DayAgenda from "./DayAgenda.vue";
 const views = ["today", "tasks", "works", "projects", "experiences"],
   view = ref(
     views.includes(studio.sub.split("/")[0])
@@ -21,16 +22,23 @@ const overview = shallowRef<any>(readSnapshot("/mind/time")),
   offset = ref(0),
   q = ref(""),
   state = ref(""),
+  taskFocus = ref(
+    studio.sub.split("/")[0] === "tasks" ? studio.sub.split("/")[1] || "" : "",
+  ),
   piece = shallowRef<any>(null),
   project = shallowRef<any>(null),
   source = shallowRef<any>(null),
   busy = ref(false),
   hasMore = ref(false),
+  settingsDirty = ref(false),
+  settingsSaving = ref(false),
   settings = ref<any>({
     focusMinutes: 25,
     breakMinutes: 5,
     stepMinutes: 5,
     paceSpeed: 1.25,
+    ownPlanMinutes: 45,
+    commitmentReviewMinutes: 30,
   });
 const zone = computed(() => presence.data?.clock?.timeZone || "Asia/Shanghai");
 const labels: Record<string, string> = {
@@ -80,6 +88,8 @@ function path() {
   });
   if (q.value) params.set("q", q.value);
   if (view.value === "tasks" && state.value) params.set("state", state.value);
+  if (view.value === "tasks" && taskFocus.value)
+    params.set("id", taskFocus.value);
   return "/mind/time/" + view.value + "?" + params;
 }
 async function load() {
@@ -97,7 +107,7 @@ async function load() {
     if (token !== sequence) return;
     if (view.value === "today") {
       overview.value = data;
-      settings.value = { ...data.settings };
+      if (!settingsDirty.value) settings.value = { ...data.settings };
     } else {
       rows.value = data;
       hasMore.value = data.length === 24;
@@ -211,9 +221,35 @@ async function exportWork() {
   URL.revokeObjectURL(url);
 }
 async function saveSettings() {
+  if (settingsSaving.value) return;
+  settingsSaving.value = true;
+  sequence++;
   try {
-    settings.value = await api("/mind/time/settings", "PUT", settings.value);
+    const saved = await api("/mind/time/settings", "PUT", {
+      ...settings.value,
+    });
+    sequence++;
+    settings.value = saved;
+    settingsDirty.value = false;
     toast("专注安排已保存");
+    await load();
+  } catch (e) {
+    toast((e as Error).message, true);
+  } finally {
+    settingsSaving.value = false;
+  }
+}
+function agendaTask(id: string) {
+  taskFocus.value = id;
+  if (view.value !== "tasks") view.value = "tasks";
+  else void load();
+  setSub("tasks/" + id);
+}
+async function requestCare() {
+  try {
+    await api("/mind/time/care", "POST", {});
+    toast("已记下，空下来时回看说过的话");
+    await load();
   } catch (e) {
     toast((e as Error).message, true);
   }
@@ -227,13 +263,27 @@ watch(view, (next) => {
   rows.value = [];
   q.value = "";
   state.value = "";
-  setSub(next === "today" ? "" : next);
+  if (next !== "tasks") taskFocus.value = "";
+  setSub(
+    next === "today"
+      ? ""
+      : next === "tasks" && taskFocus.value
+        ? "tasks/" + taskFocus.value
+        : next,
+  );
   void load();
 });
 watch(
   () => studio.sub,
   (sub) => {
     const tab = sub.split("/")[0] || "today";
+    if (tab === "tasks") {
+      const id = sub.split("/")[1] || "";
+      if (taskFocus.value !== id) {
+        taskFocus.value = id;
+        if (view.value === "tasks") void load();
+      }
+    }
     if (views.includes(tab)) view.value = tab;
   },
 );
@@ -306,7 +356,7 @@ onUnmounted(() => {
           ><Empty
             v-else
             title="留着一段自己的时间"
-            text="待办会根据期限、精力和自己的愿望推进。"
+            text="按优先级、精力和自己的愿望选事做，也可以随手折腾或歇着。"
           />
         </article>
         <article class="card day-balance">
@@ -320,65 +370,46 @@ onUnmounted(() => {
           <button class="text-button" @click="go('life')">翻开日记 →</button>
         </article>
       </section>
-      <section class="card">
-        <h2>今日的时间</h2>
-        <p class="muted">
-          连续时段是主活动，圆点是伴随交流。暂停、睡眠和停机不会补算。
+      <DayAgenda
+        v-if="overview.agenda"
+        :agenda="overview.agenda"
+        @task="agendaTask"
+      />
+      <section class="card own-care" v-if="overview.care">
+        <span class="eyebrow">独处时理一理</span>
+        <h2>自己的打算，说过的约定</h2>
+        <p>
+          空下来时，她会想一件自己愿意做的小事，也会回看有没有漏下答应别人的事。可以选择歇着。
         </p>
-        <ol class="time-ledger" v-if="overview.today?.spans.length">
-          <li v-for="span in overview.today.spans" :key="span.id">
-            <div>
-              <time>{{ when(span.started, zone) }}</time
-              ><span
-                class="time-span"
-                :style="{
-                  '--time-length':
-                    Math.min(100, Math.max(8, (span.todayMs / 60000) * 2)) +
-                    '%',
-                }"
-              ></span>
-            </div>
-            <div>
-              <b>{{ span.title }}</b
-              ><small
-                >{{ minutes(span.todayMs) }} ·
-                {{ span.ended ? "已结束" : "持续中" }}</small
-              >
-              <div class="interaction-points">
-                <span
-                  v-for="point in overview.today.interactions.filter(
-                    (p: any) =>
-                      p.task_id === span.task_id &&
-                      p.created >= span.started &&
-                      p.created <= (span.ended || overview.today.now),
-                  )"
-                  :key="point.id"
-                  class="interaction-point"
-                  :title="'伴随交流 · ' + when(point.created, zone)"
-                ></span>
-              </div>
-            </div>
-          </li>
-        </ol>
-        <Empty
-          v-else
-          title="今天还没有活动时段"
-          text="实际开始后才会留下时间记录。"
-        />
-      </section>
-      <section class="card">
-        <h2>接下来想做</h2>
-        <ul class="list" v-if="overview.next?.length">
-          <li v-for="item in overview.next" :key="item.id">
-            <b>{{ item.title }}</b
-            ><span class="faint">{{ item.why }}</span>
-          </li>
-        </ul>
-        <p class="muted" v-else>还没有可以立即开始的安排。</p>
+        <p class="muted" v-if="overview.care.last">
+          最近：{{ overview.care.last.reason
+          }}<template v-if="overview.care.last.finished">
+            · {{ when(overview.care.last.finished, zone) }}</template
+          >
+        </p>
+        <p class="faint" v-if="overview.care.pendingReplies">
+          还有 {{ overview.care.pendingReplies }} 条已说过的话等着分批回看。
+        </p>
+        <button
+          :disabled="overview.care.queued || !!overview.care.working"
+          @click="requestCare"
+        >
+          {{
+            overview.care.working
+              ? "正在整理自己的生活"
+              : overview.care.queued
+                ? "已记下，空下来时整理"
+                : "空下来整理一下约定"
+          }}
+        </button>
       </section>
       <details class="card time-settings">
         <summary>专注与休息安排</summary>
-        <form @submit.prevent="saveSettings">
+        <form
+          @submit.prevent="saveSettings"
+          @input="settingsDirty = true"
+          @change="settingsDirty = true"
+        >
           <label
             >专注段（分钟）<input
               v-model.number="settings.focusMinutes"
@@ -407,12 +438,41 @@ onUnmounted(() => {
               step="0.05"
             /><small>默认 1.25 倍，所有活动按现实时间逐段推进。</small></label
           >
-          <button class="primary">保存安排</button>
+          <label
+            >想自己的安排（间隔分钟）<input
+              v-model.number="settings.ownPlanMinutes"
+              type="number"
+              min="1"
+              max="120"
+            /><small>有空才考虑，可以决定休息。</small></label
+          >
+          <label
+            >回看说过的话（间隔分钟）<input
+              v-model.number="settings.commitmentReviewMinutes"
+              type="number"
+              min="1"
+              max="120"
+            /><small>分批整理约定，保留去重与原来的选择。</small></label
+          >
+          <button class="primary" :disabled="settingsSaving">
+            {{ settingsSaving ? "正在保存" : "保存安排" }}
+          </button>
         </form>
       </details></template
     >
     <template v-else-if="view !== 'today'"
       ><form class="time-filter" @submit.prevent="search">
+        <button
+          v-if="view === 'tasks' && taskFocus"
+          type="button"
+          @click="
+            taskFocus = '';
+            setSub('tasks');
+            load();
+          "
+        >
+          查看全部待办
+        </button>
         <label v-if="['works', 'projects'].includes(view)"
           ><span class="sr-only">搜索标题</span
           ><input v-model="q" placeholder="搜索标题或项目" /><button>

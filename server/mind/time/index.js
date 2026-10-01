@@ -9,6 +9,7 @@ import { Search } from "./search.js";
 import { Games } from "./games.js";
 import { ActivityClock } from "./activity-clock.js";
 import { activityPresentation, gameText } from "./presentation.js";
+import { Agenda } from "./agenda.js";
 
 export const TIME_DEFAULTS = {
   focusMinutes: 25,
@@ -30,6 +31,7 @@ export class TimeSystem {
     this.sharing = new Sharing(this);
     this.search = new Search(this);
     this.games = new Games(this);
+    this.agenda = new Agenda(this);
     this.tasks.delivery.reconcile();
     // A stopped process cannot keep reading, creating or playing in the gap.
     this.db.exec(
@@ -445,6 +447,19 @@ export class TimeSystem {
         elapsedMs: 0,
         timing: { phase: "preparing", plannedMs: null },
       };
+    const care = this.search.life?.ownDay?.working;
+    if (!current && care)
+      current = {
+        id: "own-day",
+        activity: "think",
+        state: "doing",
+        label: care === "review" ? "回看说过的话" : "想自己的安排",
+        title:
+          care === "review" ? "整理有没有漏下的约定" : "想想接下来愿意做点什么",
+        elapsedMs: 0,
+        timing: { phase: "preparing", plannedMs: null },
+        checkpoint: {},
+      };
     const pending = this.tasks
       .list({ limit: 100 })
       .filter(
@@ -470,6 +485,27 @@ export class TimeSystem {
     return {
       current,
       pending,
+      intentions: this.db
+        .prepare(
+          "SELECT id FROM mind_time_tasks WHERE kind='plan' AND created<=? AND state NOT IN ('done','abandoned') AND json_extract(checkpoint,'$.mergedInto') IS NULL ORDER BY priority DESC,created LIMIT 100",
+        )
+        .all(now)
+        .map((row) => this.tasks.get(row.id))
+        .filter(
+          (row) =>
+            row.created <= now &&
+            row.kind === "plan" &&
+            !["done", "abandoned"].includes(row.state) &&
+            this.visible(row, session, now),
+        )
+        .slice(0, 3)
+        .map((row) => ({
+          title: activityPresentation(row).title,
+          why: activityPresentation(row).why,
+          state: row.state,
+          earliestAt: row.ready_at,
+          wait: row.wait_reason,
+        })),
       works: this.works.fragments({ session, now, cue }),
     };
   }

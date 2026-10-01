@@ -102,44 +102,6 @@
 .work-card:hover {
   transform: translateY(-2px);
 }
-.time-ledger {
-  list-style: none;
-  padding: 0;
-  display: grid;
-  gap: 22px;
-}
-.time-ledger li {
-  display: grid;
-  grid-template-columns: minmax(100px, 160px) minmax(0, 1fr);
-  gap: 20px;
-}
-.time-ledger li > div {
-  display: grid;
-  align-content: start;
-  gap: 7px;
-}
-.time-ledger time {
-  font-size: 12px;
-  color: var(--muted);
-}
-.time-span {
-  width: var(--time-length);
-  min-width: 14px;
-  height: 8px;
-  border-radius: 20px;
-  background: linear-gradient(90deg, var(--accent), var(--orb-b));
-}
-.interaction-points {
-  display: flex;
-  gap: 7px;
-  flex-wrap: wrap;
-}
-.interaction-point {
-  width: 8px;
-  height: 8px;
-  background: var(--accent);
-  border-radius: 50%;
-}
 .time-settings form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -223,10 +185,6 @@
   }
 }
 @media (max-width: 440px) {
-  .time-ledger li {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 8px;
-  }
   .time-page .row {
     gap: 9px;
   }

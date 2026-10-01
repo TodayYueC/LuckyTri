@@ -63,29 +63,46 @@ export function intentScope(db, session = "") {
     return String(session);
   }
 }
-export function intentRecipient(db, { session, subject, title, sources = [] }) {
+export function intentRecipient(
+  db,
+  { session, subject, title, sources = [], accepted = false },
+) {
   if (subject) return String(subject);
   try {
     const p = parseSessionKey(session);
     if (p.kind === "private") return p.nativeId;
   } catch {}
-  if (!/汇报|发给|给你|让你看|交付|分享/.test(title)) return "";
+  if (!accepted && !/汇报|发给|给你|让你看|交付|分享/.test(title)) return "";
   const recipients = new Set();
   for (const ref of evidence(sources).filter((s) => s.startsWith("m:"))) {
     const event = db
       .prepare(
-        "SELECT payload FROM core_events WHERE seq=? AND role='assistant'",
+        "SELECT seq,session_id,payload FROM core_events WHERE seq=? AND role='assistant'",
       )
       .get(Number(ref.slice(2)));
     for (const seq of parse(event?.payload, {}).replyTargetIds || []) {
       const m = db
-        .prepare("SELECT payload FROM core_events WHERE seq=? AND role='user'")
-        .get(Number(seq));
+        .prepare(
+          "SELECT payload FROM core_events WHERE seq=? AND seq<? AND session_id=? AND role='user' AND seq NOT IN (SELECT seq FROM mind_unlived)",
+        )
+        .get(Number(seq), event.seq, event.session_id);
       const user = parse(m?.payload, {}).userId;
       if (user) recipients.add(String(user));
     }
   }
   return recipients.size === 1 ? [...recipients][0] : "";
+}
+export function intentMessageSources(db, row, message) {
+  const targets = (
+    Array.isArray(message.replyTargetIds) ? message.replyTargetIds : []
+  ).filter((seq) =>
+    db
+      .prepare(
+        "SELECT 1 FROM core_events WHERE seq=? AND seq<? AND session_id=? AND role='user' AND seq NOT IN (SELECT seq FROM mind_unlived) AND COALESCE(json_extract(payload,'$.simulated'),0)=0",
+      )
+      .get(Number(seq), row.seq, row.session_id),
+  );
+  return evidence([row.seq, ...targets.map(Number)]);
 }
 export function taskIntent(
   db,

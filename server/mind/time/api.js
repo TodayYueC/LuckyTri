@@ -4,6 +4,21 @@ import { zonedTime } from "../util.js";
 export function mountTime(app, life) {
   const time = life.mind.time;
   app.get(
+    "/api/mind/time/agenda",
+    wrap((req, res) => res.json(time.agenda.view(life.now()))),
+  );
+  app.get(
+    "/api/mind/time/care",
+    wrap((req, res) => res.json(life.ownDay.status())),
+  );
+  app.post(
+    "/api/mind/time/care",
+    wrap((req, res) => {
+      life.ownDay.request();
+      res.json(life.ownDay.status());
+    }),
+  );
+  app.get(
     "/api/mind/time/search",
     wrap((req, res) => {
       if (
@@ -122,6 +137,8 @@ export function mountTime(app, life) {
       res.json({
         ...time.view(),
         today: time.today(),
+        agenda: time.agenda.view(life.now()),
+        care: life.ownDay.status(),
         next: time.tasks
           .ready()
           .slice(0, 5)
@@ -149,7 +166,12 @@ export function mountTime(app, life) {
     wrap((req, res) => {
       const names = displayNames(life.db, life.now());
       res.json(
-        time.tasks.list(req.query).map((task) => ({
+        (req.query.id
+          ? [time.tasks.present(time.tasks.get(String(req.query.id)))].filter(
+              Boolean,
+            )
+          : time.tasks.list(req.query)
+        ).map((task) => ({
           ...task,
           person: task.subject
             ? names.get(String(task.subject)) || "相关的人"

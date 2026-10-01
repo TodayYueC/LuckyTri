@@ -104,6 +104,14 @@ test(
       return { status: r.status, data: await r.json() };
     };
     assert.equal((await fetch(base + "/api/state")).status, 401);
+    for (const path of ["/mind/time/agenda", "/mind/time/care"]) {
+      assert.equal((await fetch(base + "/api" + path)).status, 401);
+      assert.equal((await request(path)).status, 200);
+    }
+    assert.equal(
+      (await fetch(base + "/api/mind/time/care", { method: "POST" })).status,
+      401,
+    );
     assert.equal(
       (
         await fetch(base + "/api/state", {
