@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>LuckyTri v0.9.1 · 使用教程</title>
+    <title>LuckyTri v0.9.9 · 使用教程</title>
     <style>
       * {
         box-sizing: border-box;
@@ -47,6 +47,8 @@
         display: flex;
         gap: 14px;
         align-items: center;
+        flex-wrap: wrap;
+        justify-content: flex-end;
         font-size: 12px;
       }
       button {
@@ -57,6 +59,13 @@
         padding: 7px 13px;
         color: #6e8760;
         cursor: pointer;
+      }
+      .lang {
+        border: 1px solid #dce5d2;
+        border-radius: 7px;
+        padding: 6px 12px;
+        background: white;
+        text-decoration: none;
       }
       .layout {
         max-width: 1200px;
@@ -179,6 +188,9 @@
           align-items: flex-start;
           flex-direction: column;
         }
+        header nav {
+          justify-content: flex-start;
+        }
         .layout {
           grid-template-columns: 1fr;
           margin: 20px auto;
@@ -257,12 +269,15 @@
   <body>
     <header>
       <div>
-        <b>LuckyTri · 上手手册</b><small>TIME · MEMORY · CHOICE / v0.9.1</small>
+        <b>LuckyTri · 上手手册</b><small>TIME · MEMORY · CHOICE / v0.9.9</small>
       </div>
       <nav>
         <a href="/#setup">返回管理台</a
         ><a href="/tutorial.md" download>下载 Markdown</a
-        ><button onclick="window.print()">打印 / 保存 PDF</button>
+        ><button onclick="window.print()">打印 / 保存 PDF</button
+        ><a class="lang" href="/guide.en.html" hreflang="en" lang="en"
+          >English</a
+        >
       </nav>
     </header>
     <div class="layout">
@@ -270,7 +285,7 @@
         <p>CONTENTS</p>
         <a href="#step-1">1. 启动</a><a href="#step-2">2. 本机令牌</a
         ><a href="#step-3">3. 先在模拟模式试聊</a
-        ><a href="#step-4">4. 连接模型</a><a href="#step-5">5. 接入 QQ</a
+        ><a href="#step-4">4. 连接模型</a><a href="#step-5">5. 连接 QQ</a
         ><a href="#step-6">6. 让 TA 参与会话</a
         ><a href="#step-7">7. TA、记忆和知识</a
         ><a href="#step-8">8. 备份与停止</a><a href="#step-9">9. 常见问题</a>
@@ -278,11 +293,17 @@
       <article>
         <h1>LuckyTri · 从零上手教程</h1>
         <p>
-          LuckyTri 在本机运行，通过独立的 OneBot 11 接入端收发 QQ 消息；模型 API
-          由你自行配置。LuckyTri 不包含或管理 QQ 接入端。
+          LuckyTri 在你的电脑上运行，通过 QQ 与人相遇。QQ
+          有两种连接方式，二选一：<strong>OneBot 11</strong>（自备接入端，反向
+          WebSocket）或 <strong>QQ 官方机器人</strong>（QQ
+          开放平台）。两种方式下她的记忆、心情和行为完全一致，区别只在消息怎么到达。模型
+          API 由你自行配置。
+        </p>
+        <p>
+          界面右上角可以在「中文」与「English」之间切换，默认中文，选择会记在这个浏览器里。她自己说的话、写的日记和留下的念头不翻译，那是她自己的内容。
         </p>
         <h2 id="step-1">1. 启动</h2>
-        <p>需要 Node.js 24 或更高版本。在项目目录执行：</p>
+        <p>需要 Node.js 24.5 或更高版本。在项目目录执行：</p>
         <pre><code class="language-powershell">node --version
 npm install
 npm start
@@ -300,7 +321,7 @@ npm start
           <code>npm run stop</code>。这条命令只停止当前项目，不会结束其他 Node
           进程。前台运行时也可以在该终端按 <code>Ctrl+C</code>。
         </p>
-        <p>LuckyTri 是「TA 的小世界」，左侧导航分三组、八个入口：</p>
+        <p>LuckyTri 是「TA 的小世界」，左侧导航分三组、九个入口：</p>
         <table>
           <thead>
             <tr>
@@ -333,6 +354,13 @@ npm start
               <td>TA</td>
               <td>一生</td>
               <td>日记本与那天的 TA、回顾、我的来路与章节、约定与期待、书架</td>
+            </tr>
+            <tr>
+              <td>日常</td>
+              <td>时间</td>
+              <td>
+                TA 实际生活的记录：今日的活动、待办、作品库、持续项目、体验记录
+              </td>
             </tr>
             <tr>
               <td>日常</td>
@@ -374,8 +402,8 @@ npm start
 npm run setup
 </code></pre>
         <p>
-          没有 <code>.env</code> 时，setup 会写入管理令牌和 QQ 连接令牌。已有
-          <code>.env</code> 会原样保留。
+          没有 <code>.env</code> 时，setup 会写入管理令牌和 OneBot
+          连接令牌。已有 <code>.env</code> 会原样保留。
         </p>
         <pre><code class="language-dotenv">HOST=127.0.0.1
 PORT=3210
@@ -392,19 +420,33 @@ LLM_API_KEY=
           </thead>
           <tbody>
             <tr>
-              <td>ADMIN_TOKEN</td>
+              <td><code>ADMIN_TOKEN</code></td>
               <td>打开 LuckyTri 和调用 HTTP API；停止命令也会使用</td>
             </tr>
             <tr>
-              <td>ONEBOT_TOKEN</td>
-              <td>OneBot 11 接入端连接 <code>/onebot/v11/ws</code></td>
+              <td><code>ONEBOT_TOKEN</code></td>
+              <td>
+                OneBot 11 接入端连接 <code>/onebot/v11/ws</code>（只用 OneBot
+                方式时需要）
+              </td>
             </tr>
             <tr>
-              <td>LLM_API_KEY</td>
+              <td><code>LLM_API_KEY</code></td>
               <td>可选；非空时优先于 LuckyTri 里保存的模型密钥</td>
             </tr>
             <tr>
-              <td>HOST / PORT</td>
+              <td><code>LUCKYTRI_CHANNEL</code></td>
+              <td>
+                可选；<code>onebot</code> 或
+                <code>qqbot</code>。设置后在界面里不能更改连接方式
+              </td>
+            </tr>
+            <tr>
+              <td><code>QQBOT_APP_ID</code> / <code>QQBOT_APP_SECRET</code></td>
+              <td>可选；QQ 官方机器人的凭据，优先于界面里保存的</td>
+            </tr>
+            <tr>
+              <td><code>HOST</code> / <code>PORT</code></td>
               <td>监听地址和端口；本机使用保持默认</td>
             </tr>
           </tbody>
@@ -459,13 +501,17 @@ LLM_API_KEY=
           也可以先保持模拟模式，在「天性」里和 TA 试聊，确认 TA 说话的样子后再让
           TA 参加真实 QQ。
         </p>
-        <h2 id="step-5">5. 接入 QQ</h2>
+        <h2 id="step-5">5. 连接 QQ</h2>
         <p>
-          打开「系统 → 连接
-          QQ」。该页面显示连接状态、地址和官方仓库链接。接入端需要自行安装和管理；如果选择
-          QQClient，请从
-          QQClient 官方仓库
-          查阅其安装和使用说明。LuckyTri 不下载、配置或启动 QQClient。
+          打开「系统 → 连接 QQ」，顶部有两个选项：<strong>OneBot 11</strong> 与
+          <strong>QQ 官方机器人</strong
+          >，同一时间只使用一个。切换后会断开当前连接；原来方式下的会话仍可查看，但不能再向它们发送消息。两种方式的差别见
+          <code>docs/zh/connect.md</code>，下面是操作步骤。
+        </p>
+        <h3>方式一：OneBot 11</h3>
+        <p>
+          LuckyTri 只实现 OneBot 11 的反向 WebSocket
+          接口，接入端需要你自行准备和管理。
         </p>
         <ol>
           <li>
@@ -518,9 +564,34 @@ LLM_API_KEY=
           指向各自环境，需要改成 LuckyTri 的实际地址，并先配置
           <code>ADMIN_TOKEN</code>。
         </p>
+        <h3>方式二：QQ 官方机器人</h3>
         <p>
-          QQ
-          已连接只表示传输通了。到目标群发一条消息后，会话会出现在「对话」的会话列表里，新发现的会话默认暂停参与。
+          不需要登录 QQ 账号，也不需要额外的接入端，LuckyTri 自己连接 QQ
+          开放平台。
+        </p>
+        <ol>
+          <li>
+            在 QQ 开放平台创建机器人，记下 <strong>AppID</strong> 与
+            <strong>AppSecret</strong
+            >，并按平台要求开通群聊与单聊消息、把机器人加入要测试的群或添加为联系人。平台的入口和审核规则会调整，以开放平台当前说明为准。
+          </li>
+          <li>
+            在「系统 → 连接 QQ」选择「QQ 官方机器人」，填写 AppID 和
+            AppSecret，点击保存。也可以在 <code>.env</code> 里设置
+            <code>QQBOT_APP_ID</code> 与
+            <code>QQBOT_APP_SECRET</code>。AppSecret 保存后不会再显示。
+          </li>
+          <li>
+            状态显示「已连接」后，到群里 @
+            她或私聊一句。想让她看到群里的全部消息，需要在开放平台开启「接收所有消息」；没有开启时她只能收到
+            @ 她的消息，连接页会提示这一点。
+          </li>
+          <li>
+            官方接口不提供群名，新会话会以编号显示，可以在「对话」里给会话改名。
+          </li>
+        </ol>
+        <p>
+          两种方式都是：已连接只表示传输通了。到目标群发一条消息后，会话会出现在「对话」的会话列表里，新发现的会话默认暂停参与。
         </p>
         <h2 id="step-6">6. 让 TA 参与会话</h2>
         <ol>
@@ -531,7 +602,7 @@ LLM_API_KEY=
           <li>
             在「对话」选中目标群，在右侧「这个会话」里点「开启参与」，或直接拨动列表里的开关。
           </li>
-          <li>在 QQ 里 @ 小号，或直接叫 TA 的名字。</li>
+          <li>在 QQ 里 @ 她，或直接叫 TA 的名字。</li>
           <li>回到「对话」查看消息和「为什么这么说」。</li>
         </ol>
         <p>
@@ -597,7 +668,7 @@ npm start
           TA 的一切都存在这一个数据库里，所以服务运行时会自动备份：默认每 24
           小时在另一个进程里做一份 <code>luckytri-auto-*.db</code>，只保留最近 7
           份，做完会检查完整性。自动备份里有聊天、记忆、自我、日记和关系，但不带一天以前的模型调用记录（每条动辄几百
-          KB，会让备份大上十几倍），所以“为什么这么说”只能回看最近一天的。<code
+          KB，会让备份大上十几倍），所以「为什么这么说」只能回看最近一天的。<code
             >npm run backup</code
           >
           仍然是完整备份。可以在 <code>.env</code> 里调整：
@@ -636,14 +707,18 @@ npm start
         <p>
           想立刻做一份自动备份：<code
             >node scripts/backup.js --auto --force</code
-          >。自动备份失败会记在启动窗口/<code>data/launcher.log</code>，并隔越来越久才重试。备份和数据库放在同一块磁盘上，防不了磁盘损坏；重要的备份请自己复制到别处。
+          >。自动备份失败会记在启动窗口或
+          <code>data/launcher.log</code
+          >，并隔越来越久才重试。备份和数据库放在同一块磁盘上，防不了磁盘损坏；重要的备份请自己复制到别处。
         </p>
         <p>
           恢复时先停止服务，把当前 <code>data/friend.db</code> 及同名
           <code>-wal</code>、<code>-shm</code> 移开，再把选中的备份复制为
           <code>data/friend.db</code>。设置了
           <code>DB_PATH</code> 时操作该路径。不要把旧的 WAL
-          文件和恢复后的数据库放在一起。
+          文件和恢复后的数据库放在一起。更稳妥的做法是用
+          <code>npm run recovery</code> 校验并恢复到一个全新的文件，见
+          <code>docs/zh/recovery.md</code>。
         </p>
         <h2 id="step-9">9. 常见问题</h2>
         <table>
@@ -669,15 +744,30 @@ npm start
               </td>
             </tr>
             <tr>
-              <td>QQ 未连接</td>
+              <td>OneBot 未连接</td>
               <td>
                 接入端是否登录，URL、端口、路径和
                 <code>ONEBOT_TOKEN</code> 是否一致
               </td>
             </tr>
             <tr>
+              <td>官方机器人未连接</td>
+              <td>
+                AppID 与 AppSecret
+                是否正确，机器人是否已开通群聊与单聊消息，网络能否访问 QQ
+                开放平台
+              </td>
+            </tr>
+            <tr>
+              <td>官方机器人只收到 @ 的消息</td>
+              <td>
+                在开放平台开启「接收所有消息」；这是平台权限，不是 LuckyTri
+                的限制
+              </td>
+            </tr>
+            <tr>
               <td>连接成功但没有会话</td>
-              <td>在 QQ 再发一条新消息，消息格式是否为数组</td>
+              <td>在 QQ 再发一条新消息；OneBot 方式下检查消息格式是否为数组</td>
             </tr>
             <tr>
               <td>群里不回复</td>
@@ -725,6 +815,6 @@ npm start
         <p>不要把 API 密钥、<code>.env</code> 或私聊原文发到公开位置。</p>
       </article>
     </div>
-    <footer>LuckyTri · 让经历和选择彼此连贯。教程与 v0.9.1 界面同步。</footer>
+    <footer>LuckyTri · 让经历和选择彼此连贯。教程与 v0.9.9 界面同步。</footer>
   </body>
 </html>

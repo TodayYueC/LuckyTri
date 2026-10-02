@@ -1,6 +1,6 @@
 {
   "name": "luckytri",
-  "version": "0.9.1",
+  "version": "0.9.9",
   "description": "让由技术诞生的她，在时间、记忆、相遇与选择中逐渐形成自己的方向",
   "license": "MIT",
   "repository": {
@@ -20,10 +20,10 @@
     "start": "node --env-file-if-exists=.env scripts/start-server.js",
     "dev:ui": "vite --config studio-web/vite.config.ts",
     "build:ui": "vite build --config studio-web/vite.config.ts",
-    "test": "node --import ./tests/awake.mjs --test tests/*.test.js",
-    "test:clock": "node scripts/test-clock.js",
-    "audit:sent": "node --env-file-if-exists=.env scripts/audit-sent.js",
-    "test:ui": "node tests/ui-smoke.js && node tests/ta-ui.mjs && node tests/navigation-ui.mjs && node tests/time-ui.mjs && node tests/time-arrangement-ui.mjs && node tests/ui-performance.mjs && node tests/search-ui.mjs",
+    "test": "node --import ./tests/helpers/awake.mjs --test tests/*.test.js",
+    "test:clock": "node scripts/dev/test-clock.js",
+    "audit:sent": "node --env-file-if-exists=.env scripts/dev/audit-sent.js",
+    "test:ui": "node tests/ui/smoke.js && node tests/ui/ta.mjs && node tests/ui/navigation.mjs && node tests/ui/time.mjs && node tests/ui/time-arrangement.mjs && node tests/ui/performance.mjs && node tests/ui/search.mjs && node tests/ui/i18n.mjs",
     "setup": "node scripts/setup.js",
     "stop": "node --env-file-if-exists=.env scripts/stop.js",
     "backup": "node --env-file-if-exists=.env scripts/backup.js",
