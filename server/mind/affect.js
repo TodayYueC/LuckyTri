@@ -15,6 +15,19 @@ const LATELY_HALF_LIFE = 7;
 const LATELY_MAX = 0.12;
 const LATELY_NOTE = 0.06;
 
+// A mood is a few words ("挂心", "有点累"), not a sentence. Models sometimes
+// answer with the whole thought; take the first clause when it is short
+// enough to be a mood, otherwise there is no word to keep.
+const MOOD_MAX = 8;
+
+export function moodWord(raw) {
+  const clause =
+    String(raw ?? "")
+      .split(/[，,。.！!？?；;、：:\s…]+/)
+      .find(Boolean) || "";
+  return Array.from(clause).length <= MOOD_MAX ? clause : "";
+}
+
 function moodLabel(valence, arousal) {
   if (valence > 0.45) return arousal > 0.5 ? "很开心" : "心情不错";
   if (valence > 0.22) return "挺好";
@@ -46,8 +59,7 @@ export class Affect {
     origin = "turn",
     time = Date.now(),
   }) {
-    const label = text(feeling, 16);
-    if (!label) return null;
+    if (!text(feeling, 120)) return null;
     const cited = evidence(sources);
     // The same messages cannot move her again after they already have.
     if (cited.length) {
@@ -70,6 +82,9 @@ export class Affect {
     }
     const i = clamp(intensity, 0, 1);
     const v = clamp(valence, -1, 1);
+    const a = clamp(arousal ?? i * 0.6, 0, 1);
+    // A sentence in place of a mood keeps its pull on her, with a plain word.
+    const label = moodWord(feeling) || moodLabel(v, a);
     const id = randomUUID();
     this.db
       .prepare(
@@ -81,7 +96,7 @@ export class Affect {
         label,
         i,
         v,
-        clamp(arousal ?? i * 0.6, 0, 1),
+        a,
         text(cause, 120),
         JSON.stringify(cited),
         session,
@@ -217,7 +232,10 @@ export class Affect {
     const cause =
       lingering && last && this.#causeHere(last, room) ? last.cause || "" : "";
     return {
-      mood: lingering ? last.feeling : moodLabel(valence, arousal),
+      // Rows saved before the label was kept short are shortened here too.
+      mood: lingering
+        ? moodWord(last.feeling) || moodLabel(last.valence, last.arousal)
+        : moodLabel(valence, arousal),
       cause,
       valence: Math.round(valence * 100) / 100,
       arousal: Math.round(arousal * 100) / 100,
@@ -238,6 +256,10 @@ export class Affect {
         "SELECT * FROM mind_affect WHERE created<=? ORDER BY created DESC LIMIT ?",
       )
       .all(before, limit)
-      .map((row) => ({ ...row, sources: JSON.parse(row.sources) }));
+      .map((row) => ({
+        ...row,
+        feeling: moodWord(row.feeling) || moodLabel(row.valence, row.arousal),
+        sources: JSON.parse(row.sources),
+      }));
   }
 }

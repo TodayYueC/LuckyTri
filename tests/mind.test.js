@@ -122,6 +122,42 @@ test("心境由经历推动、随时间回落；一次经历不能把她推翻",
   );
 });
 
+test("心情是几个字：整句话不会当成心情，仍保留它带来的变化", (t) => {
+  const w = world();
+  t.after(w.close);
+  const sentence = "在意藏着的那件事，又被她的反应碰到了";
+  // A short clause at the start is the mood.
+  w.mind.affect.feel({
+    feeling: "挂心，因为玩到的那一段",
+    intensity: 0.5,
+    valence: -0.2,
+    time: w.now(),
+  });
+  assert.equal(w.mind.affect.state(w.now()).mood, "挂心");
+  w.advance(HOUR);
+  // A whole thought in the mood slot becomes a plain word for how it felt.
+  w.mind.affect.feel({
+    feeling: sentence,
+    intensity: 0.6,
+    valence: -0.3,
+    time: w.now(),
+  });
+  const mood = w.mind.affect.state(w.now()).mood;
+  assert.notEqual(mood, sentence);
+  assert(Array.from(mood).length <= 8, mood);
+  assert(
+    w.mind.affect.history().every((row) => Array.from(row.feeling).length <= 8),
+  );
+  // A row saved before this rule is shortened when it is read.
+  w.advance(HOUR);
+  w.mind.db
+    .prepare(
+      "INSERT INTO mind_affect(id,created,feeling,intensity,valence,arousal,cause,sources,session_id,origin) VALUES (?,?,?,?,?,?,?,?,?,?)",
+    )
+    .run("old", w.now(), sentence, 0.6, -0.3, 0.3, "", "[]", null, "activity");
+  assert(Array.from(w.mind.affect.state(w.now()).mood).length <= 8);
+});
+
 test("几次没有来源的独处不会把心情叠过一次", () => {
   const w = world();
   try {
