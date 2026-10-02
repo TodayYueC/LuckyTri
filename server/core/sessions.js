@@ -1,14 +1,41 @@
-export function parseNewSession(body) {
+import { formatSessionKey } from "../channels/session-key.js";
+
+// The shape of the id a room has on each platform: a QQ number for OneBot, an
+// openid for the official bot.
+const NATIVE_ID = {
+  onebot: /^\d{4,20}$/,
+  qqbot: /^[0-9A-Za-z_-]{8,64}$/,
+};
+
+export function parseNewSession(body, { qqbotAppId = "" } = {}) {
   const { id, kind, name } = body || {};
+  const channel = body?.channel === "qqbot" ? "qqbot" : "onebot";
   if (
     !["group", "private"].includes(kind) ||
     typeof id !== "string" ||
-    !/^\d{4,20}$/.test(id) ||
+    !NATIVE_ID[channel].test(id) ||
     typeof name !== "string" ||
     !name.trim() ||
     name.length > 100
   )
-    throw Error("请填写有效的群号/QQ号和名称");
+    throw Error(
+      channel === "qqbot"
+        ? "请填写有效的群 openid / 用户 openid 和名称"
+        : "请填写有效的群号/QQ号和名称",
+    );
+  if (channel === "qqbot") {
+    if (!qqbotAppId) throw Error("请先在「系统 → 连接 QQ」填写 AppID");
+    return {
+      sessionId: formatSessionKey({
+        channel,
+        accountId: qqbotAppId,
+        kind,
+        nativeId: id,
+      }),
+      kind,
+      name: name.trim(),
+    };
+  }
   return { sessionId: `${kind}:${id}`, kind, name: name.trim() };
 }
 
@@ -49,7 +76,8 @@ export function applyDirectoryNames(db, { groups = [], friends = [] } = {}) {
   for (const group of groups) {
     const id = String(group?.group_id ?? "");
     const name = String(group?.group_name || "").trim();
-    if (id && name && !/^\d{4,20}$/.test(name)) groupNames.set(id, name.slice(0, 100));
+    if (id && name && !/^\d{4,20}$/.test(name))
+      groupNames.set(id, name.slice(0, 100));
   }
   const friendNames = new Map();
   for (const friend of friends) {
@@ -64,7 +92,8 @@ export function applyDirectoryNames(db, { groups = [], friends = [] } = {}) {
     const native = nativeId(row.id);
     const privateChat = row.kind === "private" || row.id.includes(":private:");
     const next = privateChat ? friendNames.get(native) : groupNames.get(native);
-    if (!next || next === row.name || !isPlaceholderName(row.name, row.id)) continue;
+    if (!next || next === row.name || !isPlaceholderName(row.name, row.id))
+      continue;
     update.run(next, row.id);
     changed += 1;
   }

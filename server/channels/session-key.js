@@ -45,6 +45,10 @@ export function sessionNativeId(id) {
 
 export function sessionAliases(id) {
   const parsed = parseSessionKey(id);
+  // The short `group:<id>` forms are how OneBot rooms were keyed before keys
+  // carried a channel; no other channel ever used them.
+  if (parsed.channel !== "onebot")
+    return [...new Set([id, formatSessionKey(parsed)])];
   return [
     ...new Set([
       id,
@@ -59,7 +63,12 @@ export function scopedSessionAliases(db, id) {
   const aliases = sessionAliases(id);
   try {
     const parsed = parseSessionKey(id);
-    if (parsed.legacy || parsed.accountId === "_" || parsed.kind !== "group")
+    if (
+      parsed.legacy ||
+      parsed.channel !== "onebot" ||
+      parsed.accountId === "_" ||
+      parsed.kind !== "group"
+    )
       return aliases;
     const legacy = `${parsed.kind}:${parsed.nativeId}`;
     const accounts = db
@@ -100,7 +109,12 @@ export function bindSessionId(db, sessionId) {
     // Legacy `group:<id>` rows predate account-qualified channels. Reuse one
     // only for the account that already owns its events; a second bot account
     // gets its own canonical session instead of silently sharing memory.
-    if (parsed.legacy || id !== `${parsed.kind}:${parsed.nativeId}`) return id;
+    if (
+      parsed.channel !== "onebot" ||
+      parsed.legacy ||
+      id !== `${parsed.kind}:${parsed.nativeId}`
+    )
+      return id;
     const accounts = db
       .prepare(
         "SELECT DISTINCT account_id FROM core_events WHERE session_id=? AND account_id IS NOT NULL AND account_id!=''",

@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { t, N_, localized } from "../../i18n";
+import { computed, ref, shallowRef, watch } from "vue";
+import { usePageActivity } from "../../page-activity";
+import { readSnapshot } from "../../api";
 import { go, studio } from "../../stores/studio";
 import { presence } from "../../stores/presence";
 import {
@@ -21,8 +24,8 @@ import Timeline from "../../components/ui/Timeline.vue";
 import WallpaperPicker from "./WallpaperPicker.vue";
 import { useHeroStage } from "./useHeroStage";
 
-const overview = ref<any>(null);
-const today = ref<any>(null);
+const overview = shallowRef<any>(readSnapshot("/mind") || null);
+const today = shallowRef<any>(readSnapshot("/mind/today") || null);
 const filter = ref("all");
 const wallpaperPicking = ref(false);
 const {
@@ -37,11 +40,11 @@ const {
   finishPicture,
 } = useHeroStage();
 
-const LEDGER = [
-  { id: "conversation", label: "对话" },
-  { id: "inner", label: "独处与日记" },
-  { id: "upkeep", label: "整理记忆" },
-];
+const LEDGER = localized([
+  { id: "conversation", label: N_("对话") },
+  { id: "inner", label: N_("独处与日记") },
+  { id: "upkeep", label: N_("整理记忆") },
+]);
 const p = computed(() => presence.data);
 const recentWords = computed(() => {
   const rows = p.value?.recentWords?.filter((item) => item.text?.trim()) || [];
@@ -124,16 +127,16 @@ function share(id: string) {
   return usage.value.total ? (usage.value[id] || 0) / usage.value.total : 0;
 }
 
+let loadSequence = 0;
 async function load() {
-  const [o, t] = await Promise.all([mind.overview(), mind.today()]);
+  const sequence = ++loadSequence;
+  const [o, daily] = await Promise.all([mind.overview(), mind.today()]);
+  if (sequence !== loadSequence) return;
   overview.value = o;
-  today.value = t;
+  today.value = daily;
 }
 
-onMounted(() => {
-  void load();
-});
-watch(() => [studio.tick, studio.pulse], load);
+usePageActivity("now", load);
 </script>
 
 <template>
@@ -157,32 +160,38 @@ watch(() => [studio.tick, studio.pulse], load);
           v-if="adjusting"
           class="wallpaper-drag-layer"
           role="application"
-          aria-label="拖动调整首页壁纸构图"
+          :aria-label="t('拖动调整首页壁纸构图')"
           @pointerdown.prevent="beginPictureDrag"
           @pointermove.prevent="movePicture"
           @pointerup="endPictureDrag"
           @pointercancel="endPictureDrag"
           @lostpointercapture="endPictureDrag"
         >
-          <span class="wallpaper-tip">按住并拖动图片，调整人物位置</span>
+          <span class="wallpaper-tip">{{
+            t("按住并拖动图片，调整人物位置")
+          }}</span>
         </div>
         <div class="wallpaper-controls">
           <template v-if="adjusting">
-            <span class="wallpaper-tip-inline">拖动背景调整构图</span>
-            <button type="button" @click="resetPicture">恢复默认</button>
+            <span class="wallpaper-tip-inline">{{
+              t("拖动背景调整构图")
+            }}</span>
+            <button type="button" @click="resetPicture">
+              {{ t("恢复默认") }}
+            </button>
             <button type="button" class="primary" @click="finishPicture">
-              完成
+              {{ t("完成") }}
             </button>
           </template>
           <button v-else type="button" @click="adjusting = true">
-            调整构图
+            {{ t("调整构图") }}
           </button>
           <button
             v-if="!adjusting"
             type="button"
             @click="wallpaperPicking = !wallpaperPicking"
           >
-            换壁纸
+            {{ t("换壁纸") }}
           </button>
         </div>
         <WallpaperPicker
@@ -194,7 +203,7 @@ watch(() => [studio.tick, studio.pulse], load);
 
     <section class="notes">
       <article class="note words">
-        <span class="eyebrow">TA 最近说</span>
+        <span class="eyebrow">{{ t("TA 最近说") }}</span>
         <ul v-if="recentWords.length" class="recent-list">
           <li v-for="(word, i) in recentWords" :key="`${word.time}-${i}`">
             <p class="quote">“{{ word.text }}”</p>
@@ -204,36 +213,39 @@ watch(() => [studio.tick, studio.pulse], load);
             >
           </li>
         </ul>
-        <p v-else class="muted">TA 还没在哪里开过口。</p>
+        <p v-else class="muted">{{ t("TA 还没在哪里开过口。") }}</p>
       </article>
       <article class="note thought">
-        <span class="eyebrow">放在心上</span>
+        <span class="eyebrow">{{ t("放在心上") }}</span>
         <template v-if="p?.thought">
           <p>{{ p.thought.content }}</p>
           <small>{{ p.thought.when }}</small>
         </template>
-        <p v-else class="muted">心里暂时没有挂着的事。</p>
+        <p v-else class="muted">{{ t("心里暂时没有挂着的事。") }}</p>
         <p v-if="p?.will" class="will-line">
-          正在为自己而活：{{ p.will.content }}
+          {{ t("正在为自己而活：{content}", { content: p.will.content }) }}
         </p>
         <small v-if="p?.will?.touched">
-          被别人的话碰到过 {{ p.will.touched }} 次，上次{{
-            p.will.lastSpoke ? "出了声" : "没出声"
+          {{
+            t("被别人的话碰到过 {touched} 次，上次{v}", {
+              touched: p.will.touched,
+              v: p.will.lastSpoke ? t("出了声") : t("没出声"),
+            })
           }}
         </small>
         <p v-if="p?.meaning" class="muted">
-          上次相遇：{{ p.meaning.text
-          }}<template v-if="!p.meaning.spoke">（没出声）</template>
+          {{ t("上次相遇：{text}", { text: p.meaning.text })
+          }}<template v-if="!p.meaning.spoke">{{ t("（没出声）") }}</template>
         </p>
-        <small v-if="p?.meaning?.when && p.meaning.when !== '刚才'">{{
+        <small v-if="p?.meaning?.when && !p.meaning.recent">{{
           p.meaning.when
         }}</small>
         <button class="text-button" @click="go('heart', 'notes')">
-          看看 TA 的便签
+          {{ t("看看 TA 的便签") }}
         </button>
       </article>
       <article class="note ahead">
-        <span class="eyebrow">在等的事</span>
+        <span class="eyebrow">{{ t("在等的事") }}</span>
         <ul v-if="expecting.length" class="list">
           <li v-for="a in expecting" :key="a.id">
             <b>{{ a.when }}</b>
@@ -241,9 +253,9 @@ watch(() => [studio.tick, studio.pulse], load);
             <small>{{ ANTICIPATION_LABELS[a.kind] || a.kind }}</small>
           </li>
         </ul>
-        <p v-else class="muted">这几天没有 TA 特别在等的事。</p>
+        <p v-else class="muted">{{ t("这几天没有 TA 特别在等的事。") }}</p>
         <button class="text-button" @click="go('life', 'ahead')">
-          约定与期待
+          {{ t("约定与期待") }}
         </button>
       </article>
     </section>
@@ -251,43 +263,46 @@ watch(() => [studio.tick, studio.pulse], load);
     <section class="now-grid">
       <Card
         class="today"
-        title="今天的 TA"
-        :sub="today ? `${dayLabel(today.day)}，按时间排在一起` : ''"
+        :title="t('今天的 TA')"
+        :sub="today ? t('{v}，按时间排在一起', { v: dayLabel(today.day) }) : ''"
       >
         <template #actions>
           <Tabs
             v-model="filter"
-            label="筛选今天的事"
+            :label="t('筛选今天的事')"
             :items="[
-              { key: 'all', label: '全部', count: counts.all },
-              { key: 'talk', label: '开口与沉默', count: counts.talk },
-              { key: 'feel', label: '心情', count: counts.feel },
-              { key: 'inner', label: '独处与日记', count: counts.inner },
+              { key: 'all', label: t('全部'), count: counts.all },
+              { key: 'talk', label: t('开口与沉默'), count: counts.talk },
+              { key: 'feel', label: t('心情'), count: counts.feel },
+              { key: 'inner', label: t('独处与日记'), count: counts.inner },
             ]"
           />
         </template>
         <div class="today-scroll scroll-pane">
-          <Timeline v-if="rows.length" :items="rows" label="今天的 TA">
+          <Timeline v-if="rows.length" :items="rows" :label="t('今天的 TA')">
             <template #default="{ item }">
               <div class="entry-head">
                 <time>{{ clockTime(item.time, zone) }}</time>
                 <b v-if="item.type === 'choice'">{{
                   CHOICE_LABELS[item.choice] || item.choice
                 }}</b>
-                <b v-else-if="item.type === 'glance'"
-                  >扫了{{ item.count > 1 ? ` ${item.count} ` : "一" }}眼</b
-                >
-                <b v-else-if="item.type === 'feeling'"
-                  >心情 · {{ item.feeling }}</b
-                >
+                <b v-else-if="item.type === 'glance'">{{
+                  item.count > 1
+                    ? t("扫了 {count} 眼", { count: item.count })
+                    : t("扫了一眼")
+                }}</b>
+                <b v-else-if="item.type === 'feeling'">{{
+                  t("心情 · {feeling}", { feeling: item.feeling })
+                }}</b>
                 <b v-else-if="item.type === 'run'"
                   >{{ RUN_LABELS[item.kind] || item.kind }} ·
                   {{ RUN_STATES[item.status] || item.status }}</b
                 >
-                <b v-else
-                  >约定 ·
-                  {{ ANTICIPATION_STATES[item.status] || item.status }}</b
-                >
+                <b v-else>{{
+                  t("约定 · {v}", {
+                    v: ANTICIPATION_STATES[item.status] || item.status,
+                  })
+                }}</b>
                 <span
                   v-if="item.type === 'choice'"
                   class="chip"
@@ -306,10 +321,10 @@ watch(() => [studio.tick, studio.pulse], load);
                 }}<small v-if="item.appraisal"> · {{ item.appraisal }}</small>
               </p>
               <p v-else-if="item.type === 'glance'" class="muted">
-                {{ item.reason || "没什么需要 TA 细看的" }}
+                {{ item.reason || t("没什么需要 TA 细看的") }}
               </p>
               <p v-else-if="item.type === 'feeling'">
-                {{ item.cause || "说不清为什么" }}
+                {{ item.cause || t("说不清为什么") }}
                 <small>· {{ ORIGIN_LABELS[item.origin] || item.origin }}</small>
               </p>
               <p v-else-if="item.type === 'run'" class="muted">
@@ -323,14 +338,18 @@ watch(() => [studio.tick, studio.pulse], load);
           </Timeline>
           <Empty
             v-else
-            title="今天还很安静"
-            text="TA 扫一眼、开口、没出声、心情变化、独处、写日记，都会按时间排在这里。"
+            :title="t('今天还很安静')"
+            :text="
+              t(
+                'TA 扫一眼、开口、没出声、心情变化、独处、写日记，都会按时间排在这里。',
+              )
+            "
           />
         </div>
       </Card>
 
       <div class="stack side">
-        <Card title="今天的注意力" eyebrow="这一天">
+        <Card :title="t('今天的注意力')" :eyebrow="t('这一天')">
           <div class="stack tight">
             <Meter
               v-for="c in LEDGER"
@@ -342,18 +361,19 @@ watch(() => [studio.tick, studio.pulse], load);
             />
           </div>
           <p class="faint ledger-note">
-            共 {{ num(usage.calls) }} 次调用、{{
-              num(usage.total)
-            }}
-            Token，缓存命中 {{ num(usage.cached) }}。
             {{
-              limits.total
-                ? `每日上限 ${num(limits.total)}。`
-                : "没有设置每日上限。"
+              t("共 {v} 次调用、{v2} Token，缓存命中 {v3}。 {v4}", {
+                v: num(usage.calls),
+                v2: num(usage.total),
+                v3: num(usage.cached),
+                v4: limits.total
+                  ? t("每日上限 {v}。", { v: num(limits.total) })
+                  : t("没有设置每日上限。"),
+              })
             }}
           </p>
         </Card>
-        <Card title="还没细看的消息" eyebrow="留意">
+        <Card :title="t('还没细看的消息')" :eyebrow="t('留意')">
           <ul v-if="overview?.attention?.length" class="list">
             <li
               v-for="a in overview.attention"
@@ -361,32 +381,36 @@ watch(() => [studio.tick, studio.pulse], load);
               class="list-row"
             >
               <span class="grow">{{ a.name }}</span>
-              <span class="chip" :data-tone="a.unread ? undefined : 'quiet'"
-                >{{ a.unread }} 条未读</span
-              >
+              <span class="chip" :data-tone="a.unread ? undefined : 'quiet'">{{
+                t("{unread} 条未读", { unread: a.unread })
+              }}</span>
             </li>
           </ul>
           <p v-else class="muted small-text">
-            被叫到、聊到 TA 在意的事、熟人说话或攒了不少消息时，TA 才会细看。
+            {{
+              t(
+                "被叫到、聊到 TA 在意的事、熟人说话或攒了不少消息时，TA 才会细看。",
+              )
+            }}
           </p>
         </Card>
-        <Card title="TA 的这一生" eyebrow="到现在">
+        <Card :title="t('TA 的这一生')" :eyebrow="t('到现在')">
           <div class="counts">
             <button @click="go('heart')">
               <b>{{ overview?.counts?.self ?? 0 }}</b
-              ><span>自我线索</span>
+              ><span>{{ t("自我线索") }}</span>
             </button>
             <button @click="go('people')">
               <b>{{ overview?.counts?.people ?? 0 }}</b
-              ><span>认识的人</span>
+              ><span>{{ t("认识的人") }}</span>
             </button>
             <button @click="go('life')">
               <b>{{ overview?.counts?.diaries ?? 0 }}</b
-              ><span>天日记</span>
+              ><span>{{ t("天日记") }}</span>
             </button>
             <button @click="go('life', 'ahead')">
               <b>{{ overview?.counts?.anticipations ?? 0 }}</b
-              ><span>件在等的事</span>
+              ><span>{{ t("件在等的事") }}</span>
             </button>
           </div>
         </Card>

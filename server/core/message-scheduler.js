@@ -8,7 +8,12 @@ export async function deliver(
   trace,
   send,
   isCurrent,
-  { wait = sleep, random = Math.random, now = Date.now } = {},
+  {
+    wait = sleep,
+    random = Math.random,
+    now = Date.now,
+    prepareBubble = (line) => line,
+  } = {},
 ) {
   const ids = bubbles.map((text, i) => {
     const id = randomUUID();
@@ -32,11 +37,12 @@ export async function deliver(
         trace.steps.push("发送前配置或语境变化，取消剩余气泡");
         break;
       }
+      const outgoing = prepareBubble(bubbles[i]);
       repo.db
-        .prepare("UPDATE core_outbox SET status='sending' WHERE id=?")
-        .run(ids[i]);
+        .prepare("UPDATE core_outbox SET status='sending',text=? WHERE id=?")
+        .run(outgoing, ids[i]);
       try {
-        const result = await send(message, bubbles[i]);
+        const result = await send(message, outgoing);
         repo.db
           .prepare(
             "UPDATE core_outbox SET status='confirmed',platform_id=? WHERE id=?",
@@ -49,11 +55,11 @@ export async function deliver(
             traceId: trace.id,
             replyTargetIds: trace.decision?.targetMessageIds || [],
           },
-          bubbles[i],
+          outgoing,
           result?.message_id,
           now(),
         );
-        sent.push(bubbles[i]);
+        sent.push(outgoing);
       } catch (e) {
         repo.db
           .prepare("UPDATE core_outbox SET status='uncertain' WHERE id=?")

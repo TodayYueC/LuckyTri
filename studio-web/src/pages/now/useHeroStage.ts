@@ -1,3 +1,4 @@
+import { t } from "../../i18n";
 import { computed, ref } from "vue";
 import { toast } from "../../api";
 
@@ -108,10 +109,10 @@ export function useHeroStage() {
   }
 
   function finishPicture() {
-    if (remember(WALLPAPER_KEY, picture.value, "浏览器没有保存这次构图")) {
+    if (remember(WALLPAPER_KEY, picture.value, t("浏览器没有保存这次构图"))) {
       adjusting.value = false;
       pictureDrag.value = null;
-      toast("首页壁纸构图已记住");
+      toast(t("首页壁纸构图已记住"));
     }
   }
 

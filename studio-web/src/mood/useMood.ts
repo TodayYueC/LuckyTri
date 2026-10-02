@@ -70,10 +70,16 @@ export function applyTheme() {
   watchEffect(() => {
     const root = document.documentElement;
     const key = mood.value;
-    root.dataset.mood = key;
-    root.dataset.phase = theme.affect?.phase || "awake";
-    root.dataset.motion = motionOn.value ? "full" : "quiet";
-    root.style.setProperty("--tempo", String(MOODS[key].tempo));
-    root.style.setProperty("--intensity", intensity.value.toFixed(2));
+    const phase = theme.affect?.phase || "awake",
+      motion = motionOn.value ? "full" : "quiet";
+    if (root.dataset.mood !== key) root.dataset.mood = key;
+    if (root.dataset.phase !== phase) root.dataset.phase = phase;
+    if (root.dataset.motion !== motion) root.dataset.motion = motion;
+    const tempo = String(MOODS[key].tempo),
+      level = intensity.value.toFixed(2);
+    if (root.style.getPropertyValue("--tempo") !== tempo)
+      root.style.setProperty("--tempo", tempo);
+    if (root.style.getPropertyValue("--intensity") !== level)
+      root.style.setProperty("--intensity", level);
   });
 }

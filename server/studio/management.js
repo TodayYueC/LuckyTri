@@ -1,5 +1,5 @@
-import { recordModelCheck, savedConnectionSettings } from "../readiness.js";
-import { FEEDBACK_LABELS } from "../feedback.js";
+import { recordModelCheck, savedConnectionSettings } from "./readiness.js";
+import { FEEDBACK_LABELS } from "../core/feedback.js";
 
 function connectionSettings(store, modelId = "") {
   const selected = savedConnectionSettings(store, modelId);

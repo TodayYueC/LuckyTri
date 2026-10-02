@@ -1,4 +1,5 @@
-import { summarizeGroupStyle } from "../group-style.js";
+import { summarizeGroupStyle } from "../core/group-style.js";
+import { relevantContext, boundMindContext } from "./context-selection.js";
 import { interestTerms } from "./attention.js";
 import { agoLabel, elapsedLabel } from "./clock.js";
 import { describeFace } from "./faces.js";
@@ -86,11 +87,15 @@ export function innerView(
   const nature = mind.nature.current(now);
   const affect = mind.affect.state(now, { nature, room: session });
   const face = mind.faces.current(session, now);
-  const threads = mind.self.active({ before: now, now, limit: 6 });
   const living = mind.self.living({ before: now, now, room: session });
   const cues = speakerCues(cue);
   const carries = (thread) => mind.meetings.stays(thread, session, now);
-  const visibleThreads = threads.filter(carries);
+  const visibleThreads = relevantContext(
+    mind.self
+      .annotated({ before: now, now })
+      .filter((t) => !t.faded && carries(t)),
+    { cues, limit: 6, pinned: (t) => t.core || t.thread === living?.thread },
+  );
   const shownLiving = living && carries(living) ? living : null;
   const reminded = [
     ...mind.self
@@ -191,9 +196,12 @@ export function innerView(
     });
   }
   const group = kind === "group" ? mind.bonds.group(session, now) : null;
-  const thoughts = mind.thoughts
-    .open({ now, limit: 3, session })
-    .filter((t) => mind.meetings.sayable(t.content, session));
+  const thoughts = relevantContext(
+    mind.thoughts
+      .open({ now, limit: 400, session })
+      .filter((t) => mind.meetings.sayable(t.content, session)),
+    { cues, limit: 3 },
+  );
   const heard = feedback(mind, session, now);
   const continuity = mind.continuity.recall({ session, people, cue, now });
   const expecting = mind.anticipations
@@ -229,10 +237,11 @@ export function innerView(
   const expectingLines = expecting.filter((line) =>
     mind.meetings.sayable(line, session),
   );
-  return {
+  return boundMindContext({
     self,
     affect: cause ? affect : { ...affect, cause: "" },
     inner: {
+      currentLife: mind.time.view({ session, now, cue }),
       state: `${affect.phaseLabel}，精力${affect.energyLabel}，心情${affect.mood}${cause ? `（${cause}）` : ""}${affect.lately ? `，${affect.lately}` : ""}`,
       ...(persons.length ? { people: persons } : {}),
       ...(continuity ? { continuity } : {}),
@@ -253,5 +262,5 @@ export function innerView(
       ...(room ? { room } : {}),
       ...(heard.length ? { heard } : {}),
     },
-  };
+  });
 }

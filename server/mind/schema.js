@@ -1,11 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { NATURE_DEFAULTS, NATURE_FIELDS } from "./nature.js";
 import { evidence, parse } from "./util.js";
+import { migrateTime } from "./time/schema.js";
 
 // Every table here only grows. A change is a new row that cites the
 // experience behind it; a withdrawal is a tombstone in mind_revocations.
 export function migrateMind(db, store) {
+  migrateTime(db);
   db.exec(`
+    CREATE TABLE IF NOT EXISTS mind_creations(id TEXT PRIMARY KEY,created INTEGER NOT NULL,plan_id TEXT NOT NULL UNIQUE,kind TEXT NOT NULL,title TEXT NOT NULL,content TEXT NOT NULL,sources TEXT NOT NULL,session_id TEXT,discretion TEXT NOT NULL,run_id TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS mind_creations_time ON mind_creations(created);
+    CREATE TABLE IF NOT EXISTS mind_memory_permissions(memory_id TEXT NOT NULL,session_id TEXT NOT NULL,recall INTEGER NOT NULL,disclose INTEGER NOT NULL,expires INTEGER,updated INTEGER NOT NULL,PRIMARY KEY(memory_id,session_id));
+    CREATE TABLE IF NOT EXISTS mind_permission_events(id INTEGER PRIMARY KEY,memory_id TEXT NOT NULL,session_id TEXT NOT NULL,created INTEGER NOT NULL,value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS mind_nature (version INTEGER PRIMARY KEY, created INTEGER NOT NULL, value TEXT NOT NULL, note TEXT);
     CREATE TABLE IF NOT EXISTS mind_trait_changes (id TEXT PRIMARY KEY, created INTEGER NOT NULL, trait TEXT NOT NULL, value INTEGER NOT NULL, delta INTEGER NOT NULL, reason TEXT NOT NULL, sources TEXT NOT NULL DEFAULT '[]', origin TEXT NOT NULL, nature_version INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS mind_trait_changes_trait ON mind_trait_changes(nature_version,trait,created);
@@ -75,6 +81,7 @@ export function migrateMind(db, store) {
   );
   addColumn("mind_meetings", "will_people", "TEXT NOT NULL DEFAULT '[]'");
   addColumn("mind_meetings", "reason", "TEXT NOT NULL DEFAULT ''");
+  addColumn("mind_anticipations", "activity", "TEXT NOT NULL DEFAULT ''");
   db.prepare(
     "UPDATE mind_runs SET status='interrupted',finished=? WHERE status='running'",
   ).run(Date.now());

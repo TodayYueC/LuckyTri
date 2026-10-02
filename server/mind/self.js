@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { evidenceRoots, externalEvidence } from "./evidence.js";
 import {
   CORE_THREADS,
   THREAD_FADED,
@@ -40,12 +41,12 @@ const TRAIT_CAP = 0.25;
 
 // Fade follows the last version that cited something not cited before.
 // The first version counts even when it has no source.
-function earnedAt(history) {
+function earnedAt(history, roots) {
   if (!history?.length) return null;
-  const seen = new Set(history[0].sources || []);
+  const seen = new Set(roots(history[0].sources || []));
   let at = history[0].created;
   for (const row of history.slice(1)) {
-    const sources = row.sources || [];
+    const sources = roots(row.sources || []);
     if (sources.some((source) => !seen.has(source))) at = row.created;
     for (const source of sources) seen.add(source);
   }
@@ -59,6 +60,7 @@ export class Self {
   constructor(mind) {
     this.mind = mind;
     this.db = mind.db;
+    this.annotation = null;
   }
   revokedThreads() {
     return new Set(
@@ -97,6 +99,14 @@ export class Self {
   // her core and never fall out of view.
   annotated({ before = Number.MAX_SAFE_INTEGER, now } = {}) {
     const at = now ?? (before < Number.MAX_SAFE_INTEGER ? before : Date.now());
+    const mark = this.db
+      .prepare(
+        "SELECT total_changes() changes, (SELECT data_version FROM pragma_data_version) external",
+      )
+      .get();
+    const key = `${before}:${at}:${mark.changes}:${mark.external}`;
+    if (this.annotation?.key === key)
+      return structuredClone(this.annotation.rows);
     const lived = this.mind.days.lived(at);
     const versions = new Map();
     for (const row of this.db
@@ -118,7 +128,10 @@ export class Self {
         // last version that actually brought new evidence. A later note she
         // wrote to herself, a meeting that met this wish, words she spoke
         // about it, or a line she later sent about it, are also living it.
-        let at = earnedAt(versions.get(row.thread)) ?? row.created;
+        let at =
+          earnedAt(versions.get(row.thread), (sources) =>
+            evidenceRoots(this.db, sources, before),
+          ) ?? row.created;
         if (row.kind === "intention" && ownLife(row.content)) {
           for (const note of notes)
             if (
@@ -149,13 +162,17 @@ export class Self {
         .filter(Boolean)
         .map((row) => row.thread),
     );
-    return rows
+    const ranked = rows
       .map((row) => ({
         ...row,
         core: core.has(row.thread),
         faded: !core.has(row.thread) && row.salience < THREAD_FADED,
       }))
       .sort((a, b) => b.salience - a.salience || b.created - a.created);
+    // Several views in one read use the same exact moment, never a later replay.
+    // Writes and external database changes invalidate the derived picture.
+    this.annotation = { key, rows: ranked };
+    return structuredClone(ranked);
   }
   // The one wish she is living. In a room, a stronger wish that does not
   // belong there does not erase the next wish that does. A duty about
@@ -285,9 +302,13 @@ export class Self {
         days: parse(row.days, []),
       }));
   }
-  days(sources, time) {
+  days(sources, time, { external = false } = {}) {
     const timeZone = this.mind.timeZone();
-    const seqs = messageSeqs(sources);
+    const seqs = messageSeqs(
+      external
+        ? externalEvidence(this.db, sources, time)
+        : evidenceRoots(this.db, sources, time),
+    );
     const found = seqs.length
       ? this.db
           .prepare(
@@ -297,9 +318,12 @@ export class Self {
           .map((row) => dayKey(row.time, timeZone))
       : [];
     // Diary days cited in a review count as the days it happened.
-    for (const ref of evidence(sources))
-      if (/^d:\d{4}-\d{2}-\d{2}$/.test(ref)) found.push(ref.slice(2));
-    return [...new Set(found.length ? found : [dayKey(time, timeZone)])];
+    // A diary written later does not make its underlying experience later.
+    return [
+      ...new Set(
+        found.length ? found : external ? [] : [dayKey(time, timeZone)],
+      ),
+    ];
   }
   propose(
     input,
@@ -348,8 +372,19 @@ export class Self {
     const spent = new Set();
     if (prior)
       for (const row of this.history(prior.thread))
-        for (const source of row.sources || []) spent.add(source);
-    const fresh = sources.filter((source) => !spent.has(source));
+        for (const source of evidenceRoots(this.db, row.sources || [], time))
+          spent.add(source);
+    let fresh = sources.filter((source) =>
+      evidenceRoots(this.db, [source], time).some((root) => !spent.has(root)),
+    );
+    const lasting = ["trait", "habit"].includes(prior?.kind || kind);
+    const freshWords = fresh;
+    if (lasting)
+      fresh = fresh.filter((source) =>
+        externalEvidence(this.db, [source], time).some(
+          (root) => !spent.has(root),
+        ),
+      );
     const spoken = content || prior?.content || "";
     // The same evidence cannot be spent again to make a thread stronger.
     // An unchanged sentence is not a new version. A rewording can stay,
@@ -365,14 +400,22 @@ export class Self {
     if (
       origin === "memory" &&
       action !== "close" &&
-      !echoes(spoken, this.#spoken(fresh))
+      !echoes(spoken, this.#spoken(freshWords))
     )
       return { rejected: "对不上她说过的话" };
     // A revision that cites nothing new keeps the old provenance. Dropping
     // it would let a privately learned sentence travel into other rooms.
-    const kept = sources.length || !prior ? sources : prior.sources || [];
+    const kept = [
+      ...new Set([
+        ...(prior && !fresh.length ? prior.sources || [] : []),
+        ...sources,
+      ]),
+    ];
     const days = [
-      ...new Set([...(prior?.days || []), ...this.days(kept, time)]),
+      ...new Set([
+        ...(prior?.days || []),
+        ...this.days(kept, time, { external: lasting }),
+      ]),
     ].slice(-60);
     let strength;
     let status;

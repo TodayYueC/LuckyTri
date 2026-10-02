@@ -82,6 +82,7 @@ export function buildContext(
     time: m.time,
     localTime: localClock(m.time, policy.timeZone).local,
     role: m.role,
+    ...(m.artifact ? { artifact: m.artifact } : {}),
     text: m.text,
     mentions: m.mentions || [],
     replyTo: m.replyTo,

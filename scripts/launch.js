@@ -83,7 +83,7 @@ try {
     });
     child.unref();
     let ready = false;
-    for (let attempt = 0; attempt < 30; attempt++) {
+    for (let attempt = 0; attempt < 200; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 300));
       if (await running()) {
         ready = true;

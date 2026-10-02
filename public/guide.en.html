@@ -1,0 +1,962 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>LuckyTri v0.9.9 · Getting Started</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background: #f6f8f3;
+        color: #34412f;
+        font:
+          14px/1.9 "Microsoft YaHei",
+          system-ui,
+          sans-serif;
+      }
+      a {
+        color: #638353;
+        text-underline-offset: 4px;
+      }
+      header {
+        background: #edf3e6;
+        border-bottom: 1px solid #dfe7d6;
+        padding: 24px max(24px, calc((100% - 1160px) / 2));
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        align-items: center;
+      }
+      header b {
+        font-size: 20px;
+        letter-spacing: 2px;
+      }
+      header small {
+        display: block;
+        color: #93a187;
+        font-size: 10px;
+        letter-spacing: 2px;
+      }
+      header nav {
+        display: flex;
+        gap: 14px;
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        font-size: 12px;
+      }
+      button {
+        font: inherit;
+        background: white;
+        border: 1px solid #dce5d2;
+        border-radius: 7px;
+        padding: 7px 13px;
+        color: #6e8760;
+        cursor: pointer;
+      }
+      .lang {
+        border: 1px solid #dce5d2;
+        border-radius: 7px;
+        padding: 6px 12px;
+        background: white;
+        text-decoration: none;
+      }
+      .layout {
+        max-width: 1200px;
+        margin: 36px auto;
+        display: grid;
+        grid-template-columns: 225px minmax(0, 1fr);
+        gap: 32px;
+        padding: 0 24px;
+      }
+      .toc {
+        position: sticky;
+        top: 24px;
+        align-self: start;
+        font-size: 12px;
+      }
+      .toc p {
+        font-size: 10px;
+        letter-spacing: 2px;
+        color: #a5b097;
+      }
+      .toc a {
+        display: block;
+        text-decoration: none;
+        color: #819176;
+        padding: 8px 0;
+      }
+      .toc a:hover {
+        color: #456638;
+      }
+      article {
+        background: #fff;
+        border: 1px solid #e5ebdf;
+        border-radius: 14px;
+        padding: 38px 44px;
+        min-width: 0;
+      }
+      h1 {
+        font-size: 27px;
+        line-height: 1.5;
+        margin: 0 0 20px;
+        font-weight: 600;
+      }
+      h2 {
+        font-size: 20px;
+        scroll-margin-top: 24px;
+        border-top: 1px solid #e9eee4;
+        margin: 38px 0 20px;
+        padding-top: 28px;
+      }
+      h3 {
+        font-size: 15px;
+        margin-top: 24px;
+      }
+      p,
+      li {
+        color: #6f7d65;
+      }
+      strong {
+        color: #4e6442;
+      }
+      pre {
+        overflow: auto;
+        background: #f4f7ef;
+        padding: 18px 20px;
+        border: 1px solid #e5ecdc;
+        border-radius: 8px;
+        line-height: 1.7;
+        font-size: 12px;
+        color: #5d774e;
+      }
+      code {
+        font-family: Consolas, monospace;
+        overflow-wrap: anywhere;
+      }
+      p code,
+      li code,
+      td code {
+        background: #f1f5ec;
+        padding: 2px 5px;
+        border-radius: 4px;
+        font-size: 12px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        table-layout: fixed;
+        font-size: 12px;
+        margin: 22px 0;
+      }
+      th,
+      td {
+        border: 1px solid #e4eadc;
+        padding: 10px 12px;
+        text-align: left;
+        overflow-wrap: anywhere;
+      }
+      th {
+        background: #eff4e9;
+        color: #708462;
+      }
+      td {
+        color: #7d8974;
+      }
+      ul,
+      ol {
+        padding-left: 24px;
+      }
+      blockquote {
+        border-left: 3px solid #b6c7a5;
+        padding-left: 18px;
+      }
+      footer {
+        text-align: center;
+        font-size: 10px;
+        color: #a8b19f;
+        padding: 0 20px 35px;
+      }
+      @media (max-width: 760px) {
+        header {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        header nav {
+          justify-content: flex-start;
+        }
+        .layout {
+          grid-template-columns: 1fr;
+          margin: 20px auto;
+          padding: 0 14px;
+        }
+        .toc {
+          position: static;
+          display: flex;
+          gap: 10px;
+          overflow: auto;
+        }
+        .toc p {
+          display: none;
+        }
+        .toc a {
+          white-space: nowrap;
+          border: 1px solid #e0e8d8;
+          border-radius: 7px;
+          padding: 7px 10px;
+        }
+        article {
+          padding: 24px 20px;
+        }
+        h1 {
+          font-size: 23px;
+        }
+        h2 {
+          font-size: 18px;
+        }
+        th,
+        td {
+          padding: 7px;
+        }
+        table {
+          font-size: 11px;
+        }
+      }
+      @media print {
+        body {
+          background: white;
+        }
+        .toc,
+        header nav {
+          display: none;
+        }
+        .layout {
+          display: block;
+          margin: 0;
+          max-width: none;
+          padding: 0;
+        }
+        article {
+          border: 0;
+          padding: 0;
+        }
+        header {
+          padding: 0 0 20px;
+          background: white;
+        }
+        a {
+          color: inherit;
+        }
+        h2 {
+          break-after: avoid;
+        }
+        pre,
+        tr {
+          break-inside: avoid;
+        }
+        footer {
+          padding: 20px 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <b>LuckyTri · Handbook</b><small>TIME · MEMORY · CHOICE / v0.9.9</small>
+      </div>
+      <nav>
+        <a href="/#setup">Back to the studio</a
+        ><a href="/tutorial.en.md" download>Download Markdown</a
+        ><button onclick="window.print()">Print / Save as PDF</button
+        ><a class="lang" href="/guide.html" hreflang="zh" lang="zh">中文</a>
+      </nav>
+    </header>
+    <div class="layout">
+      <nav class="toc" aria-label="Guide contents">
+        <p>CONTENTS</p>
+        <a href="#step-1">1. Start</a><a href="#step-2">2. Local tokens</a
+        ><a href="#step-3">3. Try it in simulation mode first</a
+        ><a href="#step-4">4. Connect a model</a
+        ><a href="#step-5">5. Connect QQ</a
+        ><a href="#step-6">6. Let TA join a session</a
+        ><a href="#step-7">7. TA, memory and knowledge</a
+        ><a href="#step-8">8. Backup and stop</a
+        ><a href="#step-9">9. Troubleshooting</a>
+      </nav>
+      <article>
+        <h1>LuckyTri · Getting Started</h1>
+        <p>
+          LuckyTri runs on your own computer and meets people through QQ. QQ has
+          two ways to connect, and you pick one: <strong>OneBot 11</strong> (you
+          bring a connector, reverse WebSocket) or the
+          <strong>QQ official bot</strong> (QQ Open Platform). With either, her
+          memory, mood and behavior are exactly the same; only the way messages
+          arrive differs. You configure the model API yourself.
+        </p>
+        <p>
+          The top-right corner of the interface switches between
+          &quot;中文&quot; and &quot;English&quot;. Chinese is the default and
+          your choice is remembered in this browser. What she says, writes in
+          her diary and keeps as her own thoughts is never translated; that is
+          her own content.
+        </p>
+        <h2 id="step-1">1. Start</h2>
+        <p>You need Node.js 24.5 or newer. In the project folder:</p>
+        <pre><code class="language-powershell">node --version
+npm install
+npm start
+</code></pre>
+        <p>
+          Open <a href="http://127.0.0.1:3210">http://127.0.0.1:3210</a>. The
+          experimental-SQLite notice in the terminal does not mean the start
+          failed; what matters is whether LuckyTri opens.
+        </p>
+        <p>
+          On Windows you can double-click <code>启动LuckyTri.cmd</code> for
+          daily use. If the service is already running, it only opens LuckyTri.
+          Closing the browser does not stop the service; to stop it double-click
+          <code>停止LuckyTri.cmd</code> or run <code>npm run stop</code> in the
+          project folder. That command stops this project only and leaves other
+          Node processes alone. When running in the foreground you can also
+          press <code>Ctrl+C</code> in that terminal.
+        </p>
+        <p>
+          LuckyTri is &quot;TA&#39;s little world&quot;. The left navigation has
+          three groups and nine entries:
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Group</th>
+              <th>Entry</th>
+              <th>What is inside</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>TA</td>
+              <td>Now</td>
+              <td>
+                TA&#39;s mood right now, what she is doing, what she said
+                lately, what is on her mind and what she is waiting for;
+                today&#39;s timeline, token usage and the status bar
+              </td>
+            </tr>
+            <tr>
+              <td>TA</td>
+              <td>Inner life</td>
+              <td>
+                The star map (TA&#39;s threads of self), notes she keeps in
+                mind, the mood ribbon
+              </td>
+            </tr>
+            <tr>
+              <td>TA</td>
+              <td>People</td>
+              <td>
+                The people galaxy, each person&#39;s detail page, how TA is in
+                each group
+              </td>
+            </tr>
+            <tr>
+              <td>TA</td>
+              <td>Lifetime</td>
+              <td>
+                The diary and TA on that day, reviews, &quot;my road so
+                far&quot; and chapters, promises and anticipation, the bookshelf
+              </td>
+            </tr>
+            <tr>
+              <td>Daily life</td>
+              <td>Time</td>
+              <td>
+                The record of TA&#39;s actual life: today&#39;s activity,
+                to-dos, works library, ongoing projects, experiences
+              </td>
+            </tr>
+            <tr>
+              <td>Daily life</td>
+              <td>Chat</td>
+              <td>
+                Session list, live chat and &quot;why she said this&quot;,
+                feedback, session settings, simulated messages, back to that
+                moment (replay)
+              </td>
+            </tr>
+            <tr>
+              <td>Daily life</td>
+              <td>Memory</td>
+              <td>What TA remembers, the bookshelf</td>
+            </tr>
+            <tr>
+              <td>Settings</td>
+              <td>Nature</td>
+              <td>
+                Name and character (the glow beside it previews live), daily
+                rhythm, TA&#39;s days, daily tokens, advanced prompts, trial
+                chat
+              </td>
+            </tr>
+            <tr>
+              <td>Settings</td>
+              <td>System</td>
+              <td>Connect QQ, model library, run switches</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          The colors, sky and motion follow TA&#39;s mood and rhythm: warm when
+          she is happy, grey-blue when she is low, night once she is asleep. At
+          the bottom left you can pin one theme or turn on &quot;Reduce
+          motion&quot;. The small TA at the bottom right answers a poke, a long
+          press is a head-pat, and a double click or &quot;Chat&quot; opens the
+          trial chat. These are interface animations only and never change her
+          mind. On a phone the navigation sits at the bottom and the other
+          entries are under &quot;More&quot;.
+        </p>
+        <h2 id="step-2">2. Local tokens</h2>
+        <p>
+          Stop the service before connecting QQ, then generate the
+          configuration:
+        </p>
+        <pre><code class="language-powershell">npm run stop
+npm run setup
+</code></pre>
+        <p>
+          When there is no <code>.env</code>, setup writes an admin token and an
+          OneBot connection token. An existing <code>.env</code> is kept as it
+          is.
+        </p>
+        <pre><code class="language-dotenv">HOST=127.0.0.1
+PORT=3210
+ADMIN_TOKEN=
+ONEBOT_TOKEN=
+LLM_API_KEY=
+</code></pre>
+        <table>
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>ADMIN_TOKEN</code></td>
+              <td>
+                Opens LuckyTri and calls the HTTP API; the stop command uses it
+                too
+              </td>
+            </tr>
+            <tr>
+              <td><code>ONEBOT_TOKEN</code></td>
+              <td>
+                The OneBot 11 connector uses it for
+                <code>/onebot/v11/ws</code> (only needed for OneBot)
+              </td>
+            </tr>
+            <tr>
+              <td><code>LLM_API_KEY</code></td>
+              <td>
+                Optional; when set it takes precedence over the model key saved
+                in LuckyTri
+              </td>
+            </tr>
+            <tr>
+              <td><code>LUCKYTRI_CHANNEL</code></td>
+              <td>
+                Optional; <code>onebot</code> or <code>qqbot</code>. When set,
+                the connection method cannot be changed in the interface
+              </td>
+            </tr>
+            <tr>
+              <td><code>QQBOT_APP_ID</code> / <code>QQBOT_APP_SECRET</code></td>
+              <td>
+                Optional; credentials of the QQ official bot, they take
+                precedence over what is saved in the interface
+              </td>
+            </tr>
+            <tr>
+              <td><code>HOST</code> / <code>PORT</code></td>
+              <td>Listen address and port; keep the defaults for local use</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          The first time the page loads data it asks for
+          <code>ADMIN_TOKEN</code>. The token stays in the current tab only.
+          Restart after changing <code>.env</code>. Never give
+          <code>ADMIN_TOKEN</code> to the QQ connector, and do not treat
+          <code>ONEBOT_TOKEN</code> as the studio password.
+        </p>
+        <h2 id="step-3">3. Try it in simulation mode first</h2>
+        <p>Simulation mode is on by default, so nothing is sent to QQ.</p>
+        <ol>
+          <li>
+            Open &quot;Chat&quot;, click &quot;+ Add session&quot; above the
+            session list and enter a test group number and name.
+          </li>
+          <li>
+            In the chat in the middle click &quot;Simulated message&quot;, type
+            an ordinary line as one of the group members and send it.
+          </li>
+          <li>
+            Click &quot;Why she said that&quot; under TA&#39;s reply to see the
+            reason. &quot;TA glanced over it&quot; and &quot;TA looked but
+            stayed quiet&quot; show up as dividers in the chat.
+          </li>
+        </ol>
+        <p>
+          Without a model key, simulated replies use local samples and call no
+          model. Once there is a key, the same path runs the real speaking flow,
+          still without sending to QQ. Simulated messages go into a simulated
+          session and never change TA&#39;s mood, relationships or memory.
+        </p>
+        <p>
+          &quot;Simulated message&quot; is only available in simulation mode.
+          The &quot;Chat&quot; of the small TA and the trial chat to the right
+          of &quot;Nature&quot; are different: they go through the real pipeline
+          and read TA&#39;s mind as it is now, and the Nature page can even
+          include an unsaved draft, but nothing is written and nothing is sent
+          to QQ.
+        </p>
+        <h2 id="step-4">4. Connect a model</h2>
+        <p>
+          Open &quot;System → Model library&quot;, click &quot;+ Add model&quot;
+          and choose a preset.
+        </p>
+        <ul>
+          <li>
+            For the API address enter the root of the provider&#39;s compatible
+            endpoint. The program appends <code>/chat/completions</code> itself;
+            do not write the full path again.
+          </li>
+          <li>For the model name enter a model ID the provider accepts.</li>
+          <li>Leaving the API key empty keeps the saved key.</li>
+        </ul>
+        <p>
+          A preset only fills in a common address and model name; the real
+          models are whatever your provider&#39;s console shows. Speaking
+          decisions and replies need the model to return a JSON object.
+        </p>
+        <p>
+          After saving, click &quot;Test this model&#39;s connection&quot;. The
+          test carries no group chat text. Test again after changing the
+          address, model or key.
+        </p>
+        <p>
+          You can also stay in simulation mode and trial-chat with TA under
+          &quot;Nature&quot; to see how she speaks before letting her join real
+          QQ.
+        </p>
+        <h2 id="step-5">5. Connect QQ</h2>
+        <p>
+          Open &quot;System → Connect QQ&quot;. There are two options at the
+          top: <strong>OneBot 11</strong> and <strong>QQ official bot</strong>,
+          and only one is used at a time. Switching drops the current
+          connection; sessions from the previous method stay readable but can no
+          longer be sent to. See <code>docs/en/connect.md</code> for how the two
+          compare; the steps are below.
+        </p>
+        <h3>Option one: OneBot 11</h3>
+        <p>
+          LuckyTri only implements the reverse-WebSocket side of OneBot 11. You
+          prepare and manage the connector yourself.
+        </p>
+        <ol>
+          <li>
+            Set <code>ONEBOT_TOKEN</code> in the local <code>.env</code> and
+            restart LuckyTri.
+          </li>
+          <li>
+            In the connector&#39;s own network settings add an OneBot 11 reverse
+            WebSocket client:
+          </li>
+        </ol>
+        <table>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Value on this machine</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Protocol</td>
+              <td>OneBot 11</td>
+            </tr>
+            <tr>
+              <td>WebSocket URL</td>
+              <td><code>ws://127.0.0.1:3210/onebot/v11/ws</code></td>
+            </tr>
+            <tr>
+              <td>Token</td>
+              <td><code>ONEBOT_TOKEN</code> from <code>.env</code></td>
+            </tr>
+            <tr>
+              <td>Message format</td>
+              <td>array</td>
+            </tr>
+            <tr>
+              <td>Enabled</td>
+              <td>on, then save</td>
+            </tr>
+          </tbody>
+        </table>
+        <ol start="3">
+          <li>
+            Log in to QQ in the connector. The account must already be in the
+            target group; LuckyTri does not store QQ passwords.
+          </li>
+        </ol>
+        <p>
+          <code>3210</code> is LuckyTri&#39;s port. When the connector and
+          LuckyTri are on different machines or in containers,
+          <code>127.0.0.1</code> points at each own environment: replace it with
+          LuckyTri&#39;s real address and configure
+          <code>ADMIN_TOKEN</code> first.
+        </p>
+        <h3>Option two: QQ official bot</h3>
+        <p>
+          No QQ account login and no extra connector are needed; LuckyTri
+          connects to the QQ Open Platform by itself.
+        </p>
+        <ol>
+          <li>
+            On the QQ Open Platform create a bot, note its
+            <strong>AppID</strong> and <strong>AppSecret</strong>, enable group
+            and one-to-one messages as the platform requires, and add the bot to
+            the group you test with or as a contact. The platform&#39;s entry
+            points and review rules change over time; follow the Open
+            Platform&#39;s current instructions.
+          </li>
+          <li>
+            In &quot;System → Connect QQ&quot; choose &quot;QQ official
+            bot&quot;, fill in the AppID and AppSecret and save. You can also
+            set <code>QQBOT_APP_ID</code> and <code>QQBOT_APP_SECRET</code> in
+            <code>.env</code>. The AppSecret is never shown again after saving.
+          </li>
+          <li>
+            When the status reads &quot;Connected&quot;, @ her in the group or
+            message her privately. For her to see every group message, enable
+            &quot;receive all messages&quot; on the Open Platform; without it
+            she only receives messages that @ her, and the connection page says
+            so.
+          </li>
+          <li>
+            The official interface gives no group names, so new sessions are
+            shown by number. You can rename a session under &quot;Chat&quot;.
+          </li>
+        </ol>
+        <p>
+          With both options, connected only means the transport works. After a
+          message arrives from the target group, the session appears in the
+          session list under &quot;Chat&quot;; newly discovered sessions are
+          paused by default.
+        </p>
+        <h2 id="step-6">6. Let TA join a session</h2>
+        <ol>
+          <li>
+            In &quot;System → Run switches&quot; confirm chatting is allowed,
+            turn simulation mode off and save. The status bar under
+            &quot;Now&quot; shows both.
+          </li>
+          <li>
+            In &quot;Chat&quot; select the target group and click
+            &quot;Resume&quot; under &quot;This session&quot; on the right, or
+            flip the switch in the list.
+          </li>
+          <li>In QQ @ her, or just call TA by name.</li>
+          <li>
+            Go back to &quot;Chat&quot; to read the messages and &quot;Why she
+            said that&quot;.
+          </li>
+        </ol>
+        <p>
+          Whether she speaks is TA&#39;s own decision; there is no participation
+          probability and no cooldown. When she is addressed by name, in a
+          private chat, quoted, or a crisis signal appears, TA always looks
+          closely and then chooses to answer, react briefly, say she does not
+          feel like talking, or stay silent; the reason is shown under
+          &quot;Chat&quot; and &quot;Now → TA today&quot;. Ordinary group
+          messages get a close look only when TA cares: she was just talking,
+          someone asks everyone, the topic touches her interests, someone
+          familiar is speaking, a lot of messages piled up. Otherwise she only
+          glances, calls no model, and reads them together at the next close
+          look. If she seems too quiet, raise &quot;Proactive&quot; under
+          &quot;Nature&quot;.
+        </p>
+        <p>
+          TA sleeps at 02:00 and wakes at 08:00 by default. Drag the moon and
+          the sun under &quot;Nature → Daily rhythm&quot; to change this, or
+          turn it off. If she is called while asleep she looks once she wakes,
+          and the whole interface turns to night. The per-minute limit on
+          speaking turns stays, to prevent bursts of consecutive replies.
+        </p>
+        <p>
+          Once &quot;Image understanding&quot; is on for a model, images in
+          private chats, @ messages or quotes are read locally first and then
+          shown to the model. When the main model cannot see images, pick
+          another vision-capable model with image understanding on under
+          &quot;Chat → This session → Session settings&quot;. A model without
+          image understanding never receives the picture.
+        </p>
+        <h2 id="step-7">7. TA, memory and knowledge</h2>
+        <p>
+          &quot;Nature&quot; is the only part you write: name, character,
+          interests, boundaries, bottom lines and daily rhythm, saved as a new
+          version each time. As you drag a character dial, the glow beside it
+          follows: gentleness warms the color and lifts the corners of the
+          mouth, liveliness makes it bounce faster.
+        </p>
+        <p>
+          Everything else grows from experience: TA&#39;s self is the stars of
+          the &quot;Inner life&quot; star map, her feeling for each person is
+          under &quot;People&quot;, and how she is in each group is in the group
+          faces below &quot;People&quot;. Open any of them to see where each
+          change came from and undo what feels wrong; what was undone is never
+          written back. Threads that have not been touched for a long time
+          slowly fade into the &quot;far away&quot; of the map; they are not
+          deleted and come back when talked about. The record of her time alone,
+          her diary, night sorting, reviews and autobiography rewrites, together
+          with what she is waiting for (arrangements others mentioned, things
+          she promised; they can be undone), are all under &quot;Lifetime&quot;.
+          Daily token cap, background share, night sorting and the review
+          interval are set under &quot;Nature → TA&#39;s days&quot;.
+        </p>
+        <p>
+          In &quot;Memory&quot; pick a session first; you can also filter by
+          person.
+        </p>
+        <ul>
+          <li>
+            TA has one memory across all sessions: what was learned elsewhere is
+            only recalled when relevant; what was learned in a private chat is
+            marked &quot;known privately&quot; and not said in public; what was
+            asked to be kept secret stays in the original session. You can
+            adjust discretion, lock or undo each memory. Memories about a person
+            also appear on that person&#39;s detail page under
+            &quot;People&quot;.
+          </li>
+          <li>
+            When a group member says &quot;remember, I…&quot;, it goes straight
+            into what TA remembers (passwords, verification codes and the like
+            are not remembered).
+          </li>
+          <li>
+            Reference material placed in a collection on the
+            &quot;Bookshelf&quot; is searched within what the current session
+            may see. Group chats never load other private chats&#39;
+            collections.
+          </li>
+          <li>
+            Clearing the context in &quot;Chat&quot; does not delete long-term
+            memory.
+          </li>
+        </ul>
+        <h2 id="step-8">8. Backup and stop</h2>
+        <pre><code class="language-powershell">npm run backup
+npm run stop
+npm start
+</code></pre>
+        <p>
+          Backups go to <code>data/backups/</code>. The database holds chats,
+          memories and any keys saved in it, so keep it like a private file.
+          <code>.env</code> is not part of this backup.
+        </p>
+        <p>
+          Everything of TA lives in this one database, so the service backs it
+          up automatically while running: by default every 24 hours, in another
+          process, it writes a <code>luckytri-auto-*.db</code>, keeps only the
+          latest 7 and checks integrity afterwards. An automatic backup holds
+          chats, memories, self, diary and relationships, but not model call
+          records older than a day (each can be hundreds of KB and would make
+          the backup more than ten times bigger), so &quot;Why she said
+          that&quot; can only be looked back on for the last day.
+          <code>npm run backup</code> is still the full backup. Adjust in
+          <code>.env</code>:
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Variable</th>
+              <th>Meaning</th>
+              <th>Default</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>BACKUP_INTERVAL_HOURS</code></td>
+              <td>
+                Interval between automatic backups, <code>0</code> turns them
+                off
+              </td>
+              <td><code>24</code></td>
+            </tr>
+            <tr>
+              <td><code>BACKUP_KEEP</code></td>
+              <td>How many automatic backups to keep</td>
+              <td><code>7</code></td>
+            </tr>
+            <tr>
+              <td><code>BACKUP_TRACE_DAYS</code></td>
+              <td>Days of call records kept inside a backup</td>
+              <td><code>1</code></td>
+            </tr>
+            <tr>
+              <td><code>BACKUP_DIR</code></td>
+              <td>Backup folder</td>
+              <td><code>data/backups</code></td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          To take an automatic backup right now:
+          <code>node scripts/backup.js --auto --force</code>. A failed automatic
+          backup is noted in the launcher window or
+          <code>data/launcher.log</code> and retried after longer and longer
+          pauses. A backup on the same disk as the database cannot survive disk
+          failure; copy important backups elsewhere yourself.
+        </p>
+        <p>
+          To restore, stop the service, move the current
+          <code>data/friend.db</code> and its <code>-wal</code> and
+          <code>-shm</code> files away, then copy the chosen backup to
+          <code>data/friend.db</code>. When <code>DB_PATH</code> is set, work on
+          that path. Never keep an old WAL file next to a restored database. The
+          safer way is <code>npm run recovery</code>, which verifies a backup
+          and restores it into a brand new file; see
+          <code>docs/en/recovery.md</code>.
+        </p>
+        <h2 id="step-9">9. Troubleshooting</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Symptom</th>
+              <th>Check first</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>The page does not open</td>
+              <td>
+                Is Node running, and is the address <code>127.0.0.1:3210</code>
+              </td>
+            </tr>
+            <tr>
+              <td>Port already in use</td>
+              <td>
+                Run <code>npm run stop</code> first; do not kill every node
+                process
+              </td>
+            </tr>
+            <tr>
+              <td>Wrong token</td>
+              <td>
+                Use <code>ADMIN_TOKEN</code>; restart after editing
+                <code>.env</code>
+              </td>
+            </tr>
+            <tr>
+              <td>OneBot not connected</td>
+              <td>
+                Is the connector logged in; do the URL, port, path and
+                <code>ONEBOT_TOKEN</code> all match
+              </td>
+            </tr>
+            <tr>
+              <td>Official bot not connected</td>
+              <td>
+                Are the AppID and AppSecret right, are group and one-to-one
+                messages enabled for the bot, can the network reach the QQ Open
+                Platform
+              </td>
+            </tr>
+            <tr>
+              <td>Official bot only gets @ messages</td>
+              <td>
+                Enable &quot;receive all messages&quot; on the Open Platform;
+                this is a platform permission, not a LuckyTri limit
+              </td>
+            </tr>
+            <tr>
+              <td>Connected but no sessions</td>
+              <td>
+                Send one more new message in QQ; with OneBot also check the
+                message format is array
+              </td>
+            </tr>
+            <tr>
+              <td>No reply in a group</td>
+              <td>
+                Global switch, session switch, simulation mode, key; under
+                &quot;Chat&quot;, was it &quot;TA glanced over it&quot; or did
+                TA look closely and choose silence
+              </td>
+            </tr>
+            <tr>
+              <td>No reply even when @-ed</td>
+              <td>
+                Is TA asleep (see &quot;Now&quot;, the interface is night), the
+                per-minute limit, today&#39;s tokens used up, a model error, or
+                TA&#39;s own reason
+              </td>
+            </tr>
+            <tr>
+              <td>Model 401 / 403</td>
+              <td>
+                Key and permissions; an environment-variable key may override
+                the one saved in LuckyTri
+              </td>
+            </tr>
+            <tr>
+              <td>Model 404</td>
+              <td>
+                Do not append <code>/chat/completions</code> twice to the API
+                address; check the model ID
+              </td>
+            </tr>
+            <tr>
+              <td>Model returns no JSON</td>
+              <td>
+                Use a model that supports JSON object output and run the
+                connection test first
+              </td>
+            </tr>
+            <tr>
+              <td>Memory did not appear</td>
+              <td>
+                Was it an explicit &quot;remember, I…&quot;, was it undone, is
+                its discretion &quot;keep secret&quot; and you are not in the
+                original session
+              </td>
+            </tr>
+            <tr>
+              <td>Too much motion</td>
+              <td>
+                &quot;Reduce motion&quot; at the bottom left; when the system
+                asks for reduced motion, particles and morphing switch off
+                automatically
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          Never post API keys, <code>.env</code> or private chat text anywhere
+          public.
+        </p>
+      </article>
+    </div>
+    <footer>
+      LuckyTri · so that experience and choice stay coherent. This guide matches
+      the v0.9.9 interface.
+    </footer>
+  </body>
+</html>

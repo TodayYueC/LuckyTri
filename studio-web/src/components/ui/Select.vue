@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { t } from "../../i18n";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onDeactivated,
+  ref,
+  useId,
+  watch,
+} from "vue";
 
 const props = withDefaults(
   defineProps<{
@@ -21,6 +30,9 @@ const open = ref(false);
 const root = ref<HTMLElement>();
 const face = ref<HTMLButtonElement>();
 const native = ref<HTMLSelectElement>();
+const menu = ref<HTMLElement>();
+const menuId = useId();
+const cursor = ref(0);
 const box = ref({
   top: 0,
   bottom: 0,
@@ -29,13 +41,16 @@ const box = ref({
   maxHeight: 280,
   upward: false,
 });
-const choices = computed(() => props.options.filter((option) => !option.disabled));
+const choices = computed(() =>
+  props.options.filter((option) => !option.disabled),
+);
 const current = computed(
   () =>
-    props.options.find((option) => String(option.value) === String(props.modelValue))
-      ?.label ||
+    props.options.find(
+      (option) => String(option.value) === String(props.modelValue),
+    )?.label ||
     choices.value[0]?.label ||
-    "请选择",
+    t("请选择"),
 );
 
 function place() {
@@ -70,35 +85,110 @@ function toggle() {
   if (open.value) place();
 }
 
+function focusOption() {
+  const option =
+    menu.value?.querySelectorAll<HTMLButtonElement>('[role="option"]')[
+      cursor.value
+    ];
+  option?.focus({ preventScroll: true });
+  option?.scrollIntoView({ block: "nearest" });
+}
+function onKey(event: KeyboardEvent) {
+  if (event.key === "Tab") {
+    open.value = false;
+    return;
+  }
+  if (
+    !["Escape", "ArrowDown", "ArrowUp", "Home", "End", "Enter", " "].includes(
+      event.key,
+    )
+  )
+    return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.key === "Escape") {
+    open.value = false;
+    face.value?.focus();
+    return;
+  }
+  if (!choices.value.length) return;
+  if (event.key === "Enter" || event.key === " ") {
+    choose(choices.value[cursor.value].value);
+    return;
+  }
+  cursor.value =
+    event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? choices.value.length - 1
+        : (cursor.value +
+            (event.key === "ArrowUp" ? -1 : 1) +
+            choices.value.length) %
+          choices.value.length;
+  focusOption();
+}
+function faceKey(event: KeyboardEvent) {
+  if (["ArrowDown", "ArrowUp"].includes(event.key) && !open.value) {
+    event.preventDefault();
+    toggle();
+  }
+}
+
 function choose(value: string | number) {
   const next = String(value);
   open.value = false;
-  emit("update:modelValue", next);
-  if (!native.value) return;
+  if (!native.value) {
+    emit("update:modelValue", next);
+    return;
+  }
   native.value.value = next;
   const event = new Event("change", { bubbles: true });
   native.value.dispatchEvent(event);
-  emit("change", event);
+  face.value?.focus();
 }
 
 function outside(event: PointerEvent) {
-  if (root.value && !root.value.contains(event.target as Node)) open.value = false;
+  if (root.value && !root.value.contains(event.target as Node))
+    open.value = false;
 }
 
 function onScroll() {
   if (open.value) place();
 }
 
-onMounted(() => {
-  document.addEventListener("pointerdown", outside);
-  window.addEventListener("scroll", onScroll, true);
-  window.addEventListener("resize", onScroll);
-});
-onBeforeUnmount(() => {
+function stopListening() {
   document.removeEventListener("pointerdown", outside);
   window.removeEventListener("scroll", onScroll, true);
   window.removeEventListener("resize", onScroll);
+  document.removeEventListener("keydown", onKey, true);
+}
+watch(open, async (value) => {
+  stopListening();
+  if (!value) return;
+  cursor.value = Math.max(
+    0,
+    choices.value.findIndex(
+      (option) => String(option.value) === String(props.modelValue),
+    ),
+  );
+  document.addEventListener("pointerdown", outside);
+  window.addEventListener("scroll", onScroll, true);
+  window.addEventListener("resize", onScroll);
+  document.addEventListener("keydown", onKey, true);
+  await nextTick();
+  if (open.value) focusOption();
 });
+watch(
+  () => props.disabled,
+  (value) => {
+    if (value) open.value = false;
+  },
+);
+onDeactivated(() => {
+  open.value = false;
+  stopListening();
+});
+onBeforeUnmount(stopListening);
 </script>
 
 <template>
@@ -107,10 +197,18 @@ onBeforeUnmount(() => {
       ref="face"
       type="button"
       class="menu-face"
+      :id="menuId + '-face'"
+      role="combobox"
+      aria-haspopup="listbox"
+      :aria-controls="menuId"
+      :aria-activedescendant="
+        open && choices.length ? menuId + '-' + cursor : undefined
+      "
       :aria-label="ariaLabel || undefined"
       :aria-expanded="open"
       :disabled="disabled"
       @click="toggle"
+      @keydown="faceKey"
     >
       <span>{{ current }}</span>
       <i aria-hidden="true"></i>
@@ -118,9 +216,12 @@ onBeforeUnmount(() => {
     <Teleport to="body">
       <ul
         v-if="open"
+        ref="menu"
+        :id="menuId"
         class="menu-list"
         :class="{ up: box.upward }"
         role="listbox"
+        :aria-labelledby="menuId + '-face'"
         @pointerdown.stop
         :style="{
           top: box.upward ? 'auto' : box.top + 'px',
@@ -130,17 +231,19 @@ onBeforeUnmount(() => {
           maxHeight: box.maxHeight + 'px',
         }"
       >
-        <li v-for="option in choices" :key="String(option.value)">
+        <li v-for="(option, index) in choices" :key="String(option.value)">
           <button
             type="button"
             role="option"
+            :id="menuId + '-' + index"
+            :tabindex="index === cursor ? 0 : -1"
             :aria-selected="String(option.value) === String(modelValue)"
             @click="choose(option.value)"
           >
             {{ option.label }}
           </button>
         </li>
-        <li v-if="!choices.length" class="empty">没有可选项</li>
+        <li v-if="!choices.length" class="empty">{{ t("没有可选项") }}</li>
       </ul>
     </Teleport>
     <select
@@ -149,9 +252,11 @@ onBeforeUnmount(() => {
       :id="id || undefined"
       :name="name || undefined"
       :value="modelValue"
+      :disabled="disabled"
       tabindex="-1"
       aria-hidden="true"
       @change="
+        open = false;
         emit('update:modelValue', ($event.target as HTMLSelectElement).value);
         emit('change', $event);
       "

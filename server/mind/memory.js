@@ -16,6 +16,8 @@ import { hasCredential, secretRequest } from "./guard.js";
 import { MEMORY_IDLE_DAYS, grounded } from "./salience.js";
 import { DAY, clamp, similar, text } from "./util.js";
 import { recallIntent } from "./continuity.js";
+import { consolidationDecision } from "./memory-policy.js";
+import { requestedName } from "../core/person-name.js";
 
 const RECALL_CONFIDENCE = 0.5;
 const RECALL_LIMIT = 12;
@@ -99,7 +101,7 @@ export class MemoryManager {
     session,
     rows,
     cutoff = Date.now(),
-    { people = [], touch = true } = {},
+    { people = [], touch = true, forSpeech = false } = {},
   ) {
     const db = this.repo.db;
     const here = new Set(this.scopes(session));
@@ -158,7 +160,7 @@ export class MemoryManager {
     const scored = [];
     for (const m of candidates) {
       const local = here.has(m.session_id) || m.session_id === "__shared__";
-      if (m.discretion === "secret" && !local) continue;
+      if (!this.permission(m, session, cutoff).recall) continue;
       const overlap = oneSpeakerOverlap(m.content);
       const relevance = overlap + (fts.has(m.id) ? 2 : 0);
       const about = speakers.has(m.subject)
@@ -238,7 +240,10 @@ export class MemoryManager {
       return {
         id: m.id,
         subject: m.subject,
-        content: m.content,
+        content:
+          forSpeech && !this.permission(m, session, cutoff).disclose
+            ? "（关于此人的一条受限记忆；没有在这里复述具体内容的授权）"
+            : m.content,
         type: m.type,
         confidence: m.confidence,
         importance: m.importance,
@@ -259,6 +264,69 @@ export class MemoryManager {
   secretsOutside(session) {
     return this.#outside(session, "secret");
   }
+  permission(memory, session, now = Date.now()) {
+    const local = this.scopes(session).includes(memory.session_id);
+    const saved = this.repo.db
+      .prepare(
+        "SELECT recall,disclose,expires FROM mind_memory_permissions WHERE memory_id=? AND session_id=?",
+      )
+      .get(memory.id, session);
+    if (saved && (!saved.expires || saved.expires > now))
+      return { recall: !!saved.recall, disclose: !!saved.disclose };
+    return {
+      recall: memory.discretion !== "secret" || local,
+      disclose: memory.discretion === "open" || local,
+    };
+  }
+  permissions(id) {
+    if (!this.repo.db.prepare("SELECT 1 FROM core_memories WHERE id=?").get(id))
+      throw Error("记忆不存在");
+    return this.repo.db
+      .prepare(
+        "SELECT session_id,recall,disclose,expires,updated FROM mind_memory_permissions WHERE memory_id=?",
+      )
+      .all(id);
+  }
+  setPermission(id, { session, recall, disclose, expires = null }) {
+    if (
+      !this.repo.db
+        .prepare("SELECT 1 FROM core_memories WHERE id=? AND status!='deleted'")
+        .get(id)
+    )
+      throw Error("记忆不存在");
+    if (!this.repo.db.prepare("SELECT 1 FROM sessions WHERE id=?").get(session))
+      throw Error("会话不存在");
+    if (
+      typeof recall !== "boolean" ||
+      typeof disclose !== "boolean" ||
+      (disclose && !recall)
+    )
+      throw Error("允许复述时也必须允许想起");
+    if (
+      expires !== null &&
+      (!Number.isSafeInteger(expires) || expires <= Date.now())
+    )
+      throw Error("授权到期时间无效");
+    const value = { recall, disclose, expires };
+    const db = this.repo.db,
+      now = Date.now();
+    db.exec("SAVEPOINT memory_permission");
+    try {
+      db.prepare(
+        "INSERT INTO mind_memory_permissions VALUES (?,?,?,?,?,?) ON CONFLICT(memory_id,session_id) DO UPDATE SET recall=excluded.recall,disclose=excluded.disclose,expires=excluded.expires,updated=excluded.updated",
+      ).run(id, session, +recall, +disclose, expires, now);
+      db.prepare(
+        "INSERT INTO mind_permission_events(memory_id,session_id,created,value) VALUES (?,?,?,?)",
+      ).run(id, session, now, JSON.stringify(value));
+      db.exec("RELEASE memory_permission");
+    } catch (error) {
+      db.exec("ROLLBACK TO memory_permission");
+      db.exec("RELEASE memory_permission");
+      throw error;
+    }
+    this.repo.store.revision++;
+    return value;
+  }
   // Private facts may be recalled, with a warning. They still must not leave
   // in the words she actually sends.
   privateOutside(session) {
@@ -271,7 +339,11 @@ export class MemoryManager {
         "SELECT id,session_id,subject,content FROM core_memories WHERE discretion=? AND status='confirmed' ORDER BY updated DESC LIMIT 200",
       )
       .all(discretion)
-      .filter((m) => !here.has(m.session_id));
+      .filter(
+        (m) =>
+          !here.has(m.session_id) &&
+          !this.permission({ ...m, discretion }, session).disclose,
+      );
   }
   update(id, patch) {
     const db = this.repo.db,
@@ -442,9 +514,12 @@ export class MemoryManager {
     const match = value.match(
       /(?:请)?(?:记住|记一下)[，,：:\s]*(我[^\n]{2,200})[。！!]?$/u,
     );
-    if (!match || SENSITIVE.test(match[1]) || hasCredential(match[1]))
+    const name = requestedName(value);
+    if ((!match && !name) || SENSITIVE.test(value) || hasCredential(value))
       return null;
-    const said = match[1].replace(/[。！!]+$/, "").trim();
+    const said = name
+      ? `我希望被称呼为${name}`
+      : match[1].replace(/[。！!]+$/, "").trim();
     const content = /我/.test(said.slice(1))
       ? `原话：${said}`
       : said.replace(/^我/, "");
@@ -506,6 +581,11 @@ export class MemoryManager {
       )
       .get(session, session).n;
   }
+  due(session, now = Date.now()) {
+    return this.mind
+      ? consolidationDecision(this.mind, session, now)
+      : { due: this.pending(session) >= BLOCK_USERS };
+  }
   // What she already remembers about the people in this stretch, so the
   // same fact is not written twice and a changed one can replace the old.
   known(session, block) {
@@ -555,7 +635,7 @@ export class MemoryManager {
       const cited = block.filter((m) =>
         (Array.isArray(a.sources) ? a.sources : []).map(Number).includes(m.seq),
       );
-      if (!kind || !cited.length) continue;
+      if (!kind || !cited.length || cited.some((m) => m.artifact)) continue;
       let subject = a.subject == null ? null : String(a.subject);
       if (kind === "promise") {
         if (!cited.every((m) => m.role === "assistant")) continue;
@@ -615,8 +695,7 @@ export class MemoryManager {
     } = {},
   ) {
     if (this.busy.has(session)) return;
-    if (!force && Date.now() - (this.lastAttempt.get(session) || 0) < 60000)
-      return;
+    if (!force && now - (this.lastAttempt.get(session) || 0) < 60000) return;
     this.busy.add(session);
     try {
       const db = this.repo.db;
@@ -631,14 +710,16 @@ export class MemoryManager {
           .map((row) => row.seq),
       );
       const rows = this.repo
-        .eventsAfter(session, cursor, { simulated })
+        .eventsAfter(session, cursor, { simulated, limit: 200 })
         .filter(
           (m) =>
-            !aside.has(m.seq) && !/^\[(图片|表情|媒体)\]+$/.test(m.text || ""),
+            m.time <= now &&
+            !aside.has(m.seq) &&
+            !/^\[(图片|表情|媒体)\]+$/.test(m.text || ""),
         );
       const users = rows.filter((m) => m.role === "user");
-      if (!users.length || (users.length < BLOCK_USERS && !force)) return;
-      this.lastAttempt.set(session, Date.now());
+      if (!users.length || (!force && !this.due(session, now).due)) return;
+      this.lastAttempt.set(session, now);
       // Her answers to the block's last messages belong with that block.
       const next = users[BLOCK_USERS]?.seq ?? Number.MAX_SAFE_INTEGER;
       const block = rows.filter((m) => m.seq < next);
@@ -650,7 +731,8 @@ export class MemoryManager {
       const value = await models.call(
         profile,
         "memory",
-        prompt,
+        prompt +
+          "\nartifact 标记的是作品正文，fiction 的人物/剧情和 reference 的游戏资料情节不能作为现实人物事实；不要把正文中的约定提取成她现实接受的承诺。读者讨论作品时保留作品语境。",
         {
           sessionId: session,
           self,
@@ -666,6 +748,7 @@ export class MemoryManager {
                   names.get(String(m.userId)) ||
                   m.userId,
             role: m.role,
+            ...(m.artifact ? { artifact: m.artifact } : {}),
             text: String(m.text || "").slice(0, 600),
             // A readable local time lets "明天" become a date.
             localTime: localClock(m.time, zone).local,

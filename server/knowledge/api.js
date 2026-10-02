@@ -3,6 +3,12 @@ import { wrap } from "../http.js";
 import { prompts } from "../core/persona-manager.js";
 import { indexMemory } from "./schema.js";
 import {
+  publicEmbeddingProfile,
+  saveEmbeddingProfile,
+  resolveEmbeddingProfile,
+  embedBatches,
+} from "./embedding-profile.js";
+import {
   applySpeakerNames,
   presentMemory,
   speakerNames,
@@ -10,6 +16,40 @@ import {
 
 export function mountKnowledge(app, system) {
   const { repo } = system;
+  app.get(
+    "/api/core/memories/:id/permissions",
+    wrap((req, res) => res.json(system.memory.permissions(req.params.id))),
+  );
+  app.patch(
+    "/api/core/memories/:id/permissions",
+    wrap((req, res) =>
+      res.json(system.memory.setPermission(req.params.id, req.body)),
+    ),
+  );
+  app.get("/api/core/knowledge/embedding", (req, res) =>
+    res.json(publicEmbeddingProfile(repo)),
+  );
+  app.patch(
+    "/api/core/knowledge/embedding",
+    wrap((req, res) => res.json(saveEmbeddingProfile(repo, req.body))),
+  );
+  app.post(
+    "/api/core/knowledge/embedding/test",
+    wrap(async (req, res) => {
+      const { profile } = resolveEmbeddingProfile(repo, system.models);
+      if (!profile.embedding) throw Error("知识向量未启用");
+      const vectors = await embedBatches(system.models, profile, [
+        "星空与时间",
+      ]);
+      res.json({ ok: true, dimensions: vectors[0].length });
+    }),
+  );
+  app.post(
+    "/api/core/knowledge/documents/:id/reembed",
+    wrap(async (req, res) =>
+      res.json(await system.knowledge.reembedDocument(req.params.id)),
+    ),
+  );
   app.get("/api/core/memories", (req, res) => {
     const session = String(req.query.session || "");
     if (!session) {
@@ -38,7 +78,7 @@ export function mountKnowledge(app, system) {
       const { session, subject, content } = req.body;
       if (
         typeof subject !== "string" ||
-        !/^\d+$/.test(subject) ||
+        !/^[0-9A-Za-z_-]{1,64}$/.test(subject) ||
         typeof content !== "string" ||
         !content.trim() ||
         content.length > 4000 ||

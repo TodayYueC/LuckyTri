@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, N_, localized } from "../../i18n";
 import { computed, ref, watch } from "vue";
 import { studio } from "../../stores/studio";
 import { clockTime } from "../../format";
@@ -22,7 +23,12 @@ const emit = defineEmits<{
   feedback: [id: number, tag: string];
 }>();
 
-const LEVEL_LABELS = ["近期细摘要", "中期摘要", "较早摘要", "远期摘要"];
+const LEVEL_LABELS = localized([
+  N_("近期细摘要"),
+  N_("中期摘要"),
+  N_("较早摘要"),
+  N_("远期摘要"),
+]);
 const PAGE = 6;
 const page = ref(0);
 const replies = computed(() =>
@@ -69,22 +75,25 @@ function submit(event: Event) {
   <section class="panel">
     <Tabs
       v-model="tab"
-      label="这个会话"
+      :label="t('这个会话')"
       :items="[
-        { key: 'here', label: '这个会话' },
-        { key: 'feedback', label: '反馈' },
+        { key: 'here', label: t('这个会话') },
+        { key: 'feedback', label: t('反馈') },
       ]"
     />
 
     <div v-if="!session" class="panel-body">
-      <Empty title="还没有选中会话" text="从左边选一个群聊或私聊。" />
+      <Empty
+        :title="t('还没有选中会话')"
+        :text="t('从左边选一个群聊或私聊。')"
+      />
     </div>
 
     <div v-else-if="tab === 'here'" class="panel-body scroll-pane">
       <div class="here">
         <div class="facts">
           <div>
-            <span class="eyebrow">TA 在这里的样子</span>
+            <span class="eyebrow">{{ t("TA 在这里的样子") }}</span>
             <template v-if="faceText(group)">
               <p class="face-body" :class="faceOpen ? 'open' : 'clamp'">
                 {{ faceText(group) }}
@@ -95,26 +104,29 @@ function submit(event: Event) {
                 class="text-button"
                 @click="faceOpen = !faceOpen"
               >
-                {{ faceOpen ? "收起" : "展开完整内容" }}
+                {{ faceOpen ? t("收起") : t("展开完整内容") }}
               </button>
             </template>
-            <p v-else class="muted">还没有形成在这里的样子。</p>
-            <small v-if="group?.face?.aspiration" class="faint"
-              >想成为：{{ group.face.aspiration }}</small
-            >
+            <p v-else class="muted">{{ t("还没有形成在这里的样子。") }}</p>
+            <small v-if="group?.face?.aspiration" class="faint">{{
+              t("想成为：{aspiration}", { aspiration: group.face.aspiration })
+            }}</small>
           </div>
           <div>
             <span class="eyebrow">{{
               session.kind === "private"
-                ? "这段私聊给 TA 的感觉"
-                : "这个群给 TA 的感觉"
+                ? t("这段私聊给 TA 的感觉")
+                : t("这个群给 TA 的感觉")
             }}</span>
-            <p>{{ group?.bond?.feel || "刚来这里不久" }}</p>
+            <p>{{ group?.bond?.feel || t("刚来这里不久") }}</p>
           </div>
         </div>
         <p class="faint">
-          在这里开不开口由 TA 自己决定：没有参与概率和冷却。TA
-          对这里每个人的感觉在「人际」里看。
+          {{
+            t(
+              "在这里开不开口由 TA 自己决定：没有参与概率和冷却。TA 对这里每个人的感觉在「人际」里看。",
+            )
+          }}
         </p>
         <div class="row actions">
           <button
@@ -123,16 +135,16 @@ function submit(event: Event) {
             :class="{ primary: !session.enabled }"
             @click="emit('toggle', session)"
           >
-            {{ session.enabled ? "暂停参与" : "开启参与" }}
+            {{ session.enabled ? t("暂停参与") : t("开启参与") }}
           </button>
           <button
             :data-archive="session.id"
             @click="emit('archive', session.id)"
           >
-            归档
+            {{ t("归档") }}
           </button>
           <button id="clearLiveContext" @click="emit('clear')">
-            清空上下文
+            {{ t("清空上下文") }}
           </button>
         </div>
 
@@ -141,7 +153,7 @@ function submit(event: Event) {
           :open="settingsOpen"
           @toggle="settingsOpen = ($event.target as HTMLDetailsElement).open"
         >
-          <summary>会话设置</summary>
+          <summary>{{ t("会话设置") }}</summary>
           <form
             :key="session.id"
             :data-session="session.id"
@@ -151,33 +163,52 @@ function submit(event: Event) {
             @change="studio.dirty = true"
           >
             <p class="faint">
-              所有会话和独处都用模型库里的默认模型；其余已启用的模型按列表顺序做备用。她在这个聊天窗里用什么样子，由她自己从经历里决定。
+              {{
+                t(
+                  "所有会话和独处都用模型库里的默认模型；其余已启用的模型按列表顺序做备用。她在这个聊天窗里用什么样子，由她自己从经历里决定。",
+                )
+              }}
             </p>
+            <label>
+              {{ t("会话名称") }}
+              <input
+                name="name"
+                maxlength="100"
+                autocomplete="off"
+                :value="session.name"
+              />
+              <small class="faint">{{
+                t("官方机器人平台不提供群名称，可以在这里自己起一个")
+              }}</small>
+            </label>
             <label class="check">
               <input
                 name="selectiveVision"
                 type="checkbox"
                 v-model="policyDraft.selectiveVision"
                 @input.stop
-              />节能看图：只在被 @ 或明确要求时，看这一条和附近的图
+              />{{ t("节能看图：只在被 @ 或明确要求时，看这一条和附近的图") }}
             </label>
             <details class="advanced-policy">
-              <summary>高级策略</summary>
+              <summary>{{ t("高级策略") }}</summary>
               <div class="stack tight">
                 <label
-                  >聚合窗口 ms<input
+                  >{{ t("聚合窗口 ms")
+                  }}<input
                     name="aggregateMs"
                     type="number"
                     v-model.number="policyDraft.aggregateMs"
                 /></label>
                 <label
-                  >最长等待 ms<input
+                  >{{ t("最长等待 ms")
+                  }}<input
                     name="maxWaitMs"
                     type="number"
                     v-model.number="policyDraft.maxWaitMs"
                 /></label>
                 <label
-                  >近期原文条数（10–500）<input
+                  >{{ t("近期原文条数（10–500）")
+                  }}<input
                     name="contextMessages"
                     type="number"
                     min="10"
@@ -185,7 +216,8 @@ function submit(event: Event) {
                     v-model.number="policyDraft.contextMessages"
                 /></label>
                 <label
-                  >一轮总字数<input
+                  >{{ t("一轮总字数")
+                  }}<input
                     name="maxReply"
                     type="number"
                     v-model.number="policyDraft.maxReply"
@@ -196,7 +228,9 @@ function submit(event: Event) {
                     type="checkbox"
                     v-model="policyDraft.compaction"
                     @input.stop
-                  />上下文压缩：更早的聊天定期整理成分层摘要，越近越详细</label
+                  />{{
+                    t("上下文压缩：更早的聊天定期整理成分层摘要，越近越详细")
+                  }}</label
                 >
                 <label class="check"
                   ><input
@@ -204,7 +238,7 @@ function submit(event: Event) {
                     type="checkbox"
                     v-model="policyDraft.memory"
                     @input.stop
-                  />长期记忆</label
+                  />{{ t("长期记忆") }}</label
                 >
                 <label class="check"
                   ><input
@@ -212,35 +246,46 @@ function submit(event: Event) {
                     type="checkbox"
                     v-model="policyDraft.deepCheck"
                     @input.stop
-                  />倾诉、纠正和危机时额外复审一次回复</label
+                  />{{ t("倾诉、纠正和危机时额外复审一次回复") }}</label
                 >
               </div>
             </details>
             <div class="save-bar">
-              <button class="primary" type="submit">保存会话设置</button>
+              <button class="primary" type="submit">
+                {{ t("保存会话设置") }}
+              </button>
               <small class="faint">{{
-                studio.dirty ? "有未保存的修改" : "保存后下一轮生效"
+                studio.dirty ? t("有未保存的修改") : t("保存后下一轮生效")
               }}</small>
             </div>
           </form>
         </details>
 
         <details class="fold summary-list">
-          <summary>语境摘要 · {{ summaries.length }} 段</summary>
+          <summary>
+            {{ t("语境摘要 · {length} 段", { length: summaries.length }) }}
+          </summary>
           <p v-if="!summaries.length" class="muted">
-            还没有摘要。聊天超过近期原文条数后，更早的内容会自动整理到这里。
+            {{
+              t(
+                "还没有摘要。聊天超过近期原文条数后，更早的内容会自动整理到这里。",
+              )
+            }}
           </p>
           <article v-for="item in summaries" :key="item.id" class="summary">
             <header>
-              <b>{{ LEVEL_LABELS[item.level] || "摘要" }}</b>
-              <small class="faint"
-                >{{ item.period }} · {{ item.messages }} 条消息</small
-              >
+              <b>{{ LEVEL_LABELS[item.level] || t("摘要") }}</b>
+              <small class="faint">{{
+                t("{period} · {messages} 条消息", {
+                  period: item.period,
+                  messages: item.messages,
+                })
+              }}</small>
             </header>
             <p>{{ item.summary }}</p>
             <ul v-if="item.keyPoints?.length">
               <li v-for="(point, index) in item.keyPoints" :key="index">
-                {{ point.open ? "未完：" : "" }}{{ point.text }}
+                {{ point.open ? t("未完：") : "" }}{{ point.text }}
               </li>
             </ul>
           </article>
@@ -250,7 +295,11 @@ function submit(event: Event) {
 
     <div v-else class="panel-body feedback-pane">
       <p class="faint">
-        针对具体回复评价口吻；这是 TA 在这个会话里听到的话，不会改写天性。
+        {{
+          t(
+            "针对具体回复评价口吻；这是 TA 在这个会话里听到的话，不会改写天性。",
+          )
+        }}
       </p>
       <div id="feedbackList" class="scroll-pane">
         <article
@@ -261,22 +310,27 @@ function submit(event: Event) {
           <time class="faint">{{ clockTime(d.time) }}</time>
           <p class="reply-excerpt">{{ d.reply }}</p>
           <label>
-            这句回复怎么样？
+            {{ t("这句回复怎么样？") }}
             <Select
               :data-feedback="d.id"
               :model-value="d.feedback || ''"
-              aria-label="这句回复怎么样？"
+              :aria-label="t('这句回复怎么样？')"
               :options="[
-                { value: '', label: '选择评价' },
+                { value: '', label: t('选择评价') },
                 ...Object.entries(studio.health.feedbackLabels || {}).map(
-                  ([tagKey, label]) => ({ value: tagKey, label: String(label) }),
+                  ([tagKey, label]) => ({
+                    value: tagKey,
+                    label: String(label),
+                  }),
                 ),
               ]"
               @update:model-value="emit('feedback', d.id, $event)"
             />
           </label>
         </article>
-        <p v-if="!replies.length" class="muted">还没有可以评价的回复。</p>
+        <p v-if="!replies.length" class="muted">
+          {{ t("还没有可以评价的回复。") }}
+        </p>
       </div>
       <div class="pagination">
         <button class="small" :disabled="page === 0" @click="page--">←</button>

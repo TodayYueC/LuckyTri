@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { computed, ref } from "vue";
 
 const sleep = defineModel<string>("sleep", { required: true });
@@ -37,7 +38,9 @@ const s = computed(() => minutes(sleep.value));
 const w = computed(() => minutes(wake.value));
 const hours = computed(() => {
   const span = (w.value - s.value + 1440) % 1440;
-  return `${Math.floor(span / 60)} 小时${span % 60 ? ` ${span % 60} 分` : ""}`;
+  const h = Math.floor(span / 60);
+  const m = span % 60;
+  return m ? t("{h} 小时 {m} 分", { h, m }) : t("{h} 小时", { h });
 });
 
 function fromPointer(event: PointerEvent) {
@@ -124,7 +127,7 @@ function key(which: "sleep" | "wake", event: KeyboardEvent) {
         </text>
       </g>
       <text class="center big" :x="C" :y="C - 4" text-anchor="middle">
-        睡 {{ hours }}
+        {{ t("睡 {hours}", { hours }) }}
       </text>
       <text class="center" :x="C" :y="C + 16" text-anchor="middle">
         {{ sleep }} → {{ wake }}
@@ -133,7 +136,7 @@ function key(which: "sleep" | "wake", event: KeyboardEvent) {
         class="handle moon"
         role="slider"
         tabindex="0"
-        aria-label="几点睡"
+        :aria-label="t('几点睡')"
         :aria-valuetext="sleep"
         @pointerdown="start('sleep', $event)"
         @keydown="key('sleep', $event)"
@@ -145,7 +148,7 @@ function key(which: "sleep" | "wake", event: KeyboardEvent) {
         class="handle sun"
         role="slider"
         tabindex="0"
-        aria-label="几点醒"
+        :aria-label="t('几点醒')"
         :aria-valuetext="wake"
         @pointerdown="start('wake', $event)"
         @keydown="key('wake', $event)"

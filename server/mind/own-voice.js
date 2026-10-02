@@ -5,6 +5,7 @@ import { HOUR, evidence, hasCredential, text } from "./util.js";
 import { isPrivateSession } from "./memory.js";
 import { sameRecentTheme } from "./novelty.js";
 import { ownLife, sameSelf } from "./salience.js";
+import { conversationOrigin, originSummary } from "./conversation-origin.js";
 
 // After this many notes in a row that only take up her own last note, another
 // one has to pick up something new or it is not kept.
@@ -115,6 +116,12 @@ export class OwnVoice {
     return {
       ...(run >= 2 ? { circling: { notes: run, fresh } } : {}),
       clock: localClock(now, this.mind.timeZone()),
+      currentLife: this.mind.time.view({ session: "", now }),
+      actions: this.mind.time.lived({
+        session: "",
+        before: now,
+        since: now - 86400000,
+      }),
       mood: { feeling: mood, energy: energyLabel, phase: phaseLabel },
       interests: nature.interests || [],
       self: threads.map((s) => ({
@@ -122,12 +129,16 @@ export class OwnVoice {
         kind: s.kind,
         content: s.content,
         emerging: s.status === "emerging",
+        origin: originSummary(conversationOrigin(this.mind.db, s.sources, now)),
       })),
       notes: notes.map((t) => ({
         ref: `t:${t.id}`,
         created: t.created,
         kind: t.kind,
         content: t.content,
+        origin: originSummary(
+          conversationOrigin(this.mind.db, [`t:${t.id}`], t.created),
+        ),
       })),
       recentExpressions: recent.map((t) => ({
         ref: `t:${t.id}`,
@@ -171,7 +182,7 @@ export class OwnVoice {
           .map((s) => text(s, 180));
         const sources = evidence(result.sources);
         const valid = new Set(
-          [...input.self, ...input.notes].map((s) => s.ref),
+          [...input.self, ...input.notes, ...input.actions].map((s) => s.ref),
         );
         if (
           !content ||

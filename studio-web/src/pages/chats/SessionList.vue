@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { computed, ref } from "vue";
 import { hueOf, placeName } from "../../format";
 
@@ -30,15 +31,17 @@ const archived = computed(() => props.sessions.filter((s) => s.archived));
   <div class="session-list">
     <div class="list-head">
       <h2>
-        会话 <small>{{ active.length }}</small>
+        {{ t("会话") }} <small>{{ active.length }}</small>
       </h2>
-      <button class="small primary" @click="emit('add')">＋ 添加会话</button>
+      <button class="small primary" @click="emit('add')">
+        {{ t("＋ 添加会话") }}
+      </button>
     </div>
     <input
       v-model="query"
       type="search"
-      placeholder="搜索名称或号码"
-      aria-label="搜索会话"
+      :placeholder="t('搜索名称或号码')"
+      :aria-label="t('搜索会话')"
     />
     <div class="rows scroll-pane">
       <div
@@ -54,31 +57,38 @@ const archived = computed(() => props.sessions.filter((s) => s.archived));
           @click="emit('select', s.id)"
         >
           <span class="badge" :style="{ '--hue': hueOf(s.id) }">{{
-            s.kind === "private" ? "私" : "群"
+            s.kind === "private" ? t("私") : t("群")
           }}</span>
           <span class="who">
             <b>{{ placeName(s) }}</b>
-            <small>{{ s.enabled ? "参与中" : "已暂停" }}</small>
+            <small>{{ s.enabled ? t("参与中") : t("已暂停") }}</small>
           </span>
           <span
             v-if="unread[s.id]"
             class="unread"
-            :aria-label="`${unread[s.id]} 条没细看`"
+            :aria-label="t('{v} 条没细看', { v: unread[s.id] })"
             >{{ unread[s.id] }}</span
           >
         </button>
-        <label class="mini-switch" :title="s.enabled ? '暂停参与' : '开启参与'">
+        <label
+          class="mini-switch"
+          :title="s.enabled ? t('暂停参与') : t('开启参与')"
+        >
           <input
             type="checkbox"
             :checked="s.enabled"
-            :aria-label="`参与：${placeName(s)}`"
+            :aria-label="t('参与：{v}', { v: placeName(s) })"
             @change="emit('toggle', s)"
           />
         </label>
       </div>
-      <p v-if="!active.length" class="muted empty-line">暂无匹配的会话。</p>
+      <p v-if="!active.length" class="muted empty-line">
+        {{ t("暂无匹配的会话。") }}
+      </p>
       <details v-if="archived.length" class="archive-list">
-        <summary>已归档 · {{ archived.length }}</summary>
+        <summary>
+          {{ t("已归档 · {length}", { length: archived.length }) }}
+        </summary>
         <article v-for="s in archived" :key="s.id">
           <b>{{ placeName(s) }}</b>
           <div class="row">
@@ -87,14 +97,14 @@ const archived = computed(() => props.sessions.filter((s) => s.archived));
               :data-restore-session="s.id"
               @click="emit('restore', s.id)"
             >
-              恢复
+              {{ t("恢复") }}
             </button>
             <button
               class="small danger"
               :data-delete-session="s.id"
               @click="emit('remove', s.id)"
             >
-              永久删除
+              {{ t("永久删除") }}
             </button>
           </div>
         </article>

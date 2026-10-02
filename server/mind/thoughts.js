@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { evidenceRoots } from "./evidence.js";
 import {
   THOUGHT_FADED,
   anyTouches,
@@ -118,7 +119,9 @@ export class Thoughts {
       .all(now, now)
       .map(row)
       .filter((t) => !session || t.sessions.includes(session));
-    const clock = sourceClock(notes);
+    const clock = sourceClock(notes, (sources) =>
+      evidenceRoots(this.db, sources, now),
+    );
     return notes
       .map((t) => {
         const earned = clock.get(t.id) ?? t.created;
@@ -194,12 +197,12 @@ export class Thoughts {
       throw Error("这条手记有后续修正，请隐藏以保留轨迹");
     this.db.prepare("DELETE FROM mind_thoughts WHERE id=?").run(id);
   }
-  setOutreach(id, status) {
+  setOutreach(id, status, reason = "") {
     this.db
       .prepare(
-        "UPDATE mind_thoughts SET outreach_status=?,outreach_wait_reason='',outreach_retry_at=NULL WHERE id=?",
+        "UPDATE mind_thoughts SET outreach_status=?,outreach_wait_reason=?,outreach_retry_at=NULL WHERE id=?",
       )
-      .run(status, id);
+      .run(status, text(reason, 300), id);
   }
   planOutreach(id, { session, words, reason, time }) {
     const current = this.get(id);
@@ -249,11 +252,12 @@ export class Thoughts {
 
 // The first time a source was lived. A later note that only repeats those
 // sources keeps that time, so rewriting it does not make it newly present.
-function sourceClock(notes) {
+function sourceClock(notes, roots) {
   const earned = new Map();
   const clock = new Map();
   for (const note of [...notes].sort((a, b) => a.created - b.created)) {
-    const sources = note.sources.length ? note.sources : [`t:${note.id}`];
+    const resolved = roots(note.sources);
+    const sources = resolved.length ? resolved : [`t:${note.id}`];
     const fresh = sources.some((source) => !earned.has(source));
     if (fresh) {
       clock.set(note.id, note.created);

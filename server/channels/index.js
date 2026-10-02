@@ -1,24 +1,17 @@
-import { onebot } from "./onebot.js";
-import { parseSessionKey } from "./session-key.js";
+import { createOneBotChannel } from "./onebot/index.js";
+import { createQqBotChannel } from "./qqbot/index.js";
 
-const adapters = new Map([["onebot", onebot]]);
-
-export function registerChannel(adapter) {
-  adapters.set(adapter.type, adapter);
+// Adding a platform: write a folder that fulfils channels/contract.js, give its
+// adapter an entry in adapters.js (so the core can ask what its media links
+// look like) and its factory a line in createChannels. Nothing above the hub
+// changes.
+export function createChannels(store, options = {}) {
+  return [createOneBotChannel(store), createQqBotChannel(store, options.qqbot)];
 }
 
-export function adapterFor(sessionOrType = "onebot") {
-  try {
-    const type = String(sessionOrType).includes(":")
-      ? parseSessionKey(sessionOrType).channel
-      : sessionOrType;
-    return adapters.get(type) || onebot;
-  } catch {
-    return onebot;
-  }
-}
-
-export { onebot };
+export { createChannelHub, selectedChannel, CHANNEL_TYPES } from "./hub.js";
+export { defineChannel } from "./contract.js";
+export { adapterFor, registerChannel, onebot, qqbot } from "./adapters.js";
 export {
   bindSessionId,
   formatSessionKey,
@@ -29,4 +22,4 @@ export {
   sessionKind,
   sessionNativeId,
 } from "./session-key.js";
-export { normalize } from "./onebot.js";
+export { normalize } from "./onebot/adapter.js";

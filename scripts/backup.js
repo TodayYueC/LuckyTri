@@ -7,7 +7,11 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
-import { resolve, join } from "node:path";
+import { resolve, join, basename } from "node:path";
+import {
+  copyDatabaseFile,
+  writeArchiveManifest,
+} from "../server/storage/archive.js";
 import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
 
@@ -17,12 +21,7 @@ export const AUTO_PREFIX = "luckytri-auto-";
 const MISSING = "数据库不存在，请先启动一次 LuckyTri";
 
 function copyDatabase(source, target) {
-  const db = new DatabaseSync(source);
-  try {
-    db.prepare("VACUUM INTO ?").run(target);
-  } finally {
-    db.close();
-  }
+  copyDatabaseFile(source, target);
 }
 
 export function backupDatabase(
@@ -37,7 +36,17 @@ export function backupDatabase(
       `luckytri-${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}.db`,
     ),
   );
-  copyDatabase(source, target);
+  const partial = `${target}.partial`;
+  try {
+    copyDatabase(source, partial);
+    writeArchiveManifest(partial, { filename: basename(target) });
+    renameSync(partial, target);
+    renameSync(`${partial}.json`, `${target}.json`);
+  } catch (error) {
+    rmSync(partial, { force: true });
+    rmSync(`${partial}.json`, { force: true });
+    throw error;
+  }
   return target;
 }
 
@@ -140,14 +149,18 @@ export function autoBackup({
   try {
     copyDatabase(source, partial);
     info = slimAndVerify(partial, now - keepTraceDays * DAY);
+    writeArchiveManifest(partial, { kind: "auto", filename: basename(final) });
     renameSync(partial, final);
+    renameSync(`${partial}.json`, `${final}.json`);
   } catch (error) {
     rmSync(partial, { force: true });
+    rmSync(`${partial}.json`, { force: true });
     throw error;
   }
   const removed = [];
   for (const old of autoBackups(directory).slice(Math.max(1, keep))) {
     rmSync(old.file, { force: true });
+    rmSync(`${old.file}.json`, { force: true });
     removed.push(old.name);
   }
   return {

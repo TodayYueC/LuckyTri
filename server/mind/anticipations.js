@@ -3,6 +3,8 @@ import { localClock } from "../core/conversation-cues.js";
 import { hasCredential } from "./guard.js";
 import { isPrivateSession } from "./memory.js";
 import { lifeSpan } from "./nature.js";
+import { classifyActivity } from "./time/tasks.js";
+import { taskIntent } from "./time/intent.js";
 import { DAY, evidence, parse, similar, text, zonedTime } from "./util.js";
 
 // What she is looking ahead to: promises she made, things she means to do,
@@ -138,6 +140,7 @@ export class Anticipations {
     discretion = "open",
     sources = [],
     origin = "memory",
+    activity = "",
     time = Date.now(),
   }) {
     if (!ANTICIPATION_KINDS[kind]) return { rejected: "类型无效" };
@@ -163,6 +166,74 @@ export class Anticipations {
       )
     )
       return { rejected: "与撤销过的内容相同" };
+    if (!yearly && ["plan", "promise"].includes(kind)) {
+      const input = {
+          title: words,
+          activity: activity || classifyActivity(words),
+          subject,
+          session,
+          sources: refs,
+        },
+        intent = taskIntent(this.db, input);
+      if (intent.key) {
+        const tracked = this.mind.time?.tasks.links.find(input);
+        const prior = tracked
+          ? this.mind.time.tasks.links
+              .anticipations(tracked)
+              .map((id) => this.get(id))
+              .find((a) => a && a.status !== "revoked")
+          : this.db
+              .prepare(
+                "SELECT * FROM mind_anticipations WHERE kind IN ('plan','promise') AND status='pending' ORDER BY created",
+              )
+              .all()
+              .find(
+                (a) =>
+                  taskIntent(this.db, {
+                    title: a.content,
+                    activity: a.activity || classifyActivity(a.content),
+                    subject: a.subject,
+                    session: a.session_id,
+                    sources: parse(a.sources, []),
+                  }).key === intent.key,
+              );
+        if (tracked || prior) {
+          if (tracked) {
+            this.mind.time.tasks.links.mergeSource(
+              tracked,
+              {
+                sources: refs,
+                kind,
+                subject: who || intent.recipient,
+                dueAt: at,
+                duePrecision: precision,
+                origin,
+              },
+              time,
+            );
+            if (tracked.state === "abandoned")
+              this.mind.time.tasks.links.close(
+                tracked,
+                "原事项已放下，重复整理不能恢复",
+                time,
+              );
+          } else
+            this.db
+              .prepare("UPDATE mind_anticipations SET sources=? WHERE id=?")
+              .run(
+                JSON.stringify(
+                  evidence([...parse(prior.sources, []), ...refs]),
+                ),
+                prior.id,
+              );
+          return {
+            duplicate: prior?.id || tracked.id,
+            task: tracked?.id,
+            suppressed: tracked?.state === "abandoned",
+          };
+        }
+      }
+    }
     const key = yearly ? this.day(at).slice(5) : this.day(at);
     const same = this.db
       .prepare(
@@ -178,7 +249,7 @@ export class Anticipations {
     const id = randomUUID();
     this.db
       .prepare(
-        "INSERT INTO mind_anticipations(id,created,kind,subject,session_id,content,due_at,due_precision,recurrence,discretion,sources,origin) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO mind_anticipations(id,created,kind,subject,session_id,content,due_at,due_precision,recurrence,discretion,sources,origin,activity) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
       )
       .run(
         id,
@@ -195,6 +266,9 @@ export class Anticipations {
           : "open",
         JSON.stringify(refs),
         origin,
+        kind === "plan" && ["read", "write", "think", "game"].includes(activity)
+          ? activity
+          : "",
       );
     return { id };
   }
@@ -216,6 +290,23 @@ export class Anticipations {
     if (!CLOSE.has(status)) return false;
     const a = this.get(id);
     if (!a || a.status !== "pending" || a.recurrence === "yearly") return false;
+    if (status === "done") {
+      if (
+        ["plan", "promise"].includes(a.kind) &&
+        (a.activity || classifyActivity(a.content) !== "unknown")
+      )
+        this.mind.time?.tasks.sync(time);
+      const task = this.db
+        .prepare(
+          "SELECT state,share_state FROM mind_time_tasks WHERE anticipation_id=?",
+        )
+        .get(id);
+      if (
+        task &&
+        (task.state !== "done" || !["none", "sent"].includes(task.share_state))
+      )
+        return false;
+    }
     return (
       this.db
         .prepare(
@@ -260,8 +351,22 @@ export class Anticipations {
   label(a, due, now) {
     const who = this.who(a);
     const when = this.relative(due, now, a.due_precision);
-    if (a.kind === "promise")
-      return `我答应${who ? `${who}` : ""}：${a.content}（${when}${a.status === "pending" ? "，还没做" : ""}）`;
+    if (a.kind === "promise") {
+      const task = this.db
+        .prepare(
+          "SELECT state,share_state,checkpoint FROM mind_time_tasks WHERE anticipation_id=?",
+        )
+        .get(a.id);
+      const progress =
+        task?.state === "done" && task.share_state !== "sent"
+          ? "作品完成，尚未交付"
+          : task?.state === "doing"
+            ? "正在做"
+            : parse(task?.checkpoint, {}).workId
+              ? "已有草稿，尚未完成"
+              : "还没做";
+      return `我答应${who ? `${who}` : ""}：${a.content}（${when}${a.status === "pending" ? "，" + progress : ""}）`;
+    }
     if (a.kind === "plan") return `我打算：${a.content}（${when}）`;
     if (a.kind === "event")
       return `${who ? `${who}计划：` : "有人计划："}${a.content}（${when}，结果未确认）`;

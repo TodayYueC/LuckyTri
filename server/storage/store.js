@@ -1,0 +1,198 @@
+import { DatabaseSync } from "node:sqlite";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
+import { summarizeGroupStyle } from "../core/group-style.js";
+import { isGroupSession } from "../channels/session-key.js";
+import { NATURE_DEFAULTS } from "../mind/nature.js";
+import { prepareDatabaseMigration } from "./archive.js";
+export function createStore(path = process.env.DB_PATH || "data/friend.db") {
+  prepareDatabaseMigration(path);
+  if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
+  const db = new DatabaseSync(path);
+  const legacyMessages =
+    db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='messages'",
+      )
+      .get() &&
+    !db
+      .prepare("PRAGMA table_info(messages)")
+      .all()
+      .some((c) => c.name === "is_demo");
+  db.exec(`PRAGMA journal_mode=WAL;
+ PRAGMA synchronous=FULL;
+ PRAGMA busy_timeout=5000;
+ CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, name TEXT, kind TEXT, enabled INTEGER DEFAULT 0);
+ CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, event_id TEXT UNIQUE, session_id TEXT, user_id TEXT, name TEXT, text TEXT, time INTEGER, role TEXT);
+ CREATE TABLE IF NOT EXISTS memories (id INTEGER PRIMARY KEY, user_id TEXT, name TEXT, content TEXT, scope TEXT, source TEXT, time INTEGER);
+ CREATE TABLE IF NOT EXISTS decisions (id INTEGER PRIMARY KEY, session_id TEXT, emotion TEXT, reason TEXT, reply TEXT, time INTEGER);
+ CREATE TABLE IF NOT EXISTS relations (id INTEGER PRIMARY KEY, user_id TEXT, peer_id TEXT, label TEXT);`);
+  // Additive migrations preserve existing workspaces.
+  const migrate = (table, column, definition) => {
+    if (
+      !db
+        .prepare(`PRAGMA table_info(${table})`)
+        .all()
+        .some((c) => c.name === column)
+    )
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  };
+  migrate("sessions", "cooldown", "INTEGER");
+  migrate("sessions", "probability", "REAL");
+  migrate("sessions", "archived", "INTEGER NOT NULL DEFAULT 0");
+  migrate("messages", "is_demo", "INTEGER NOT NULL DEFAULT 0");
+  migrate("decisions", "is_demo", "INTEGER NOT NULL DEFAULT 0");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS seen_events (event_id TEXT PRIMARY KEY, time INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS send_attempts (id INTEGER PRIMARY KEY, session_id TEXT, is_demo INTEGER, time INTEGER, status TEXT);
+    CREATE TABLE IF NOT EXISTS memory_candidates (id INTEGER PRIMARY KEY, user_id TEXT, name TEXT, content TEXT, scope TEXT, source_text TEXT, event_id TEXT UNIQUE, status TEXT DEFAULT 'pending', time INTEGER);
+    CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id,is_demo,id);
+    CREATE INDEX IF NOT EXISTS idx_memory_user ON memories(user_id,scope);
+    CREATE INDEX IF NOT EXISTS idx_attempts_time ON send_attempts(is_demo,time);
+    CREATE INDEX IF NOT EXISTS idx_seen_time ON seen_events(time);
+    CREATE TABLE IF NOT EXISTS reply_feedback (decision_id INTEGER PRIMARY KEY,tag TEXT NOT NULL,time INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS model_checks (id INTEGER PRIMARY KEY,signature TEXT,ok INTEGER,latency INTEGER,time INTEGER,error TEXT);
+  `);
+  if (legacyMessages) {
+    // v0.1 simulator used UUID event IDs; QQ IDs contain colon-separated fields.
+    db.exec(`BEGIN IMMEDIATE;
+      UPDATE messages SET is_demo=1 WHERE role='user' AND event_id GLOB '????????-????-????-????-????????????';
+      UPDATE messages AS bot SET is_demo=COALESCE((SELECT is_demo FROM messages AS human WHERE human.session_id=bot.session_id AND human.role='user' AND human.id<bot.id ORDER BY human.id DESC LIMIT 1),0) WHERE bot.role='assistant';
+      UPDATE decisions SET is_demo=1 WHERE reason LIKE '模拟：%';
+      INSERT OR IGNORE INTO seen_events(event_id,time) SELECT event_id,time FROM messages WHERE event_id IS NOT NULL;
+      INSERT INTO send_attempts(session_id,is_demo,time,status) SELECT session_id,is_demo,time,'confirmed' FROM messages WHERE role='assistant';
+      COMMIT;`);
+  }
+  const defaults = {
+    name: "LuckyTri",
+    aliases: "LuckyTri,LuckyBot,Lucky",
+    persona: NATURE_DEFAULTS.base,
+    enabled: true,
+    demo: true,
+    baseUrl: "https://api.deepseek.com/v1",
+    model: "deepseek-chat",
+    apiKey: "",
+    memoryEnabled: true,
+    memoryCandidates: true,
+    onebotToken: "",
+    channel: "onebot",
+    qqbotAppId: "",
+    qqbotSecret: "",
+    providerPreset: "custom",
+    reasoningEffort: "none",
+    temperature: 0.85,
+    topP: 1,
+    maxTokens: 400,
+  };
+  if (!db.prepare("SELECT id FROM settings").get())
+    db.prepare("INSERT INTO settings VALUES (1,?)").run(
+      JSON.stringify(defaults),
+    );
+  else {
+    const existing = JSON.parse(
+      db.prepare("SELECT value FROM settings WHERE id=1").get().value,
+    );
+    let migrated = { ...existing };
+    if (
+      (existing.name === "小满" && existing.aliases === "小满,满满") ||
+      existing.name === "Unlucky" ||
+      existing.name === "UnLucky"
+    )
+      migrated = {
+        ...migrated,
+        name: "LuckyTri",
+        aliases: "LuckyTri,LuckyBot,Lucky,Unlucky,UnLucky,小满,满满",
+      };
+    else if (
+      existing.name === "Lucky" ||
+      existing.name === "LuckyBot" ||
+      existing.name === "LuckyTri" ||
+      !existing.name
+    )
+      migrated = {
+        ...migrated,
+        name: "LuckyTri",
+        aliases: [
+          "LuckyTri",
+          "LuckyBot",
+          "Lucky",
+          ...String(existing.aliases || "").split(","),
+        ]
+          .map((v) => v.trim())
+          .filter(Boolean)
+          .filter((v, i, all) => all.indexOf(v) === i)
+          .join(","),
+      };
+    const renamedPersona = String(migrated.persona || "").replace(
+      /\bLucky\b/g,
+      "LuckyTri",
+    );
+    if (renamedPersona !== migrated.persona)
+      migrated = { ...migrated, persona: renamedPersona };
+    const shippedPersona = new Set([
+      "可爱、乐观、情绪稳定，有一点吐槽欲。像熟悉的群友一样说话，先接住情绪，不急着给建议。",
+      "可爱、乐观、情绪稳定，偶尔对事情轻轻吐槽，不挖苦群友。像熟悉的群友一样说话，先接住情绪，不急着给建议。",
+      "温暖，有一点自己的脾气和好奇。说话像已经在过日子的人：在意是自己的选择，先接住眼前的事，也留着自己的小事。",
+    ]);
+    if (shippedPersona.has(migrated.persona))
+      migrated = { ...migrated, persona: NATURE_DEFAULTS.base };
+    if (JSON.stringify(migrated) !== JSON.stringify(existing))
+      db.prepare("UPDATE settings SET value=? WHERE id=1").run(
+        JSON.stringify(migrated),
+      );
+  }
+  return {
+    db,
+    revision: 0,
+    settings() {
+      return {
+        ...defaults,
+        ...JSON.parse(
+          db.prepare("SELECT value FROM settings WHERE id=1").get().value,
+        ),
+      };
+    },
+    save(value) {
+      db.prepare("UPDATE settings SET value=? WHERE id=1").run(
+        JSON.stringify({ ...this.settings(), ...value }),
+      );
+      this.revision++;
+    },
+    context(id, limit = 30, demo = null) {
+      return db
+        .prepare(
+          "SELECT * FROM (SELECT * FROM messages WHERE session_id=? AND (? IS NULL OR is_demo=?) ORDER BY id DESC LIMIT ?) ORDER BY id",
+        )
+        .all(id, demo, demo, limit);
+    },
+    groupStyle(id, demo = 0) {
+      if (!isGroupSession(id)) return null;
+      return summarizeGroupStyle(this.context(id, 200, demo));
+    },
+    maintenance(now = Date.now()) {
+      db.prepare("DELETE FROM seen_events WHERE time<?").run(
+        now - 7 * 86400000,
+      );
+      db.prepare("DELETE FROM send_attempts WHERE time<?").run(now - 86400000);
+      db.prepare(
+        "DELETE FROM decisions WHERE id NOT IN (SELECT id FROM decisions ORDER BY id DESC LIMIT 10000)",
+      ).run();
+      db.prepare(
+        "DELETE FROM reply_feedback WHERE decision_id NOT IN (SELECT id FROM decisions)",
+      ).run();
+    },
+    log(id, emotion, reason, reply = "", demo = 0) {
+      db.prepare(
+        "INSERT INTO decisions(session_id,emotion,reason,reply,time,is_demo) VALUES (?,?,?,?,?,?)",
+      ).run(
+        id,
+        String(emotion).slice(0, 30),
+        String(reason).slice(0, 300),
+        reply,
+        Date.now(),
+        demo,
+      );
+    },
+  };
+}

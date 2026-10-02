@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createStore } from "../server/store.js";
+import { createStore } from "../server/storage/store.js";
 import { Repository } from "../server/core/repository.js";
 import { ModelManager, defaultModel } from "../server/core/model-manager.js";
 import { MemoryManager } from "../server/mind/memory.js";
@@ -104,9 +104,7 @@ test("混合检索命中共享知识，私聊集合不进群，回放遵守水�
     embed: false,
   });
   const hit = (rows) =>
-    km
-      .retrieve("group:12345", rows)
-      .find((h) => h.text.includes("烘焙"));
+    km.retrieve("group:12345", rows).find((h) => h.text.includes("烘焙"));
   const split = hit([
     { role: "user", userId: "10001", text: "烘焙温度" },
     { role: "user", userId: "10002", text: "天文观测" },

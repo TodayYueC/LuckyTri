@@ -12,7 +12,7 @@ import { EventEmitter } from "node:events";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
-import { createStore } from "../server/store.js";
+import { createStore } from "../server/storage/store.js";
 import { Repository } from "../server/core/repository.js";
 import {
   AUTO_PREFIX,
@@ -20,7 +20,7 @@ import {
   autoBackupDue,
   autoBackupOptions,
 } from "../scripts/backup.js";
-import { createBackupScheduler } from "../server/backup-scheduler.js";
+import { createBackupScheduler } from "../server/storage/backup-scheduler.js";
 import { createApp } from "../server/app.js";
 import { world } from "./helpers/world.js";
 
@@ -117,7 +117,14 @@ test("没到时间就跳过，到了时间再备份，force 可以立刻备份",
     autoBackup({ ...options, now: NOW + DAY + HOUR, force: true }).status,
     "created",
   );
-  assert.equal(names(w.backups).length, 3);
+  assert.equal(
+    names(w.backups).filter((name) => name.endsWith(".db")).length,
+    3,
+  );
+  assert.equal(
+    names(w.backups).filter((name) => name.endsWith(".db.json")).length,
+    3,
+  );
   w.store.db.close();
 });
 
@@ -140,7 +147,15 @@ test("只保留最近几份自动备份，手动备份和别的文件不会被�
   );
   assert.deepEqual(made.at(-1).removed.length, 1);
   const left = names(w.backups);
-  assert.equal(left.filter((n) => n.startsWith(AUTO_PREFIX)).length, 2);
+  assert.equal(
+    left.filter((n) => n.startsWith(AUTO_PREFIX) && n.endsWith(".db")).length,
+    2,
+  );
+  assert.equal(
+    left.filter((n) => n.startsWith(AUTO_PREFIX) && n.endsWith(".db.json"))
+      .length,
+    2,
+  );
   assert.ok(left.includes("notes.txt"));
   assert.ok(left.includes("luckytri-2026-01-01T00-00-00-000Z-abcd1234.db"));
   assert.ok(

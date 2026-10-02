@@ -1692,8 +1692,10 @@ test("整体自述来自私下经历时先抽出自己的倾向，不把私下�
   };
   assert.equal((await w.life.evolve()).status, "written");
   assert.equal(calls, 2);
-  const content = w.mind.traits.persona(w.mind.nature.current(), w.now())
-    ?.content;
+  const content = w.mind.traits.persona(
+    w.mind.nature.current(),
+    w.now(),
+  )?.content;
   assert.match(content, /听完/);
   assert.doesNotMatch(content, /考研|阿明/);
 });

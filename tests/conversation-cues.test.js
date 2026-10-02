@@ -52,6 +52,7 @@ test("actual morning mistake and repeated softening trigger rewrite, natural hh 
     "啊……原来是早上吗",
     "今天这么累啊……",
     "肯定撑不住",
+    "熬完这几天就轻松了",
     "我自己也这样",
   ]) {
     assert(
@@ -89,6 +90,24 @@ test("repair and acknowledgement end without a fabricated second bubble", () => 
   assert(
     validateResponse({ bubbles: ["你自己刚说的在划水呀"] }, snapshot, decision)
       .length,
+  );
+  assert.match(
+    validateResponse(
+      { bubbles: ["那今晚早点歇着吧"] },
+      snapshot,
+      decision,
+    ).join(" "),
+    /不要无请求地安排休息/,
+  );
+  snapshot.messages[0].text = "你别每句都重复我说的话";
+  snapshot.persona.name = "LuckyTri";
+  assert.match(
+    validateResponse(
+      { bubbles: ["复读的是LuckyTri，我就回了最后那句"] },
+      snapshot,
+      decision,
+    ).join(" "),
+    /不能说成另一个 bot 的错/,
   );
   snapshot.messages[0].text = "你答应我的事你忘了吗";
   assert.equal(replyFocus(snapshot, decision).kind, "promise_check");
@@ -128,6 +147,73 @@ test("表情包作为语气来接，描述画面和复述文字会触发重写",
       decision,
     ).join(" "),
     /不要把表情包当阅读理解/,
+  );
+});
+
+test("接玩笑不捏造自己拿着实物的日常经历", () => {
+  const snapshot = {
+    messages: [{ id: 1, role: "user", text: "邻居举着伞满楼道找伞" }],
+  };
+  assert.match(
+    conversationalIssues(
+      { bubbles: ["我有时候也会开着手电筒到处翻"] },
+      snapshot,
+      { targetMessageIds: [1] },
+    ).join(" "),
+    /虚构自己有身体做过的日常经历/,
+  );
+  assert.deepEqual(
+    conversationalIssues({ bubbles: ["hh，伞就举在手里还四处找"] }, snapshot, {
+      targetMessageIds: [1],
+    }),
+    [],
+  );
+});
+
+test("群友互聊虚拟市场时不把话题改成大家在陪自己", () => {
+  const snapshot = {
+    batch: [
+      { text: "国内玩桌游的人多吗", relation: "unknown" },
+      { text: "新手比想象的多", relation: "unknown" },
+    ],
+    messages: [],
+  };
+  assert.match(
+    conversationalIssues(
+      { bubbles: ["至少你们还在陪我这个新来的聊到快十二点"] },
+      snapshot,
+    ).join(" "),
+    /不要把他们的话改成/,
+  );
+  assert.deepEqual(
+    conversationalIssues(
+      { bubbles: ["桌游玩家的受众确实挺值得研究"] },
+      snapshot,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    conversationalIssues(
+      { bubbles: ["你们还在陪我聊天呀"] },
+      {
+        ...snapshot,
+        batch: [{ text: "我们是在陪你聊天", relation: "direct" }],
+      },
+    ),
+    [],
+  );
+  assert.match(
+    conversationalIssues(
+      { bubbles: ["至少你们还在陪我聊天"] },
+      {
+        messages: snapshot.batch.map((row, index) => ({
+          ...row,
+          id: index + 1,
+        })),
+        batchIds: [1, 2],
+      },
+    ).join(" "),
+    /不要把他们的话改成/,
   );
 });
 test("被问凭什么知道时，先核对依据；自己先开口的话不能编一条他发来的消息", () => {

@@ -12,6 +12,8 @@ import {
   unpackVector,
 } from "./retrieval.js";
 import { indexChunk } from "./schema.js";
+import { ensureVectorIndex, vectorCandidates } from "./vector-index.js";
+import { resolveEmbeddingProfile, embedBatches } from "./embedding-profile.js";
 import {
   parseSessionKey,
   scopedSessionAliases,
@@ -133,8 +135,17 @@ export class KnowledgeManager {
         hash,
       );
     let vectors = [];
+    let embeddingProfile = "";
     try {
-      if (embed) vectors = await this.embedTexts(chunks.map((c) => c.text));
+      if (embed) {
+        const resolved = resolveEmbeddingProfile(this.repo, this.models);
+        vectors = await embedBatches(
+          this.models,
+          resolved.profile,
+          chunks.map((c) => c.text),
+        );
+        if (vectors.length) embeddingProfile = resolved.signature;
+      }
     } catch (error) {
       this.repo.db
         .prepare(
@@ -149,7 +160,7 @@ export class KnowledgeManager {
         const chunkId = randomUUID();
         this.repo.db
           .prepare(
-            "INSERT INTO core_chunks(id,document_id,collection_id,ordinal,heading,text,tokens,embedding,hash,created) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO core_chunks(id,document_id,collection_id,ordinal,heading,text,tokens,embedding,hash,created,embedding_profile) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
           )
           .run(
             chunkId,
@@ -162,6 +173,7 @@ export class KnowledgeManager {
             vectors[i] ? packVector(vectors[i]) : null,
             createHash("sha256").update(chunk.text).digest("hex"),
             now,
+            embeddingProfile,
           );
         indexChunk(this.repo.db, chunkId, chunk.text);
       });
@@ -184,11 +196,15 @@ export class KnowledgeManager {
       .get(id);
   }
   async embedTexts(texts) {
-    const profile = this.models.profile("default");
-    if (!profile.embedding) return [];
-    return this.models.embed(profile, texts);
+    const { profile } = resolveEmbeddingProfile(this.repo, this.models);
+    return embedBatches(this.models, profile, texts);
   }
-  retrieve(session, rows, cutoff = Date.now()) {
+  retrieve(
+    session,
+    rows,
+    cutoff = Date.now(),
+    { vectors = [], signature = null, legacy = true } = {},
+  ) {
     const allowed = new Set(
       this.repo.db
         .prepare("SELECT id,scope FROM core_collections")
@@ -197,21 +213,15 @@ export class KnowledgeManager {
         .map((c) => c.id),
     );
     if (!allowed.size) return [];
-    const queries = saidBy(rows);
+    const queries = saidBy(rows).slice(0, 8);
     if (!queries.length) return [];
-    const chunks = this.repo.db
-      .prepare(
-        "SELECT c.*, d.title, d.created AS document_created FROM core_chunks c JOIN core_documents d ON d.id=c.document_id WHERE d.status='ready' AND d.created<=?",
-      )
-      .all(cutoff)
-      .filter((c) => allowed.has(c.collection_id));
     // Each person's own words. Two people are not added together, and a
     // line she already said does not count as the room asking. A prepared
     // vector belongs to that same person, not to the batch mixed together.
-    const vectors = Array.isArray(this._speakerVectors)
-      ? this._speakerVectors
-      : [];
+    if (vectors.some((vector) => vector?.length))
+      ensureVectorIndex(this.repo.db);
     const best = new Map();
+    const selected = new Map();
     for (let i = 0; i < queries.length; i++) {
       const query = queries[i];
       const match = ftsMatchQuery(query);
@@ -220,23 +230,47 @@ export class KnowledgeManager {
         try {
           for (const hit of this.repo.db
             .prepare(
-              "SELECT chunk_id FROM core_chunk_fts WHERE tokens MATCH ? LIMIT 40",
+              `SELECT f.chunk_id FROM core_chunk_fts f JOIN core_chunks c ON c.id=f.chunk_id JOIN core_documents d ON d.id=c.document_id WHERE f.tokens MATCH ? AND c.collection_id IN (${[...allowed].map(() => "?").join(",")}) AND d.status='ready' AND d.created<=? ORDER BY f.rank LIMIT 128`,
             )
-            .all(match))
+            .all(match, ...allowed, cutoff))
             fts.add(hit.chunk_id);
         } catch {
           /* malformed MATCH */
         }
       const queryTerms = lexicalTerms(query);
       const vec = vectors[i] || null;
+      const ids = [
+        ...new Set([
+          ...fts,
+          ...(vec
+            ? vectorCandidates(this.repo.db, vec, [...allowed], cutoff, {
+                signature,
+                legacy,
+              })
+            : []),
+        ]),
+      ];
+      const chunks = ids.length
+        ? this.repo.db
+            .prepare(
+              `SELECT c.*,d.title,d.created AS document_created FROM core_chunks c JOIN core_documents d ON d.id=c.document_id WHERE c.id IN (${ids.map(() => "?").join(",")})`,
+            )
+            .all(...ids)
+        : [];
       for (const chunk of chunks) {
+        selected.set(chunk.id, chunk);
         let score =
           (fts.has(chunk.id) ? 2 : 0) +
           overlapScore(chunk.text, queryTerms) * 0.5;
-        if (vec && chunk.embedding)
+        if (
+          vec &&
+          chunk.embedding &&
+          (!signature ||
+            chunk.embedding_profile === signature ||
+            (legacy && !chunk.embedding_profile))
+        )
           score += cosine(vec, unpackVector(chunk.embedding)) * 4;
-        const ageDays =
-          (Date.now() - (chunk.document_created || 0)) / 86400000;
+        const ageDays = (cutoff - (chunk.document_created || 0)) / 86400000;
         if (ageDays > 30) score *= 0.85;
         if (score > (best.get(chunk.id) || 0)) best.set(chunk.id, score);
       }
@@ -245,7 +279,7 @@ export class KnowledgeManager {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 8)
       .map(([id, score]) => {
-        const chunk = chunks.find((c) => c.id === id);
+        const chunk = selected.get(id);
         if (!chunk) return null;
         return {
           id: chunk.id,
@@ -260,23 +294,68 @@ export class KnowledgeManager {
       .filter((c) => c?.text);
   }
   async retrieveWithEmbed(session, rows, cutoff = Date.now()) {
-    const profile = this.models.profile("default");
+    const { profile, signature, legacy } = resolveEmbeddingProfile(
+      this.repo,
+      this.models,
+    );
     const queries = saidBy(rows).slice(0, 8);
+    let vectors = [];
     if (profile.embedding && queries.length) {
       try {
-        this._speakerVectors = await this.models.embed(
+        vectors = await embedBatches(
+          this.models,
           profile,
           queries.map((query) => query.slice(0, 2000)),
         );
       } catch {
-        this._speakerVectors = null;
+        vectors = [];
       }
-    } else this._speakerVectors = null;
-    try {
-      return this.retrieve(session, rows, cutoff);
-    } finally {
-      this._speakerVectors = null;
     }
+    return this.retrieve(session, rows, cutoff, { vectors, signature, legacy });
+  }
+  async reembedDocument(id) {
+    const rows = this.repo.db
+      .prepare(
+        "SELECT id,text FROM core_chunks WHERE document_id=? ORDER BY ordinal",
+      )
+      .all(id);
+    if (!rows.length) throw Error("文档没有可建立向量的段落");
+    const { profile, signature } = resolveEmbeddingProfile(
+      this.repo,
+      this.models,
+    );
+    if (!profile.embedding) throw Error("请先启用知识向量模型");
+    const vectors = await embedBatches(
+      this.models,
+      profile,
+      rows.map((row) => row.text),
+    );
+    const db = this.repo.db;
+    db.exec("SAVEPOINT reembed_document");
+    try {
+      const update = db.prepare(
+        "UPDATE core_chunks SET embedding=?,embedding_profile=? WHERE id=? AND document_id=? AND text=?",
+      );
+      rows.forEach((row, index) => {
+        if (
+          !update.run(
+            packVector(vectors[index]),
+            signature,
+            row.id,
+            id,
+            row.text,
+          ).changes
+        )
+          throw Error("文档已变化，请重新建立向量");
+      });
+      db.exec("RELEASE reembed_document");
+    } catch (error) {
+      db.exec("ROLLBACK TO reembed_document");
+      db.exec("RELEASE reembed_document");
+      throw error;
+    }
+    this.repo.store.revision++;
+    return { chunks: rows.length };
   }
   removeDocument(id) {
     const row = this.repo.db

@@ -101,9 +101,17 @@ test("a real crisis overrides her choice to stay silent; history cannot become a
     trace,
   );
   assert.deepEqual(react.bubbles, ["hh"]);
+  assert.deepEqual(
+    validateResponse(
+      { bubbles: ["嘻嘻什么呢，明明是你出的题没判完"] },
+      { messages: [] },
+      react,
+    ),
+    [],
+  );
   assert(
     validateResponse(
-      { bubbles: ["这也太好笑了吧真的"] },
+      { bubbles: ["这也太好笑了吧，刚才明明就是你自己出的题还没判完呀"] },
       { messages: [] },
       react,
     ).length,

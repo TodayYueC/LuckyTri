@@ -1,6 +1,8 @@
+import { t } from "../i18n";
 import { reactive } from "vue";
 import { ask } from "../dialog";
 import { loadWorkspace } from "../plates/workspace";
+import { readVersion } from "../api";
 import { parseRoute, routeHash, type Page } from "../router";
 
 const first = parseRoute();
@@ -20,10 +22,23 @@ export const studio = reactive({
   pulse: 0,
 });
 
-export async function reload() {
-  const { core, health } = await loadWorkspace();
-  studio.core = core;
-  studio.health = health;
+let pending: Promise<void> | null = null;
+let pendingVersion = -1;
+export function reload() {
+  const version = readVersion();
+  if (pending && pendingVersion === version) return pending;
+  const operation = loadWorkspace()
+    .then(({ core, health }) => {
+      if (pending !== operation) return;
+      studio.core = core;
+      studio.health = health;
+    })
+    .finally(() => {
+      if (pending === operation) pending = null;
+    });
+  pending = operation;
+  pendingVersion = version;
+  return pending;
 }
 
 export async function go(page: Page | string, sub = "") {
@@ -36,10 +51,10 @@ export async function go(page: Page | string, sub = "") {
   if (
     studio.page !== route.page &&
     studio.dirty &&
-    !(await ask("有尚未保存的修改，离开这一页吗？", {
-      title: "草稿还没保存",
-      confirmText: "离开",
-      cancelText: "留下",
+    !(await ask(t("有尚未保存的修改，离开这一页吗？"), {
+      title: t("草稿还没保存"),
+      confirmText: t("离开"),
+      cancelText: t("留下"),
     }))
   )
     return false;

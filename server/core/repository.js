@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { DATABASE_VERSION } from "../storage/archive.js";
 import { parseSessionKey } from "../channels/session-key.js";
 import { migrateKnowledge } from "../knowledge/schema.js";
 import { migrateMind } from "../mind/schema.js";
@@ -91,6 +92,7 @@ export function migrateCore(store) {
   ).run();
   migrateKnowledge(db);
   migrateMind(db, store);
+  db.exec(`PRAGMA user_version=${DATABASE_VERSION}`);
 }
 
 const TOKEN_FIELDS = [
@@ -165,6 +167,21 @@ export class Repository {
         `SELECT * FROM core_events WHERE session_id=? AND seq>?${simulatedFilter(simulated)} ORDER BY seq${bounded ? " LIMIT ?" : ""}`,
       )
       .all(...args, ...(bounded ? [limit] : []))
+      .map(eventRow);
+  }
+  // Unread attention needs the last matching users, not every event since its
+  // cursor. Apply role/time filters before decoding and before the row limit.
+  unreadEvents(session, after, since, limit = 40) {
+    if (!Number.isSafeInteger(limit) || limit <= 0)
+      return this.eventsAfter(session, after, { simulated: false })
+        .filter((m) => m.role === "user" && m.time >= since)
+        .slice(-limit);
+    return this.db
+      .prepare(
+        "SELECT * FROM core_events WHERE session_id=? AND seq>? AND role='user' AND time>=? AND COALESCE(json_extract(payload,'$.simulated'),0)=0 ORDER BY seq DESC LIMIT ?",
+      )
+      .all(session, after, since, limit)
+      .reverse()
       .map(eventRow);
   }
   // The last few events of a session, oldest first, without reading the rest.

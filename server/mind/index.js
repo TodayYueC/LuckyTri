@@ -15,6 +15,7 @@ import { Anticipations } from "./anticipations.js";
 import { Periods } from "./periods.js";
 import { Meetings } from "./meetings.js";
 import { Continuity } from "./continuity.js";
+import { TimeSystem } from "./time/index.js";
 import { ownLife } from "./salience.js";
 import { innerView } from "./view.js";
 import { clamp, dayKey, parse, text } from "./util.js";
@@ -105,6 +106,7 @@ export class Mind {
     this.periods = new Periods(this);
     this.meetings = new Meetings(this);
     this.continuity = new Continuity(this);
+    this.time = new TimeSystem(this);
     this.days.reconcile();
   }
   timeZone() {
@@ -154,10 +156,7 @@ export class Mind {
   unread(session, { after, limit = 40, now = Date.now() } = {}) {
     const since = after ?? this.attention(session).looked_seq;
     // Anything older than half a day is history, not something to answer.
-    return this.repo
-      .eventsAfter(session, since, { simulated: false })
-      .filter((m) => m.role === "user" && m.time >= now - 12 * 3600000)
-      .slice(-limit);
+    return this.repo.unreadEvents(session, since, now - 12 * 3600000, limit);
   }
   choose({
     session,

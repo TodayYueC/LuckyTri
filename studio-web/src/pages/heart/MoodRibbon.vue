@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { ORIGIN_LABELS } from "../../plates/mind";
 import { clockTime } from "../../format";
@@ -62,14 +63,20 @@ const latest = computed(() => recent.value[0]);
   <section class="ribbon">
     <div class="ribbon-head">
       <div class="ribbon-title">
-        <span class="eyebrow">MOOD / 此刻的天气</span>
-        <h2>心情有自己的潮汐。</h2>
-        <p>最近 {{ moods.length }} 次被经历牵动；有起伏，也会慢慢平静。</p>
+        <span class="eyebrow">{{ t("MOOD / 此刻的天气") }}</span>
+        <h2>{{ t("心情有自己的潮汐。") }}</h2>
+        <p>
+          {{
+            t("最近 {length} 次被经历牵动；有起伏，也会慢慢平静。", {
+              length: moods.length,
+            })
+          }}
+        </p>
       </div>
       <div v-if="latest" class="latest-mood">
-        <span>刚刚留下的心情</span>
+        <span>{{ t("刚刚留下的心情") }}</span>
         <b>{{ latest.feeling }}</b>
-        <small>{{ latest.cause || "暂时说不清缘由" }}</small>
+        <small>{{ latest.cause || t("暂时说不清缘由") }}</small>
       </div>
     </div>
     <div ref="box" class="ribbon-box">
@@ -78,7 +85,7 @@ const latest = computed(() => recent.value[0]);
         class="ribbon-chart"
         :viewBox="`0 0 ${W} ${H}`"
         role="img"
-        aria-label="最近的心情曲线"
+        :aria-label="t('最近的心情曲线')"
       >
         <defs>
           <linearGradient
@@ -117,25 +124,28 @@ const latest = computed(() => recent.value[0]);
           <circle :cx="p.x" :cy="p.y" :r="4 + p.intensity * 6">
             <title>
               {{ clockTime(p.created, timeZone) }} {{ p.feeling }}：{{
-                p.cause || "说不清为什么"
+                p.cause || t("说不清为什么")
               }}
             </title>
           </circle>
         </g>
       </svg>
       <p v-else class="muted empty-line">
-        心情还没有被什么事牵动过。每一次经历都可能推动 TA
-        的心情，随后又会慢慢回到平常。
+        {{
+          t(
+            "心情还没有被什么事牵动过。每一次经历都可能推动 TA 的心情，随后又会慢慢回到平常。",
+          )
+        }}
       </p>
     </div>
-    <ul v-if="recent.length" class="recent" aria-label="最近的心情">
+    <ul v-if="recent.length" class="recent" :aria-label="t('最近的心情')">
       <li
         v-for="m in recent"
         :key="m.id"
         :class="m.valence >= 0 ? 'warm' : 'cool'"
       >
         <b>{{ m.feeling }}</b>
-        <span>{{ m.cause || "说不清为什么" }}</span>
+        <span>{{ m.cause || t("说不清为什么") }}</span>
         <small
           >{{ clockTime(m.created, timeZone) }} ·
           {{ ORIGIN_LABELS[m.origin] || m.origin }}</small

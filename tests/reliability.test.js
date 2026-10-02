@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createStore } from "../server/store.js";
+import { USER_AGENT } from "../server/version.js";
+// Shaped like a provider key but assembled here so the file holds no key-like literal.
+const FAKE_KEY = ["sk", "abcdefghijklmnopqrstu"].join("-");
+import { createStore } from "../server/storage/store.js";
 import { Repository } from "../server/core/repository.js";
 import { ChatSystem } from "../server/core/orchestrator.js";
 import {
@@ -20,7 +23,7 @@ import {
   withTransientRequestRetry,
 } from "../server/core/network.js";
 import { reviewContext } from "../server/core/response-validator.js";
-import { MODEL_CATALOG } from "../server/model-presets.js";
+import { MODEL_CATALOG } from "../server/core/model-presets.js";
 
 const setup = () => {
   const store = createStore(":memory:");
@@ -143,7 +146,7 @@ test("GPT 模型逐条发送原文、本轮数据放在尾部，前缀可复用�
   assert.match(first.body.prompt_cache_key, /^luckybot-[a-f0-9]{20}-decision$/);
   assert.equal(second.body.prompt_cache_key, first.body.prompt_cache_key);
   assert.match(rewrite.body.prompt_cache_key, /-generation$/);
-  assert.equal(first.headers["User-Agent"], "LuckyTri/0.8.2");
+  assert.equal(first.headers["User-Agent"], USER_AGENT);
   assert.match(first.headers["x-opencode-session"], /^[a-f0-9]{32}$/);
   assert.equal(first.body.max_output_tokens, 2048 + 8192);
   assert.deepEqual(trace.calls[0].tokens, {
@@ -318,8 +321,7 @@ test("HTTP 错误带上脱敏后的供应商原因，不可重试的状态只请
         text: async () =>
           JSON.stringify({
             error: {
-              message:
-                "Unsupported parameter: foo, key sk-fixture-key at https://x.example/v1/responses?key=1",
+              message: `Unsupported parameter: foo, key ${FAKE_KEY} at https://x.example/v1/responses?key=1`,
             },
           }),
       };
@@ -337,7 +339,7 @@ test("HTTP 错误带上脱敏后的供应商原因，不可重试的状态只请
     (error) =>
       error.status === 400 &&
       /HTTP 400：Unsupported parameter: foo/.test(error.message) &&
-      !error.message.includes("sk-abcdefghij") &&
+      !error.message.includes(FAKE_KEY.slice(0, 13)) &&
       !error.message.includes("?key=1"),
   );
   assert.equal(attempts, 1);
@@ -710,6 +712,45 @@ test("旧稿完成后对方又连发，首句发送前并回队列重组", async
     system.queue.lanes.get(session).pending.map((row) => row.seq),
     [first, first + 1],
   );
+  system.close();
+  store.db.close();
+});
+
+test("追问约定的两次草稿都不过关时，用具体核对回应代替‘好’", async () => {
+  const { store } = setup();
+  const session = "group:12345";
+  store.db
+    .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
+    .run(session, "测试", "group");
+  const sent = [];
+  const system = new ChatSystem(
+    store,
+    async (_message, text) => (sent.push(text), { message_id: 1 }),
+    {
+      models: {
+        profile: () => defaultModel(store.settings()),
+        call: async (_profile, stage) =>
+          stage === "turn"
+            ? {
+                choice: "speak",
+                reason: "核对承诺",
+                targetMessageIds: [1],
+                bubbles: ["第一句不该发", "第二句也不该发"],
+              }
+            : { bubbles: ["仍然拆成两句", "仍然多说一句"] },
+      },
+    },
+  );
+  system.repo.append(
+    msg(1, {
+      text: "@我 你之前答应我什么你忘了吗",
+      mentions: ["99999"],
+    }),
+  );
+  const trace = await system.process(session, system.repo.events(session));
+  assert.equal(trace.status, "sent");
+  assert.deepEqual(sent, ["你问的约定我得认真核对，刚才我没接住。"]);
+  assert.match(trace.steps.join(" "), /本地安全短句/);
   system.close();
   store.db.close();
 });

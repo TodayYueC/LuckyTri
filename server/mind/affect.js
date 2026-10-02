@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { evidenceRoots } from "./evidence.js";
 import { isPrivateSession } from "./memory.js";
 import { rhythmPhase } from "./nature.js";
 import { DAY, HOUR, clamp, evidence, parse, relax, text } from "./util.js";
@@ -56,8 +57,16 @@ export class Affect {
           "SELECT sources FROM mind_affect WHERE created<=? AND created>? AND sources!='[]'",
         )
         .all(time, time - 2 * DAY))
-        for (const source of parse(row.sources, [])) spent.add(source);
-      if (cited.every((source) => spent.has(source))) return null;
+        for (const source of evidenceRoots(
+          this.db,
+          parse(row.sources, []),
+          time,
+        ))
+          spent.add(source);
+      if (
+        evidenceRoots(this.db, cited, time).every((source) => spent.has(source))
+      )
+        return null;
     }
     const i = clamp(intensity, 0, 1);
     const v = clamp(valence, -1, 1);
@@ -126,7 +135,10 @@ export class Affect {
     return !roots.length || roots.includes(room);
   }
   // Folded from events at or before `now`, so a replay never sees later moods.
-  state(now = Date.now(), { nature = this.mind.nature.current(now), room = "" } = {}) {
+  state(
+    now = Date.now(),
+    { nature = this.mind.nature.current(now), room = "" } = {},
+  ) {
     const timeZone = this.mind.timeZone();
     const lately = this.lately(now);
     const base = {
@@ -159,11 +171,7 @@ export class Affect {
       if (when === null) return;
       valence = relax(valence, base.valence, when - at, HALF_LIFE);
       arousal = relax(arousal, base.arousal, when - at, HALF_LIFE);
-      valence = clamp(
-        valence + clamp(batchV, -MAX_SHIFT, MAX_SHIFT),
-        -1,
-        1,
-      );
+      valence = clamp(valence + clamp(batchV, -MAX_SHIFT, MAX_SHIFT), -1, 1);
       arousal = clamp(arousal + batchA, 0, 1);
       at = when;
       batchV = 0;
@@ -191,7 +199,17 @@ export class Affect {
     const energy = clamp(
       phase.energy +
         (arousal - BASELINE.arousal) * 0.3 -
-        Math.min(0.2, talked * 0.006),
+        Math.min(0.2, talked * 0.006) -
+        Math.min(
+          0.12,
+          (this.db
+            .prepare(
+              "SELECT COALESCE(SUM(active_ms),0) n FROM mind_time_spans WHERE updated>? AND started<=?",
+            )
+            .get(now - 2 * HOUR, now).n /
+            HOUR) *
+            0.035,
+        ),
       0.05,
       1,
     );

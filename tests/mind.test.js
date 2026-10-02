@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createStore } from "../server/store.js";
+import { createStore } from "../server/storage/store.js";
 import { ChatSystem } from "../server/core/orchestrator.js";
 import { attend, interestTerms } from "../server/mind/attention.js";
 import {
@@ -667,6 +667,7 @@ test("没有新来源的修正不会把私下的线索带到别的房间", () =>
   try {
     w.open("group:1", "一群");
     w.open("private:10001", "阿明");
+    w.say("private:10001", "10001", "我住在南区");
     w.mind.experience(
       {
         choice: "silent",
@@ -753,13 +754,14 @@ test("自我渐进生长：强度每次只变一点，新特质要跨天的经�
   const w = world();
   t.after(w.close);
   w.open("group:1");
+  const metFirst = w.say("group:1", "10001", "刚认识时你话不多，慢慢聊就好");
   const a = w.say("group:1", "bot", "我其实挺喜欢下雨天的");
   const created = w.mind.self.propose(
     {
       kind: "trait",
       content: "我好像是个慢热的人",
       strength: 0.9,
-      sources: [a.seq],
+      sources: [a.seq, metFirst.seq],
     },
     { time: w.now() },
   );
@@ -792,13 +794,18 @@ test("自我渐进生长：强度每次只变一点，新特质要跨天的经�
   assert.equal(thread.strength, held, "同一段经历不再把强度抬高");
   assert.equal(thread.status, "emerging", "同一天的经历不够");
   w.advance(26 * HOUR);
+  const metAgain = w.say(
+    "group:1",
+    "10001",
+    "熟了以后，你确实更愿意和我聊天了",
+  );
   const b = w.say("group:1", "bot", "熟了以后我话就多了");
   w.mind.self.propose(
     {
       thread: created.thread,
       content: "我是个慢热的人，熟了话会多",
       strength: 1,
-      sources: [b.seq],
+      sources: [b.seq, metAgain.seq],
     },
     { time: w.now() },
   );

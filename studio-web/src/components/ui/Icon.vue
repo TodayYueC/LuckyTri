@@ -10,6 +10,10 @@ defineProps<{ name: string }>();
       />
       <path d="M9.4 11.4v.6M14.6 11.4v.6M10 15c1.2.9 2.8.9 4 0" />
     </template>
+    <template v-else-if="name === 'time'">
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 7v5l3 2" />
+    </template>
     <template v-else-if="name === 'chats'">
       <path
         d="M4.5 6.5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H11l-4 3.5v-3.5h-.5a2 2 0 0 1-2-2v-7Z"

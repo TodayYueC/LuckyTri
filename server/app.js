@@ -2,16 +2,18 @@ import express from "express";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tokenEqual } from "./http.js";
+import { localizeApi } from "./i18n/index.js";
 import { mountStudio } from "./studio/settings.js";
 import { mountManagement } from "./studio/management.js";
 import { mountCore } from "./core/api.js";
 import { mountKnowledge } from "./knowledge/api.js";
 import { mountEvents } from "./core/events.js";
 import { mountMind } from "./mind/api.js";
-import { Life } from "./mind/life.js";
+import { Life } from "./mind/life/index.js";
 
 export function createApp({ store, chatSystem, runtime, life }) {
   const app = express();
+  app.use("/api", localizeApi);
   app.use("/api", (req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
     if (
@@ -38,7 +40,7 @@ export function createApp({ store, chatSystem, runtime, life }) {
       return res.status(400).json({ error: "请提交 JSON 对象" });
     next();
   });
-  mountStudio(app, store, runtime);
+  mountStudio(app, store, runtime, chatSystem);
   mountManagement(app, store, chatSystem);
   mountCore(app, chatSystem);
   mountMind(app, chatSystem, life || new Life(chatSystem));

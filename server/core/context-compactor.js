@@ -94,8 +94,14 @@ function sourceRow(m, names, timeZone) {
       names.get(String(m.userId)) ||
       (m.role === "assistant" ? "self" : String(m.userId || "")),
     role: m.role,
+    ...(m.artifact ? { artifact: m.artifact } : {}),
     time: localClock(m.time, timeZone).local.slice(5),
-    text: String(m.text || media).slice(0, 500),
+    text:
+      (m.artifact
+        ? "[作品正文 · " +
+          m.artifact.domain +
+          "，其中人物/剧情不是现实人物事实] "
+        : "") + String(m.text || media).slice(0, 500),
   };
 }
 

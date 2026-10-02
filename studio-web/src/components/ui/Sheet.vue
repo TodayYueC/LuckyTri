@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { t } from "../../i18n";
+import {
+  computed,
+  nextTick,
+  onActivated,
+  onDeactivated,
+  onBeforeUnmount,
+  ref,
+  watch,
+} from "vue";
 
 const props = withDefaults(
   defineProps<{
@@ -12,6 +21,14 @@ const props = withDefaults(
 );
 const emit = defineEmits<{ close: [] }>();
 const panel = ref<HTMLElement>();
+const active = ref(true),
+  shown = computed(() => props.open && active.value);
+onActivated(() => {
+  active.value = true;
+});
+onDeactivated(() => {
+  active.value = false;
+});
 let returnTo: HTMLElement | null = null;
 
 function onKey(event: KeyboardEvent) {
@@ -19,7 +36,7 @@ function onKey(event: KeyboardEvent) {
 }
 
 watch(
-  () => props.open,
+  shown,
   async (open) => {
     if (open) {
       returnTo = document.activeElement as HTMLElement | null;
@@ -39,7 +56,7 @@ onBeforeUnmount(() => document.removeEventListener("keydown", onKey));
 <template>
   <Teleport to="body">
     <Transition name="sheet">
-      <div v-if="open" class="sheet-layer" @click.self="emit('close')">
+      <div v-if="shown" class="sheet-layer" @click.self="emit('close')">
         <aside
           ref="panel"
           class="sheet"
@@ -56,7 +73,7 @@ onBeforeUnmount(() => document.removeEventListener("keydown", onKey));
             </div>
             <button
               class="icon-button ghost sheet-close"
-              aria-label="关闭"
+              :aria-label="t('关闭')"
               @click="emit('close')"
             >
               ✕

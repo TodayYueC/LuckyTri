@@ -1,18 +1,21 @@
-import { createStore } from "./store.js";
+import { createStore } from "./storage/store.js";
 import { ChatSystem } from "./core/orchestrator.js";
-import { Life } from "./mind/life.js";
+import { Life } from "./mind/life/index.js";
 import { createApp } from "./app.js";
-import { createOneBotGateway } from "./channels/gateway.js";
-import { createBackupScheduler } from "./backup-scheduler.js";
+import { createChannelHub, createChannels } from "./channels/index.js";
+import { createBackupScheduler } from "./storage/backup-scheduler.js";
 
 const store = createStore();
-const gateway = createOneBotGateway(store);
-const chatSystem = new ChatSystem(store, gateway.send, {
-  fetchQuoted: (message) => gateway.fetchQuoted(message),
-  fetchImage: (file) => gateway.fetchImage(file),
+// One channel at a time connects her to QQ; the rest of the system only ever
+// talks to the hub.
+const channel = createChannelHub(store, createChannels(store));
+const chatSystem = new ChatSystem(store, channel.send, {
+  fetchQuoted: (message) => channel.fetchQuoted(message),
+  fetchImage: (file) => channel.fetchImage(file),
 });
 const life = new Life(chatSystem, {
-  online: () => gateway.status().online,
+  online: () => channel.online(),
+  canReach: (session) => channel.canReach(session),
 });
 life.start();
 const backups = createBackupScheduler();
@@ -30,11 +33,18 @@ function shutdown() {
   backups.stop();
   life.close();
   chatSystem.close();
-  gateway.close();
+  channel.close();
   store.revision++;
   clearInterval(maintenance);
-  server.close(() => process.exit(0));
-  setTimeout(() => process.exit(0), 3000).unref();
+  const finish = () => {
+    try {
+      store.db.close();
+    } finally {
+      process.exit(0);
+    }
+  };
+  server.close(finish);
+  setTimeout(finish, 3000).unref();
 }
 
 const app = createApp({
@@ -42,7 +52,8 @@ const app = createApp({
   chatSystem,
   life,
   runtime: {
-    connection: () => gateway.status(),
+    connection: () => channel.status(),
+    syncChannel: () => channel.sync(),
     backup: () => backups.status(),
     shutdown,
   },
@@ -50,7 +61,7 @@ const app = createApp({
 const server = app.listen(Number(process.env.PORT || 3210), host, () =>
   console.log(`LuckyTri 管理台 http://${host}:${process.env.PORT || 3210}`),
 );
-gateway.attach(server, chatSystem);
+channel.attach(server, chatSystem);
 function runMaintenance() {
   store.maintenance();
   try {
@@ -63,7 +74,7 @@ function runMaintenance() {
   } catch (error) {
     console.error(`自动备份调度失败：${error.message}`);
   }
-  gateway.refreshDirectory().catch(() => {});
+  channel.refreshDirectory().catch(() => {});
 }
 runMaintenance();
 const maintenance = setInterval(runMaintenance, 60000);

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { isNameCall } from "../server/core/name-call.js";
-import { normalize } from "../server/channels/onebot.js";
+import { normalize } from "../server/channels/onebot/adapter.js";
 import { messageEnvelope } from "../server/core/message-manager.js";
 import { resolveTargets } from "../server/core/reply-target-resolver.js";
 

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createStore } from "../server/store.js";
+import { USER_AGENT } from "../server/version.js";
+import { createStore } from "../server/storage/store.js";
 import { Repository } from "../server/core/repository.js";
 import { ConversationManager } from "../server/core/conversation-manager.js";
 import { resolveTargets } from "../server/core/reply-target-resolver.js";
@@ -13,10 +14,10 @@ import {
   loadVisionImages,
   visionInputs,
 } from "../server/core/vision-manager.js";
-import { normalize } from "../server/channels/onebot.js";
+import { normalize } from "../server/channels/onebot/adapter.js";
 import { persistIncoming } from "../server/core/message-manager.js";
 import { fitInput } from "../server/core/input-budget.js";
-import { MODEL_CATALOG } from "../server/model-presets.js";
+import { MODEL_CATALOG } from "../server/core/model-presets.js";
 import {
   invalidateSpeakerNames,
   speakerNames,
@@ -1112,7 +1113,7 @@ test("OpenCode Messages 模型映射系统提示、图像、推理预算并解�
   assert.equal(request.url, "https://opencode.ai/zen/go/v1/messages");
   assert.equal(request.options.headers.Authorization, "Bearer SECRET");
   assert.equal(request.options.headers["anthropic-version"], "2023-06-01");
-  assert.equal(request.options.headers["User-Agent"], "LuckyTri/0.8.2");
+  assert.equal(request.options.headers["User-Agent"], USER_AGENT);
   assert.match(request.options.headers["x-opencode-session"], /^[a-f0-9]{32}$/);
   assert.equal(request.body.model, "minimax-m3");
   assert.equal(request.body.messages[0].content[2].source.type, "base64");
@@ -1497,6 +1498,63 @@ test("开启图片理解后，回复拿到的是画面而不是图片占位符",
     true,
   );
   assert.match(seen[0].guide, /画面/);
+  system.close();
+  store.db.close();
+});
+
+test("图片细节需要复审时，复审模型也得到同一张安全画面", async () => {
+  const { store } = setup();
+  store.save({ enabled: true, apiKey: "k" });
+  const session = "private:12345";
+  store.db
+    .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
+    .run(session, "测试", "private");
+  const seen = [];
+  const profile = {
+    ...defaultModel(store.settings()),
+    vision: true,
+    apiKey: "k",
+  };
+  const system = new ChatSystem(store, async () => ({ message_id: 1 }), {
+    models: {
+      profile: () => profile,
+      call: async (_profile, stage, _prompt, data, _trace, images = []) => {
+        seen.push({ stage, images: images.map((image) => image.messageId) });
+        if (stage === "validation") {
+          assert.equal(data.response.bubbles[0], "图上写着66%");
+          return { ok: true, issues: [] };
+        }
+        return {
+          choice: "speak",
+          reason: "接住难过的心情并看图",
+          targetMessageIds: [1],
+          bubbles: ["图上写着66%"],
+        };
+      },
+    },
+    loadVisionImages: async (images) => ({
+      images: images.map((image) => ({
+        ...image,
+        url: "data:image/png;base64,iVBORw0KGgo=",
+      })),
+      unavailable: [],
+    }),
+  });
+  system.repo.append(
+    msg(1, {
+      sessionId: session,
+      kind: "private",
+      text: "[图片]看这个有点难过",
+      attachments: [{ type: "image", url: "https://gchat.qpic.cn/a.png" }],
+    }),
+  );
+  const trace = await system.process(session, system.repo.events(session));
+  assert.equal(trace.status, "sent");
+  assert.deepEqual(seen, [
+    { stage: "turn", images: [1] },
+    { stage: "validation", images: [1] },
+  ]);
+  assert.doesNotMatch(JSON.stringify(trace), /iVBORw0KGgo=/);
   system.close();
   store.db.close();
 });

@@ -4,7 +4,7 @@ import {
   EFFORT_LABELS,
   MODEL_CATALOG,
   MODEL_PRESETS,
-} from "../server/model-presets.js";
+} from "../server/core/model-presets.js";
 import {
   normalizeModels,
   pickModel,

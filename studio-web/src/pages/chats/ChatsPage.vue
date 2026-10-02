@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { intlLocale, t, N_ } from "../../i18n";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { toast } from "../../api";
 import { ask } from "../../dialog";
@@ -46,7 +47,7 @@ const traces = ref<any[]>([]);
 const summaries = ref<any[]>([]);
 const groups = ref<any[]>([]);
 const unread = ref<Record<string, number>>({});
-const status = ref("请选择会话");
+const status = ref("");
 const sending = ref(false);
 const adding = ref(false);
 const listOpen = ref(false);
@@ -99,9 +100,10 @@ async function load(force = false) {
     await nextTick();
     const fresh = document.getElementById("liveMessages");
     if (fresh && follow) fresh.scrollTop = fresh.scrollHeight;
-    status.value = "实时同步 · " + new Date().toLocaleTimeString();
+    status.value =
+      t("实时同步 · ") + new Date().toLocaleTimeString(intlLocale());
   } catch (error) {
-    status.value = "同步失败：" + (error as Error).message;
+    status.value = t("同步失败：") + (error as Error).message;
   } finally {
     busy = false;
     if (sessionId.value !== requested) {
@@ -211,13 +213,13 @@ onUnmounted(() => {
 
 async function add(data: Record<string, string>) {
   try {
-    await addSession(data);
+    const added = await addSession(data);
     await reload();
-    sessionId.value = `${data.kind}:${data.id}`;
+    sessionId.value = added?.sessionId || `${data.kind}:${data.id}`;
     settingsOpen.value = true;
     panelTab.value = "here";
     adding.value = false;
-    toast("会话已添加");
+    toast(t("会话已添加"));
   } catch (error) {
     toast((error as Error).message, true);
   }
@@ -240,9 +242,9 @@ async function restore(id: string) {
 
 async function remove(id: string) {
   if (
-    !(await ask("永久删除这个会话？它的消息和设置都会消失。", {
-      title: "永久删除",
-      confirmText: "删除",
+    !(await ask(t("永久删除这个会话？它的消息和设置都会消失。"), {
+      title: t("永久删除"),
+      confirmText: t("删除"),
       danger: true,
     }))
   )
@@ -256,10 +258,10 @@ async function save(policy: Record<string, unknown>) {
   try {
     await saveSession(session.value.id, {
       ...policy,
-      name: session.value.name,
+      name: String(policy.name || "").trim() || session.value.name,
     });
     studio.dirty = false;
-    toast("会话配置已保存");
+    toast(t("会话配置已保存"));
     await reload();
   } catch (error) {
     toast((error as Error).message, true);
@@ -269,9 +271,9 @@ async function save(policy: Record<string, unknown>) {
 async function clear() {
   if (!sessionId.value) return;
   if (
-    !(await ask("确定清空这个会话的消息上下文吗？长期记忆不会删除。", {
-      title: "清空上下文",
-      confirmText: "清空",
+    !(await ask(t("确定清空这个会话的消息上下文吗？长期记忆不会删除。"), {
+      title: t("清空上下文"),
+      confirmText: t("清空"),
       danger: true,
     }))
   )
@@ -293,7 +295,7 @@ async function simulate(body: {
   sending.value = true;
   try {
     const r = await simulateTurn({ sessionId: sessionId.value, ...body });
-    toast(r.reason || "已发送");
+    toast(r.reason || t("已发送"));
     studio.health = await fetchState();
     await load();
   } catch (error) {
@@ -306,7 +308,7 @@ async function simulate(body: {
 async function feedback(id: number, tag: string) {
   try {
     await sendFeedback(id, tag);
-    toast("反馈已保存");
+    toast(t("反馈已保存"));
     studio.health = await fetchState();
   } catch (error) {
     toast((error as Error).message, true);
@@ -335,7 +337,7 @@ async function feedback(id: number, tag: string) {
         :events="events"
         :traces="traces"
         :decisions="decisions"
-        :status="status"
+        :status="status || t('请选择会话')"
         :demo="Boolean(studio.health.settings.demo)"
         :compact="compact"
         :sending="sending"
@@ -364,7 +366,7 @@ async function feedback(id: number, tag: string) {
     <Sheet
       v-if="compact"
       :open="listOpen"
-      title="全部会话"
+      :title="t('全部会话')"
       eyebrow="CHATS"
       width="400px"
       @close="listOpen = false"
@@ -382,7 +384,15 @@ async function feedback(id: number, tag: string) {
         />
       </div>
     </Sheet>
-    <AddSession :open="adding" @close="adding = false" @add="add" />
+    <AddSession
+      :open="adding"
+      :channel="
+        studio.health?.connection?.channel === 'qqbot' ? 'qqbot' : 'onebot'
+      "
+      :ready="Boolean(studio.health?.connection?.qqbot?.appId)"
+      @close="adding = false"
+      @add="add"
+    />
     <ReplaySheet
       :open="replayOpen"
       :session-id="sessionId"

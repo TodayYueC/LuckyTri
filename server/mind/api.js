@@ -1,12 +1,19 @@
 import { wrap } from "../http.js";
+import { mountTime } from "./time/api.js";
 import { localClock } from "../core/conversation-cues.js";
-import { agoLabel, elapsedLabel } from "./clock.js";
+import { agoLabel, elapsedLabel, JUST_NOW } from "./clock.js";
 import { diffSnapshots } from "./index.js";
 import { SELF_KINDS } from "./self.js";
 import { THOUGHT_KINDS } from "./thoughts.js";
 import { dayKey, parse, text } from "./util.js";
+import {
+  displayNames,
+  displayPerson,
+  displaySession,
+} from "../studio/display-names.js";
 
 const RUN_ACTIVITY = {
+  activity: "solitude",
   solitude: "solitude",
   expression: "solitude",
   daily: "diary",
@@ -14,13 +21,22 @@ const RUN_ACTIVITY = {
   night: "night",
 };
 
-function sessionNames(db) {
+function sessionNames(db, now) {
+  const people = displayNames(db, now);
   return new Map(
     db
       .prepare("SELECT id,name FROM sessions")
       .all()
-      .map((s) => [s.id, s.name]),
+      .map((s) => [s.id, displaySession(s, people).name]),
   );
+}
+
+function displayAhead(db, rows, now) {
+  const names = displayNames(db, now);
+  return rows.map((row) => ({
+    ...row,
+    name: names.get(String(row.subject || "")) || row.name,
+  }));
 }
 
 // What TA is doing this moment: a background run, a conversation being
@@ -60,6 +76,7 @@ function activityOf({ db, life, now, affect, words, names }) {
 
 export function mountMind(app, chat, life) {
   const { mind } = chat;
+  mountTime(app, life);
   // A small, cheap picture of TA for the studio: asked for on every change.
   app.get(
     "/api/mind/presence",
@@ -68,7 +85,7 @@ export function mountMind(app, chat, life) {
       const db = chat.repo.db;
       const nature = mind.nature.current(now);
       const affect = mind.affect.state(now, { nature });
-      const names = sessionNames(db);
+      const names = sessionNames(db, now);
       const demo = Number(!!chat.store.settings().demo);
       const saidRows = db
         .prepare(
@@ -88,6 +105,9 @@ export function mountMind(app, chat, life) {
       const thought = mind.thoughts.latest(now);
       res.json({
         name: nature.name,
+        nature: { rhythm: nature.rhythm },
+        busy: Boolean(life.busy),
+        reason: life.eligible(now),
         now,
         clock: localClock(now, mind.timeZone()),
         affect: {
@@ -103,6 +123,7 @@ export function mountMind(app, chat, life) {
           baseline: affect.baseline,
         },
         activity: activityOf({ db, life, now, affect, words, names }),
+        currentLife: mind.time.view({ now }),
         lastWords: words,
         recentWords,
         thought: thought
@@ -111,8 +132,11 @@ export function mountMind(app, chat, life) {
               when: elapsedLabel(thought.created, now, mind.timeZone()),
             }
           : null,
-        expecting: mind.anticipations
-          .list({ now, limit: 100 })
+        expecting: displayAhead(
+          db,
+          mind.anticipations.list({ now, limit: 100 }),
+          now,
+        )
           .filter(
             (a) =>
               a.state === "pending" &&
@@ -152,6 +176,7 @@ export function mountMind(app, chat, life) {
           return {
             text: text(row.appraisal, 80),
             when: elapsedLabel(row.created, now, mind.timeZone()),
+            recent: now - row.created < JUST_NOW,
             spoke: row.choice !== "silent",
           };
         })(),
@@ -165,7 +190,7 @@ export function mountMind(app, chat, life) {
       const now = life.now();
       const start = life.dayStart(now);
       const db = chat.repo.db;
-      const names = sessionNames(db);
+      const names = sessionNames(db, now);
       const where = (session) => ({
         session,
         sessionName: names.get(session) || session,
@@ -252,10 +277,10 @@ export function mountMind(app, chat, life) {
         throw error;
       }
       const db = chat.repo.db;
-      const names = sessionNames(db);
+      const names = sessionNames(db, now);
       res.json({
         person: {
-          ...person,
+          ...displayPerson(person, displayNames(db, now)),
           places: person.sessions.map((s) => ({
             id: s,
             name: names.get(s) || s,
@@ -272,8 +297,11 @@ export function mountMind(app, chat, life) {
             sessionName: names.get(m.session_id) || m.session_id,
             when: agoLabel(now - m.created),
           })),
-        anticipations: mind.anticipations
-          .list({ now, limit: 300 })
+        anticipations: displayAhead(
+          db,
+          mind.anticipations.list({ now, limit: 300 }),
+          now,
+        )
           .filter((a) => String(a.subject) === id)
           .slice(0, 30),
         meetings: mind.meetings.withPerson(id, { before: now }).map((m) => ({
@@ -288,12 +316,7 @@ export function mountMind(app, chat, life) {
     wrap((req, res) => {
       const now = life.now();
       const nature = mind.nature.current(now);
-      const names = new Map(
-        chat.repo.db
-          .prepare("SELECT id,name FROM sessions")
-          .all()
-          .map((s) => [s.id, s.name]),
-      );
+      const names = sessionNames(chat.repo.db, now);
       res.json({
         clock: localClock(now, mind.timeZone()),
         affect: mind.affect.state(now, { nature }),
@@ -323,8 +346,11 @@ export function mountMind(app, chat, life) {
         busy: life.busy,
         dayOfLife: mind.days.dayOfLife(now),
         // The week ahead as she sees it, wherever each thing was said.
-        expecting: mind.anticipations
-          .list({ now, limit: 100 })
+        expecting: displayAhead(
+          chat.repo.db,
+          mind.anticipations.list({ now, limit: 100 }),
+          now,
+        )
           .filter(
             (a) =>
               a.state === "pending" &&
@@ -356,6 +382,29 @@ export function mountMind(app, chat, life) {
         },
         kinds: { self: SELF_KINDS, thoughts: THOUGHT_KINDS },
       });
+    }),
+  );
+  // A page asks only for the projections it renders. The dock shares presence;
+  // weather and notes don't need unread messages, task history or self counts.
+  app.get(
+    "/api/mind/mood",
+    wrap((req, res) => {
+      const now = life.now(),
+        nature = mind.nature.current(now);
+      res.json({
+        clock: localClock(now, mind.timeZone()),
+        affect: mind.affect.state(now, { nature }),
+        moods: mind.affect.history({ limit: 24 }),
+        kinds: { thoughts: THOUGHT_KINDS },
+      });
+    }),
+  );
+  app.get(
+    "/api/mind/thoughts",
+    wrap((req, res) => {
+      const q = String(req.query.q || "").slice(0, 200),
+        before = Number(req.query.before) || Number.MAX_SAFE_INTEGER;
+      res.json(mind.thoughts.list({ before, q, limit: 30 }));
     }),
   );
   app.get(
@@ -400,11 +449,14 @@ export function mountMind(app, chat, life) {
       const sessions = chat.repo.db
         .prepare("SELECT id,name,kind FROM sessions WHERE archived=0")
         .all();
+      const names = displayNames(chat.repo.db, life.now());
       res.json({
-        people: mind.bonds.people({ limit: 200 }),
+        people: mind.bonds
+          .people({ limit: 200 })
+          .map((person) => displayPerson(person, names)),
         groups: sessions.map((s) => ({
           session: s.id,
-          name: s.name,
+          name: displaySession(s, names).name,
           kind: s.kind,
           bond: mind.bonds.group(s.id),
           face: mind.faces.current(s.id),
@@ -431,7 +483,14 @@ export function mountMind(app, chat, life) {
       const before = Number(req.query.before) || Number.MAX_SAFE_INTEGER;
       const now = life.now();
       res.json({
-        diaries: life.diaries({ limit: 30 }),
+        diaries: life.diaries({ limit: 30 }).map((d) => ({
+          ...d,
+          actions: mind.time.lived({
+            since: life.dayStart(d.created),
+            before: d.created,
+          }),
+        })),
+        creations: life.activities.list({ before: now }),
         chapters: life.chapters().map((c) => ({
           ...c,
           versions: life.chapterVersions(c.chapter).length,
@@ -439,7 +498,11 @@ export function mountMind(app, chat, life) {
         reviews: mind.periods.reviews({ limit: 12 }),
         story: mind.periods.story(),
         storyVersions: mind.periods.storyVersions().length,
-        anticipations: mind.anticipations.list({ now, limit: 60 }),
+        anticipations: displayAhead(
+          chat.repo.db,
+          mind.anticipations.list({ now, limit: 60 }),
+          now,
+        ),
         dayOfLife: mind.days.dayOfLife(now),
         snapshots: chat.repo.db
           .prepare(

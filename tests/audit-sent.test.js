@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createStore } from "../server/store.js";
-import { auditSent, replaySnapshot } from "../scripts/audit-sent.js";
+import { createStore } from "../server/storage/store.js";
+import { auditSent, replaySnapshot } from "../scripts/dev/audit-sent.js";
 
 const NOW = Date.parse("2026-09-29T12:00:00+08:00");
 const MINUTE = 60000;

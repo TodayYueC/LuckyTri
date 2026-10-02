@@ -101,6 +101,9 @@ export function reviewContext(snapshot, decision = {}) {
   const recent = new Set(messages.slice(-30).map((m) => m.id));
   return {
     ...rest,
+    ...(snapshot.inner?.currentLife
+      ? { currentLife: snapshot.inner.currentLife }
+      : {}),
     ...(snapshot.inner?.continuity
       ? { continuity: snapshot.inner.continuity }
       : {}),
@@ -147,8 +150,8 @@ export function validateResponse(result, snapshot, decision, maxChars = 180) {
     return ["气泡格式无效"];
   if (result.bubbles.reduce((n, s) => n + Array.from(s).length, 0) > maxChars)
     issues.push("回复超过当前会话总字数");
-  if (decision.choice === "react" && Array.from(result.bubbles[0]).length > 8)
-    issues.push("选择了简短反应，只写一个极短的反应");
+  if (decision.choice === "react" && Array.from(result.bubbles[0]).length > 20)
+    issues.push("选择了简短反应，只写一句不超过20字的短话");
   const recent = snapshot.messages
     .filter((m) => m.role === "assistant")
     .slice(-12)
@@ -455,8 +458,26 @@ export function validateResponse(result, snapshot, decision, maxChars = 180) {
     result.bubbles.length > 1
   )
     issues.push("这一轮只是纠正或确认，一句收住，不要追加原话题或解释");
-  if (focus.kind === "acknowledge" && result.bubbles.join("").length > 12)
+  if (focus.kind === "acknowledge" && result.bubbles.join("").length > 8)
     issues.push("对方只确认了一下，不需要再评论或劝慰，用很短的回应收住");
+  if (
+    focus.kind === "acknowledge" &&
+    result.bubbles.some((line) => /早点|休息|歇着|去睡|注意身体/.test(line))
+  )
+    issues.push("对方只是确认，不要无请求地安排休息或继续给建议");
+  const selfName = String(snapshot.persona?.name || "").trim();
+  if (
+    focus.kind === "repair" &&
+    selfName &&
+    result.bubbles.some((line) =>
+      ["复读的是", "重复的是", "说错的是"].some((prefix) =>
+        line.includes(prefix + selfName),
+      ),
+    )
+  )
+    issues.push(
+      "历史 assistant 是自己已发的原话；被指出重复时不能说成另一个 bot 的错",
+    );
   if (
     focus.kind === "acknowledge" &&
     result.bubbles.some((line) =>

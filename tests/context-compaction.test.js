@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createStore } from "../server/store.js";
+import { createStore } from "../server/storage/store.js";
 import { Repository } from "../server/core/repository.js";
 import { ChatSystem } from "../server/core/orchestrator.js";
 import { buildContext } from "../server/core/context-builder.js";

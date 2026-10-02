@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { MOODS, MOOD_KEYS, type MoodKey } from "../../mood/themes";
 import { liveMood, pinTheme, theme } from "../../mood/useMood";
@@ -41,8 +42,8 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", outside));
       aria-haspopup="true"
       :title="
         theme.pinned
-          ? `主题固定为「${MOODS[theme.pinned].label}」`
-          : '主题跟随 TA 的心情'
+          ? t('主题固定为「{v}」', { v: MOODS[theme.pinned].label })
+          : t('主题跟随 TA 的心情')
       "
       @click="open = !open"
     >
@@ -54,8 +55,8 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", outside));
       <span class="rail-label">
         {{
           theme.pinned
-            ? `固定：${MOODS[theme.pinned].label}`
-            : `跟随 TA · ${MOODS[liveMood].label}`
+            ? t("固定：{v}", { v: MOODS[theme.pinned].label })
+            : t("跟随 TA · {v}", { v: MOODS[liveMood].label })
         }}
       </span>
     </button>
@@ -66,7 +67,7 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", outside));
           class="theme-menu"
           :class="{ 'inline-menu': inline }"
           role="radiogroup"
-          aria-label="界面主题"
+          :aria-label="t('界面主题')"
         >
           <button
             type="button"
@@ -81,8 +82,10 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", outside));
               aria-hidden="true"
             ></span>
             <span
-              ><b>跟随 TA 的心情</b
-              ><small>现在是「{{ MOODS[liveMood].label }}」</small></span
+              ><b>{{ t("跟随 TA 的心情") }}</b
+              ><small>{{
+                t("现在是「{v}」", { v: MOODS[liveMood].label })
+              }}</small></span
             >
           </button>
           <button

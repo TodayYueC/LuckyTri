@@ -65,11 +65,20 @@ export function speakerNames(db, sessionIds) {
 
 export function applySpeakerNames(text, names) {
   let out = String(text || "");
+  // A QQ number inside a longer run of digits is not that person; an openid
+  // (the official bot's ids) is only that person when it stands alone.
   const entries = [...names.entries()]
-    .filter(([id, name]) => /^\d{4,20}$/.test(id) && name && name !== id)
+    .filter(
+      ([id, name]) =>
+        /^(?:\d{4,20}|[0-9A-Za-z_-]{16,64})$/.test(id) && name && name !== id,
+    )
     .sort((a, b) => b[0].length - a[0].length);
-  for (const [id, name] of entries)
-    out = out.replace(new RegExp(`(?<!\\d)${id}(?!\\d)`, "g"), name);
+  for (const [id, name] of entries) {
+    const numeric = /^\d+$/.test(id);
+    const before = numeric ? "(?<!\\d)" : "(?<![0-9A-Za-z_-])";
+    const after = numeric ? "(?!\\d)" : "(?![0-9A-Za-z_-])";
+    out = out.replace(new RegExp(`${before}${id}${after}`, "g"), name);
+  }
   return out;
 }
 

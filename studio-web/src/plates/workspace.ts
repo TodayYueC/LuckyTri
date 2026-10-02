@@ -1,4 +1,4 @@
-import { api } from "../api";
+import { api, freshRead } from "../api";
 
 export async function loadWorkspace() {
   const [core, health] = await Promise.all([api("/core/state"), api("/state")]);
@@ -10,5 +10,5 @@ export async function patchSettings(body: Record<string, unknown>) {
 }
 
 export async function fetchState() {
-  return api("/state");
+  return freshRead("/state");
 }

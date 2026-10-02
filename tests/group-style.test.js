@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { summarizeGroupStyle } from "../server/group-style.js";
-import { createStore } from "../server/store.js";
+import { summarizeGroupStyle } from "../server/core/group-style.js";
+import { createStore } from "../server/storage/store.js";
 import { ChatSystem } from "../server/core/orchestrator.js";
 const now = Date.now();
 const rows = Array.from({ length: 18 }, (_, i) => ({

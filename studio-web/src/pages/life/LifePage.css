@@ -141,6 +141,19 @@
     0 26px 52px -39px rgb(62 90 151 / 0.38);
   backdrop-filter: blur(26px) saturate(1.5);
 }
+.creations summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.creation {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.creation p {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
 .reviews {
   padding: clamp(20px, 3vw, 36px);
 }

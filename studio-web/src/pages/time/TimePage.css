@@ -1,0 +1,197 @@
+.time-page {
+  display: grid;
+  gap: var(--gap);
+  min-width: 0;
+}
+.time-intro {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  padding: 32px clamp(24px, 4vw, 48px);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 32px;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.85), var(--glow-b));
+}
+.time-intro h1 {
+  font-size: clamp(25px, 2.6vw, 38px);
+  line-height: 1.35;
+  letter-spacing: -0.03em;
+}
+.time-intro em {
+  font-style: normal;
+  color: var(--accent);
+}
+.time-intro p {
+  margin-top: 14px;
+  color: var(--muted);
+}
+.time-clock {
+  display: grid;
+  place-content: center;
+  text-align: center;
+  flex: none;
+  width: 140px;
+  height: 140px;
+  border: 1px solid white;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 9px rgba(255, 255, 255, 0.28);
+  background: linear-gradient(150deg, white, var(--orb-b));
+}
+.time-clock span {
+  font-size: 44px;
+  font-weight: 650;
+}
+.time-clock small {
+  font-size: 10px;
+  color: var(--muted);
+}
+.time-today,
+.work-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap);
+}
+.time-page .card {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+.time-page h2 {
+  font-size: 22px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.time-page p,
+.time-page small {
+  overflow-wrap: anywhere;
+  line-height: 1.75;
+}
+.time-cards {
+  display: grid;
+  gap: 16px;
+}
+.time-page .time-task {
+  gap: 12px;
+}
+.time-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
+}
+.time-filter label {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+.time-filter input {
+  max-width: 100%;
+  min-width: 0;
+}
+.work-card {
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  font: inherit;
+  color: inherit;
+  transition: transform 0.18s;
+}
+.work-card:hover {
+  transform: translateY(-2px);
+}
+.time-settings form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 15px;
+  margin-top: 18px;
+}
+.time-settings label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.time-settings input {
+  width: 100%;
+}
+.time-settings button {
+  justify-self: start;
+}
+.time-pagination {
+  justify-content: center;
+}
+.work-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.95;
+  font-size: 16px;
+  padding: 20px 0;
+}
+.share-status {
+  color: var(--accent);
+}
+.task-meta .task-priority {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.task-meta .task-priority span {
+  flex: none;
+}
+.task-meta .task-priority .menu-select {
+  width: 100px;
+  flex: none;
+  min-width: 70px;
+}
+.task-meta .task-priority :deep(.menu-face) {
+  min-height: 34px;
+  padding: 6px 10px;
+}
+.task-sources summary {
+  font-size: 12px;
+  color: var(--muted);
+}
+.time-page .list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  overflow-wrap: anywhere;
+}
+.time-page dl {
+  display: grid;
+  gap: 12px;
+}
+.time-page dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 760px) {
+  .time-today,
+  .work-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .time-clock {
+    display: none;
+  }
+  .time-intro {
+    padding: 26px 22px;
+  }
+  .time-settings form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 440px) {
+  .time-page .row {
+    gap: 9px;
+  }
+  .time-page h2 {
+    font-size: 20px;
+  }
+}

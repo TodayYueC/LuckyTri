@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { computed, ref } from "vue";
 import { toast } from "../../api";
 import { go, studio } from "../../stores/studio";
@@ -20,25 +21,34 @@ const backup = computed(() => {
   const state = studio.health.backup;
   if (!state) return null;
   if (!state.enabled)
-    return { value: "已关闭", caption: "自动备份", tone: "warn", title: "" };
+    return {
+      value: t("已关闭"),
+      caption: t("自动备份"),
+      tone: "warn",
+      title: "",
+    };
   if (state.lastError)
     return {
-      value: "失败",
-      caption: "自动备份出错，稍后重试",
+      value: t("失败"),
+      caption: t("自动备份出错，稍后重试"),
       tone: "danger",
       title: state.lastError.message,
     };
   if (!state.latest)
     return {
-      value: "还没有",
-      caption: "自动备份，运行一阵后会做第一份",
+      value: t("还没有"),
+      caption: t("自动备份，运行一阵后会做第一份"),
       tone: "",
       title: "",
     };
   const mb = Math.max(1, Math.round(state.latest.bytes / 1048576));
   return {
     value: ago(state.latest.at),
-    caption: `上次自动备份 · ${mb} MB · 已留 ${state.count}/${state.keep} 份`,
+    caption: t("上次自动备份 · {mb} MB · 已留 {count}/{keep} 份", {
+      mb,
+      count: state.count,
+      keep: state.keep,
+    }),
     tone: "",
     title: state.latest.name,
   };
@@ -49,7 +59,7 @@ async function save() {
     await patchSettings({ enabled: enabled.value, demo: demo.value });
     studio.dirty = false;
     studio.health = await fetchState();
-    toast("已保存并应用");
+    toast(t("已保存并应用"));
   } catch (error) {
     toast((error as Error).message, true);
   }
@@ -66,41 +76,45 @@ async function save() {
     >
       <div class="card-head">
         <div>
-          <span class="eyebrow">运行开关</span>
-          <h2>TA 现在可以说话吗</h2>
+          <span class="eyebrow">{{ t("运行开关") }}</span>
+          <h2>{{ t("TA 现在可以说话吗") }}</h2>
         </div>
       </div>
       <div class="switches">
         <Toggle v-model="enabled" name="enabled">
-          <b>允许参与聊天</b>
-          <small>总开关。关掉后 TA 不看也不回任何会话，心智照常保存。</small>
+          <b>{{ t("允许参与聊天") }}</b>
+          <small>{{
+            t("总开关。关掉后 TA 不看也不回任何会话，心智照常保存。")
+          }}</small>
         </Toggle>
         <Toggle v-model="demo" name="demo">
-          <b>仅模拟运行，不向 QQ 发送</b>
-          <small
-            >模拟模式下，「对话」里可以发模拟消息走完整流程；它们写进模拟会话，不进入真实记忆。</small
-          >
+          <b>{{ t("仅模拟运行，不向 QQ 发送") }}</b>
+          <small>{{
+            t(
+              "模拟模式下，「对话」里可以发模拟消息走完整流程；它们写进模拟会话，不进入真实记忆。",
+            )
+          }}</small>
         </Toggle>
       </div>
       <div class="save-bar">
-        <button class="primary" type="submit">保存运行状态</button>
+        <button class="primary" type="submit">{{ t("保存运行状态") }}</button>
         <small class="faint">{{
-          studio.dirty ? "有未保存的修改" : "已保存，立刻生效"
+          studio.dirty ? t("有未保存的修改") : t("已保存，立刻生效")
         }}</small>
       </div>
     </form>
     <section class="card numbers">
       <button @click="go('chats')">
         <b>{{ enabledSessions }}</b
-        ><span>参与中的会话</span>
+        ><span>{{ t("参与中的会话") }}</span>
       </button>
       <button @click="go('system', 'models')">
         <b>{{ studio.core.models.length }}</b
-        ><span>可用模型</span>
+        ><span>{{ t("可用模型") }}</span>
       </button>
       <button @click="go('system', 'connect')">
-        <b>{{ studio.health.connection?.online ? "在线" : "离线" }}</b
-        ><span>QQ 连接</span>
+        <b>{{ studio.health.connection?.online ? t("在线") : t("离线") }}</b
+        ><span>{{ t("QQ 连接") }}</span>
       </button>
       <div
         v-if="backup"

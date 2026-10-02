@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { computed, ref, watch } from "vue";
-import { toast } from "../../api";
+import { readSnapshot, toast } from "../../api";
 import { ask, askText } from "../../dialog";
 import {
   ANTICIPATION_LABELS,
@@ -29,15 +30,23 @@ const person = computed(() => data.value?.person);
 const knownDays = computed(() => {
   const first = person.value?.firstMetAt;
   if (!first) return "";
-  return `认识 ${Math.max(1, Math.round(((props.now || Date.now()) - first) / 86400000))} 天`;
+  return t("认识 {v} 天", {
+    v: Math.max(1, Math.round(((props.now || Date.now()) - first) / 86400000)),
+  });
 });
 
 async function load() {
   if (!props.id) return;
+  const requested = props.id;
+  if (data.value?.person?.userId !== requested)
+    data.value =
+      readSnapshot("/mind/people/" + encodeURIComponent(requested)) || null;
   error.value = "";
   try {
-    data.value = await mind.person(props.id);
+    const result = await mind.person(requested);
+    if (props.id === requested) data.value = result;
   } catch (e) {
+    if (props.id !== requested) return;
     data.value = null;
     error.value = (e as Error).message;
   }
@@ -46,10 +55,12 @@ async function load() {
 async function revokeChange(c: any) {
   if (
     !(await ask(
-      `撤销这次「${CHANGE_LABELS[c.change] || c.change}」？TA 对这个人的感觉会重新计算。`,
+      t("撤销这次「{v}」？TA 对这个人的感觉会重新计算。", {
+        v: CHANGE_LABELS[c.change] || c.change,
+      }),
       {
-        title: "撤销一次关系变化",
-        confirmText: "撤销",
+        title: t("撤销一次关系变化"),
+        confirmText: t("撤销"),
         danger: true,
       },
     ))
@@ -57,7 +68,7 @@ async function revokeChange(c: any) {
     return;
   try {
     await mind.revoke("bond", c.id);
-    toast("已撤销");
+    toast(t("已撤销"));
     await load();
     emit("changed");
   } catch (e) {
@@ -67,18 +78,21 @@ async function revokeChange(c: any) {
 
 async function revokeMemory(m: any) {
   const reason = await askText(
-    `撤销「${m.content}」？TA 之后不会再这样认为，整理记忆时也不会把它写回来。可以写下原因（可不填）：`,
+    t(
+      "撤销「{content}」？TA 之后不会再这样认为，整理记忆时也不会把它写回来。可以写下原因（可不填）：",
+      { content: m.content },
+    ),
     {
-      title: "撤销这条记忆",
-      confirmText: "撤销",
+      title: t("撤销这条记忆"),
+      confirmText: t("撤销"),
       danger: true,
-      placeholder: "原因",
+      placeholder: t("原因"),
     },
   );
   if (reason === null) return;
   try {
     await mind.revoke("memory", m.id, reason);
-    toast("已撤销");
+    toast(t("已撤销"));
     await load();
   } catch (e) {
     toast((e as Error).message, true);
@@ -97,10 +111,13 @@ async function patch(m: any, body: Record<string, unknown>) {
 async function revokeMeeting(m: any) {
   if (
     !(await ask(
-      `撤销这次相遇留下的意思？「${m.meant}」之后不会再回到 TA 心里，也不会再被当成变化的来源。`,
+      t(
+        "撤销这次相遇留下的意思？「{meant}」之后不会再回到 TA 心里，也不会再被当成变化的来源。",
+        { meant: m.meant },
+      ),
       {
-        title: "撤销这次相遇",
-        confirmText: "撤销",
+        title: t("撤销这次相遇"),
+        confirmText: t("撤销"),
         danger: true,
       },
     ))
@@ -108,7 +125,7 @@ async function revokeMeeting(m: any) {
     return;
   try {
     await mind.revoke("meeting", m.id);
-    toast("已撤销");
+    toast(t("已撤销"));
     await load();
     emit("changed");
   } catch (e) {
@@ -118,18 +135,21 @@ async function revokeMeeting(m: any) {
 
 async function revokeAhead(a: any) {
   const reason = await askText(
-    `撤销「${a.content}」？TA 不再惦记这件事，之后整理记忆时也不会把它写回来。可以写下原因（可不填）：`,
+    t(
+      "撤销「{content}」？TA 不再惦记这件事，之后整理记忆时也不会把它写回来。可以写下原因（可不填）：",
+      { content: a.content },
+    ),
     {
-      title: "撤销这个约定",
-      confirmText: "撤销",
+      title: t("撤销这个约定"),
+      confirmText: t("撤销"),
       danger: true,
-      placeholder: "原因",
+      placeholder: t("原因"),
     },
   );
   if (reason === null) return;
   try {
     await mind.revoke("anticipation", a.id, reason);
-    toast("已撤销");
+    toast(t("已撤销"));
     await load();
   } catch (e) {
     toast((e as Error).message, true);
@@ -149,8 +169,8 @@ watch(
 <template>
   <Sheet
     :open="Boolean(id)"
-    :title="person?.name || '正在想起…'"
-    eyebrow="TA 认识的人"
+    :title="person?.name || t('正在想起…')"
+    :eyebrow="t('TA 认识的人')"
     width="560px"
     @close="emit('close')"
   >
@@ -170,9 +190,11 @@ watch(
               [
                 knownDays,
                 person.lastTalkedAt
-                  ? `上次说上话 ${ago(person.lastTalkedAt, now)}`
-                  : "还没说上过话",
-                person.seenAt ? `上次见到 ${ago(person.seenAt, now)}` : "",
+                  ? t("上次说上话 {v}", { v: ago(person.lastTalkedAt, now) })
+                  : t("还没说上过话"),
+                person.seenAt
+                  ? t("上次见到 {v}", { v: ago(person.seenAt, now) })
+                  : "",
               ]
                 .filter(Boolean)
                 .join(" · ")
@@ -189,10 +211,10 @@ watch(
         />
       </div>
       <p v-if="person.impression" class="impression">
-        印象：{{ person.impression }}
+        {{ t("印象：{impression}", { impression: person.impression }) }}
       </p>
       <div v-if="person.places?.length" class="row">
-        <span class="faint">在这些地方见过：</span>
+        <span class="faint">{{ t("在这些地方见过：") }}</span>
         <span
           v-for="p in person.places"
           :key="p.id"
@@ -203,7 +225,7 @@ watch(
       </div>
 
       <section>
-        <h3 class="sheet-title">这份感觉是怎么来的</h3>
+        <h3 class="sheet-title">{{ t("这份感觉是怎么来的") }}</h3>
         <ul v-if="data.changes.length" class="list">
           <li
             v-for="c in data.changes"
@@ -223,37 +245,51 @@ watch(
               >{{ CHANGE_LABELS[c.change] || c.change }}</span
             >
             <div class="grow">
-              <p>{{ c.note || "没有写原因" }}</p>
-              <small class="faint"
-                >{{ when(c.created) }} ·
-                {{ ORIGIN_LABELS[c.origin] || "写日记时" }} ·
-                {{ c.sources.length }} 处来源</small
-              >
+              <p>{{ c.note || t("没有写原因") }}</p>
+              <small class="faint">{{
+                t("{v} · {v2} · {length} 处来源", {
+                  v: when(c.created),
+                  v2: ORIGIN_LABELS[c.origin] || t("写日记时"),
+                  length: c.sources.length,
+                })
+              }}</small>
             </div>
-            <span v-if="c.revoked" class="chip" data-tone="quiet">已撤销</span>
+            <span v-if="c.revoked" class="chip" data-tone="quiet">{{
+              t("已撤销")
+            }}</span>
             <button
               v-else
               class="text-button"
               data-revoke-change
               @click="revokeChange(c)"
             >
-              撤销
+              {{ t("撤销") }}
             </button>
           </li>
         </ul>
-        <p v-else class="muted">只是一起聊过天，还没有特别的变化。</p>
+        <p v-else class="muted">
+          {{ t("只是一起聊过天，还没有特别的变化。") }}
+        </p>
       </section>
 
       <section v-if="data.meetings?.length">
-        <h3 class="sheet-title">和{{ person.name }}的相遇留下了什么</h3>
+        <h3 class="sheet-title">
+          {{ t("和{name}的相遇留下了什么", { name: person.name }) }}
+        </h3>
         <ul class="list">
           <li v-for="m in data.meetings" :key="m.id" class="change">
             <span class="chip" :data-tone="m.private ? 'quiet' : undefined">{{
-              m.private ? "私下" : m.choice === "silent" ? "没出声" : "出了声"
+              m.private
+                ? t("私下")
+                : m.choice === "silent"
+                  ? t("没出声")
+                  : t("出了声")
             }}</span>
             <div class="grow">
               <p>{{ m.meant }}</p>
-              <small v-if="m.why" class="faint">当时：{{ m.why }}</small>
+              <small v-if="m.why" class="faint">{{
+                t("当时：{why}", { why: m.why })
+              }}</small>
               <small class="faint">{{ m.when }} · {{ m.sessionName }}</small>
             </div>
             <button
@@ -261,14 +297,16 @@ watch(
               data-revoke-meeting
               @click="revokeMeeting(m)"
             >
-              撤销
+              {{ t("撤销") }}
             </button>
           </li>
         </ul>
       </section>
 
       <section>
-        <h3 class="sheet-title">TA 记得关于{{ person.name }}的事</h3>
+        <h3 class="sheet-title">
+          {{ t("TA 记得关于{name}的事", { name: person.name }) }}
+        </h3>
         <ul v-if="data.memories.length" class="list">
           <li
             v-for="m in data.memories"
@@ -278,17 +316,21 @@ watch(
           >
             <p>{{ m.content }}</p>
             <small class="faint">
-              {{ MEMORY_STATUS[m.status] || m.status }} · 在「{{
-                placeName({
-                  name: m.sessionName,
-                  id: m.session_id || m.sessionId,
+              {{
+                t("{v} · 在「{v2}」知道的 · {when}", {
+                  v: MEMORY_STATUS[m.status] || m.status,
+                  v2: placeName({
+                    name: m.sessionName,
+                    id: m.session_id || m.sessionId,
+                  }),
+                  when: m.when,
                 })
-              }}」知道的 · {{ m.when }}
+              }}
             </small>
             <div v-if="m.status === 'confirmed'" class="instant">
-              <span class="faint">改完即生效</span>
+              <span class="faint">{{ t("改完即生效") }}</span>
               <Select
-                :aria-label="'分寸：' + m.content"
+                :aria-label="t('分寸：') + m.content"
                 :model-value="m.discretion || 'open'"
                 :options="
                   Object.entries(DISCRETION).map(([key, label]) => ({
@@ -299,19 +341,21 @@ watch(
                 @update:model-value="patch(m, { discretion: $event })"
               />
               <button class="small" @click="patch(m, { locked: !m.locked })">
-                {{ m.locked ? "解锁" : "锁定" }}
+                {{ m.locked ? t("解锁") : t("锁定") }}
               </button>
               <button class="small danger" @click="revokeMemory(m)">
-                撤销
+                {{ t("撤销") }}
               </button>
             </div>
           </li>
         </ul>
-        <p v-else class="muted">还没有记住关于这个人的事。</p>
+        <p v-else class="muted">{{ t("还没有记住关于这个人的事。") }}</p>
       </section>
 
       <section>
-        <h3 class="sheet-title">和{{ person.name }}有关的约定</h3>
+        <h3 class="sheet-title">
+          {{ t("和{name}有关的约定", { name: person.name }) }}
+        </h3>
         <ul v-if="data.anticipations.length" class="list">
           <li
             v-for="a in data.anticipations"
@@ -336,11 +380,11 @@ watch(
               class="text-button"
               @click="revokeAhead(a)"
             >
-              撤销
+              {{ t("撤销") }}
             </button>
           </li>
         </ul>
-        <p v-else class="muted">没有和这个人有关的约定。</p>
+        <p v-else class="muted">{{ t("没有和这个人有关的约定。") }}</p>
       </section>
     </div>
   </Sheet>

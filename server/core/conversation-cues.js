@@ -1,9 +1,11 @@
 import { claimedPlay } from "../mind/guard.js";
 
 // Stable message timestamps stay with history; changing clock/style cues belong at the tail.
+const clockFormats = new Map();
 export function localClock(time, timeZone = "Asia/Shanghai") {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat("zh-CN", {
+  let formatter = clockFormats.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("zh-CN", {
       timeZone,
       year: "numeric",
       month: "2-digit",
@@ -11,9 +13,13 @@ export function localClock(time, timeZone = "Asia/Shanghai") {
       hour: "2-digit",
       minute: "2-digit",
       hourCycle: "h23",
-    })
-      .formatToParts(new Date(time))
-      .map((p) => [p.type, p.value]),
+    });
+    clockFormats.set(timeZone, formatter);
+    if (clockFormats.size > 32)
+      clockFormats.delete(clockFormats.keys().next().value);
+  }
+  const parts = Object.fromEntries(
+    formatter.formatToParts(new Date(time)).map((p) => [p.type, p.value]),
   );
   const hour = Number(parts.hour);
   return {
@@ -195,11 +201,25 @@ export function conversationCues(
 }
 export function conversationalIssues(result, snapshot, decision = {}) {
   const texts = result.bubbles;
+  const batchRows = snapshot.batch?.length
+    ? snapshot.batch
+    : (snapshot.messages || []).filter((m) =>
+        snapshot.batchIds?.includes(m.id),
+      );
   const recent = snapshot.messages
     .filter((m) => m.role === "assistant")
     .slice(-8)
     .map((m) => m.text);
   const issues = [];
+  if (
+    batchRows.length &&
+    !batchRows.some((m) => m.relation === "direct") &&
+    !batchRows.some((m) => /陪你|跟你聊|和你聊/.test(m.text || "")) &&
+    texts.some((t) => /(?:你们|大家).{0,16}(?:陪我|跟我聊|和我聊)/.test(t))
+  )
+    issues.push(
+      "群友在彼此聊天，没有请你谈你们的关系；不要把他们的话改成‘你们在陪我’，没有独到内容就先不出声",
+    );
   if (
     replyFocus(snapshot, decision).kind === "sticker" &&
     texts.some(
@@ -214,7 +234,7 @@ export function conversationalIssues(result, snapshot, decision = {}) {
   if (
     replyFocus(snapshot, decision).kind === "feeling" &&
     texts.some((t) =>
-      /慢慢(?:来|熬)|好好(?:躺|休息)|(?:那|你)(?:今晚|今天)?就别折腾|肯定撑不住/.test(
+      /慢慢(?:来|熬)|熬(?:完|过).{0,8}(?:就|会)(?:轻松|好|过去)|好好(?:躺|休息)|(?:那|你)(?:今晚|今天)?就别折腾|肯定撑不住/.test(
         t,
       ),
     )
@@ -270,6 +290,16 @@ export function conversationalIssues(result, snapshot, decision = {}) {
   if (texts.some(claimedPlay))
     issues.push(
       "不要说自己玩过、通关过什么或平时玩得杂：你没有这样的经历记录。可以说知道这作、听人聊过，或者想玩；被问到玩过什么，如实说还没真的玩过",
+    );
+  if (
+    texts.some((t) =>
+      /我(?:有时候|有时|平时|经常|以前|小时候|曾经)(?:也)?(?:会|还会|就会|都|也)?[^，。！？\n]{0,14}(?:拿着|开着手电筒|到处翻|去买|去吃|去喝|出门|通勤|上班|做饭|吃过|喝过|睡过)/.test(
+        t,
+      ),
+    )
+  )
+    issues.push(
+      "不要为接话虚构自己有身体做过的日常经历；保留对眼前趣事的反应，不说自己也拿过、去过或做过",
     );
   if (
     texts.some((t) =>

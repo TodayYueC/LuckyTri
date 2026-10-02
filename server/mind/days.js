@@ -109,7 +109,7 @@ export class Days {
         .get(start, end) ||
       this.db
         .prepare(
-          `SELECT 1 FROM mind_runs WHERE started>=? AND started${endOp}? AND (status IN ('written','complete') OR (status='empty' AND (summary IS NULL OR COALESCE(json_extract(summary,'$.freshMessages'),0)>0)))`,
+          `SELECT 1 FROM mind_runs WHERE started>=? AND started${endOp}? AND (status IN ('written','complete','draft','experienced') OR (status='empty' AND (summary IS NULL OR COALESCE(json_extract(summary,'$.freshMessages'),0)>0)))`,
         )
         .get(start, end)
     );

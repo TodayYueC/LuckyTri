@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { evidenceRoots, externalEvidence } from "./evidence.js";
+import { lifeDayStart } from "./nature.js";
 import { evidence, hasCredential, similar, text } from "./util.js";
 
 export const LIVED_TRAITS = [
@@ -8,6 +10,8 @@ export const LIVED_TRAITS = [
   "activity",
   "initiative",
 ];
+const TRAIT_HALF_LIFE = 180;
+const DAILY_SHIFT_CAP = 4;
 export function personaNeedsRephrase(content, mind) {
   const value = String(content || "");
   return (
@@ -30,15 +34,17 @@ export class Traits {
     );
     const rows = this.db
       .prepare(
-        "SELECT trait,value FROM mind_trait_changes WHERE nature_version=? AND created<=? ORDER BY created DESC, rowid DESC",
+        "SELECT trait,delta,created FROM mind_trait_changes WHERE nature_version=? AND created<=? ORDER BY created,rowid",
       )
       .all(nature.version, before);
-    const seen = new Set();
+    const lived = this.mind.days.lived(before);
     for (const row of rows) {
-      if (seen.has(row.trait)) continue;
-      seen.add(row.trait);
-      values[row.trait] = row.value;
+      if (!LIVED_TRAITS.includes(row.trait)) continue;
+      values[row.trait] +=
+        row.delta * 0.5 ** (lived.since(row.created) / TRAIT_HALF_LIFE);
     }
+    for (const trait of LIVED_TRAITS)
+      values[trait] = Math.max(0, Math.min(100, Math.round(values[trait])));
     return values;
   }
   effective(nature = this.mind.nature.current(), before = Date.now()) {
@@ -83,8 +89,29 @@ export class Traits {
     if (!sources.length) return { rejected: "缺少亲历来源" };
     const nature = this.mind.nature.current(time);
     const previous = this.persona(nature, time);
+    const correcting =
+      previous && personaNeedsRephrase(previous.content, this.mind);
+    const grounded = externalEvidence(this.db, sources, time);
+    if (!correcting && !grounded.length)
+      return { rejected: "自述需要模型之外的新经历" };
     if (previous && similar(content, previous.content, 0.85))
       return { rejected: "没有实质变化" };
+    const spent = new Set(
+      this.db
+        .prepare(
+          "SELECT sources FROM mind_persona_growth WHERE nature_version=? AND created<=?",
+        )
+        .all(nature.version, time)
+        .flatMap((row) =>
+          evidenceRoots(this.db, JSON.parse(row.sources), time),
+        ),
+    );
+    if (
+      previous &&
+      !personaNeedsRephrase(previous.content, this.mind) &&
+      !grounded.some((root) => !spent.has(root))
+    )
+      return { rejected: "没有新的亲历来源" };
     const id = randomUUID();
     this.db
       .prepare(
@@ -114,21 +141,33 @@ export class Traits {
     );
     if (!sources.length) return { rejected: "缺少亲历来源" };
     const nature = this.mind.nature.current(time);
+    const grounded = externalEvidence(this.db, sources, time);
+    if (!grounded.length) return { rejected: "性格变化需要模型之外的经历" };
     const spent = new Set(
       this.db
         .prepare(
           "SELECT sources FROM mind_trait_changes WHERE trait=? AND nature_version=?",
         )
         .all(trait, nature.version)
-        .flatMap((row) => JSON.parse(row.sources)),
+        .flatMap((row) =>
+          evidenceRoots(this.db, JSON.parse(row.sources), time),
+        ),
     );
-    if (sources.every((source) => spent.has(source)))
+    if (!grounded.some((source) => !spent.has(source)))
       return { rejected: "这段经历已经改变过它" };
     const previous = this.current(nature, time)[trait];
+    const start = lifeDayStart(nature, time, this.mind.timeZone());
+    const used = this.db
+      .prepare(
+        "SELECT COALESCE(SUM(ABS(delta)),0) n FROM mind_trait_changes WHERE trait=? AND nature_version=? AND created>=? AND created<=?",
+      )
+      .get(trait, nature.version, start, time).n;
+    const allowance = Math.max(0, DAILY_SHIFT_CAP - used);
+    if (!allowance) return { rejected: "今天这项性格已经改变过，留些时间检验" };
     // A single reflection may nudge a tendency, never replace her overnight.
     const delta =
       Math.sign(direction) *
-      Math.min(4, Math.max(1, Math.round(Math.abs(direction))));
+      Math.min(allowance, Math.max(1, Math.round(Math.abs(direction))));
     const value = Math.max(0, Math.min(100, previous + delta));
     if (value === previous) return { rejected: "已到边界" };
     const id = randomUUID();

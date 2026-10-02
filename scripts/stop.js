@@ -34,7 +34,9 @@ try {
   console.log("已请求停止 LuckyTri。稍等数秒后可运行 npm start。");
 } catch (error) {
   console.error(
-    error instanceof TypeError ? "未连接到 LuckyTri，可能已经停止" : error.message,
+    error instanceof TypeError
+      ? "未连接到 LuckyTri，可能已经停止"
+      : error.message,
   );
   process.exitCode = 1;
 }

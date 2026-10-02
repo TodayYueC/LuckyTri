@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { computed, ref } from "vue";
 import { KIND_COLORS } from "../../plates/mind";
 import { liveMood } from "../../mood/useMood";
@@ -13,21 +14,27 @@ const emit = defineEmits<{ open: [thread: any] }>();
 const visibleLimit = 6;
 const expanded = ref<Record<string, boolean>>({});
 const groups = computed(() =>
-  [...new Set(props.threads.map((t) => t.kind))].map((kind) => ({
+  [...new Set(props.threads.map((strand) => strand.kind))].map((kind) => ({
     kind,
     label: props.kinds[kind] || kind,
     color: KIND_COLORS[kind] || "var(--accent)",
     items: props.threads
-      .filter((t) => t.kind === kind)
+      .filter((strand) => strand.kind === kind)
       .sort((a, b) => (b.salience ?? 0) - (a.salience ?? 0)),
   })),
 );
 const closeCount = computed(
   () =>
-    props.threads.filter((t) => !t.faded && (t.salience ?? 0) >= 0.5).length,
+    props.threads.filter(
+      (strand) => !strand.faded && (strand.salience ?? 0) >= 0.5,
+    ).length,
 );
-function stateOf(t: any) {
-  return t.faded ? "暂时放远" : t.core ? "慢慢笃定" : "还在生长";
+function stateOf(strand: any) {
+  return strand.faded
+    ? t("暂时放远")
+    : strand.core
+      ? t("慢慢笃定")
+      : t("还在生长");
 }
 function visibleItems(group: (typeof groups.value)[number]) {
   return expanded.value[group.kind]
@@ -40,19 +47,27 @@ function toggleGroup(kind: string) {
 </script>
 
 <template>
-  <section class="starmap" aria-label="心灵星图：TA 关于自己的线索">
+  <section class="starmap" :aria-label="t('心灵星图：TA 关于自己的线索')">
     <div class="self-scene">
       <div class="scene-copy">
-        <span class="eyebrow">SELF / 正在形成的自己</span>
-        <h2>不是一张固定的画像，<br /><em>而是一直在生长。</em></h2>
+        <span class="eyebrow">{{ t("SELF / 正在形成的自己") }}</span>
+        <h2>
+          {{ t("不是一张固定的画像，") }}<br /><em>{{
+            t("而是一直在生长。")
+          }}</em>
+        </h2>
         <p>
-          一件经历可能留下一点痕迹。点开一枚光片，可以看到它从哪里来、后来又怎么改变。
+          {{
+            t(
+              "一件经历可能留下一点痕迹。点开一枚光片，可以看到它从哪里来、后来又怎么改变。",
+            )
+          }}
         </p>
         <div class="scene-stats">
           <span
-            ><b>{{ threads.length }}</b> 枚线索</span
+            ><b>{{ threads.length }}</b> {{ t("枚线索") }}</span
           ><span
-            ><b>{{ closeCount }}</b> 枚此刻贴近</span
+            ><b>{{ closeCount }}</b> {{ t("枚此刻贴近") }}</span
           >
         </div>
       </div>
@@ -70,9 +85,9 @@ function toggleGroup(kind: string) {
     <div class="currents-head">
       <div>
         <span class="eyebrow">INNER CURRENTS</span>
-        <h3>她留下的光片</h3>
+        <h3>{{ t("她留下的光片") }}</h3>
       </div>
-      <p>越亮的线索，越贴近此刻。淡去的仍然保留在这里。</p>
+      <p>{{ t("越亮的线索，越贴近此刻。淡去的仍然保留在这里。") }}</p>
     </div>
     <div class="current-grid">
       <section
@@ -85,7 +100,9 @@ function toggleGroup(kind: string) {
           <span class="current-icon" aria-hidden="true"><i></i></span>
           <div>
             <h4>{{ group.label }}</h4>
-            <small>{{ group.items.length }} 枚正在留存</small>
+            <small>{{
+              t("{length} 枚正在留存", { length: group.items.length })
+            }}</small>
           </div>
           <span class="current-number">{{
             String(index + 1).padStart(2, "0")
@@ -117,10 +134,12 @@ function toggleGroup(kind: string) {
           >
             {{
               expanded[group.kind]
-                ? "收起线索"
-                : `再看 ${group.items.length - visibleLimit} 枚光片`
+                ? t("收起线索")
+                : t("再看 {v} 枚光片", { v: group.items.length - visibleLimit })
             }}
-            <span aria-hidden="true">{{ expanded[group.kind] ? "↑" : "↓" }}</span>
+            <span aria-hidden="true">{{
+              expanded[group.kind] ? "↑" : "↓"
+            }}</span>
           </button>
         </div>
       </section>

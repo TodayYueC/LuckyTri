@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { evidenceRoots } from "./evidence.js";
 import { evidence, hasCredential, similar, text } from "./util.js";
 
 // A face is who she has become in one place: the role she plays there, how
@@ -79,8 +80,18 @@ export class Faces {
     for (const row of this.db
       .prepare("SELECT sources FROM mind_faces WHERE session_id=?")
       .all(session))
-      for (const source of JSON.parse(row.sources || "[]")) spent.add(source);
-    if (sources.length && sources.every((source) => spent.has(source)))
+      for (const source of evidenceRoots(
+        this.db,
+        JSON.parse(row.sources || "[]"),
+        time,
+      ))
+        spent.add(source);
+    if (
+      sources.length &&
+      !evidenceRoots(this.db, sources, time).some(
+        (source) => !spent.has(source),
+      )
+    )
       return { rejected: "没有新的经历" };
     const current = this.current(session, time);
     if (current) {
