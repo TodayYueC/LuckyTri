@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { intlLocale, t, N_ } from "../../i18n";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { toast } from "../../api";
 import { ask, askText } from "../../dialog";
@@ -27,7 +28,7 @@ const expanded = ref(false);
 const visible = ref(20);
 const memories = ref<any[]>([]);
 const summary = ref<any>({
-  summary: "请选择会话以查看最近的记忆总结。",
+  summary: "",
   updated: null,
   source: "empty",
 });
@@ -109,7 +110,7 @@ async function add(event: Event) {
     form.reset();
     adding.value = false;
     await load();
-    toast("记忆已写入");
+    toast(t("记忆已写入"));
   } catch (error) {
     toast((error as Error).message, true);
   }
@@ -118,12 +119,15 @@ async function add(event: Event) {
 async function change(m: any, action: string) {
   if (action === "revoke") {
     const reason = await askText(
-      `撤销「${m.content}」？TA 之后不会再这样认为，整理记忆时也不会把它写回来。可以写下原因（可不填）：`,
+      t(
+        "撤销「{content}」？TA 之后不会再这样认为，整理记忆时也不会把它写回来。可以写下原因（可不填）：",
+        { content: m.content },
+      ),
       {
-        title: "撤销这条记忆",
-        confirmText: "撤销",
+        title: t("撤销这条记忆"),
+        confirmText: t("撤销"),
         danger: true,
-        placeholder: "原因",
+        placeholder: t("原因"),
       },
     );
     if (reason === null) return;
@@ -159,11 +163,16 @@ function toggle(id: string, event: Event) {
 async function deleteSelected() {
   if (!selected.value.length) return;
   if (
-    !(await ask(`确定删除已选的 ${selected.value.length} 条记忆吗？`, {
-      title: "删除记忆",
-      confirmText: "删除",
-      danger: true,
-    }))
+    !(await ask(
+      t("确定删除已选的 {length} 条记忆吗？", {
+        length: selected.value.length,
+      }),
+      {
+        title: t("删除记忆"),
+        confirmText: t("删除"),
+        danger: true,
+      },
+    ))
   )
     return;
   try {
@@ -173,7 +182,7 @@ async function deleteSelected() {
     });
     selected.value = [];
     await load();
-    toast(`已删除 ${result.deleted || 0} 条记忆`);
+    toast(t("已删除 {v} 条记忆", { v: result.deleted || 0 }));
   } catch (error) {
     toast((error as Error).message, true);
   }
@@ -183,9 +192,9 @@ async function deleteAll() {
   const count = selectable.value.length;
   if (!count) return;
   if (
-    !(await ask(`确定清空本会话的 ${count} 条可删除记忆吗？`, {
-      title: "清空本会话记忆",
-      confirmText: "清空",
+    !(await ask(t("确定清空本会话的 {count} 条可删除记忆吗？", { count }), {
+      title: t("清空本会话记忆"),
+      confirmText: t("清空"),
       danger: true,
     }))
   )
@@ -197,7 +206,7 @@ async function deleteAll() {
     });
     selected.value = [];
     await load();
-    toast(`已删除 ${result.deleted || 0} 条记忆`);
+    toast(t("已删除 {v} 条记忆", { v: result.deleted || 0 }));
   } catch (error) {
     toast((error as Error).message, true);
   }
@@ -222,7 +231,7 @@ async function consolidate() {
     await consolidateMemory(props.sessionId);
     await refreshSummary();
     await load();
-    toast("记忆已整理");
+    toast(t("记忆已整理"));
   } catch (error) {
     toast((error as Error).message, true);
   } finally {
@@ -235,21 +244,21 @@ async function consolidate() {
   <section class="archive">
     <div class="archive-bar card">
       <label class="scope">
-        <span>在哪里知道的</span>
+        <span>{{ t("在哪里知道的") }}</span>
         <Select
           id="memoryScope"
           v-model="scope"
-          aria-label="在哪里知道的"
-          :options="sessionChoices(sessions, '选择会话')"
+          :aria-label="t('在哪里知道的')"
+          :options="sessionChoices(sessions, t('选择会话'))"
         />
       </label>
       <label class="scope">
-        <span>关于谁</span>
+        <span>{{ t("关于谁") }}</span>
         <Select
           v-model="person"
-          aria-label="按人筛选"
+          :aria-label="t('按人筛选')"
           :options="[
-            { value: '', label: '所有人' },
+            { value: '', label: t('所有人') },
             ...people.map(([id, name]) => ({ value: id, label: name })),
           ]"
         />
@@ -258,23 +267,23 @@ async function consolidate() {
         id="memorySearch"
         v-model="search"
         type="search"
-        placeholder="搜索记忆、人物或关键词"
-        aria-label="搜索记忆"
+        :placeholder="t('搜索记忆、人物或关键词')"
+        :aria-label="t('搜索记忆')"
       />
       <button class="primary" :disabled="!sessionId" @click="adding = true">
-        ＋ 手动记忆
+        {{ t("＋ 手动记忆") }}
       </button>
     </div>
 
     <section id="memorySummary" class="card summary-card">
       <div class="card-head">
         <div>
-          <span class="eyebrow">最近发生了什么</span>
+          <span class="eyebrow">{{ t("最近发生了什么") }}</span>
           <h2>
             {{
               sessions.find((s: any) => s.id === sessionId)
                 ? placeName(sessions.find((s: any) => s.id === sessionId))
-                : "记忆档案"
+                : t("记忆档案")
             }}
           </h2>
         </div>
@@ -283,7 +292,7 @@ async function consolidate() {
             id="refreshMemorySummary"
             class="icon-button"
             :disabled="summaryLoading || !sessionId"
-            aria-label="刷新总结"
+            :aria-label="t('刷新总结')"
             @click="refreshSummary"
           >
             ↻
@@ -293,21 +302,21 @@ async function consolidate() {
             :disabled="consolidating || !sessionId"
             @click="consolidate"
           >
-            {{ consolidating ? "整理中…" : "立即整理" }}
+            {{ consolidating ? t("整理中…") : t("立即整理") }}
           </button>
         </div>
       </div>
       <p data-memory-summary :class="{ clamp: !expanded }">
-        {{ summary.summary }}
+        {{ summary.summary || t("请选择会话以查看最近的记忆总结。") }}
       </p>
       <div class="row between faint">
         <span>{{
           summary.updated
-            ? new Date(summary.updated).toLocaleString()
-            : "尚未整理"
+            ? new Date(summary.updated).toLocaleString(intlLocale())
+            : t("尚未整理")
         }}</span>
         <button class="text-button" @click="expanded = !expanded">
-          {{ expanded ? "收起" : "展开" }}
+          {{ expanded ? t("收起") : t("展开") }}
         </button>
       </div>
     </section>
@@ -319,7 +328,7 @@ async function consolidate() {
           class="small"
           @click="selected = selectable.map((m) => m.id)"
         >
-          全选
+          {{ t("全选") }}
         </button>
         <button
           id="clearMemorySelection"
@@ -327,7 +336,7 @@ async function consolidate() {
           :disabled="!selected.length"
           @click="selected = []"
         >
-          取消选择
+          {{ t("取消选择") }}
         </button>
         <button
           id="deleteSelectedMemories"
@@ -335,7 +344,7 @@ async function consolidate() {
           :disabled="!selected.length"
           @click="deleteSelected"
         >
-          删除已选 {{ selected.length || "" }}
+          {{ t("删除已选 {v}", { v: selected.length || "" }) }}
         </button>
         <button
           id="deleteAllSessionMemories"
@@ -343,7 +352,7 @@ async function consolidate() {
           :disabled="!selectable.length"
           @click="deleteAll"
         >
-          清空本会话
+          {{ t("清空本会话") }}
         </button>
       </div>
       <div id="memoryList" class="scroll-pane">
@@ -355,7 +364,7 @@ async function consolidate() {
         >
           <input
             type="checkbox"
-            :aria-label="'选择记忆：' + m.content"
+            :aria-label="t('选择记忆：') + m.content"
             :data-memory-select="m.id"
             :checked="selected.includes(m.id)"
             :disabled="!isSelectable(m)"
@@ -371,29 +380,36 @@ async function consolidate() {
                   >{{ MEMORY_STATUS[m.status] || m.status }}</span
                 >
                 <span class="chip" data-tone="quiet">{{
-                  DISCRETION[m.discretion] || "公开"
+                  DISCRETION[m.discretion] || t("公开")
                 }}</span>
-                <span v-if="m.locked" class="chip" data-tone="warn"
-                  >已锁定</span
-                >
+                <span v-if="m.locked" class="chip" data-tone="warn">{{
+                  t("已锁定")
+                }}</span>
               </span>
             </summary>
             <p class="faint meta">
-              关于 {{ m.subjectName || m.subject }} ·
-              {{ m.session_id === sessionId ? "在这里知道的" : "别处知道的" }} ·
-              把握 {{ Math.round((m.confidence ?? 1) * 100) }}%
+              {{
+                t("关于 {v} · {v2} · 把握 {v3}%", {
+                  v: m.subjectName || m.subject,
+                  v2:
+                    m.session_id === sessionId
+                      ? t("在这里知道的")
+                      : t("别处知道的"),
+                  v3: Math.round((m.confidence ?? 1) * 100),
+                })
+              }}
             </p>
             <textarea
               :data-content="m.id"
-              :aria-label="'编辑记忆：' + (m.subjectName || m.subject)"
+              :aria-label="t('编辑记忆：') + (m.subjectName || m.subject)"
               >{{ m.content }}</textarea>
             <div class="row">
               <button class="small" @click="change(m, 'confirmed')">
-                保存修改
+                {{ t("保存修改") }}
               </button>
-              <small class="faint">编辑后要点保存</small>
+              <small class="faint">{{ t("编辑后要点保存") }}</small>
               <Select
-                :aria-label="'分寸：' + m.content"
+                :aria-label="t('分寸：') + m.content"
                 :model-value="m.discretion || 'open'"
                 :options="
                   Object.entries(DISCRETION).map(([key, label]) => ({
@@ -404,10 +420,10 @@ async function consolidate() {
                 @update:model-value="change(m, 'discretion:' + $event)"
               />
               <button class="small" @click="change(m, 'lock')">
-                {{ m.locked ? "解锁" : "锁定" }}
+                {{ m.locked ? t("解锁") : t("锁定") }}
               </button>
               <button class="small danger" @click="change(m, 'revoke')">
-                撤销
+                {{ t("撤销") }}
               </button>
             </div>
           </details>
@@ -417,45 +433,49 @@ async function consolidate() {
           class="small more"
           @click="visible += 20"
         >
-          再显示 20 条
+          {{ t("再显示 20 条") }}
         </button>
         <Empty
           v-if="!filtered.length"
-          title="这里还有空白"
-          text="别人说「记住……」、聊天积累后的自动整理，或你手动添加的事会出现在这里。TA 对所有会话只有一份记忆：别处知道的事只在相关时想起，私下知道的不当众说，要 TA 保密的不离开原处。"
+          :title="t('这里还有空白')"
+          :text="
+            t(
+              '别人说「记住……」、聊天积累后的自动整理，或你手动添加的事会出现在这里。TA 对所有会话只有一份记忆：别处知道的事只在相关时想起，私下知道的不当众说，要 TA 保密的不离开原处。',
+            )
+          "
         />
       </div>
       <div class="row between faint foot">
-        <span>共 {{ filtered.length }} 条记忆</span>
-        <span>共享与锁定的记忆不会被批量选中</span>
+        <span>{{ t("共 {length} 条记忆", { length: filtered.length }) }}</span>
+        <span>{{ t("共享与锁定的记忆不会被批量选中") }}</span>
       </div>
     </section>
 
     <Sheet
       :open="adding"
-      title="手动记住一件事"
+      :title="t('手动记住一件事')"
       eyebrow="REMEMBER"
       width="440px"
       @close="adding = false"
     >
       <form id="addMemory" class="stack" @submit.prevent="add">
         <label>
-          所属会话
+          {{ t("所属会话") }}
           <Select
             id="memorySession"
             v-model="scope"
             name="session"
-            aria-label="所属会话"
+            :aria-label="t('所属会话')"
             :options="sessionChoices(sessions)"
           />
         </label>
         <label>
-          用户 ID
+          {{ t("用户 ID") }}
           <input
             name="subject"
             required
             list="memoryUsers"
-            placeholder="选择昵称，或填写用户 ID"
+            :placeholder="t('选择昵称，或填写用户 ID')"
           />
         </label>
         <datalist id="memoryUsers">
@@ -465,8 +485,8 @@ async function consolidate() {
             :value="p.name"
           ></option>
         </datalist>
-        <label>已确认的事实<input name="content" required /></label>
-        <button class="primary">新增人工记忆</button>
+        <label>{{ t("已确认的事实") }}<input name="content" required /></label>
+        <button class="primary">{{ t("新增人工记忆") }}</button>
       </form>
     </Sheet>
   </section>

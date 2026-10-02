@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { reactive } from "vue";
 import homeWallpaper from "./assets/luckytri-home.png";
 
@@ -67,12 +68,17 @@ function writeBlob(key: string, blob: Blob | null) {
 function useBlob(kind: "hero" | "sky", blob: Blob | null) {
   const previous = wallpapers[kind];
   if (previous.startsWith("blob:")) URL.revokeObjectURL(previous);
-  wallpapers[kind] = blob ? URL.createObjectURL(blob) : kind === "hero" ? homeWallpaper : "";
+  wallpapers[kind] = blob
+    ? URL.createObjectURL(blob)
+    : kind === "hero"
+      ? homeWallpaper
+      : "";
 }
 
 async function fitImage(file: File, maxEdge: number) {
-  if (!file.type.startsWith("image/")) throw Error("请选择一张图片");
-  if (file.size > 20 * 1024 * 1024) throw Error("图片太大了，请换一张 20MB 以内的");
+  if (!file.type.startsWith("image/")) throw Error(t("请选择一张图片"));
+  if (file.size > 20 * 1024 * 1024)
+    throw Error(t("图片太大了，请换一张 20MB 以内的"));
   try {
     const bitmap = await createImageBitmap(file);
     const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
@@ -80,26 +86,29 @@ async function fitImage(file: File, maxEdge: number) {
     canvas.width = Math.max(1, Math.round(bitmap.width * scale));
     canvas.height = Math.max(1, Math.round(bitmap.height * scale));
     const ctx = canvas.getContext("2d");
-    if (!ctx) throw Error("无法处理这张图片");
+    if (!ctx) throw Error(t("无法处理这张图片"));
     ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     bitmap.close();
     const blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, "image/jpeg", 0.86),
     );
-    if (!blob) throw Error("无法处理这张图片");
+    if (!blob) throw Error(t("无法处理这张图片"));
     return blob;
   } catch (error) {
-    if (error instanceof Error && error.message !== "请选择一张图片") {
+    if (error instanceof Error && error.message !== t("请选择一张图片")) {
       if (file.size <= 6 * 1024 * 1024) return file;
     }
-    throw error instanceof Error ? error : Error("无法处理这张图片");
+    throw error instanceof Error ? error : Error(t("无法处理这张图片"));
   }
 }
 
 export function loadWallpapers() {
   loading ??= (async () => {
     try {
-      const [hero, sky] = await Promise.all([readBlob("hero"), readBlob("sky")]);
+      const [hero, sky] = await Promise.all([
+        readBlob("hero"),
+        readBlob("sky"),
+      ]);
       if (hero) useBlob("hero", hero);
       if (sky) useBlob("sky", sky);
     } catch {

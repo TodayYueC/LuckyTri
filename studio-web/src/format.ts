@@ -1,10 +1,11 @@
+import { intlLocale, t } from "./i18n";
 import { dateFormatter } from "./formatters";
 export function clockTime(
   value: number | null | undefined,
   timeZone = "Asia/Shanghai",
 ) {
   if (!value) return "";
-  return dateFormatter("zh-CN", {
+  return dateFormatter(intlLocale(), {
     timeZone,
     hour: "2-digit",
     minute: "2-digit",
@@ -14,31 +15,33 @@ export function clockTime(
 
 export function dayLabel(day: string) {
   const [, month, date] = day.split("-").map(Number);
-  return month && date ? `${month} 月 ${date} 日` : day;
+  return month && date ? t("{month} 月 {date} 日", { month, date }) : day;
 }
 
 export function weekday(day: string) {
   const d = new Date(day + "T12:00:00");
   return Number.isNaN(d.getTime())
     ? ""
-    : dateFormatter("zh-CN", { weekday: "short" }).format(d);
+    : dateFormatter(intlLocale(), { weekday: "short" }).format(d);
 }
 
 export function ago(value: number | null | undefined, now = Date.now()) {
   if (!value) return "";
   const minutes = Math.round((now - value) / 60000);
-  if (minutes < 1) return "刚刚";
-  if (minutes < 60) return `${minutes} 分钟前`;
+  if (minutes < 1) return t("刚刚");
+  if (minutes < 60) return t("{minutes} 分钟前", { minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} 小时前`;
+  if (hours < 24) return t("{hours} 小时前", { hours });
   const days = Math.round(hours / 24);
-  if (days < 30) return `${days} 天前`;
+  if (days < 30) return t("{days} 天前", { days });
   const months = Math.round(days / 30);
-  return months < 12 ? `${months} 个月前` : `${Math.round(months / 12)} 年前`;
+  return months < 12
+    ? t("{months} 个月前", { months })
+    : t("{v} 年前", { v: Math.round(months / 12) });
 }
 
 export function num(value: unknown) {
-  return Number(value || 0).toLocaleString("zh-CN");
+  return Number(value || 0).toLocaleString(intlLocale());
 }
 
 export function tokens(value: number) {
@@ -68,7 +71,7 @@ export function placeName(input: {
     input.kind ||
     (String(input.id || "").startsWith("private:") ? "private" : "group");
   if (!raw || stripped === native || NUMERIC_ID.test(stripped))
-    return kind === "private" ? "未命名的人" : "未命名的群";
+    return kind === "private" ? t("未命名的人") : t("未命名的群");
   return raw;
 }
 

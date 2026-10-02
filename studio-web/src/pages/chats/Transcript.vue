@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { t, N_, localized, intlLocale } from "../../i18n";
 import { computed, nextTick, ref } from "vue";
+import { dateFormatter } from "../../formatters";
 import { getTrace } from "../../plates/live";
 import { clockTime, hueOf, initials } from "../../format";
 import { studio } from "../../stores/studio";
@@ -24,11 +26,11 @@ const emit = defineEmits<{
   openReplay: [];
 }>();
 
-const DIVIDERS: Record<string, string> = {
-  glanced: "TA 扫了一眼",
-  silent: "TA 看了，没出声",
-  deferred: "TA 睡着了，醒来再看",
-};
+const DIVIDERS: Record<string, string> = localized({
+  glanced: N_("TA 扫了一眼"),
+  silent: N_("TA 看了，没出声"),
+  deferred: N_("TA 睡着了，醒来再看"),
+});
 const userId = ref("10001");
 const text = ref("");
 const mentioned = ref(true);
@@ -47,11 +49,12 @@ type Item =
       count: number;
     };
 
-const dayFormat = new Intl.DateTimeFormat("zh-CN", {
-  month: "long",
-  day: "numeric",
-  weekday: "short",
-});
+const dayFormat = () =>
+  dateFormatter(intlLocale(), {
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+  });
 
 const timeline = computed<Item[]>(() => {
   const items: Item[] = props.events.map((e) => ({
@@ -75,7 +78,7 @@ const timeline = computed<Item[]>(() => {
   const merged: Item[] = [];
   let day = "";
   for (const item of items) {
-    const label = dayFormat.format(item.time);
+    const label = dayFormat().format(item.time);
     if (label !== day) {
       day = label;
       merged.push({
@@ -162,8 +165,8 @@ defineExpose({ focusComposer });
       <button
         v-if="compact"
         class="icon-button"
-        aria-label="全部会话"
-        title="全部会话"
+        :aria-label="t('全部会话')"
+        :title="t('全部会话')"
         @click="emit('openList')"
       >
         ☰
@@ -172,10 +175,10 @@ defineExpose({ focusComposer });
         v-if="session"
         class="badge"
         :style="{ '--hue': hueOf(session.id) }"
-        >{{ session.kind === "private" ? "私" : "群" }}</span
+        >{{ session.kind === "private" ? t("私") : t("群") }}</span
       >
       <div class="t-title">
-        <h2>{{ session?.name || "选择一段对话" }}</h2>
+        <h2>{{ session?.name || t("选择一段对话") }}</h2>
         <span id="liveStatus" class="faint">{{ status }}</span>
       </div>
       <div class="t-tools">
@@ -184,9 +187,11 @@ defineExpose({ focusComposer });
           :disabled="!sessionId"
           @click="focusComposer"
         >
-          模拟消息
+          {{ t("模拟消息") }}
         </button>
-        <button class="small" @click="emit('openReplay')">回到那一刻</button>
+        <button class="small" @click="emit('openReplay')">
+          {{ t("回到那一刻") }}
+        </button>
       </div>
     </header>
 
@@ -235,7 +240,7 @@ defineExpose({ focusComposer });
                 v-if="item.event.payload.simulated"
                 class="chip"
                 data-tone="warn"
-                >模拟</span
+                >{{ t("模拟") }}</span
               >
             </div>
             <p class="text">{{ item.event.payload.text }}</p>
@@ -245,26 +250,26 @@ defineExpose({ focusComposer });
                 :aria-expanded="Boolean(why[item.event.seq])"
                 @click="toggleWhy(item.event)"
               >
-                {{ why[item.event.seq] ? "收起" : "为什么这么说" }}
+                {{ why[item.event.seq] ? t("收起") : t("为什么这么说") }}
               </button>
               <div v-if="why[item.event.seq]" class="why">
                 <p v-if="why[item.event.seq].loading" class="muted">
-                  正在翻当时的记录…
+                  {{ t("正在翻当时的记录…") }}
                 </p>
                 <template v-else>
                   <p
                     v-if="why[item.event.seq].detail?.data?.decision?.appraisal"
                   >
-                    <b>TA 当时的理解：</b
+                    <b>{{ t("TA 当时的理解：") }}</b
                     >{{ why[item.event.seq].detail.data.decision.appraisal }}
                   </p>
                   <p>
-                    <b>理由：</b
+                    <b>{{ t("理由：") }}</b
                     >{{
                       why[item.event.seq].detail?.data?.reason ||
                       why[item.event.seq].detail?.data?.decision?.reason ||
                       decisionFor(item.event)?.reason ||
-                      "没有留下理由。"
+                      t("没有留下理由。")
                     }}
                   </p>
                   <p
@@ -273,7 +278,7 @@ defineExpose({ focusComposer });
                         ?.length
                     "
                   >
-                    <b>引用的资料：</b
+                    <b>{{ t("引用的资料：") }}</b
                     >{{
                       why[item.event.seq].detail.data.snapshot.knowledge
                         .map((k: any) => k.title)
@@ -281,15 +286,18 @@ defineExpose({ focusComposer });
                     }}
                   </p>
                   <label v-if="decisionFor(item.event)" class="fb">
-                    这句怎么样？
+                    {{ t("这句怎么样？") }}
                     <Select
                       :model-value="decisionFor(item.event).feedback || ''"
-                      aria-label="这句怎么样？"
+                      :aria-label="t('这句怎么样？')"
                       :options="[
-                        { value: '', label: '选择评价' },
-                        ...Object.entries(studio.health.feedbackLabels || {}).map(
-                          ([tag, label]) => ({ value: tag, label: String(label) }),
-                        ),
+                        { value: '', label: t('选择评价') },
+                        ...Object.entries(
+                          studio.health.feedbackLabels || {},
+                        ).map(([tag, label]) => ({
+                          value: tag,
+                          label: String(label),
+                        })),
                       ]"
                       @update:model-value="
                         emit('feedback', decisionFor(item.event).id, $event)
@@ -304,28 +312,33 @@ defineExpose({ focusComposer });
       </template>
       <Empty
         v-if="!events.length"
-        :title="sessionId ? '等待新的消息' : '选择一段对话'"
-        text="群聊与私聊消息会在这里实时出现；TA 扫一眼、没出声也会留下一条分隔线。"
+        :title="sessionId ? t('等待新的消息') : t('选择一段对话')"
+        :text="
+          t(
+            '群聊与私聊消息会在这里实时出现；TA 扫一眼、没出声也会留下一条分隔线。',
+          )
+        "
       />
     </div>
 
     <form v-if="demo" id="simulate" class="composer" @submit.prevent="submit">
       <div class="composer-note">
-        <span class="chip" data-tone="warn">模拟消息</span>
-        <span class="faint"
-          >作为一条模拟消息走完整流程，写进模拟会话；不会发到
-          QQ，也不进入真实记忆。</span
-        >
+        <span class="chip" data-tone="warn">{{ t("模拟消息") }}</span>
+        <span class="faint">{{
+          t(
+            "作为一条模拟消息走完整流程，写进模拟会话；不会发到 QQ，也不进入真实记忆。",
+          )
+        }}</span>
       </div>
       <div class="composer-row">
         <label class="uid">
-          <span class="sr-only">体验用户 ID</span>
+          <span class="sr-only">{{ t("体验用户 ID") }}</span>
           <input
             v-model="userId"
             name="userId"
             pattern="\d{4,20}"
             required
-            title="体验用户 ID"
+            :title="t('体验用户 ID')"
           />
         </label>
         <textarea
@@ -333,24 +346,27 @@ defineExpose({ focusComposer });
           v-model="text"
           name="text"
           rows="1"
-          placeholder="以这位群友的身份说一句…"
+          :placeholder="t('以这位群友的身份说一句…')"
           required
           @keydown.enter.exact.prevent="submit"
         ></textarea>
         <label class="check mention"
-          ><input v-model="mentioned" type="checkbox" />视为 @</label
+          ><input v-model="mentioned" type="checkbox" />{{ t("视为 @") }}</label
         >
         <button class="primary" :disabled="sending || !sessionId">
-          {{ sending ? "TA 在想…" : "发送模拟消息" }}
+          {{ sending ? t("TA 在想…") : t("发送模拟消息") }}
         </button>
       </div>
     </form>
     <div v-else class="composer off">
-      <span class="faint"
-        >真实模式下不能模拟消息。想看看 TA 会怎么回，可以「和 TA
-        聊聊」——那是试聊，什么都不写入。</span
-      >
-      <button class="small" @click="studio.chatOpen = true">和 TA 聊聊</button>
+      <span class="faint">{{
+        t(
+          "真实模式下不能模拟消息。想看看 TA 会怎么回，可以「和 TA 聊聊」——那是试聊，什么都不写入。",
+        )
+      }}</span>
+      <button class="small" @click="studio.chatOpen = true">
+        {{ t("和 TA 聊聊") }}
+      </button>
     </div>
   </section>
 </template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { computed, nextTick, ref, watch } from "vue";
 import TaOrb from "./TaOrb.vue";
 import TaChat from "./TaChat.vue";
@@ -29,7 +30,7 @@ watch(
         v-if="studio.chatOpen"
         class="scrim"
         type="button"
-        aria-label="收起聊天"
+        :aria-label="t('收起聊天')"
         @click="studio.chatOpen = false"
       ></button>
     </Transition>
@@ -40,18 +41,20 @@ watch(
         class="ta-drawer"
         role="dialog"
         aria-modal="true"
-        :aria-label="`和 ${name} 聊聊（试聊）`"
+        :aria-label="t('和 {name} 聊聊（试聊）', { name })"
         @keydown.esc="studio.chatOpen = false"
       >
         <header class="drawer-head">
           <TaOrb :mood="liveMood" :activity="activity" :size="42" />
           <div class="drawer-title">
-            <h2>和 {{ name }} 聊聊</h2>
-            <span class="chip" data-tone="quiet">试聊 · 什么都不写入</span>
+            <h2>{{ t("和 {name} 聊聊", { name }) }}</h2>
+            <span class="chip" data-tone="quiet">{{
+              t("试聊 · 什么都不写入")
+            }}</span>
           </div>
           <button
             class="icon-button ghost"
-            aria-label="收起聊天"
+            :aria-label="t('收起聊天')"
             @click="studio.chatOpen = false"
           >
             ✕
@@ -66,7 +69,7 @@ watch(
         :aria-expanded="studio.chatOpen"
         @click="studio.chatOpen = !studio.chatOpen"
       >
-        {{ studio.chatOpen ? "收起" : "聊聊" }}
+        {{ studio.chatOpen ? t("收起") : t("聊聊") }}
       </button>
       <TaOrb
         :mood="liveMood"

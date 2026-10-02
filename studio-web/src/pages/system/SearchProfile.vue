@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { api, toast } from "../../api";
 import { studio } from "../../stores/studio";
@@ -36,7 +37,7 @@ const changed = computed(
 const providerName = (value: string) =>
   value === "brave" ? "Brave" : "Tavily";
 const limitLabel = computed(() =>
-  active.value?.dailyLimit === 0 ? "不限" : (active.value?.dailyLimit ?? 12),
+  active.value?.dailyLimit === 0 ? t("不限") : (active.value?.dailyLimit ?? 12),
 );
 watch(changed, (value) => {
   studio.dirty = value;
@@ -102,7 +103,7 @@ async function save() {
     Object.assign(draft, value, { apiKey: "" });
     drafts.set(draft.provider, { ...draft });
     shownProvider = draft.provider;
-    toast("搜索配置已保存并生效");
+    toast(t("搜索配置已保存并生效"));
   } catch (e) {
     toast((e as Error).message, true);
   } finally {
@@ -116,17 +117,29 @@ async function test() {
   failed.value = false;
   try {
     const r = await api("/mind/time/search/test", "POST", input());
-    result.value =
-      (r.profile.mode === "web"
-        ? providerName(r.profile.provider) + " 联网检索"
-        : r.profile.materialLabel) +
-      "测试通过，返回 " +
-      r.results.length +
-      " 条资料。测试不占用每日查询额度" +
-      (changed.value ? "；当前填写的配置尚未保存。" : "。");
+    const vars = {
+      source:
+        r.profile.mode === "web"
+          ? t("{provider} 联网检索", {
+              provider: providerName(r.profile.provider),
+            })
+          : r.profile.materialLabel,
+      count: r.results.length,
+    };
+    result.value = changed.value
+      ? t(
+          "{source}测试通过，返回 {count} 条资料。测试不占用每日查询额度；当前填写的配置尚未保存。",
+          vars,
+        )
+      : t(
+          "{source}测试通过，返回 {count} 条资料。测试不占用每日查询额度。",
+          vars,
+        );
   } catch (e) {
     failed.value = true;
-    result.value = (e as Error).message + "。本次测试不占用每日查询额度。";
+    result.value = t("{error}。本次测试不占用每日查询额度。", {
+      error: (e as Error).message,
+    });
   } finally {
     try {
       await syncActive();
@@ -143,31 +156,39 @@ onUnmounted(() => {
 </script>
 <template>
   <section class="card search-profile">
-    <span class="eyebrow">SEARCH · 独立搜索</span>
-    <h2>接触世界的资料</h2>
+    <span class="eyebrow">{{ t("SEARCH · 独立搜索") }}</span>
+    <h2>{{ t("接触世界的资料") }}</h2>
     <p class="muted">
-      配置后优先联网检索。未配置密钥或关闭独立搜索时，使用当前模型整理已有知识。
+      {{
+        t(
+          "配置后优先联网检索。未配置密钥或关闭独立搜索时，使用当前模型整理已有知识。",
+        )
+      }}
     </p>
     <p v-if="loaded" class="faint">
-      当前生效：{{
-        active.mode === "web"
-          ? providerName(active.provider) + " · 联网检索资料"
-          : active.materialLabel
-      }}。表单修改保存后生效。
+      {{
+        t("当前生效：{v}。表单修改保存后生效。", {
+          v:
+            active.mode === "web"
+              ? t("{provider} · 联网检索资料", {
+                  provider: providerName(active.provider),
+                })
+              : active.materialLabel,
+        })
+      }}
     </p>
     <form v-if="loaded" @submit.prevent="save">
       <label class="check"
-        ><input
-          v-model="draft.enabled"
-          type="checkbox"
-          :disabled="busy"
-        />启用独立搜索</label
+        ><input v-model="draft.enabled" type="checkbox" :disabled="busy" />{{
+          t("启用独立搜索")
+        }}</label
       >
       <div class="search-fields">
         <label
-          >提供方<Select
+          >{{ t("提供方")
+          }}<Select
             v-model="draft.provider"
-            aria-label="搜索提供方"
+            :aria-label="t('搜索提供方')"
             :disabled="busy"
             :options="[
               { value: 'tavily', label: 'Tavily' },
@@ -176,7 +197,8 @@ onUnmounted(() => {
             @change="provider"
         /></label>
         <label
-          >搜索地址<input
+          >{{ t("搜索地址")
+          }}<input
             v-model="draft.baseUrl"
             type="url"
             required
@@ -184,18 +206,22 @@ onUnmounted(() => {
             :disabled="busy"
         /></label>
         <label
-          >独立密钥<input
+          >{{ t("独立密钥")
+          }}<input
             v-model="draft.apiKey"
             type="password"
             autocomplete="new-password"
             name="searchKey"
             :disabled="busy"
             :placeholder="
-              draft.hasApiKey ? '已保存，留空保留' : '填写该提供方的搜索密钥'
+              draft.hasApiKey
+                ? t('已保存，留空保留')
+                : t('填写该提供方的搜索密钥')
             "
         /></label>
         <label
-          >超时（毫秒）<input
+          >{{ t("超时（毫秒）")
+          }}<input
             v-model.number="draft.timeoutMs"
             type="number"
             min="1000"
@@ -203,7 +229,8 @@ onUnmounted(() => {
             :disabled="busy"
         /></label>
         <label
-          >每次结果数<input
+          >{{ t("每次结果数")
+          }}<input
             v-model.number="draft.maxResults"
             type="number"
             min="1"
@@ -211,7 +238,8 @@ onUnmounted(() => {
             :disabled="busy"
         /></label>
         <label
-          >每日查询上限<input
+          >{{ t("每日查询上限")
+          }}<input
             v-model.number="draft.dailyLimit"
             name="searchDailyLimit"
             type="number"
@@ -219,30 +247,39 @@ onUnmounted(() => {
             max="100000"
             :disabled="busy"
           />
-          <small class="faint"
-            >可手动调整；0 表示不限。保存后立即生效。</small
-          ></label
+          <small class="faint">{{
+            t("可手动调整；0 表示不限。保存后立即生效。")
+          }}</small></label
         >
       </div>
       <div class="search-usage" role="status">
-        <span class="chip"
-          >今日有效查询 {{ active.used || 0 }} / {{ limitLabel }}</span
-        >
-        <small class="faint"
-          >{{ active.usage?.running || 0 }} 次进行中 ·
-          {{ active.usage?.failed || 0 }} 次失败 ·
-          {{ active.usage?.diagnostics || 0 }} 次测试</small
-        >
+        <span class="chip">{{
+          t("今日有效查询 {v} / {limitLabel}", {
+            v: active.used || 0,
+            limitLabel,
+          })
+        }}</span>
+        <small class="faint">{{
+          t("{v} 次进行中 · {v2} 次失败 · {v3} 次测试", {
+            v: active.usage?.running || 0,
+            v2: active.usage?.failed || 0,
+            v3: active.usage?.diagnostics || 0,
+          })
+        }}</small>
       </div>
       <p class="faint">
-        测试当前填写的配置，不会自动保存。失败与连接测试不占本地每日额度；提供方的账户额度由提供方管理。
+        {{
+          t(
+            "测试当前填写的配置，不会自动保存。失败与连接测试不占本地每日额度；提供方的账户额度由提供方管理。",
+          )
+        }}
       </p>
       <div class="row">
-        <button class="primary" :disabled="busy">保存搜索</button>
+        <button class="primary" :disabled="busy">{{ t("保存搜索") }}</button>
         <button type="button" :disabled="busy" @click="test">
-          {{ busy ? "处理中…" : "测试连接" }}
+          {{ busy ? t("处理中…") : t("测试连接") }}
         </button>
-        <span v-if="changed" class="faint">有尚未保存的修改</span>
+        <span v-if="changed" class="faint">{{ t("有尚未保存的修改") }}</span>
       </div>
       <p
         v-if="result"

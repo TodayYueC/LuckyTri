@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { computed, ref, watch } from "vue";
 import { setSub, studio } from "../../stores/studio";
 import Tabs from "../../components/ui/Tabs.vue";
@@ -27,22 +28,24 @@ watch(
   <div class="page memory-page">
     <header class="memory-intro">
       <div>
-        <span class="eyebrow">MEMORY · 记忆</span>
-        <h1>见过的人与事，<em>会慢慢有了重量。</em></h1>
-        <p>记住重要的，也允许改变看法。</p>
+        <span class="eyebrow">{{ t("MEMORY · 记忆") }}</span>
+        <h1>
+          {{ t("见过的人与事，") }}<em>{{ t("会慢慢有了重量。") }}</em>
+        </h1>
+        <p>{{ t("记住重要的，也允许改变看法。") }}</p>
       </div>
       <div class="memory-drop" aria-hidden="true"><span></span></div>
     </header>
     <Tabs
       v-model="view"
-      label="记忆的分区"
+      :label="t('记忆的分区')"
       :items="[
-        { key: 'memories', label: 'TA 记得的事' },
-        { key: 'shelf', label: '资料书架' },
+        { key: 'memories', label: t('TA 记得的事') },
+        { key: 'shelf', label: t('资料书架') },
       ]"
     />
     <p v-if="!sessions.length" class="notice">
-      先在「对话」里添加一个会话，TA 才有地方认识人、记住事。
+      {{ t("先在「对话」里添加一个会话，TA 才有地方认识人、记住事。") }}
     </p>
     <MemoryArchive v-if="view === 'memories'" v-model:session-id="sessionId" />
     <KnowledgeShelf v-else :session-id="sessionId" />

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { ref } from "vue";
 import { toast } from "../../api";
 import { ask } from "../../dialog";
@@ -13,26 +14,26 @@ const props = defineProps<{
 const emit = defineEmits<{ changed: []; search: [q: string] }>();
 const q = ref(props.query);
 
-async function update(t: any, value: Record<string, unknown>) {
+async function update(thought: any, value: Record<string, unknown>) {
   try {
-    await mind.thought(t.id, value);
+    await mind.thought(thought.id, value);
     emit("changed");
   } catch (error) {
     toast((error as Error).message, true);
   }
 }
 
-async function remove(t: any) {
+async function remove(thought: any) {
   if (
-    !(await ask("删除这张便签？有后续修正的便签只能隐藏。", {
-      title: "删除便签",
-      confirmText: "删除",
+    !(await ask(t("删除这张便签？有后续修正的便签只能隐藏。"), {
+      title: t("删除便签"),
+      confirmText: t("删除"),
       danger: true,
     }))
   )
     return;
   try {
-    await mind.removeThought(t.id);
+    await mind.removeThought(thought.id);
     emit("changed");
   } catch (error) {
     toast((error as Error).message, true);
@@ -44,10 +45,14 @@ async function remove(t: any) {
   <section class="notes-wall">
     <div class="wall-head">
       <div>
-        <span class="eyebrow">THOUGHTS / 留给自己的话</span>
-        <h2>有些念头，先放在心上。</h2>
+        <span class="eyebrow">{{ t("THOUGHTS / 留给自己的话") }}</span>
+        <h2>{{ t("有些念头，先放在心上。") }}</h2>
         <p class="muted">
-          有些是聊天之后的理解，有些是还没想好要告诉谁的念头。可以分享，也可以先留给自己。
+          {{
+            t(
+              "有些是聊天之后的理解，有些是还没想好要告诉谁的念头。可以分享，也可以先留给自己。",
+            )
+          }}
         </p>
       </div>
       <form
@@ -58,61 +63,95 @@ async function remove(t: any) {
         <input
           id="noteSearch"
           v-model="q"
-          placeholder="搜索某件事、某个人"
-          aria-label="搜索便签"
+          :placeholder="t('搜索某件事、某个人')"
+          :aria-label="t('搜索便签')"
           @change="emit('search', q)"
         />
       </form>
     </div>
     <div v-if="thoughts.length" class="wall">
       <article
-        v-for="t in thoughts"
-        :key="t.id"
+        v-for="thought in thoughts"
+        :key="thought.id"
         class="note-card"
-        :class="{ muted: t.hidden, resolved: t.status === 'resolved' }"
-        :data-kind="t.kind"
+        :class="{
+          muted: thought.hidden,
+          resolved: thought.status === 'resolved',
+        }"
+        :data-kind="thought.kind"
       >
         <header>
           <b
-            >{{ kinds[t.kind] || t.kind
-            }}<template v-if="t.parent_id"> · 修正了以前的想法</template></b
+            >{{ kinds[thought.kind] || thought.kind
+            }}<template v-if="thought.parent_id">
+              {{ t("· 修正了以前的想法") }}</template
+            ></b
           >
-          <time>{{ when(t.created) }}</time>
+          <time>{{ when(thought.created) }}</time>
         </header>
-        <p>{{ t.content }}</p>
-        <p v-if="t.status === 'resolved'" class="stamp">
-          放下了{{ t.resolution ? `：${t.resolution}` : "" }}
+        <p>{{ thought.content }}</p>
+        <p v-if="thought.status === 'resolved'" class="stamp">
+          {{
+            thought.resolution
+              ? t("放下了：{resolution}", { resolution: thought.resolution })
+              : t("放下了")
+          }}
         </p>
-        <p v-if="t.outreach" class="outreach">
-          想主动说：{{ t.outreach }} ·
-          {{ OUTREACH_STATUS[t.outreach_status] || t.outreach_status }}
-          <template v-if="t.outreach_reason"
-            ><br />因为：{{ t.outreach_reason }}</template
+        <p v-if="thought.outreach" class="outreach">
+          {{
+            t("想主动说：{outreach} · {v}", {
+              outreach: thought.outreach,
+              v:
+                OUTREACH_STATUS[thought.outreach_status] ||
+                thought.outreach_status,
+            })
+          }}
+          <template v-if="thought.outreach_reason"
+            ><br />{{
+              t("因为：{outreach_reason}", {
+                outreach_reason: thought.outreach_reason,
+              })
+            }}</template
           >
-          <template v-if="t.outreach_wait_reason"
-            ><br />{{ t.outreach_wait_reason }}；稍后重新决定。</template
+          <template v-if="thought.outreach_wait_reason"
+            ><br />{{
+              t("{outreach_wait_reason}；稍后重新决定。", {
+                outreach_wait_reason: thought.outreach_wait_reason,
+              })
+            }}</template
           >
         </p>
         <footer>
           <button
             class="small"
             @click="
-              update(t, { status: t.status === 'open' ? 'resolved' : 'open' })
+              update(thought, {
+                status: thought.status === 'open' ? 'resolved' : 'open',
+              })
             "
           >
-            {{ t.status === "open" ? "放下这件事" : "重新关注" }}
+            {{ thought.status === "open" ? t("放下这件事") : t("重新关注") }}
           </button>
-          <button class="small" @click="update(t, { hidden: !t.hidden })">
-            {{ t.hidden ? "恢复" : "不再参与 TA 的思考" }}
+          <button
+            class="small"
+            @click="update(thought, { hidden: !thought.hidden })"
+          >
+            {{ thought.hidden ? t("恢复") : t("不再参与 TA 的思考") }}
           </button>
-          <button class="text-button" @click="remove(t)">删除</button>
+          <button class="text-button" @click="remove(thought)">
+            {{ t("删除") }}
+          </button>
         </footer>
       </article>
     </div>
     <Empty
       v-else
-      title="这面墙还空着"
-      text="独处时有了新的理解、放不下的事或久别想起的人，TA 会写一张便签贴在这里。"
+      :title="t('这面墙还空着')"
+      :text="
+        t(
+          '独处时有了新的理解、放不下的事或久别想起的人，TA 会写一张便签贴在这里。',
+        )
+      "
     />
   </section>
 </template>

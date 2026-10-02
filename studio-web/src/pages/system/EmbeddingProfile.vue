@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import { t, N_ } from "../../i18n";
 import { onMounted, reactive, ref } from "vue";
 import { api, toast } from "../../api";
 
 const draft = reactive<any>({
   enabled: false,
-  label: "知识向量",
+  label: t("知识向量"),
   baseUrl: "",
   model: "",
   apiKey: "",
@@ -35,7 +36,7 @@ async function save() {
       { apiKey: "" },
     );
     dirty.value = false;
-    toast("知识向量模型已保存");
+    toast(t("知识向量模型已保存"));
   } catch (error) {
     toast((error as Error).message, true);
   } finally {
@@ -46,7 +47,9 @@ async function test() {
   busy.value = true;
   try {
     const data = await api("/core/knowledge/embedding/test", "POST", {});
-    result.value = `连接成功，向量维度 ${data.dimensions}`;
+    result.value = t("连接成功，向量维度 {dimensions}", {
+      dimensions: data.dimensions,
+    });
   } catch (error) {
     result.value = (error as Error).message;
   } finally {
@@ -58,12 +61,16 @@ onMounted(load);
 
 <template>
   <section class="card embedding-profile" aria-labelledby="embedding-title">
-    <h2 id="embedding-title">知识向量模型</h2>
+    <h2 id="embedding-title">{{ t("知识向量模型") }}</h2>
     <p class="muted">
-      单独配置资料检索使用的模型。更换对话模型后仍使用这里的配置。更换向量模型后，可在资料书架逐份重建向量；原文仍能通过关键词检索。
+      {{
+        t(
+          "单独配置资料检索使用的模型。更换对话模型后仍使用这里的配置。更换向量模型后，可在资料书架逐份重建向量；原文仍能通过关键词检索。",
+        )
+      }}
     </p>
     <p v-if="loaded && !draft.configured" class="faint">
-      当前兼容旧配置，跟随默认模型。保存后改用独立配置。
+      {{ t("当前兼容旧配置，跟随默认模型。保存后改用独立配置。") }}
     </p>
     <form
       v-if="loaded"
@@ -76,11 +83,12 @@ onMounted(load);
           v-model="draft.enabled"
           type="checkbox"
           name="embeddingEnabled"
-        />启用知识向量</label
+        />{{ t("启用知识向量") }}</label
       >
       <div class="fields">
         <label
-          >API 地址<input
+          >{{ t("API 地址")
+          }}<input
             v-model="draft.baseUrl"
             name="embeddingBaseUrl"
             type="url"
@@ -88,23 +96,26 @@ onMounted(load);
             placeholder="https://example.com/v1"
         /></label>
         <label
-          >模型名称<input
+          >{{ t("模型名称")
+          }}<input
             v-model="draft.model"
             name="embeddingModelName"
             :required="draft.enabled"
         /></label>
         <label
-          >独立 API Key<input
+          >{{ t("独立 API Key")
+          }}<input
             v-model="draft.apiKey"
             name="embeddingApiKey"
             type="password"
             autocomplete="new-password"
             :placeholder="
-              draft.hasApiKey ? '已保存，留空保留' : '填写向量服务密钥'
+              draft.hasApiKey ? t('已保存，留空保留') : t('填写向量服务密钥')
             "
         /></label>
         <label
-          >向量维度（0 表示自动）<input
+          >{{ t("向量维度（0 表示自动）")
+          }}<input
             v-model.number="draft.dimensions"
             name="embeddingDimensions"
             type="number"
@@ -112,7 +123,8 @@ onMounted(load);
             max="65536"
         /></label>
         <label
-          >每批段落数<input
+          >{{ t("每批段落数")
+          }}<input
             v-model.number="draft.batchSize"
             name="embeddingBatchSize"
             type="number"
@@ -121,16 +133,18 @@ onMounted(load);
         /></label>
       </div>
       <div class="save-bar">
-        <button class="primary" :disabled="busy">保存向量模型</button>
+        <button class="primary" :disabled="busy">
+          {{ t("保存向量模型") }}
+        </button>
         <button
           type="button"
           :disabled="busy || dirty || !draft.enabled || !draft.configured"
           @click="test"
         >
-          测试向量连接
+          {{ t("测试向量连接") }}
         </button>
         <small class="faint">{{
-          dirty ? "有未保存的修改" : "配置已载入"
+          dirty ? t("有未保存的修改") : t("配置已载入")
         }}</small>
       </div>
     </form>

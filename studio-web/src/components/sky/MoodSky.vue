@@ -79,8 +79,8 @@ onBeforeUnmount(() => {
     <div class="landscape"><i></i><i></i><i></i><i></i></div>
     <div class="sheen"></div>
     <div v-if="mood === 'night'" class="moon"></div>
-  <div class="vignette"></div>
-  <canvas ref="canvas" class="particles" :class="{ off: !motionOn }"></canvas>
+    <div class="vignette"></div>
+    <canvas ref="canvas" class="particles" :class="{ off: !motionOn }"></canvas>
   </div>
 </template>
 

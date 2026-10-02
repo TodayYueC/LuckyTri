@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import {
   computed,
   nextTick,
@@ -72,7 +73,7 @@ onBeforeUnmount(() => document.removeEventListener("keydown", onKey));
             </div>
             <button
               class="icon-button ghost sheet-close"
-              aria-label="关闭"
+              :aria-label="t('关闭')"
               @click="emit('close')"
             >
               ✕

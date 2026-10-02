@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import {
   computed,
   nextTick,
@@ -49,7 +50,7 @@ const current = computed(
       (option) => String(option.value) === String(props.modelValue),
     )?.label ||
     choices.value[0]?.label ||
-    "请选择",
+    t("请选择"),
 );
 
 function place() {
@@ -242,7 +243,7 @@ onBeforeUnmount(stopListening);
             {{ option.label }}
           </button>
         </li>
-        <li v-if="!choices.length" class="empty">没有可选项</li>
+        <li v-if="!choices.length" class="empty">{{ t("没有可选项") }}</li>
       </ul>
     </Teleport>
     <select

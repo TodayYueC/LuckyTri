@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, intlLocale } from "../../i18n";
 import { computed, ref } from "vue";
 import { toast } from "../../api";
 import { askText } from "../../dialog";
@@ -18,7 +19,15 @@ const [ty, tm] = props.today.split("-").map(Number);
 const year = ref(ty);
 const month = ref(tm);
 const picked = ref(props.today);
-const WEEK = ["一", "二", "三", "四", "五", "六", "日"];
+// Monday first, in the language of the page (一 … 日, M … S).
+const WEEK = computed(() =>
+  [1, 2, 3, 4, 5, 6, 7].map((day) =>
+    new Date(Date.UTC(2024, 0, day)).toLocaleDateString(intlLocale(), {
+      weekday: "narrow",
+      timeZone: "UTC",
+    }),
+  ),
+);
 
 const localDay = (time: number) =>
   new Intl.DateTimeFormat("en-CA", {
@@ -69,18 +78,21 @@ function shift(step: number) {
 
 async function revoke(a: any) {
   const reason = await askText(
-    `撤销「${a.content}」？TA 不再惦记这件事，之后整理记忆时也不会把它写回来。可以写下原因（可不填）：`,
+    t(
+      "撤销「{content}」？TA 不再惦记这件事，之后整理记忆时也不会把它写回来。可以写下原因（可不填）：",
+      { content: a.content },
+    ),
     {
-      title: "撤销这个约定",
-      confirmText: "撤销",
+      title: t("撤销这个约定"),
+      confirmText: t("撤销"),
       danger: true,
-      placeholder: "原因",
+      placeholder: t("原因"),
     },
   );
   if (reason === null) return;
   try {
     await mind.revoke("anticipation", a.id, reason);
-    toast("已撤销");
+    toast(t("已撤销"));
     emit("changed");
   } catch (error) {
     toast((error as Error).message, true);
@@ -98,18 +110,18 @@ function tone(a: any) {
   <section class="ahead">
     <div class="ahead-head">
       <div>
-        <span class="eyebrow">AHEAD · 向前看</span>
-        <h2>让未来有值得期待的事。</h2>
+        <span class="eyebrow">{{ t("AHEAD · 向前看") }}</span>
+        <h2>{{ t("让未来有值得期待的事。") }}</h2>
         <p class="muted">
-          约定、想做的事与每年都会回来的日子，都安静地留在这里。
+          {{ t("约定、想做的事与每年都会回来的日子，都安静地留在这里。") }}
         </p>
       </div>
       <Tabs
         v-model="view"
-        label="约定的视图"
+        :label="t('约定的视图')"
         :items="[
-          { key: 'calendar', label: '日历' },
-          { key: 'list', label: '清单', count: items.length },
+          { key: 'calendar', label: t('日历') },
+          { key: 'list', label: t('清单'), count: items.length },
         ]"
       />
     </div>
@@ -119,22 +131,22 @@ function tone(a: any) {
         <header>
           <button
             class="icon-button ghost"
-            aria-label="上个月"
+            :aria-label="t('上个月')"
             @click="shift(-1)"
           >
             ‹
           </button>
-          <b>{{ year }} 年 {{ month }} 月</b>
+          <b>{{ t("{year} 年 {month} 月", { year, month }) }}</b>
           <button
             class="icon-button ghost"
-            aria-label="下个月"
+            :aria-label="t('下个月')"
             @click="shift(1)"
           >
             ›
           </button>
         </header>
         <div class="grid" role="grid">
-          <span v-for="w in WEEK" :key="w" class="wd">{{ w }}</span>
+          <span v-for="(w, i) in WEEK" :key="i" class="wd">{{ w }}</span>
           <template v-for="(c, i) in cells" :key="i">
             <span v-if="!c" class="blank"></span>
             <button
@@ -145,7 +157,14 @@ function tone(a: any) {
                 picked: c.day === picked,
                 has: c.items.length,
               }"
-              :aria-label="`${c.n} 日${c.items.length ? `，${c.items.length} 件事` : ''}`"
+              :aria-label="
+                t('{n} 日{v}', {
+                  n: c.n,
+                  v: c.items.length
+                    ? t('，{length} 件事', { length: c.items.length })
+                    : '',
+                })
+              "
               @click="picked = c.day"
             >
               {{ c.n }}
@@ -161,7 +180,14 @@ function tone(a: any) {
         </div>
       </div>
       <div class="picked card">
-        <h3>{{ picked.slice(5).replace("-", " 月 ") }} 日</h3>
+        <h3>
+          {{
+            t("{month} 月 {date} 日", {
+              month: Number(picked.slice(5, 7)),
+              date: Number(picked.slice(8, 10)),
+            })
+          }}
+        </h3>
         <ul v-if="pickedItems.length" class="list">
           <li
             v-for="a in pickedItems"
@@ -176,7 +202,7 @@ function tone(a: any) {
               <p>{{ a.name ? `${a.name}：` : "" }}{{ a.content }}</p>
               <small class="faint"
                 >{{ ANTICIPATION_LABELS[a.kind] || a.kind }} · {{ a.when
-                }}{{ a.recurrence === "yearly" ? " · 每年" : "" }}</small
+                }}{{ a.recurrence === "yearly" ? t(" · 每年") : "" }}</small
               >
             </div>
             <button
@@ -184,11 +210,11 @@ function tone(a: any) {
               class="text-button"
               @click="revoke(a)"
             >
-              撤销
+              {{ t("撤销") }}
             </button>
           </li>
         </ul>
-        <p v-else class="muted">这一天没有 TA 在等的事。</p>
+        <p v-else class="muted">{{ t("这一天没有 TA 在等的事。") }}</p>
       </div>
     </div>
 
@@ -211,8 +237,8 @@ function tone(a: any) {
             <p>{{ a.name ? `${a.name}：` : "" }}{{ a.content }}</p>
             <small class="faint">
               {{ ANTICIPATION_LABELS[a.kind] || a.kind }} · {{ a.when
-              }}{{ a.recurrence === "yearly" ? " · 每年" : ""
-              }}{{ a.private ? " · 私下知道的" : ""
+              }}{{ a.recurrence === "yearly" ? t(" · 每年") : ""
+              }}{{ a.private ? t(" · 私下知道的") : ""
               }}{{ a.closed_note ? ` · ${a.closed_note}` : "" }}
             </small>
           </div>
@@ -221,14 +247,14 @@ function tone(a: any) {
             class="text-button"
             @click="revoke(a)"
           >
-            撤销
+            {{ t("撤销") }}
           </button>
         </li>
       </ul>
       <Empty
         v-else
-        title="还没有 TA 在等的事"
-        text="有人说起之后的安排、TA 答应了别人什么，整理记忆时会记下来。"
+        :title="t('还没有 TA 在等的事')"
+        :text="t('有人说起之后的安排、TA 答应了别人什么，整理记忆时会记下来。')"
       />
     </div>
   </section>

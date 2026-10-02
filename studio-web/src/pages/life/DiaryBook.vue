@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { computed, ref, watch } from "vue";
 import { toast } from "../../api";
 import { mind } from "../../plates/mind";
@@ -52,7 +53,7 @@ async function openDay() {
 
 <template>
   <div v-if="diaries.length" class="book">
-    <nav class="days" aria-label="日记的日子">
+    <nav class="days" :aria-label="t('日记的日子')">
       <button
         v-for="(d, i) in diaries"
         :key="d.id"
@@ -70,12 +71,12 @@ async function openDay() {
       <article v-if="entry" :key="entry.id" class="diary-page">
         <header>
           <div>
-            <span class="eyebrow">日记</span>
+            <span class="eyebrow">{{ t("日记") }}</span>
             <h2>
               {{ dayLabel(entry.day) }} <small>{{ weekday(entry.day) }}</small>
             </h2>
           </div>
-          <span v-if="entry.mood" class="stamp" aria-label="那天的心情">{{
+          <span v-if="entry.mood" class="stamp" :aria-label="t('那天的心情')">{{
             entry.mood
           }}</span>
         </header>
@@ -91,60 +92,72 @@ async function openDay() {
           </button>
         </div>
         <blockquote v-if="entry.compare">
-          和昨天的自己比：{{ entry.compare }}
+          {{ t("和昨天的自己比：{compare}", { compare: entry.compare }) }}
         </blockquote>
         <footer>
           <button
             :disabled="index >= diaries.length - 1"
-            aria-label="前一天"
+            :aria-label="t('前一天')"
             @click="index += 1"
           >
-            ‹ 前一天
+            {{ t("‹ 前一天") }}
           </button>
           <button class="primary" :disabled="loadingDay" @click="openDay">
-            {{ day?.day === entry.day ? "合上那天的 TA" : "那天的 TA" }}
+            {{ day?.day === entry.day ? t("合上那天的 TA") : t("那天的 TA") }}
           </button>
           <button
             :disabled="index === 0"
-            aria-label="后一天"
+            :aria-label="t('后一天')"
             @click="index -= 1"
           >
-            后一天 ›
+            {{ t("后一天 ›") }}
           </button>
         </footer>
         <section v-if="day?.day === entry.day" class="day-diff">
           <template v-if="day.change">
-            <h3>那天的 TA，和前一天比</h3>
+            <h3>{{ t("那天的 TA，和前一天比") }}</h3>
             <p v-if="day.change.appeared.length">
-              <b>多了：</b
-              >{{ day.change.appeared.map((t: any) => t.content).join("；") }}
+              <b>{{ t("多了：") }}</b
+              >{{
+                day.change.appeared
+                  .map((change: any) => change.content)
+                  .join("；")
+              }}
             </p>
             <p v-if="day.change.changed.length">
-              <b>变了：</b
+              <b>{{ t("变了：") }}</b
               >{{
                 day.change.changed
-                  .map((t: any) => `${t.before.content} → ${t.content}`)
+                  .map(
+                    (change: any) =>
+                      `${change.before.content} → ${change.content}`,
+                  )
                   .join("；")
               }}
             </p>
             <p v-if="day.change.faded.length">
-              <b>放下了：</b
-              >{{ day.change.faded.map((t: any) => t.content).join("；") }}
+              <b>{{ t("放下了：") }}</b
+              >{{
+                day.change.faded.map((change: any) => change.content).join("；")
+              }}
             </p>
             <p v-if="day.change.livingFor">
-              <b>正在过的：</b>{{ day.change.livingFor.from || "还没有" }} →
-              {{ day.change.livingFor.to || "还没有" }}
+              <b>{{ t("正在过的：") }}</b
+              >{{ day.change.livingFor.from || t("还没有") }} →
+              {{ day.change.livingFor.to || t("还没有") }}
             </p>
             <p v-else-if="day.snapshot?.livingFor?.content">
-              <b>正在过的：</b>{{ day.snapshot.livingFor.content }}
+              <b>{{ t("正在过的：") }}</b
+              >{{ day.snapshot.livingFor.content }}
             </p>
             <p>
-              <b>心情：</b>{{ day.change.mood.before || "—" }} →
+              <b>{{ t("心情：") }}</b
+              >{{ day.change.mood.before || "—" }} →
               {{ day.change.mood.after || "—" }}
             </p>
           </template>
           <p v-else class="muted">
-            这是 TA 留下快照的第一天，还没有可以对照的昨天。
+            {{ t("这是 TA 留下快照的第一天，还没有可以对照的昨天。") }}
           </p>
         </section>
       </article>
@@ -152,8 +165,12 @@ async function openDay() {
   </div>
   <Empty
     v-else
-    title="还没有日记"
-    text="每天睡前（或凌晨），如果这一天真的有过经历，TA 会写下来，并和昨天的自己对照。"
+    :title="t('还没有日记')"
+    :text="
+      t(
+        '每天睡前（或凌晨），如果这一天真的有过经历，TA 会写下来，并和昨天的自己对照。',
+      )
+    "
   />
 </template>
 

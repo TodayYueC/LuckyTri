@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { ref } from "vue";
 import { toast } from "../../api";
 import {
@@ -25,7 +26,7 @@ async function pick(kind: "hero" | "sky", event: Event) {
   try {
     if (kind === "hero") await setHeroWallpaper(file);
     else await setSkyWallpaper(file);
-    toast(kind === "hero" ? "中间这张已换上" : "后面的壁纸已换上");
+    toast(kind === "hero" ? t("中间这张已换上") : t("后面的壁纸已换上"));
   } catch (error) {
     toast((error as Error).message, true);
   } finally {
@@ -38,7 +39,7 @@ async function reset(kind: "hero" | "sky") {
   try {
     if (kind === "hero") await resetHeroWallpaper();
     else await resetSkyWallpaper();
-    toast("已恢复原来的壁纸");
+    toast(t("已恢复原来的壁纸"));
   } catch (error) {
     toast((error as Error).message, true);
   } finally {
@@ -48,40 +49,50 @@ async function reset(kind: "hero" | "sky") {
 </script>
 
 <template>
-  <section v-if="open" class="wallpaper-picker" aria-label="换壁纸">
+  <section v-if="open" class="wallpaper-picker" :aria-label="t('换壁纸')">
     <header>
-      <b>换壁纸</b>
-      <button type="button" class="text-button" @click="emit('close')">收起</button>
+      <b>{{ t("换壁纸") }}</b>
+      <button type="button" class="text-button" @click="emit('close')">
+        {{ t("收起") }}
+      </button>
     </header>
     <div class="choice">
-      <span>中间这张</span>
+      <span>{{ t("中间这张") }}</span>
       <div class="row">
         <button type="button" :disabled="!!busy" @click="heroInput?.click()">
-          {{ busy === "hero" ? "处理中…" : "选择图片" }}
+          {{ busy === "hero" ? t("处理中…") : t("选择图片") }}
         </button>
-        <button type="button" :disabled="!!busy" @click="reset('hero')">恢复默认</button>
+        <button type="button" :disabled="!!busy" @click="reset('hero')">
+          {{ t("恢复默认") }}
+        </button>
       </div>
     </div>
     <div class="choice">
-      <span>后面的大壁纸</span>
+      <span>{{ t("后面的大壁纸") }}</span>
       <div class="row">
         <button type="button" :disabled="!!busy" @click="skyInput?.click()">
-          {{ busy === "sky" ? "处理中…" : "选择图片" }}
+          {{ busy === "sky" ? t("处理中…") : t("选择图片") }}
         </button>
-        <button type="button" :disabled="!!busy" @click="reset('sky')">恢复默认</button>
+        <button type="button" :disabled="!!busy" @click="reset('sky')">
+          {{ t("恢复默认") }}
+        </button>
       </div>
       <label v-if="wallpapers.sky" class="opacity">
-        <span>透明度 {{ Math.round(wallpapers.skyOpacity * 100) }}%</span>
+        <span>{{
+          t("透明度 {v}%", { v: Math.round(wallpapers.skyOpacity * 100) })
+        }}</span>
         <input
           type="range"
           min="0.08"
           max="0.82"
           step="0.02"
           :value="wallpapers.skyOpacity"
-          aria-label="后面壁纸的透明度"
-          @input="setSkyOpacity(Number(($event.target as HTMLInputElement).value))"
+          :aria-label="t('后面壁纸的透明度')"
+          @input="
+            setSkyOpacity(Number(($event.target as HTMLInputElement).value))
+          "
         />
-        <small>越透明，心情的颜色越清楚。</small>
+        <small>{{ t("越透明，心情的颜色越清楚。") }}</small>
       </label>
     </div>
     <input

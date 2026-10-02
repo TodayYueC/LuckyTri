@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { reactive } from "vue";
 import { ask } from "../dialog";
 import { loadWorkspace } from "../plates/workspace";
@@ -50,10 +51,10 @@ export async function go(page: Page | string, sub = "") {
   if (
     studio.page !== route.page &&
     studio.dirty &&
-    !(await ask("有尚未保存的修改，离开这一页吗？", {
-      title: "草稿还没保存",
-      confirmText: "离开",
-      cancelText: "留下",
+    !(await ask(t("有尚未保存的修改，离开这一页吗？"), {
+      title: t("草稿还没保存"),
+      confirmText: t("离开"),
+      cancelText: t("留下"),
     }))
   )
     return false;

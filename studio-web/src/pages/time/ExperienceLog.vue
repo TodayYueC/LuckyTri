@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { intlLocale, t } from "../../i18n";
 import { computed } from "vue";
 import { dateFormatter } from "../../formatters";
 import Empty from "../../components/ui/Empty.vue";
@@ -9,7 +10,7 @@ const emit = defineEmits<{
   source: [id: string];
 }>();
 const days = computed(() => {
-  const formatter = dateFormatter("zh-CN", {
+  const formatter = dateFormatter(intlLocale(), {
     timeZone: props.zone,
     year: "numeric",
     month: "long",
@@ -25,7 +26,7 @@ const days = computed(() => {
   return groups;
 });
 function clock(time: number) {
-  return dateFormatter("zh-CN", {
+  return dateFormatter(intlLocale(), {
     timeZone: props.zone,
     hour: "2-digit",
     minute: "2-digit",
@@ -35,13 +36,13 @@ function clock(time: number) {
 </script>
 
 <template>
-  <section class="experience-log" aria-label="体验记录">
+  <section class="experience-log" :aria-label="t('体验记录')">
     <header class="experience-intro">
       <div>
-        <span class="eyebrow">EXPERIENCES · 留下的经历</span>
-        <h1>最近做过的事</h1>
+        <span class="eyebrow">{{ t("EXPERIENCES · 留下的经历") }}</span>
+        <h1>{{ t("最近做过的事") }}</h1>
       </div>
-      <p>故事写到哪里，玩过什么，又留下了哪些想法。</p>
+      <p>{{ t("故事写到哪里，玩过什么，又留下了哪些想法。") }}</p>
     </header>
     <section v-for="day in days" :key="day.date" class="experience-day">
       <h2 class="experience-date">{{ day.date }}</h2>
@@ -59,34 +60,42 @@ function clock(time: number) {
           >
           <div class="card experience-card">
             <div class="experience-meta">
-              <span class="experience-kind">{{ row.label }}记录</span
-              ><span v-if="row.work" class="faint"
-                >{{
-                  row.work.state === "complete" ? "已保存成果" : "已保存草稿"
-                }}
-                · {{ row.work.characters }} 字 · 版本
-                {{ row.work.version }}</span
-              >
+              <span class="experience-kind">{{
+                t("{label}记录", { label: row.label })
+              }}</span
+              ><span v-if="row.work" class="faint">{{
+                t("{v} · {characters} 字 · 版本 {version}", {
+                  v:
+                    row.work.state === "complete"
+                      ? t("已保存成果")
+                      : t("已保存草稿"),
+                  characters: row.work.characters,
+                  version: row.work.version,
+                })
+              }}</span>
             </div>
             <h3>{{ row.title }}</h3>
             <p v-if="row.summary" class="experience-summary">
               {{ row.summary }}
             </p>
             <p v-else class="faint experience-missing">
-              这条旧记录没有保存摘要。
+              {{ t("这条旧记录没有保存摘要。") }}
             </p>
             <p
               v-if="row.project?.title && row.project.title !== row.title"
               class="experience-project faint"
             >
-              来自 {{ row.project.title }}
+              {{ t("来自 {title}", { title: row.project.title }) }}
             </p>
             <div v-if="row.work || row.project" class="experience-actions">
               <button
                 v-if="row.work"
                 @click="emit('work', row.work.id, row.work.version)"
               >
-                {{ row.activity === "write" ? "阅读这一稿" : "阅读完整记录"
+                {{
+                  row.activity === "write"
+                    ? t("阅读这一稿")
+                    : t("阅读完整记录")
                 }}<span aria-hidden="true"> →</span>
               </button>
               <button
@@ -94,15 +103,21 @@ function clock(time: number) {
                 class="text-button"
                 @click="emit('project', row.project.id)"
               >
-                查看项目
+                {{ t("查看项目") }}
               </button>
             </div>
             <details v-if="row.materials?.length" class="experience-materials">
-              <summary>接触的内容 · {{ row.materials.length }} 份</summary>
+              <summary>
+                {{
+                  t("接触的内容 · {length} 份", {
+                    length: row.materials.length,
+                  })
+                }}
+              </summary>
               <ul>
                 <li v-for="item in row.materials" :key="item.id">
                   <button class="text-button" @click="emit('source', item.id)">
-                    {{ item.title || "未命名资料" }}
+                    {{ item.title || t("未命名资料") }}
                   </button>
                 </li>
               </ul>
@@ -113,12 +128,16 @@ function clock(time: number) {
     </section>
     <Empty
       v-if="!loading && !rows.length"
-      title="这里还没有经历记录"
-      text="做过的事与保存的成果，会逐渐出现在这里。"
+      :title="t('这里还没有经历记录')"
+      :text="t('做过的事与保存的成果，会逐渐出现在这里。')"
     />
     <details class="experience-capability">
-      <summary>游戏客户端连接 <span class="faint">开发中</span></summary>
-      <p class="muted">客户端控制尚未接入。已有的游玩记录可以在上方阅读。</p>
+      <summary>
+        {{ t("游戏客户端连接") }} <span class="faint">{{ t("开发中") }}</span>
+      </summary>
+      <p class="muted">
+        {{ t("客户端控制尚未接入。已有的游玩记录可以在上方阅读。") }}
+      </p>
     </details>
   </section>
 </template>

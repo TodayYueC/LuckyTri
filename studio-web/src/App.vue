@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { locale, t } from "./i18n";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { followHash, go, reload, studio } from "./stores/studio";
 import { presence, refreshPresence, watchPresence } from "./stores/presence";
 import { AREAS, MOBILE_MORE, MOBILE_TABS, NAV, type Page } from "./router";
@@ -12,6 +13,7 @@ import { ACTIVITY_LABELS } from "./mood/presence";
 import MoodSky from "./components/sky/MoodSky.vue";
 import TaOrb from "./components/ta/TaOrb.vue";
 import TaCompanion from "./components/ta/TaCompanion.vue";
+import LocaleSwitch from "./components/shell/LocaleSwitch.vue";
 import ThemePicker from "./components/shell/ThemePicker.vue";
 import NowStatusDock from "./components/shell/NowStatusDock.vue";
 import Confirm from "./components/ui/Confirm.vue";
@@ -28,6 +30,9 @@ const name = computed(
 );
 const activity = computed(() => presence.data?.activity?.kind || "idle");
 const moreActive = computed(() => MOBILE_MORE.includes(studio.page));
+const guideHref = computed(() =>
+  locale.value === "en" ? "/guide.en.html" : "/guide.html",
+);
 
 let pulseTimer = 0;
 let streamStarted = false;
@@ -61,7 +66,7 @@ function onServerChange(value: unknown) {
 async function refresh() {
   if (refreshing.value) return;
   if (studio.dirty) {
-    toast("请先保存草稿");
+    toast(t("请先保存草稿"));
     return;
   }
   refreshing.value = true;
@@ -73,6 +78,20 @@ async function refresh() {
     refreshing.value = false;
   }
 }
+
+// The server words its own labels in the page's language, so a switch asks
+// for them again. Unsaved drafts are never replaced: they keep their values
+// and the labels catch up on the next refresh.
+watch(locale, async () => {
+  clearReads();
+  if (!studio.core || studio.dirty) return;
+  try {
+    await Promise.all([reload(), refreshPresence()]);
+    studio.tick += 1;
+  } catch {
+    /* The next refresh tries again. */
+  }
+});
 
 function focusMain() {
   document.getElementById("main")?.focus();
@@ -124,26 +143,26 @@ onUnmounted(() => {
   <MoodSky />
   <div v-if="studio.error" class="startup">
     <TaOrb mood="blue" :size="128" />
-    <span class="eyebrow">暂未连接</span>
-    <h1>TA 在等你回来</h1>
+    <span class="eyebrow">{{ t("暂未连接") }}</span>
+    <h1>{{ t("TA 在等你回来") }}</h1>
     <p>{{ studio.error }}</p>
-    <button class="primary" @click="reloadPage">重新连接</button>
+    <button class="primary" @click="reloadPage">{{ t("重新连接") }}</button>
   </div>
   <div
     v-else-if="studio.core && studio.health"
     class="shell"
     :class="'at-' + studio.page"
   >
-    <a class="skip-link" href="#main" @click.prevent="focusMain"
-      >跳到主要内容</a
-    >
-    <nav class="dock primary-nav" aria-label="主要功能">
+    <a class="skip-link" href="#main" @click.prevent="focusMain">{{
+      t("跳到主要内容")
+    }}</a>
+    <nav class="dock primary-nav" :aria-label="t('主要功能')">
       <button
         class="dock-ta"
         data-page="now"
         :class="{ active: studio.page === 'now' }"
         :aria-current="studio.page === 'now' ? 'page' : undefined"
-        :aria-label="`${name}：回到此刻`"
+        :aria-label="t('{name}：回到此刻', { name })"
         @click="go('now')"
       >
         <TaOrb :mood="liveMood" :activity="activity" :size="50" />
@@ -152,7 +171,7 @@ onUnmounted(() => {
           <small
             >{{ name !== "LuckyTri" ? name + " · " : ""
             }}{{ MOODS[liveMood].label }} ·
-            {{ ACTIVITY_LABELS[activity] || "闲着" }}</small
+            {{ ACTIVITY_LABELS[activity] || t("闲着") }}</small
           >
         </span>
       </button>
@@ -181,23 +200,23 @@ onUnmounted(() => {
         <button
           class="dock-tool"
           :aria-pressed="theme.quiet"
-          :title="theme.quiet ? '开启灵动效果' : '减少动画'"
+          :title="theme.quiet ? t('开启灵动效果') : t('减少动画')"
           @click="setQuiet(!theme.quiet)"
         >
           <Icon name="motion" />
           <span class="rail-label">{{
-            theme.quiet ? "开启灵动效果" : "减少动画"
+            theme.quiet ? t("开启灵动效果") : t("减少动画")
           }}</span>
         </button>
         <a
           class="dock-tool"
-          href="/guide.html"
+          :href="guideHref"
           target="_blank"
           rel="noopener"
-          title="使用教程"
+          :title="t('使用教程')"
         >
           <Icon name="guide" />
-          <span class="rail-label">使用教程 ↗</span>
+          <span class="rail-label">{{ t("使用教程 ↗") }}</span>
         </a>
       </div>
     </nav>
@@ -208,26 +227,27 @@ onUnmounted(() => {
       <main id="main" tabindex="-1">
         <header class="topbar">
           <div class="topbar-title">
-            <span class="eyebrow">{{ area.en }}</span>
+            <span v-if="locale === 'zh'" class="eyebrow">{{ area.en }}</span>
             <h1>{{ area.label }}</h1>
             <p>{{ area.tagline }}</p>
           </div>
           <div class="topbar-actions">
+            <LocaleSwitch />
             <button
               id="connection"
               class="pill"
               :class="{ offline: !online }"
-              :title="online ? 'QQ 已连接' : '去连接 QQ'"
+              :title="online ? t('QQ 已连接') : t('去连接 QQ')"
               @click="online || go('system', 'connect')"
             >
               <span class="dot" :class="{ off: !online }"></span
-              >{{ online ? "QQ 已连接" : "QQ 未连接" }}
+              >{{ online ? t("QQ 已连接") : t("QQ 未连接") }}
             </button>
             <button
               id="refresh"
               class="icon-button"
-              aria-label="刷新当前数据"
-              title="刷新"
+              :aria-label="t('刷新当前数据')"
+              :title="t('刷新')"
               :disabled="refreshing"
               :class="{ spinning: refreshing }"
               @click="refresh"
@@ -237,7 +257,7 @@ onUnmounted(() => {
           </div>
         </header>
         <div v-if="studio.dirty" class="draft-banner" role="status">
-          <span class="dot warn"></span>草稿还没保存，保存后才会生效
+          <span class="dot warn"></span>{{ t("草稿还没保存，保存后才会生效") }}
         </div>
         <div class="view" :class="'page-' + studio.page">
           <KeepAlive
@@ -260,7 +280,7 @@ onUnmounted(() => {
       </main>
     </div>
 
-    <nav class="tabbar" aria-label="主要功能">
+    <nav class="tabbar" :aria-label="t('主要功能')">
       <button
         v-for="key in MOBILE_TABS"
         :key="key"
@@ -279,13 +299,13 @@ onUnmounted(() => {
         @click="studio.moreOpen = !studio.moreOpen"
       >
         <Icon name="more" />
-        <span>更多</span>
+        <span>{{ t("更多") }}</span>
       </button>
     </nav>
     <Sheet
       :open="studio.moreOpen"
-      title="更多"
-      eyebrow="更多"
+      :title="t('更多')"
+      :eyebrow="t('更多')"
       width="420px"
       @close="studio.moreOpen = false"
     >
@@ -302,13 +322,15 @@ onUnmounted(() => {
           <small>{{ AREAS[key].tagline }}</small>
         </button>
       </div>
-      <h3 class="more-title">界面主题</h3>
+      <h3 class="more-title">{{ t("界面主题") }}</h3>
       <ThemePicker inline />
       <div class="row more-tools">
         <button :aria-pressed="theme.quiet" @click="setQuiet(!theme.quiet)">
-          {{ theme.quiet ? "开启灵动效果" : "减少动画" }}
+          {{ theme.quiet ? t("开启灵动效果") : t("减少动画") }}
         </button>
-        <a href="/guide.html" target="_blank" rel="noopener">使用教程 ↗</a>
+        <a :href="guideHref" target="_blank" rel="noopener">{{
+          t("使用教程 ↗")
+        }}</a>
       </div>
     </Sheet>
 
@@ -316,8 +338,8 @@ onUnmounted(() => {
   </div>
   <div v-else class="startup" role="status">
     <TaOrb :mood="liveMood" activity="idle" :size="128" />
-    <h1>正在进入 TA 的小世界</h1>
-    <p>连接会话与记忆…</p>
+    <h1>{{ t("正在进入 TA 的小世界") }}</h1>
+    <p>{{ t("连接会话与记忆…") }}</p>
   </div>
   <Confirm />
 </template>
@@ -516,6 +538,7 @@ main {
 }
 .topbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
@@ -548,6 +571,7 @@ main {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-left: auto;
 }
 #connection {
   padding: 7px 14px;
@@ -962,6 +986,7 @@ main {
     margin: 0;
   }
   .topbar {
+    gap: 10px;
     width: calc(100% - 28px);
     margin-top: 14px;
     padding: 8px 5px 10px;
@@ -969,6 +994,13 @@ main {
     background: transparent;
     box-shadow: none;
     backdrop-filter: none;
+  }
+  .topbar-actions {
+    gap: 6px;
+  }
+  #connection {
+    padding: 7px 10px;
+    font-size: 12px;
   }
   .tabbar {
     border: 1.5px solid rgb(255 255 255 / 0.86);

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { computed, ref, shallowRef, watch } from "vue";
 import { usePageActivity } from "../../page-activity";
 import { readSnapshot } from "../../api";
@@ -68,24 +69,24 @@ usePageActivity("people", load);
     <div class="people-bar">
       <Tabs
         v-model="view"
-        label="人际的视图"
+        :label="t('人际的视图')"
         :items="[
           {
             key: 'galaxy',
-            label: '相遇之间',
+            label: t('相遇之间'),
             count: bonds?.people.length ?? '',
           },
-          { key: 'list', label: '列表' },
+          { key: 'list', label: t('列表') },
         ]"
       />
       <input
         v-model="query"
         class="people-search"
         type="search"
-        placeholder="找一个人"
-        aria-label="找一个人"
+        :placeholder="t('找一个人')"
+        :aria-label="t('找一个人')"
       />
-      <p class="muted">她记得相遇，也记得关系会随着时间改变。</p>
+      <p class="muted">{{ t("她记得相遇，也记得关系会随着时间改变。") }}</p>
     </div>
 
     <template v-if="bonds">
@@ -127,11 +128,13 @@ usePageActivity("people", load);
               />
             </div>
             <small class="faint">
-              在 {{ p.sessions.length }} 个地方见过 · 上次说上话
               {{
-                p.lastTalkedAt
-                  ? ago(p.lastTalkedAt, presence.data?.now)
-                  : "还没有"
+                t("在 {length} 个地方见过 · 上次说上话 {v}", {
+                  length: p.sessions.length,
+                  v: p.lastTalkedAt
+                    ? ago(p.lastTalkedAt, presence.data?.now)
+                    : t("还没有"),
+                })
               }}
             </small>
           </button>
@@ -139,8 +142,10 @@ usePageActivity("people", load);
       </template>
       <Empty
         v-else
-        title="TA 还没有认识谁"
-        text="有人和 TA 说话、TA 细看过群聊之后，这里会出现 TA 对每个人的感觉。"
+        :title="t('TA 还没有认识谁')"
+        :text="
+          t('有人和 TA 说话、TA 细看过群聊之后，这里会出现 TA 对每个人的感觉。')
+        "
       />
 
       <GroupFaces :groups="bonds.groups" @changed="load" />

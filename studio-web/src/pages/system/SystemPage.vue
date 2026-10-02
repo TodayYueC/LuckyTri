@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { ref, watch } from "vue";
 import { setSub, studio } from "../../stores/studio";
 import Tabs from "../../components/ui/Tabs.vue";
@@ -14,10 +15,10 @@ async function switchView(next: string) {
   if (next === view.value) return;
   if (
     studio.dirty &&
-    !(await ask("当前设置还没保存，离开这个分区吗？", {
-      title: "未保存的修改",
-      confirmText: "放弃修改",
-      cancelText: "继续编辑",
+    !(await ask(t("当前设置还没保存，离开这个分区吗？"), {
+      title: t("未保存的修改"),
+      confirmText: t("放弃修改"),
+      cancelText: t("继续编辑"),
     }))
   )
     return;
@@ -38,26 +39,32 @@ watch(
   <div class="page system">
     <header class="system-intro">
       <div>
-        <span class="eyebrow">THE WORLD AROUND HER · 系统</span>
-        <h1>让她与世界，<em>温柔相连。</em></h1>
-        <p>连接、模型与运行方式都在这里。每一处改变，都可以看见结果。</p>
+        <span class="eyebrow">{{ t("THE WORLD AROUND HER · 系统") }}</span>
+        <h1>
+          {{ t("让她与世界，") }}<em>{{ t("温柔相连。") }}</em>
+        </h1>
+        <p>
+          {{ t("连接、模型与运行方式都在这里。每一处改变，都可以看见结果。") }}
+        </p>
       </div>
       <span class="system-status">
         <i :class="{ off: !studio.health.connection?.online }"></i>
         {{
-          studio.health.connection?.online ? "正在与 QQ 相连" : "等待 QQ 连接"
+          studio.health.connection?.online
+            ? t("正在与 QQ 相连")
+            : t("等待 QQ 连接")
         }}
       </span>
     </header>
     <Tabs
       :model-value="view"
       @update:model-value="switchView"
-      label="系统的分区"
+      :label="t('系统的分区')"
       :items="[
-        { key: 'connect', label: '连接 QQ' },
-        { key: 'models', label: '模型库' },
-        { key: 'search', label: '独立搜索' },
-        { key: 'runtime', label: '运行开关' },
+        { key: 'connect', label: t('连接 QQ') },
+        { key: 'models', label: t('模型库') },
+        { key: 'search', label: t('独立搜索') },
+        { key: 'runtime', label: t('运行开关') },
       ]"
     />
     <ConnectQQ v-if="view === 'connect'" @open="switchView" />

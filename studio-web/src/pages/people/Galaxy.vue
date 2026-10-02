@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { computed } from "vue";
 import { hueOf, initials } from "../../format";
 import { liveMood } from "../../mood/useMood";
@@ -16,18 +17,24 @@ const hidden = computed(() =>
 </script>
 
 <template>
-  <section class="galaxy" aria-label="相遇之间：TA 认识的人">
+  <section class="galaxy" :aria-label="t('相遇之间：TA 认识的人')">
     <div class="encounter-hero">
       <div class="encounter-copy">
-        <span class="eyebrow">PEOPLE / 相遇之间</span>
-        <h2>每一次相遇，<br /><em>都留下一点温度。</em></h2>
+        <span class="eyebrow">{{ t("PEOPLE / 相遇之间") }}</span>
+        <h2>
+          {{ t("每一次相遇，") }}<br /><em>{{ t("都留下一点温度。") }}</em>
+        </h2>
         <p>
-          越熟悉离 TA 越近。这里先放着最近亲近的
-          {{ featured.length }} 个人，其他人也仍然在名单里。
+          {{
+            t(
+              "越熟悉离 TA 越近。这里先放着最近亲近的 {length} 个人，其他人也仍然在名单里。",
+              { length: featured.length },
+            )
+          }}
         </p>
         <div class="encounter-count">
           <b>{{ people.length }}</b
-          ><span>个相遇过的人</span>
+          ><span>{{ t("个相遇过的人") }}</span>
         </div>
       </div>
       <div class="encounter-lens" aria-hidden="true">
@@ -44,9 +51,9 @@ const hidden = computed(() =>
     <div class="people-heading">
       <div>
         <span class="eyebrow">CLOSER TO HER</span>
-        <h3>最近靠近的人</h3>
+        <h3>{{ t("最近靠近的人") }}</h3>
       </div>
-      <span>点开一张光片，看看她记得什么</span>
+      <span>{{ t("点开一张光片，看看她记得什么") }}</span>
     </div>
     <div class="encounter-grid">
       <button
@@ -63,7 +70,7 @@ const hidden = computed(() =>
           '--hue': hueOf(person.name || person.userId),
           '--order': index,
         }"
-        :aria-label="`${person.name}：${person.feel || '还在慢慢认识'}`"
+        :aria-label="`${person.name}：${person.feel || t('还在慢慢认识')}`"
         @click="emit('open', person.userId)"
       >
         <span class="avatar-wrap"
@@ -72,7 +79,7 @@ const hidden = computed(() =>
         <span class="person-copy"
           ><b>{{ person.name }}</b
           ><small>QQ {{ person.userId }}</small
-          ><small>{{ person.feel || "还在慢慢认识" }}</small></span
+          ><small>{{ person.feel || t("还在慢慢认识") }}</small></span
         >
         <span class="person-arrow" aria-hidden="true">↗</span>
         <span
@@ -94,7 +101,8 @@ const hidden = computed(() =>
       class="more-people"
       @click="emit('list')"
     >
-      在名单里看看另外 {{ hidden }} 个人 <span aria-hidden="true">↗</span>
+      {{ t("在名单里看看另外 {hidden} 个人", { hidden }) }}
+      <span aria-hidden="true">↗</span>
     </button>
   </section>
 </template>

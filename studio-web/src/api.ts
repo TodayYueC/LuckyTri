@@ -1,3 +1,4 @@
+import { locale, t } from "./i18n";
 import { askText } from "./dialog";
 import { reads } from "./read-cache";
 
@@ -42,10 +43,10 @@ let asking: Promise<string | null> | null = null;
 
 // Several requests can hit 401 at once; they all wait on the same question.
 function askToken() {
-  asking ??= askText("这个 LuckyTri 设置了管理令牌，输入后才能继续。", {
-    title: "需要管理令牌",
-    confirmText: "进入",
-    placeholder: "管理令牌",
+  asking ??= askText(t("这个 LuckyTri 设置了管理令牌，输入后才能继续。"), {
+    title: t("需要管理令牌"),
+    confirmText: t("进入"),
+    placeholder: t("管理令牌"),
     secret: true,
   }).finally(() => {
     asking = null;
@@ -89,6 +90,8 @@ async function request(
     headers: {
       "Content-Type": "application/json",
       Authorization: "Bearer " + (sessionStorage.token || ""),
+      // The server words its own labels and errors in the page's language.
+      "X-LuckyTri-Locale": locale.value,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
@@ -101,7 +104,7 @@ async function request(
     }
   }
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw Error(data.error || "请求失败");
+  if (!r.ok) throw Error(data.error || t("请求失败"));
   if (method !== "GET") clearReads();
   return data;
 }

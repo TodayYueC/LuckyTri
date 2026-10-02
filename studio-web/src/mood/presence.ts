@@ -1,3 +1,4 @@
+import { t, N_, localized } from "../i18n";
 export type ActivityKind =
   | "idle"
   | "speaking"
@@ -10,18 +11,18 @@ export type ActivityKind =
   | "asleep"
   | "busy";
 
-export const ACTIVITY_LABELS: Record<string, string> = {
-  idle: "闲着",
-  speaking: "刚说完话",
-  thinking: "在想怎么回",
-  solitude: "在独处",
-  reading: "在读资料",
-  diary: "在写日记",
-  review: "在回顾这段日子",
-  night: "在夜里整理今天",
-  asleep: "睡着了",
-  busy: "在忙自己的事",
-};
+export const ACTIVITY_LABELS: Record<string, string> = localized({
+  idle: N_("闲着"),
+  speaking: N_("刚说完话"),
+  thinking: N_("在想怎么回"),
+  solitude: N_("在独处"),
+  reading: N_("在读资料"),
+  diary: N_("在写日记"),
+  review: N_("在回顾这段日子"),
+  night: N_("在夜里整理今天"),
+  asleep: N_("睡着了"),
+  busy: N_("在忙自己的事"),
+});
 
 export interface PresenceAffect {
   mood?: string;
@@ -89,12 +90,14 @@ export interface Presence {
 
 export function statusLine(affect: PresenceAffect | undefined) {
   if (!affect) return "";
-  if (affect.phase === "asleep") return "睡着了，呼吸很轻";
+  if (affect.phase === "asleep") return t("睡着了，呼吸很轻");
   const parts = [affect.phaseLabel, affect.energyLabel, affect.mood].filter(
     Boolean,
   );
   const line = parts.join("，");
-  return affect.cause ? `${line}，因为${affect.cause}` : line;
+  return affect.cause
+    ? t("{line}，因为{cause}", { line, cause: affect.cause })
+    : line;
 }
 
 export function latelyLine(affect: PresenceAffect | undefined) {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import Sheet from "../../components/ui/Sheet.vue";
 import { ref } from "vue";
 import { toast } from "../../api";
@@ -20,9 +21,9 @@ async function toggle(session: string) {
 
 async function revoke(session: string, id: string) {
   if (
-    !(await ask("撤销这一版面貌？TA 在这里会回到上一版的样子。", {
-      title: "撤销面貌",
-      confirmText: "撤销",
+    !(await ask(t("撤销这一版面貌？TA 在这里会回到上一版的样子。"), {
+      title: t("撤销面貌"),
+      confirmText: t("撤销"),
       danger: true,
     }))
   )
@@ -30,7 +31,7 @@ async function revoke(session: string, id: string) {
   try {
     await mind.revoke("face", id);
     history.value = { ...history.value, [session]: await mind.faces(session) };
-    toast("已撤销");
+    toast(t("已撤销"));
     emit("changed");
   } catch (error) {
     toast((error as Error).message, true);
@@ -41,12 +42,14 @@ async function revoke(session: string, id: string) {
 <template>
   <section class="faces">
     <div class="faces-head">
-      <span class="eyebrow">群像</span>
-      <h2>在不同的地方，她有不同的相处方式。</h2>
+      <span class="eyebrow">{{ t("群像") }}</span>
+      <h2>{{ t("在不同的地方，她有不同的相处方式。") }}</h2>
       <p class="muted">
-        面貌由 TA
-        在独处和写日记时自己修正；每一版都有来源。这个地方的说话节奏不会写成 TA
-        的样子。
+        {{
+          t(
+            "面貌由 TA 在独处和写日记时自己修正；每一版都有来源。这个地方的说话节奏不会写成 TA 的样子。",
+          )
+        }}
       </p>
     </div>
     <div class="face-grid">
@@ -57,7 +60,9 @@ async function revoke(session: string, id: string) {
         :style="{ '--hue': hueOf(g.session) }"
       >
         <header>
-          <span class="badge">{{ g.kind === "private" ? "私" : "群" }}</span>
+          <span class="badge">{{
+            g.kind === "private" ? t("私") : t("群")
+          }}</span>
           <div>
             <h3>
               {{ placeName({ id: g.session, name: g.name, kind: g.kind }) }}
@@ -71,24 +76,26 @@ async function revoke(session: string, id: string) {
               }}</small
             >
             <small class="muted"
-              >{{ g.kind === "private" ? "私聊" : "群聊"
+              >{{ g.kind === "private" ? t("私聊") : t("群聊")
               }}{{ g.bond ? ` · ${g.bond.feel}` : "" }}</small
             >
           </div>
         </header>
         <dl v-if="g.face" class="kv">
-          <dt>角色</dt>
+          <dt>{{ t("角色") }}</dt>
           <dd>{{ g.face.role || "—" }}</dd>
-          <dt>说话</dt>
+          <dt>{{ t("说话") }}</dt>
           <dd>{{ g.face.tone || "—" }}</dd>
-          <dt>想成为</dt>
+          <dt>{{ t("想成为") }}</dt>
           <dd>{{ g.face.aspiration || "—" }}</dd>
           <template v-if="g.face.content">
-            <dt>自己的话</dt>
+            <dt>{{ t("自己的话") }}</dt>
             <dd class="face-excerpt">{{ g.face.content }}</dd>
           </template>
         </dl>
-        <p v-else class="muted small-text">还没有形成在这里的样子。</p>
+        <p v-else class="muted small-text">
+          {{ t("还没有形成在这里的样子。") }}
+        </p>
         <button
           class="text-button"
           @click="
@@ -96,21 +103,21 @@ async function revoke(session: string, id: string) {
             toggle(g.session);
           "
         >
-          查看完整面貌与变化 ↗
+          {{ t("查看完整面貌与变化 ↗") }}
         </button>
       </article>
     </div>
     <Sheet
       :open="!!selected"
-      :title="selected?.name || '面貌'"
-      eyebrow="FACES / 在这里的样子"
+      :title="selected?.name || t('面貌')"
+      :eyebrow="t('FACES / 在这里的样子')"
       width="680px"
       @close="selected = null"
       ><div v-if="selected" class="stack">
         <p class="face-full">
-          {{ selected.face?.content || "还没有形成在这里的样子。" }}
+          {{ selected.face?.content || t("还没有形成在这里的样子。") }}
         </p>
-        <h3>变化历史</h3>
+        <h3>{{ t("变化历史") }}</h3>
         <ol v-if="history[selected.session]" class="versions">
           <li
             v-for="f in history[selected.session]"
@@ -119,8 +126,8 @@ async function revoke(session: string, id: string) {
           >
             <time>{{ when(f.created) }}</time>
             <span>
-              <b v-if="f.revoked">已撤销 · </b
-              ><b v-else-if="f.origin === 'migration'">旧版 · </b
+              <b v-if="f.revoked">{{ t("已撤销 ·") }} </b
+              ><b v-else-if="f.origin === 'migration'">{{ t("旧版 ·") }} </b
               >{{
                 [f.role, f.tone, f.aspiration].filter(Boolean).join(" · ") ||
                 f.content
@@ -131,11 +138,11 @@ async function revoke(session: string, id: string) {
               class="text-button"
               @click="revoke(selected.session, f.id)"
             >
-              撤销
+              {{ t("撤销") }}
             </button>
           </li>
           <li v-if="!history[selected.session].length" class="muted">
-            没有记录。
+            {{ t("没有记录。") }}
           </li>
         </ol>
       </div></Sheet

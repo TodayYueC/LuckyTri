@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { computed, ref } from "vue";
 import { toast } from "../../api";
 import { presence, refreshPresence } from "../../stores/presence";
@@ -25,7 +26,7 @@ async function run(kind: "reflect" | "review") {
   running.value = true;
   try {
     const result = await mind[kind]();
-    toast(result.reason || "完成了", result.status === "error");
+    toast(result.reason || t("完成了"), result.status === "error");
   } catch (error) {
     toast((error as Error).message, true);
   } finally {
@@ -36,35 +37,41 @@ async function run(kind: "reflect" | "review") {
 </script>
 
 <template>
-  <aside class="presence-dock" aria-label="TA 的此刻状态">
+  <aside class="presence-dock" :aria-label="t('TA 的此刻状态')">
     <div class="presence-detail">
       <span class="eyebrow">
-        第 {{ p?.dayOfLife ?? overview?.dayOfLife ?? 1 }} 天
+        {{ t("第 {v} 天", { v: p?.dayOfLife ?? overview?.dayOfLife ?? 1 }) }}
         <template v-if="p?.clock">
           · {{ p.clock.period }} {{ p.clock.local.slice(11) }}
         </template>
       </span>
-      <h2 class="mood-word">{{ affect.mood || "平静" }}</h2>
+      <h2 class="mood-word">{{ affect.mood || t("平静") }}</h2>
       <p class="lede">
-        {{ statusLine(affect) || "没有特别牵动 TA 的事，心情慢慢回到平常。" }}
+        {{
+          statusLine(affect) || t("没有特别牵动 TA 的事，心情慢慢回到平常。")
+        }}
       </p>
       <div class="row chips">
         <span class="chip activity-chip" :data-activity="activity">
           {{ activityLine(p) }}
         </span>
         <span v-if="latelyLine(affect)" class="chip" data-tone="quiet">
-          这阵子 · {{ latelyLine(affect) }}
+          {{ t("这阵子 · {v}", { v: latelyLine(affect) }) }}
         </span>
         <span v-if="affect.energyLabel" class="chip" data-tone="quiet">
-          精力 · {{ affect.energyLabel }}
+          {{ t("精力 · {energyLabel}", { energyLabel: affect.energyLabel }) }}
         </span>
         <span
           v-if="overview?.nature?.rhythm?.enabled"
           class="chip"
           data-tone="quiet"
         >
-          {{ overview.nature.rhythm.wake }} 醒 /
-          {{ overview.nature.rhythm.sleep }} 睡
+          {{
+            t("{wake} 醒 / {sleep} 睡", {
+              wake: overview.nature.rhythm.wake,
+              sleep: overview.nature.rhythm.sleep,
+            })
+          }}
         </span>
       </div>
       <div class="row actions">
@@ -73,23 +80,23 @@ async function run(kind: "reflect" | "review") {
           class="text-button"
           @click="go('time')"
         >
-          看看进度
+          {{ t("看看进度") }}
         </button>
         <button class="primary" @click="studio.chatOpen = true">
-          和 TA 聊聊
+          {{ t("和 TA 聊聊") }}
         </button>
         <button :disabled="busyMind" @click="run('reflect')">
-          {{ busyMind ? "TA 正在想…" : "让 TA 独处一会儿" }}
+          {{ busyMind ? t("TA 正在想…") : t("让 TA 独处一会儿") }}
         </button>
         <button :disabled="busyMind" @click="run('review')">
-          写下今天的日记
+          {{ t("写下今天的日记") }}
         </button>
       </div>
       <small class="faint">{{
-        overview?.reason || "安静下来时，TA 会自己独处。"
+        overview?.reason || t("安静下来时，TA 会自己独处。")
       }}</small>
       <div v-if="p?.lastWords" class="aside-bit">
-        <span class="eyebrow">最近说</span>
+        <span class="eyebrow">{{ t("最近说") }}</span>
         <p>“{{ p.lastWords.text }}”</p>
         <small
           >{{
@@ -102,12 +109,12 @@ async function run(kind: "reflect" | "review") {
         >
       </div>
       <div v-if="p?.thought" class="aside-bit">
-        <span class="eyebrow">放在心上</span>
+        <span class="eyebrow">{{ t("放在心上") }}</span>
         <p>{{ p.thought.content }}</p>
         <small v-if="p.thought.when">{{ p.thought.when }}</small>
       </div>
       <div v-if="nextExpect" class="aside-bit">
-        <span class="eyebrow">在等</span>
+        <span class="eyebrow">{{ t("在等") }}</span>
         <p>
           {{ nextExpect.name ? `${nextExpect.name}：` : ""
           }}{{ nextExpect.content }}

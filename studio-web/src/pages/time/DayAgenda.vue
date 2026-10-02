@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { intlLocale, t } from "../../i18n";
 import { computed, ref } from "vue";
 import { dateFormatter } from "../../formatters";
 const props = defineProps<{ agenda: any }>();
@@ -19,7 +20,7 @@ const windowRange = computed(() => {
 const clock = (at: number) =>
   at === props.agenda.end
     ? "24:00"
-    : dateFormatter("zh-CN", {
+    : dateFormatter(intlLocale(), {
         timeZone: props.agenda.zone,
         hour: "2-digit",
         minute: "2-digit",
@@ -54,30 +55,34 @@ const upcoming = computed(() =>
   props.agenda.planned.filter((b: any) => b.kind !== "sleep").slice(0, 18),
 );
 const description = (b: any) =>
-  `${clock(b.start)} — ${clock(b.end)} · ${b.title} · ${b.label || ({ rest: "休息建议", free: "自由安排", sleep: "作息安排" } as any)[b.kind] || "已发生"}`;
+  `${clock(b.start)} — ${clock(b.end)} · ${b.title} · ${b.label || ({ rest: t("休息建议"), free: t("自由安排"), sleep: t("作息安排") } as any)[b.kind] || t("已发生")}`;
 const investment = (b: any) =>
   b.engagedMs === null
-    ? "此前时长未单独记录"
-    : `实际投入 ${Math.floor(b.engagedMs / 60000)} 分钟`;
+    ? t("此前时长未单独记录")
+    : t("实际投入 {v} 分钟", { v: Math.floor(b.engagedMs / 60000) });
 </script>
 <template>
-  <section class="card day-agenda" aria-label="今日时间表">
+  <section class="card day-agenda" :aria-label="t('今日时间表')">
     <div class="agenda-heading">
       <div>
         <span class="eyebrow">{{ agenda.date }}</span>
-        <h2>今日时间表</h2>
+        <h2>{{ t("今日时间表") }}</h2>
       </div>
-      <div class="agenda-range" role="group" aria-label="时间表显示范围">
-        <button :aria-pressed="nearby" @click="nearby = true">此刻附近</button>
-        <button :aria-pressed="!nearby" @click="nearby = false">全天</button>
+      <div class="agenda-range" role="group" :aria-label="t('时间表显示范围')">
+        <button :aria-pressed="nearby" @click="nearby = true">
+          {{ t("此刻附近") }}
+        </button>
+        <button :aria-pressed="!nearby" @click="nearby = false">
+          {{ t("全天") }}
+        </button>
       </div>
     </div>
     <p class="muted">{{ agenda.note }}</p>
     <div class="agenda-legend">
-      <span class="legend-actual">实际时段</span
-      ><span class="legend-plan">选定的安排</span
-      ><span class="legend-free">作息 / 空白</span
-      ><span class="legend-point">● 伴随交流</span>
+      <span class="legend-actual">{{ t("实际时段") }}</span
+      ><span class="legend-plan">{{ t("选定的安排") }}</span
+      ><span class="legend-free">{{ t("作息 / 空白") }}</span
+      ><span class="legend-point">{{ t("● 伴随交流") }}</span>
     </div>
     <div class="agenda-chart">
       <div class="agenda-axis">
@@ -89,7 +94,7 @@ const investment = (b: any) =>
         >
       </div>
       <div class="agenda-lane">
-        <span class="lane-label">已发生</span>
+        <span class="lane-label">{{ t("已发生") }}</span>
         <div class="lane-track">
           <i
             v-for="(at, i) in ticks.slice(0, -1)"
@@ -114,18 +119,18 @@ const investment = (b: any) =>
             :key="p.id"
             class="agenda-interaction"
             :style="{ left: position(p.at) + '%' }"
-            :title="clock(p.at) + ' · 伴随交流'"
+            :title="clock(p.at) + t(' · 伴随交流')"
           ></span>
           <span
             v-if="position(agenda.now) >= 0 && position(agenda.now) <= 100"
             class="agenda-now"
             :style="{ left: position(agenda.now) + '%' }"
-            ><small>现在</small></span
+            ><small>{{ t("现在") }}</small></span
           >
         </div>
       </div>
       <div class="agenda-lane">
-        <span class="lane-label">接下来</span>
+        <span class="lane-label">{{ t("接下来") }}</span>
         <div class="lane-track">
           <i
             v-for="(at, i) in ticks.slice(0, -1)"
@@ -154,7 +159,11 @@ const investment = (b: any) =>
       </div>
     </div>
     <details v-if="agenda.actual.length" class="agenda-history">
-      <summary>已经走过的时段 · {{ agenda.actual.length }} 段</summary>
+      <summary>
+        {{
+          t("已经走过的时段 · {length} 段", { length: agenda.actual.length })
+        }}
+      </summary>
       <ol class="agenda-itinerary">
         <li v-for="b in agenda.actual" :key="b.id">
           <time>{{ clock(b.start) }}<br />{{ clock(b.end) }}</time>
@@ -166,10 +175,12 @@ const investment = (b: any) =>
         </li>
       </ol>
     </details>
-    <p v-else class="faint">今天还没有活动记录，实际开始后会显示在上方。</p>
-    <h3>她定下的安排</h3>
+    <p v-else class="faint">
+      {{ t("今天还没有活动记录，实际开始后会显示在上方。") }}
+    </p>
+    <h3>{{ t("她定下的安排") }}</h3>
     <p v-if="!upcoming.length" class="faint">
-      还没有选定活动时间，留白由她再决定，不按待办队列填满。
+      {{ t("还没有选定活动时间，留白由她再决定，不按待办队列填满。") }}
     </p>
     <ol class="agenda-itinerary">
       <li v-for="b in upcoming" :key="b.id" :data-kind="b.kind">
@@ -178,48 +189,58 @@ const investment = (b: any) =>
           <template v-if="b.taskId"
             ><button class="text-button" @click="emit('task', b.taskId)">
               {{ b.title }}</button
-            ><small
-              >{{ b.label }} ·
-              {{
-                b.kindOfTask === "plan"
-                  ? "自己的安排"
-                  : b.kindOfTask === "promise"
-                    ? "答应的事"
-                    : "外部建议"
-              }}
-              · {{ b.durationMinutes }} 分钟 · {{ b.scope }}</small
-            >
+            ><small>{{
+              t("{label} · {v} · {durationMinutes} 分钟 · {scope}", {
+                label: b.label,
+                v:
+                  b.kindOfTask === "plan"
+                    ? t("自己的安排")
+                    : b.kindOfTask === "promise"
+                      ? t("答应的事")
+                      : t("外部建议"),
+                durationMinutes: b.durationMinutes,
+                scope: b.scope,
+              })
+            }}</small>
             <p v-if="b.why" class="muted">{{ b.why }}</p></template
           >
           <template v-else
             ><b>{{ b.title }}</b
             ><small>{{
               b.kind === "free"
-                ? "可以想自己的事，也可以歇着；不算已做过"
-                : "预计，做完眼前这段再调整"
+                ? t("可以想自己的事，也可以歇着；不算已做过")
+                : t("预计，做完眼前这段再调整")
             }}</small></template
           >
           <p v-if="b.interruptedAt" class="faint">
             {{ clock(b.interruptedAt) }}
             {{
               b.interruption === "sleep"
-                ? "进入睡眠安排，醒来后再选择续接时间。"
-                : "有更高优先级安排，届时先让位，之后再选续接时间。"
+                ? t("进入睡眠安排，醒来后再选择续接时间。")
+                : t("有更高优先级安排，届时先让位，之后再选续接时间。")
             }}
           </p>
         </div>
       </li>
     </ol>
     <p v-if="agenda.planned.some((b: any) => b.kind === 'sleep')" class="faint">
-      睡眠安排：{{
-        agenda.planned
-          .filter((b: any) => b.kind === "sleep")
-          .map((b: any) => clock(b.start) + " — " + clock(b.end))
-          .join("、")
+      {{
+        t("睡眠安排：{v}", {
+          v: agenda.planned
+            .filter((b: any) => b.kind === "sleep")
+            .map((b: any) => clock(b.start) + " — " + clock(b.end))
+            .join("、"),
+        })
       }}
     </p>
     <details v-if="agenda.unarranged?.length" class="agenda-waiting" open>
-      <summary>已记下，还没选时间 · {{ agenda.unarranged.length }} 件</summary>
+      <summary>
+        {{
+          t("已记下，还没选时间 · {length} 件", {
+            length: agenda.unarranged.length,
+          })
+        }}
+      </summary>
       <ul>
         <li v-for="item in agenda.unarranged" :key="item.id">
           <button class="text-button" @click="emit('task', item.id)">
@@ -230,7 +251,13 @@ const investment = (b: any) =>
       </ul>
     </details>
     <details v-if="agenda.paused?.length" class="agenda-waiting" open>
-      <summary>暂时停下来，进度保留 · {{ agenda.paused.length }} 件</summary>
+      <summary>
+        {{
+          t("暂时停下来，进度保留 · {length} 件", {
+            length: agenda.paused.length,
+          })
+        }}
+      </summary>
       <ul>
         <li v-for="item in agenda.paused" :key="item.id">
           <button class="text-button" @click="emit('task', item.id)">
@@ -241,7 +268,13 @@ const investment = (b: any) =>
       </ul>
     </details>
     <details v-if="agenda.waiting.length" class="agenda-waiting" open>
-      <summary>需要条件或调整约定 · {{ agenda.waiting.length }} 件</summary>
+      <summary>
+        {{
+          t("需要条件或调整约定 · {length} 件", {
+            length: agenda.waiting.length,
+          })
+        }}
+      </summary>
       <ul>
         <li v-for="item in agenda.waiting" :key="item.id">
           <button class="text-button" @click="emit('task', item.id)">

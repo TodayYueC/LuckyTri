@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { reactive } from "vue";
 
 interface Request {
@@ -31,9 +32,10 @@ function open(kind: Request["kind"], message: string, options: Options) {
     dialogs.queue.push({
       kind,
       message,
-      title: options.title ?? (kind === "confirm" ? "想确认一下" : "请填写"),
-      confirmText: options.confirmText ?? "确定",
-      cancelText: options.cancelText ?? "取消",
+      title:
+        options.title ?? (kind === "confirm" ? t("想确认一下") : t("请填写")),
+      confirmText: options.confirmText ?? t("确定"),
+      cancelText: options.cancelText ?? t("取消"),
       danger: Boolean(options.danger),
       secret: Boolean(options.secret),
       placeholder: options.placeholder ?? "",

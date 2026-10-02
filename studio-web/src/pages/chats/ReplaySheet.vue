@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, N_, localized } from "../../i18n";
 import { ref, watch } from "vue";
 import { toast } from "../../api";
 import { getTrace, listTraces, replayRange } from "../../plates/live";
@@ -12,33 +13,31 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ close: []; load: [] }>();
 
-const STATUS: Record<string, string> = {
-  sent: "开口了",
-  silent: "没出声",
-  glanced: "扫了一眼",
-  deferred: "睡着了",
-  running: "处理中",
-  error: "失败",
-  complete: "完成",
-  stale: "旧稿作废",
-  cancelled: "已取消",
-  interrupted: "已中断",
-};
-const MODE_LABELS: Record<string, string> = {
-  live: "真实聊天",
-  demo: "模拟预览",
-  replay: "测试回放",
-  memory: "记忆整理",
-  summary: "语境压缩",
-};
+const STATUS: Record<string, string> = localized({
+  sent: N_("开口了"),
+  silent: N_("没出声"),
+  glanced: N_("扫了一眼"),
+  deferred: N_("睡着了"),
+  running: N_("处理中"),
+  error: N_("失败"),
+  complete: N_("完成"),
+  stale: N_("旧稿作废"),
+  cancelled: N_("已取消"),
+  interrupted: N_("已中断"),
+});
+const MODE_LABELS: Record<string, string> = localized({
+  live: N_("真实聊天"),
+  demo: N_("模拟预览"),
+  replay: N_("测试回放"),
+  memory: N_("记忆整理"),
+  summary: N_("语境压缩"),
+});
 const traces = ref<any[]>([]);
 const selected = ref<any>(null);
 const from = ref("");
 const to = ref("");
 const busy = ref(false);
-const detail = ref(
-  "选择一条处理记录，查看最终上下文、Prompt、原始输出、Token 与耗时。",
-);
+const detail = ref("");
 
 async function loadTraces() {
   if (!props.sessionId) return;
@@ -56,14 +55,14 @@ async function replay() {
   if (busy.value) return;
   busy.value = true;
   try {
-    toast("回放正在运行");
+    toast(t("回放正在运行"));
     const result = await replayRange({
       session: props.sessionId,
       from: Number(from.value),
       to: Number(to.value),
     });
     detail.value = JSON.stringify(result, null, 2);
-    toast("回放结束");
+    toast(t("回放结束"));
     await loadTraces();
   } catch (error) {
     toast((error as Error).message, true);
@@ -79,7 +78,12 @@ async function openTrace(id: string) {
 
 function tokenSummary(tokens: any) {
   if (!tokens) return "—";
-  return `输入 ${num(tokens.input)}（缓存读 ${num(tokens.cachedRead)} / 写 ${num(tokens.cacheWrite)}）· 输出 ${num(tokens.output)}`;
+  return t("输入 {v}（缓存读 {v2} / 写 {v3}）· 输出 {v4}", {
+    v: num(tokens.input),
+    v2: num(tokens.cachedRead),
+    v3: num(tokens.cacheWrite),
+    v4: num(tokens.output),
+  });
 }
 
 watch(
@@ -100,7 +104,7 @@ watch(() => props.events.length, range);
 <template>
   <Sheet
     :open="open"
-    title="回到那一刻"
+    :title="t('回到那一刻')"
     eyebrow="REPLAY"
     width="1180px"
     @close="emit('close')"
@@ -108,7 +112,7 @@ watch(() => props.events.length, range);
     <div class="replay">
       <section class="col source">
         <div class="col-head">
-          <h3>历史消息</h3>
+          <h3>{{ t("历史消息") }}</h3>
           <button
             id="loadMessages"
             class="small"
@@ -117,16 +121,16 @@ watch(() => props.events.length, range);
               loadTraces();
             "
           >
-            ↻ 加载
+            {{ t("↻ 加载") }}
           </button>
         </div>
         <div id="events" class="scroll-pane">
           <table v-if="events.length">
             <thead>
               <tr>
-                <th>序号</th>
-                <th>发送者</th>
-                <th>消息</th>
+                <th>{{ t("序号") }}</th>
+                <th>{{ t("发送者") }}</th>
+                <th>{{ t("消息") }}</th>
               </tr>
             </thead>
             <tbody>
@@ -137,67 +141,78 @@ watch(() => props.events.length, range);
               </tr>
             </tbody>
           </table>
-          <p v-else class="muted">当前会话暂无历史消息。</p>
+          <p v-else class="muted">{{ t("当前会话暂无历史消息。") }}</p>
         </div>
         <form class="range" @submit.prevent="replay">
           <label
-            >起始序号<input v-model="from" name="from" type="number" required
+            >{{ t("起始序号")
+            }}<input v-model="from" name="from" type="number" required
           /></label>
           <label
-            >截止序号<input v-model="to" name="to" type="number" required
+            >{{ t("截止序号")
+            }}<input v-model="to" name="to" type="number" required
           /></label>
           <button
             id="replay"
             class="primary"
             :disabled="busy || !events.length"
           >
-            {{ busy ? "正在回放…" : "回放这段对话" }}
+            {{ busy ? t("正在回放…") : t("回放这段对话") }}
           </button>
           <p class="faint">
-            隔离回放：只测试回复，不发送 QQ，不修改真实记忆和 TA 的心智。
+            {{
+              t("隔离回放：只测试回复，不发送 QQ，不修改真实记忆和 TA 的心智。")
+            }}
           </p>
         </form>
       </section>
       <section class="col">
-        <div class="col-head"><h3>处理记录</h3></div>
+        <div class="col-head">
+          <h3>{{ t("处理记录") }}</h3>
+        </div>
         <div id="traces" class="scroll-pane">
           <button
-            v-for="t in traces"
-            :key="t.id"
-            :data-trace="t.id"
+            v-for="run in traces"
+            :key="run.id"
+            :data-trace="run.id"
             class="trace-row"
-            :class="{ selected: selected?.id === t.id }"
-            @click="openTrace(t.id)"
+            :class="{ selected: selected?.id === run.id }"
+            @click="openTrace(run.id)"
           >
             <span
-              ><time>{{ clockTime(t.time) }}</time
+              ><time>{{ clockTime(run.time) }}</time
               ><small
                 class="chip"
-                :data-tone="t.status === 'error' ? 'danger' : 'quiet'"
-                >{{ STATUS[t.status] || t.status }}</small
+                :data-tone="run.status === 'error' ? 'danger' : 'quiet'"
+                >{{ STATUS[run.status] || run.status }}</small
               ></span
             >
-            <p>{{ t.reason || t.error || "查看处理详情" }}</p>
+            <p>{{ run.reason || run.error || t("查看处理详情") }}</p>
           </button>
           <p v-if="!traces.length" class="muted">
-            有新的消息处理记录后会显示在这里。
+            {{ t("有新的消息处理记录后会显示在这里。") }}
           </p>
         </div>
       </section>
       <section class="col">
-        <div class="col-head"><h3>运行详情</h3></div>
+        <div class="col-head">
+          <h3>{{ t("运行详情") }}</h3>
+        </div>
         <div class="scroll-pane inspect">
           <div v-if="selected" class="metrics">
             <span
-              >模式<b>{{
-                MODE_LABELS[selected.mode] || selected.mode
+              >{{ t("模式")
+              }}<b>{{ MODE_LABELS[selected.mode] || selected.mode }}</b></span
+            >
+            <span
+              >{{ t("耗时")
+              }}<b>{{ selected.data?.elapsed ?? "—" }} ms</b></span
+            >
+            <span
+              >{{ t("模型调用")
+              }}<b>{{
+                t("{v} 次", { v: selected.data?.calls?.length ?? 0 })
               }}</b></span
-            >
-            <span
-              >耗时<b>{{ selected.data?.elapsed ?? "—" }} ms</b></span
-            >
-            <span
-              >模型调用<b>{{ selected.data?.calls?.length ?? 0 }} 次</b></span
             >
             <span id="traceTokens"
               >Token<b>{{ tokenSummary(selected.data?.tokens) }}</b></span
@@ -207,10 +222,15 @@ watch(() => props.events.length, range);
             {{
               selected.reason ||
               selected.data?.decision?.reason ||
-              "展开下方查看上下文、模型输入与原始输出。"
+              t("展开下方查看上下文、模型输入与原始输出。")
             }}
           </p>
-          <pre id="traceDetail">{{ detail }}</pre>
+          <pre id="traceDetail">{{
+            detail ||
+            t(
+              "选择一条处理记录，查看最终上下文、Prompt、原始输出、Token 与耗时。",
+            )
+          }}</pre>
         </div>
       </section>
     </div>

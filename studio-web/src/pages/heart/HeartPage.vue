@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from "../../i18n";
 import { computed, ref, shallowRef, watch } from "vue";
 import { usePageActivity } from "../../page-activity";
 import { readSnapshot } from "../../api";
@@ -39,12 +40,16 @@ const chosen = ref<any>(null);
 const history = ref<any[]>([]);
 
 const threads = computed(() =>
-  (self.value?.threads || []).filter((t: any) => t.status !== "closed"),
+  (self.value?.threads || []).filter(
+    (strand: any) => strand.status !== "closed",
+  ),
 );
 const listVisibleLimit = 4;
 const expandedGroups = ref<Record<string, boolean>>({});
 const closed = computed(() =>
-  (self.value?.threads || []).filter((t: any) => t.status === "closed"),
+  (self.value?.threads || []).filter(
+    (strand: any) => strand.status === "closed",
+  ),
 );
 const groups = computed(() => {
   const kinds = self.value?.kinds || {};
@@ -52,16 +57,16 @@ const groups = computed(() => {
     .map(([kind, label]) => ({
       kind,
       label: label as string,
-      threads: threads.value.filter((t: any) => t.kind === kind),
+      threads: threads.value.filter((strand: any) => strand.kind === kind),
     }))
     .filter((g) => g.threads.length);
 });
 
-function tag(t: any) {
-  if (t.core) return "TA 最核心的部分";
-  if (t.faded) return "在远方：很久没被触及";
-  if (t.fading) return "慢慢淡出";
-  return SELF_STATUS[t.status] || t.status;
+function tag(strand: any) {
+  if (strand.core) return t("TA 最核心的部分");
+  if (strand.faded) return t("在远方：很久没被触及");
+  if (strand.fading) return t("慢慢淡出");
+  return SELF_STATUS[strand.status] || strand.status;
 }
 
 function visibleGroupThreads(group: (typeof groups.value)[number]) {
@@ -91,7 +96,8 @@ async function load() {
   thoughts.value = l;
   if (chosen.value)
     chosen.value =
-      s.threads.find((t: any) => t.thread === chosen.value.thread) || null;
+      s.threads.find((strand: any) => strand.thread === chosen.value.thread) ||
+      null;
 }
 
 async function search(q: string) {
@@ -101,26 +107,29 @@ async function search(q: string) {
   if (sequence === loadSequence) thoughts.value = result;
 }
 
-async function open(t: any) {
-  chosen.value = t;
+async function open(strand: any) {
+  chosen.value = strand;
   history.value = [];
-  history.value = await mind.thread(t.thread);
+  history.value = await mind.thread(strand.thread);
 }
 
-async function revoke(t: any) {
+async function revoke(strand: any) {
   const reason = await askText(
-    `撤销「${t.content}」？撤销后 TA 不会再这样认为，之后的独处也不会把它写回来。可以写下原因（可不填）：`,
+    t(
+      "撤销「{content}」？撤销后 TA 不会再这样认为，之后的独处也不会把它写回来。可以写下原因（可不填）：",
+      { content: strand.content },
+    ),
     {
-      title: "撤销这条线索",
-      confirmText: "撤销",
+      title: t("撤销这条线索"),
+      confirmText: t("撤销"),
       danger: true,
-      placeholder: "原因",
+      placeholder: t("原因"),
     },
   );
   if (reason === null) return;
   try {
-    await mind.revoke("self", t.thread, reason);
-    toast("已撤销");
+    await mind.revoke("self", strand.thread, reason);
+    toast(t("已撤销"));
     chosen.value = null;
     await load();
   } catch (error) {
@@ -154,15 +163,17 @@ usePageActivity("heart", load);
     <div class="heart-bar">
       <Tabs
         v-model="view"
-        label="内心的分区"
+        :label="t('内心的分区')"
         :items="[
-          { key: 'stars', label: '心灵星图', count: threads.length },
-          { key: 'list', label: '线索清单' },
-          { key: 'notes', label: '放在心上', count: thoughts.length },
+          { key: 'stars', label: t('心灵星图'), count: threads.length },
+          { key: 'list', label: t('线索清单') },
+          { key: 'notes', label: t('放在心上'), count: thoughts.length },
         ]"
       />
       <p v-if="view !== 'notes'" class="muted">
-        她从真实经历里慢慢认识自己。点开一条线索，可以看到它如何变化。
+        {{
+          t("她从真实经历里慢慢认识自己。点开一条线索，可以看到它如何变化。")
+        }}
       </p>
     </div>
 
@@ -177,8 +188,12 @@ usePageActivity("heart", load);
         />
         <Empty
           v-else
-          title="TA 还没有长出关于自己的东西"
-          text="聊得多了、独处过、写过日记，TA 会慢慢发现自己喜欢什么、怎么看事情、想做什么。天性只是种子。"
+          :title="t('TA 还没有长出关于自己的东西')"
+          :text="
+            t(
+              '聊得多了、独处过、写过日记，TA 会慢慢发现自己喜欢什么、怎么看事情、想做什么。天性只是种子。',
+            )
+          "
         />
       </template>
 
@@ -194,23 +209,25 @@ usePageActivity("heart", load);
             {{ g.threads.length }}
           </h2>
           <button
-            v-for="t in visibleGroupThreads(g)"
-            :key="t.thread"
+            v-for="strand in visibleGroupThreads(g)"
+            :key="strand.thread"
             class="thread"
-            :class="{ faded: t.faded, core: t.core }"
-            :data-thread="t.thread"
-            @click="open(t)"
+            :class="{ faded: strand.faded, core: strand.core }"
+            :data-thread="strand.thread"
+            @click="open(strand)"
           >
             <span
               class="chip"
-              :data-tone="t.faded || t.fading ? 'quiet' : undefined"
-              >{{ tag(t) }}</span
+              :data-tone="strand.faded || strand.fading ? 'quiet' : undefined"
+              >{{ tag(strand) }}</span
             >
-            <span class="thread-text">{{ t.content }}</span>
+            <span class="thread-text">{{ strand.content }}</span>
             <small
-              >强度 {{ percent(t.strength)
-              }}<template v-if="t.salience !== null">
-                · 此刻的分量 {{ percent(t.salience) }}</template
+              >{{ t("强度 {v}", { v: percent(strand.strength) })
+              }}<template v-if="strand.salience !== null">
+                {{
+                  t("· 此刻的分量 {v}", { v: percent(strand.salience) })
+                }}</template
               ></small
             >
           </button>
@@ -223,8 +240,10 @@ usePageActivity("heart", load);
           >
             {{
               expandedGroups[g.kind]
-                ? "收起线索"
-                : `再看 ${g.threads.length - listVisibleLimit} 条线索`
+                ? t("收起线索")
+                : t("再看 {v} 条线索", {
+                    v: g.threads.length - listVisibleLimit,
+                  })
             }}
             <span aria-hidden="true">{{
               expandedGroups[g.kind] ? "↑" : "↓"
@@ -233,8 +252,8 @@ usePageActivity("heart", load);
         </div>
         <Empty
           v-if="!groups.length"
-          title="TA 还没有长出关于自己的东西"
-          text="天性只是种子，其余的都从经历里来。"
+          :title="t('TA 还没有长出关于自己的东西')"
+          :text="t('天性只是种子，其余的都从经历里来。')"
         />
       </section>
 
@@ -250,26 +269,30 @@ usePageActivity("heart", load);
       <div v-if="view !== 'notes'" class="grid-2 set-aside">
         <details class="card fold">
           <summary>
-            <span class="eyebrow">放下</span>
-            <b>TA 自己放下的 · {{ closed.length }}</b>
+            <span class="eyebrow">{{ t("放下") }}</span>
+            <b>{{
+              t("TA 自己放下的 · {length}", { length: closed.length })
+            }}</b>
           </summary>
           <ul v-if="closed.length" class="list">
-            <li v-for="t in closed" :key="t.thread" class="list-row">
-              <span class="chip" data-tone="quiet">放下</span>
-              <span class="grow">{{ t.content }}</span>
-              <time class="faint">{{ when(t.created) }}</time>
+            <li v-for="strand in closed" :key="strand.thread" class="list-row">
+              <span class="chip" data-tone="quiet">{{ t("放下") }}</span>
+              <span class="grow">{{ strand.content }}</span>
+              <time class="faint">{{ when(strand.created) }}</time>
             </li>
           </ul>
-          <p v-else class="muted">没有。</p>
+          <p v-else class="muted">{{ t("没有。") }}</p>
         </details>
         <details class="card fold">
           <summary>
-            <span class="eyebrow">撤销</span>
-            <b>你撤销过的 · {{ self.revoked.length }}</b>
+            <span class="eyebrow">{{ t("撤销") }}</span>
+            <b>{{
+              t("你撤销过的 · {length}", { length: self.revoked.length })
+            }}</b>
           </summary>
           <ul v-if="self.revoked.length" class="list">
             <li v-for="r in self.revoked" :key="r.id" class="list-row">
-              <span class="chip" data-tone="danger">撤销</span>
+              <span class="chip" data-tone="danger">{{ t("撤销") }}</span>
               <span class="grow"
                 >{{ r.content
                 }}<small v-if="r.reason" class="faint">
@@ -279,7 +302,7 @@ usePageActivity("heart", load);
               <time class="faint">{{ when(r.created) }}</time>
             </li>
           </ul>
-          <p v-else class="muted">没有。</p>
+          <p v-else class="muted">{{ t("没有。") }}</p>
         </details>
       </div>
     </template>
@@ -287,7 +310,7 @@ usePageActivity("heart", load);
     <Sheet
       :open="Boolean(chosen)"
       :title="chosen ? self?.kinds?.[chosen.kind] || chosen.kind : ''"
-      eyebrow="一颗星"
+      :eyebrow="t('一颗星')"
       @close="chosen = null"
     >
       <div v-if="chosen" class="thread-sheet stack">
@@ -299,24 +322,28 @@ usePageActivity("heart", load);
           }}</span>
         </div>
         <div class="stack tight">
-          <Meter label="强度" :value="chosen.strength" />
+          <Meter :label="t('强度')" :value="chosen.strength" />
           <Meter
             v-if="chosen.salience !== null"
-            label="此刻的分量"
+            :label="t('此刻的分量')"
             :value="chosen.salience"
           />
         </div>
         <dl class="kv">
-          <dt>经历的天数</dt>
-          <dd>{{ chosen.days.length }} 天</dd>
-          <dt>来源</dt>
-          <dd>{{ chosen.sources.length }} 处</dd>
-          <dt>最近一次被触及</dt>
+          <dt>{{ t("经历的天数") }}</dt>
+          <dd>{{ t("{length} 天", { length: chosen.days.length }) }}</dd>
+          <dt>{{ t("来源") }}</dt>
+          <dd>{{ t("{length} 处", { length: chosen.sources.length }) }}</dd>
+          <dt>{{ t("最近一次被触及") }}</dt>
           <dd>{{ when(chosen.created) }}</dd>
         </dl>
         <section>
           <h3 class="sheet-title">
-            怎么变成现在这样的 · {{ chosen.versions }} 个版本
+            {{
+              t("怎么变成现在这样的 · {versions} 个版本", {
+                versions: chosen.versions,
+              })
+            }}
           </h3>
           <ol class="versions">
             <li v-for="v in history" :key="v.id">
@@ -327,10 +354,14 @@ usePageActivity("heart", load);
           </ol>
         </section>
         <button class="danger" data-revoke-thread @click="revoke(chosen)">
-          撤销这条线索
+          {{ t("撤销这条线索") }}
         </button>
         <p class="faint">
-          撤销后 TA 不会再这样认为；这只是拿走一段理解，不会改写发生过的事。
+          {{
+            t(
+              "撤销后 TA 不会再这样认为；这只是拿走一段理解，不会改写发生过的事。",
+            )
+          }}
         </p>
       </div>
     </Sheet>

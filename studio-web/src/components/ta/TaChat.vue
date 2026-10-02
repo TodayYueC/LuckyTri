@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, N_ } from "../../i18n";
 import { nextTick, ref } from "vue";
 import { mind, CHOICE_LABELS } from "../../plates/mind";
 import { sessionChoices } from "../../format";
@@ -29,9 +30,7 @@ const history = ref<Line[]>([]);
 const text = ref(props.starter);
 const viewSession = ref("");
 const busy = ref(false);
-const meta = ref(
-  "试聊走真实链路：读取 TA 此刻的心智和记忆，但不写入，也不发 QQ。配置了模型时会消耗 Token。",
-);
+const meta = ref("");
 const log = ref<HTMLElement>();
 
 async function scrollDown() {
@@ -69,11 +68,15 @@ async function send() {
     else
       history.value.push({
         role: "assistant",
-        text: "（TA 没有出声）",
-        note: CHOICE_LABELS[r.choice] || "没出声",
+        text: t("（TA 没有出声）"),
+        note: CHOICE_LABELS[r.choice] || t("没出声"),
         why: r.reason,
       });
-    meta.value = `${r.mode === "model" ? "真实模型" : "本地样例（没有模型档案）"} · 心情${r.mood || "平静"} · ${r.latency} ms`;
+    meta.value = t("{v} · 心情{v2} · {latency} ms", {
+      v: r.mode === "model" ? t("真实模型") : t("本地样例（没有模型档案）"),
+      v2: r.mood || t("平静"),
+      latency: r.latency,
+    });
   } catch (error) {
     history.value.pop();
     text.value = said;
@@ -91,7 +94,14 @@ function clear() {
 
 <template>
   <div class="ta-chat" :id="anchored ? 'ta-preview' : undefined">
-    <p class="preview-meta" role="status">{{ meta }}</p>
+    <p class="preview-meta" role="status">
+      {{
+        meta ||
+        t(
+          "试聊走真实链路：读取 TA 此刻的心智和记忆，但不写入，也不发 QQ。配置了模型时会消耗 Token。",
+        )
+      }}
+    </p>
     <div
       :id="anchored ? 'previewMessages' : undefined"
       ref="log"
@@ -99,8 +109,8 @@ function clear() {
     >
       <Empty
         v-if="!history.length && !busy"
-        title="TA 会先理解，再决定说不说"
-        text="回应会显示 TA 的选择和当时的想法。"
+        :title="t('TA 会先理解，再决定说不说')"
+        :text="t('回应会显示 TA 的选择和当时的想法。')"
       />
       <article
         v-for="(line, i) in history"
@@ -113,11 +123,11 @@ function clear() {
         </template>
         <p v-else>{{ line.text }}</p>
         <details v-if="line.note || line.why" class="why">
-          <summary>{{ line.note || "为什么" }}</summary>
-          <p>{{ line.why || "没有留下理由。" }}</p>
+          <summary>{{ line.note || t("为什么") }}</summary>
+          <p>{{ line.why || t("没有留下理由。") }}</p>
         </details>
       </article>
-      <div v-if="busy" class="typing" aria-label="TA 在想">
+      <div v-if="busy" class="typing" :aria-label="t('TA 在想')">
         <i></i><i></i><i></i>
       </div>
     </div>
@@ -128,13 +138,13 @@ function clear() {
     >
       <div class="ta-chat-options">
         <label class="where">
-          <span>想象在这里</span>
+          <span>{{ t("想象在这里") }}</span>
           <Select
             v-model="viewSession"
             name="viewSession"
-            aria-label="想象在这里"
+            :aria-label="t('想象在这里')"
             :options="[
-              { value: '', label: '一段新的私聊' },
+              { value: '', label: t('一段新的私聊') },
               ...sessionChoices(sessions),
             ]"
           />
@@ -146,20 +156,20 @@ function clear() {
           :disabled="!history.length"
           @click="clear"
         >
-          清空
+          {{ t("清空") }}
         </button>
       </div>
       <div class="composer">
         <input
           v-model="text"
           name="text"
-          placeholder="说一句试试…"
+          :placeholder="t('说一句试试…')"
           required
           maxlength="1000"
           autocomplete="off"
         />
         <button class="primary" :disabled="busy">
-          {{ busy ? "TA 在想…" : "说" }}
+          {{ busy ? t("TA 在想…") : t("说") }}
         </button>
       </div>
     </form>

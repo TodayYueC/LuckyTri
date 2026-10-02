@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t, N_, localized } from "../../i18n";
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
 import { toast } from "../../api";
 import { reload, studio } from "../../stores/studio";
@@ -11,32 +12,52 @@ import Card from "../../components/ui/Card.vue";
 import RhythmClock from "./RhythmClock.vue";
 import Select from "../../components/ui/Select.vue";
 
-const TRAITS = [
+const TRAITS = localized([
   {
     key: "warmth",
-    label: "温柔",
-    low: "颜色偏冷，表情淡淡的",
-    high: "颜色更暖，嘴角上扬",
+    label: N_("温柔"),
+    low: N_("颜色偏冷，表情淡淡的"),
+    high: N_("颜色更暖，嘴角上扬"),
   },
-  { key: "sarcasm", label: "毒舌", low: "不挖苦人", high: "嘴角一歪，会吐槽" },
-  { key: "humor", label: "幽默", low: "认真", high: "眯眼笑，爱开玩笑" },
-  { key: "activity", label: "活泼", low: "安安静静", high: "跳得更快" },
-  { key: "initiative", label: "主动", low: "更喜欢独处", high: "更愿意分享" },
-] as const;
-const PROMPT_NAMES: Record<string, string> = {
-  system: "系统指令",
-  turn: "看见与开口",
-  expression: "自己的念头",
-  initiative: "分享与发起",
-  generation: "重新措辞",
-  validation: "回复检查",
-  memory: "记忆整理",
-  vision: "图片理解",
-  summary: "上下文压缩",
-  summaryMerge: "摘要合并",
-  reflection: "独处",
-  daily: "日记",
-};
+  {
+    key: "sarcasm",
+    label: N_("毒舌"),
+    low: N_("不挖苦人"),
+    high: N_("嘴角一歪，会吐槽"),
+  },
+  {
+    key: "humor",
+    label: N_("幽默"),
+    low: N_("认真"),
+    high: N_("眯眼笑，爱开玩笑"),
+  },
+  {
+    key: "activity",
+    label: N_("活泼"),
+    low: N_("安安静静"),
+    high: N_("跳得更快"),
+  },
+  {
+    key: "initiative",
+    label: N_("主动"),
+    low: N_("更喜欢独处"),
+    high: N_("更愿意分享"),
+  },
+] as const);
+const PROMPT_NAMES: Record<string, string> = localized({
+  system: N_("系统指令"),
+  turn: N_("看见与开口"),
+  expression: N_("自己的念头"),
+  initiative: N_("分享与发起"),
+  generation: N_("重新措辞"),
+  validation: N_("回复检查"),
+  memory: N_("记忆整理"),
+  vision: N_("图片理解"),
+  summary: N_("上下文压缩"),
+  summaryMerge: N_("摘要合并"),
+  reflection: N_("独处"),
+  daily: N_("日记"),
+});
 
 const draft = ref<any>(null);
 const aliases = ref(String(studio.health.settings.aliases || ""));
@@ -67,7 +88,7 @@ const natureEdits = computed(() => {
 const traits = computed(() =>
   draft.value
     ? Object.fromEntries(
-        TRAITS.map((t) => [t.key, Number(draft.value[t.key]) || 0]),
+        TRAITS.map((facet) => [facet.key, Number(draft.value[facet.key]) || 0]),
       )
     : null,
 );
@@ -94,8 +115,8 @@ const previewNature = computed(() =>
   useDraft.value && draft.value ? natureValue() : null,
 );
 
-function describe(t: (typeof TRAITS)[number]) {
-  return (Number(draft.value?.[t.key]) || 0) >= 50 ? t.high : t.low;
+function describe(facet: (typeof TRAITS)[number]) {
+  return (Number(draft.value?.[facet.key]) || 0) >= 50 ? facet.high : facet.low;
 }
 
 async function load() {
@@ -139,7 +160,7 @@ async function saveNature() {
     traitHistory.value = current.traitHistory || [];
     livedPersona.value = current.livedPersona || "";
     personaHistory.value = current.personaHistory || [];
-    toast("天性已保存，下一次开口时生效");
+    toast(t("天性已保存，下一次开口时生效"));
   } catch (error) {
     toast((error as Error).message, true);
   } finally {
@@ -160,7 +181,7 @@ async function saveSettings() {
     settings.life = { ...result.life };
     settings.budget = { ...result.budget };
     saved("days");
-    toast("TA 的日子已按新设置安排");
+    toast(t("TA 的日子已按新设置安排"));
   } catch (error) {
     toast((error as Error).message, true);
   }
@@ -171,7 +192,7 @@ async function savePrompts() {
     await mind.savePrompts({ ...prompts });
     saved("prompts");
     await reload();
-    toast("指令已保存，下一轮生效");
+    toast(t("指令已保存，下一轮生效"));
   } catch (error) {
     toast((error as Error).message, true);
   }
@@ -200,12 +221,16 @@ onUnmounted(() => {
 
 <template>
   <div v-if="draft" class="page nature">
-    <section class="nature-intro" aria-label="天性预览">
+    <section class="nature-intro" :aria-label="t('天性预览')">
       <div class="nature-intro-copy">
-        <span class="eyebrow">THE WAY SHE GROWS · 天性</span>
-        <h1>她的底色，<br /><em>慢慢长成她自己。</em></h1>
-        <p>一些与生俱来的倾向，会在每一次相遇里长出新的模样。</p>
-        <span class="nature-preview-note"><i></i> 调节刻度，看看此刻的她</span>
+        <span class="eyebrow">{{ t("THE WAY SHE GROWS · 天性") }}</span>
+        <h1>
+          {{ t("她的底色，") }}<br /><em>{{ t("慢慢长成她自己。") }}</em>
+        </h1>
+        <p>{{ t("一些与生俱来的倾向，会在每一次相遇里长出新的模样。") }}</p>
+        <span class="nature-preview-note"
+          ><i></i> {{ t("调节刻度，看看此刻的她") }}</span
+        >
       </div>
       <div class="nature-intro-orb">
         <TaOrb
@@ -217,34 +242,50 @@ onUnmounted(() => {
         />
       </div>
     </section>
-    <section class="lived-persona" aria-label="成长中的性格">
+    <section class="lived-persona" :aria-label="t('成长中的性格')">
       <div class="lived-persona-head">
-        <span class="eyebrow">BECOMING · 正在成为</span>
-        <h2>此刻的她</h2>
+        <span class="eyebrow">{{ t("BECOMING · 正在成为") }}</span>
+        <h2>{{ t("此刻的她") }}</h2>
         <p>
-          天性是起点。下方是她从真实经历里长出的刻度，下一次对话会使用这些值。
+          {{
+            t(
+              "天性是起点。下方是她从真实经历里长出的刻度，下一次对话会使用这些值。",
+            )
+          }}
         </p>
       </div>
       <div class="lived-persona-grid">
-        <div v-for="t in TRAITS" :key="t.key" class="lived-trait">
-          <span>{{ t.label }}</span>
-          <strong>{{ livedTraits[t.key] ?? draft[t.key] }}</strong>
-          <small>起点 {{ draft[t.key] }}</small>
+        <div v-for="facet in TRAITS" :key="facet.key" class="lived-trait">
+          <span>{{ facet.label }}</span>
+          <strong>{{ livedTraits[facet.key] ?? draft[facet.key] }}</strong>
+          <small>{{ t("起点 {v}", { v: draft[facet.key] }) }}</small>
           <div class="lived-trait-track">
-            <i :style="{ width: `${livedTraits[t.key] ?? draft[t.key]}%` }"></i>
+            <i
+              :style="{
+                width: `${livedTraits[facet.key] ?? draft[facet.key]}%`,
+              }"
+            ></i>
           </div>
         </div>
       </div>
       <div class="lived-persona-story">
-        <span class="eyebrow">INNER VOICE · 自己的样子</span>
+        <span class="eyebrow">{{ t("INNER VOICE · 自己的样子") }}</span>
         <p>
           {{
             livedPersona ||
-            "她还没有为现在的自己留下一段新的描述。底色和已有的自我线索仍会陪着她。"
+            t(
+              "她还没有为现在的自己留下一段新的描述。底色和已有的自我线索仍会陪着她。",
+            )
           }}
         </p>
         <details v-if="personaHistory.length">
-          <summary>看看她怎么走到这里 · {{ personaHistory.length }} 版</summary>
+          <summary>
+            {{
+              t("看看她怎么走到这里 · {length} 版", {
+                length: personaHistory.length,
+              })
+            }}
+          </summary>
           <ol>
             <li v-for="item in personaHistory" :key="item.id">
               <span>{{ item.content }}</span
@@ -254,12 +295,17 @@ onUnmounted(() => {
         </details>
       </div>
       <details v-if="traitHistory.length" class="lived-trait-history">
-        <summary>看看她为何改变 · {{ traitHistory.length }} 次</summary>
+        <summary>
+          {{
+            t("看看她为何改变 · {length} 次", { length: traitHistory.length })
+          }}
+        </summary>
         <ol>
           <li v-for="item in traitHistory" :key="item.id">
             <b
               >{{
-                TRAITS.find((t) => t.key === item.trait)?.label || item.trait
+                TRAITS.find((facet) => facet.key === item.trait)?.label ||
+                item.trait
               }}
               {{ item.delta > 0 ? "+" : "" }}{{ item.delta }}</b
             >
@@ -269,7 +315,11 @@ onUnmounted(() => {
         </ol>
       </details>
       <p v-else class="faint">
-        她还没有从经历里改变这些刻度。独处或日记里形成了有来源的新选择后，会留在这里。
+        {{
+          t(
+            "她还没有从经历里改变这些刻度。独处或日记里形成了有来源的新选择后，会留在这里。",
+          )
+        }}
       </p>
     </section>
     <div class="greenhouse">
@@ -278,106 +328,118 @@ onUnmounted(() => {
           <p class="faint" role="status">
             {{
               natureEdits.locked
-                ? "两次更改已经用完。之后的性格、兴趣和样子，由 TA 自己从经历里生长。"
-                : `天性还可以改 ${natureEdits.left} 次，包括性格刻度。用完后由她自己生长。`
+                ? t(
+                    "两次更改已经用完。之后的性格、兴趣和样子，由 TA 自己从经历里生长。",
+                  )
+                : t(
+                    "天性还可以改 {left} 次，包括性格刻度。用完后由她自己生长。",
+                    { left: natureEdits.left },
+                  )
             }}
           </p>
           <header class="editor-head">
-            <span class="eyebrow">塑造 TA</span>
-            <h2>TA 生来是什么样的？</h2>
+            <span class="eyebrow">{{ t("塑造 TA") }}</span>
+            <h2>{{ t("TA 生来是什么样的？") }}</h2>
             <p class="muted">
-              天性是种子：性格、兴趣和底线。TA
-              的自我、在各群的样子、对每个人的感觉都会从经历里长出来——你能看到、能撤销，但不在这里改写。
+              {{
+                t(
+                  "天性是种子：性格、兴趣和底线。TA 的自我、在各群的样子、对每个人的感觉都会从经历里长出来——你能看到、能撤销，但不在这里改写。",
+                )
+              }}
             </p>
           </header>
 
           <fieldset class="nature-fields" :disabled="natureEdits.locked">
             <div class="form-grid">
               <label
-                >名字<input
+                >{{ t("名字")
+                }}<input
                   v-model="draft.name"
                   name="name"
                   required
                   maxlength="40"
               /></label>
               <label>
-                性别
+                {{ t("性别") }}
                 <Select
                   v-model="draft.gender"
                   name="gender"
-                  aria-label="性别"
+                  :aria-label="t('性别')"
                   :options="[
-                    { value: 'female', label: '女' },
-                    { value: 'male', label: '男' },
-                    { value: 'unspecified', label: '不指定' },
+                    { value: 'female', label: t('女') },
+                    { value: 'male', label: t('男') },
+                    { value: 'unspecified', label: t('不指定') },
                   ]"
                 />
-                <small
-                  >人称会进入 TA 对自己的理解。女是「她」，男是「他」。</small
-                >
+                <small>{{
+                  t("人称会进入 TA 对自己的理解。女是「她」，男是「他」。")
+                }}</small>
               </label>
               <label>
-                别人会怎么叫 TA
+                {{ t("别人会怎么叫 TA") }}
                 <input
                   v-model="aliases"
                   name="aliases"
-                  placeholder="用逗号分隔"
+                  :placeholder="t('用逗号分隔')"
                 />
-                <small>群友叫 TA 的称呼，保存时一并写进全局设置</small>
+                <small>{{
+                  t("群友叫 TA 的称呼，保存时一并写进全局设置")
+                }}</small>
               </label>
               <label class="wide">
-                天性
+                {{ t("天性") }}
                 <textarea
                   v-model="draft.base"
                   name="base"
                   rows="6"
-                  placeholder="TA 的背景、性格、兴趣和社交方式…"
+                  :placeholder="t('TA 的背景、性格、兴趣和社交方式…')"
                 ></textarea>
               </label>
             </div>
 
             <fieldset class="traits">
-              <legend>性格刻度</legend>
-              <div v-for="t in TRAITS" :key="t.key" class="trait">
+              <legend>{{ t("性格刻度") }}</legend>
+              <div v-for="facet in TRAITS" :key="facet.key" class="trait">
                 <div class="trait-head">
-                  <b>{{ t.label }}</b>
-                  <small class="muted">{{ describe(t) }}</small>
+                  <b>{{ facet.label }}</b>
+                  <small class="muted">{{ describe(facet) }}</small>
                 </div>
                 <input
-                  v-model.number="draft[t.key]"
+                  v-model.number="draft[facet.key]"
                   type="range"
                   min="0"
                   max="100"
-                  :data-trait="t.key"
-                  :aria-label="`${t.label}刻度`"
+                  :data-trait="facet.key"
+                  :aria-label="t('{label}刻度', { label: facet.label })"
                 />
                 <input
-                  v-model.number="draft[t.key]"
-                  :name="t.key"
+                  v-model.number="draft[facet.key]"
+                  :name="facet.key"
                   type="number"
                   min="0"
                   max="100"
                   class="trait-number"
-                  :aria-label="t.label"
+                  :aria-label="facet.label"
                 />
               </div>
               <label
-                >说话长度<input v-model="draft.length" name="length"
+                >{{ t("说话长度") }}<input v-model="draft.length" name="length"
               /></label>
             </fieldset>
 
             <fieldset class="rhythm-set">
-              <legend>作息</legend>
+              <legend>{{ t("作息") }}</legend>
               <label class="switch">
                 <input
                   v-model="draft.rhythm.enabled"
                   type="checkbox"
                   name="rhythmEnabled"
                 />
-                <span
-                  >TA 会睡觉：睡着时不看群，被私聊或 @
-                  会等醒来再看（危机消息除外）</span
-                >
+                <span>{{
+                  t(
+                    "TA 会睡觉：睡着时不看群，被私聊或 @ 会等醒来再看（危机消息除外）",
+                  )
+                }}</span>
               </label>
               <div class="rhythm-row">
                 <RhythmClock
@@ -389,66 +451,77 @@ onUnmounted(() => {
                 />
                 <div class="stack tight times">
                   <label
-                    >几点睡<input
+                    >{{ t("几点睡")
+                    }}<input
                       v-model="draft.rhythm.sleep"
                       type="time"
                       name="sleep"
                       step="900"
                   /></label>
                   <label
-                    >几点醒<input
+                    >{{ t("几点醒")
+                    }}<input
                       v-model="draft.rhythm.wake"
                       type="time"
                       name="wake"
                       step="900"
                   /></label>
-                  <small class="faint">拖动月亮和太阳，或直接输入时间。</small>
+                  <small class="faint">{{
+                    t("拖动月亮和太阳，或直接输入时间。")
+                  }}</small>
                 </div>
               </div>
             </fieldset>
 
             <fieldset>
-              <legend>兴趣、边界与底线</legend>
+              <legend>{{ t("兴趣、边界与底线") }}</legend>
               <div class="stack tight">
                 <label
-                  >兴趣<input
+                  >{{ t("兴趣")
+                  }}<input
                     v-model="draft.interests"
                     name="interests"
-                    placeholder="用逗号分隔"
+                    :placeholder="t('用逗号分隔')"
                 /></label>
                 <label
-                  >社交边界<input v-model="draft.boundaries" name="boundaries"
+                  >{{ t("社交边界")
+                  }}<input v-model="draft.boundaries" name="boundaries"
                 /></label>
                 <label
-                  >底线（每行一条）<textarea
+                  >{{ t("底线（每行一条）")
+                  }}<textarea
                     v-model="draft.bottomLines"
                     name="bottomLines"
                     rows="4"
                   ></textarea>
                 </label>
                 <label
-                  >不想用的说法（每行一个）<textarea
+                  >{{ t("不想用的说法（每行一个）")
+                  }}<textarea
                     v-model="draft.forbidden"
                     name="forbidden"
                     rows="3"
                   ></textarea>
                 </label>
-                <small class="faint"
-                  >凭据（密码、密钥、验证码）永远不会进入 TA
-                  的心智，这一条写死在代码里。</small
-                >
+                <small class="faint">{{
+                  t(
+                    "凭据（密码、密钥、验证码）永远不会进入 TA 的心智，这一条写死在代码里。",
+                  )
+                }}</small>
               </div>
             </fieldset>
           </fieldset>
 
           <details class="versions">
-            <summary>天性的版本 · {{ versions.length }}</summary>
+            <summary>
+              {{ t("天性的版本 · {length}", { length: versions.length }) }}
+            </summary>
             <ol>
               <li v-for="v in versions" :key="v.version">
-                <span class="chip" data-tone="quiet"
-                  >第 {{ v.version }} 版</span
-                >
-                <span>{{ v.note || "修改" }}</span>
+                <span class="chip" data-tone="quiet">{{
+                  t("第 {version} 版", { version: v.version })
+                }}</span>
+                <span>{{ v.note || t("修改") }}</span>
                 <time class="faint">{{ when(v.created) }}</time>
               </li>
             </ol>
@@ -457,15 +530,19 @@ onUnmounted(() => {
           <div class="save-bar">
             <button class="primary" :disabled="busy || natureEdits.locked">
               {{
-                natureEdits.locked ? "已交给 TA" : busy ? "保存中…" : "保存天性"
+                natureEdits.locked
+                  ? t("已交给 TA")
+                  : busy
+                    ? t("保存中…")
+                    : t("保存天性")
               }}
             </button>
             <span class="faint" role="status">{{
               natureEdits.locked
-                ? "更改次数已用完"
+                ? t("更改次数已用完")
                 : pending.nature
-                  ? "天性有未保存的修改"
-                  : `还可以改 ${natureEdits.left} 次`
+                  ? t("天性有未保存的修改")
+                  : t("还可以改 {left} 次", { left: natureEdits.left })
             }}</span>
           </div>
         </form>
@@ -473,28 +550,31 @@ onUnmounted(() => {
 
       <aside class="side">
         <div class="card orb-card">
-          <span class="eyebrow">调色盘 · 即时反馈</span>
-          <h3>微小的倾向，也会改变表达</h3>
+          <span class="eyebrow">{{ t("调色盘 · 即时反馈") }}</span>
+          <h3>{{ t("微小的倾向，也会改变表达") }}</h3>
           <ul class="effects">
-            <li v-for="t in TRAITS" :key="t.key">
-              <b>{{ t.label }} {{ draft[t.key] }}</b>
-              <span>{{ describe(t) }}</span>
+            <li v-for="facet in TRAITS" :key="facet.key">
+              <b>{{ facet.label }} {{ draft[facet.key] }}</b>
+              <span>{{ describe(facet) }}</span>
             </li>
           </ul>
         </div>
-        <Card class="chat-card" title="用草稿天性试聊" eyebrow="TALK TO TA">
+        <Card
+          class="chat-card"
+          :title="t('用草稿天性试聊')"
+          eyebrow="TALK TO TA"
+        >
           <TaChat
             anchored
             :sessions="studio.core.sessions"
             :nature="previewNature"
-            starter="今天真的好累啊"
+            :starter="t('今天真的好累啊')"
           >
             <template #options>
               <label class="check"
-                ><input
-                  v-model="useDraft"
-                  type="checkbox"
-                />用左边还没保存的天性</label
+                ><input v-model="useDraft" type="checkbox" />{{
+                  t("用左边还没保存的天性")
+                }}</label
               >
             </template>
           </TaChat>
@@ -512,101 +592,122 @@ onUnmounted(() => {
       <section class="card">
         <div class="card-head">
           <div>
-            <span class="eyebrow">TA 的日子</span>
-            <h2>TA 怎样度过没人说话的时间</h2>
+            <span class="eyebrow">{{ t("TA 的日子") }}</span>
+            <h2>{{ t("TA 怎样度过没人说话的时间") }}</h2>
           </div>
         </div>
         <div class="toggles">
           <label class="switch"
             ><input v-model="settings.life.solitude" type="checkbox" /><span
-              ><b>独处</b
-              ><small
-                >聊天安静下来后，TA
-                会重新看看最近的事，改变对自己、对人的理解。</small
-              ></span
+              ><b>{{ t("独处") }}</b
+              ><small>{{
+                t(
+                  "聊天安静下来后，TA 会重新看看最近的事，改变对自己、对人的理解。",
+                )
+              }}</small></span
             ></label
           >
           <label class="switch"
             ><input v-model="settings.life.reading" type="checkbox" /><span
-              ><b>独处时读资料</b
-              ><small
-                >从共享资料里按自己的兴趣挑着读，一段一段读下去；读过的内容聊天时可以自然提起。</small
-              ></span
+              ><b>{{ t("独处时读资料") }}</b
+              ><small>{{
+                t(
+                  "从共享资料里按自己的兴趣挑着读，一段一段读下去；读过的内容聊天时可以自然提起。",
+                )
+              }}</small></span
             ></label
           >
           <label class="switch"
             ><input v-model="settings.life.diary" type="checkbox" /><span
-              ><b>睡前写日记</b
-              ><small
-                >一天结束时写下这一天，和昨天的自己对照；隔一段时间在夜里回顾，改写自传、翻开新的一章。</small
-              ></span
+              ><b>{{ t("睡前写日记") }}</b
+              ><small>{{
+                t(
+                  "一天结束时写下这一天，和昨天的自己对照；隔一段时间在夜里回顾，改写自传、翻开新的一章。",
+                )
+              }}</small></span
             ></label
           >
           <label class="switch"
             ><input v-model="settings.life.night" type="checkbox" /><span
-              ><b>夜里整理</b
-              ><small
-                >睡着以后，把白天没整理的聊天记进记忆和约定里，再按回顾间隔回顾这段日子。</small
-              ></span
+              ><b>{{ t("夜里整理") }}</b
+              ><small>{{
+                t(
+                  "睡着以后，把白天没整理的聊天记进记忆和约定里，再按回顾间隔回顾这段日子。",
+                )
+              }}</small></span
             ></label
           >
           <label class="switch"
             ><input v-model="settings.life.proactive" type="checkbox" /><span
-              ><b>允许 TA 主动说话</b
-              ><small
-                >安静的时候，也能从自己的兴趣、念头和对人的感觉决定要不要先开口。不必等人提问，不催同一句话；对方没回应，也不等于以后不能分享新的事。关掉后停止主动联系。</small
-              >
+              ><b>{{ t("允许 TA 主动说话") }}</b
+              ><small>{{
+                t(
+                  "安静的时候，也能从自己的兴趣、念头和对人的感觉决定要不要先开口。不必等人提问，不催同一句话；对方没回应，也不等于以后不能分享新的事。关掉后停止主动联系。",
+                )
+              }}</small>
               ></span
             ></label
           >
         </div>
         <div class="form-grid">
           <label
-            >安静多久才独处（分钟）<input
+            >{{ t("安静多久才独处（分钟）")
+            }}<input
               v-model.number="settings.life.idleMinutes"
               type="number"
               min="0"
           /></label>
           <label
-            >两次独处至少间隔（分钟）<input
+            >{{ t("两次独处至少间隔（分钟）")
+            }}<input
               v-model.number="settings.life.intervalMinutes"
               type="number"
               min="10"
           /></label>
           <label
-            >攒够多少条新消息（条）<input
+            >{{ t("攒够多少条新消息（条）")
+            }}<input
               v-model.number="settings.life.minMessages"
               type="number"
               min="0"
           /></label>
           <label
-            >回顾间隔（天）<input
+            >{{ t("回顾间隔（天）")
+            }}<input
               v-model.number="settings.life.chapterDays"
               type="number"
               min="1"
           /></label>
           <label
-            >安静时多久看看想不想聊（分钟）<input
+            >{{ t("安静时多久看看想不想聊（分钟）")
+            }}<input
               v-model.number="settings.life.initiativeIntervalMinutes"
               type="number"
               min="1"
           /></label>
           <label
-            >两次主动联系至少间隔（小时）<input
+            >{{ t("两次主动联系至少间隔（小时）")
+            }}<input
               v-model.number="settings.life.proactiveIntervalHours"
               type="number"
               min="0"
               step="0.1"
           /></label>
           <p class="faint wide">
-            主动联系间隔只在实际发出后计算，可设为
-            0；沉默不会占用发送间隔。想说的话会保留，临时忙碌后重新决定。没有新消息时也可独处，不需要攒够消息才能产生念头。
+            {{
+              t(
+                "主动联系间隔只在实际发出后计算，可设为 0；沉默不会占用发送间隔。想说的话会保留，临时忙碌后重新决定。没有新消息时也可独处，不需要攒够消息才能产生念头。",
+              )
+            }}
           </p>
           <p class="faint wide">
-            独处、日记和夜里整理也使用模型库里的默认模型，不再单独指定。
+            {{
+              t("独处、日记和夜里整理也使用模型库里的默认模型，不再单独指定。")
+            }}
           </p>
           <label
-            >时区<input
+            >{{ t("时区")
+            }}<input
               v-model="settings.life.timeZone"
               placeholder="Asia/Shanghai"
           /></label>
@@ -615,25 +716,27 @@ onUnmounted(() => {
       <section class="card">
         <div class="card-head">
           <div>
-            <span class="eyebrow">每日注意力</span>
-            <h2>TA 一天能花多少 Token</h2>
+            <span class="eyebrow">{{ t("每日注意力") }}</span>
+            <h2>{{ t("TA 一天能花多少 Token") }}</h2>
           </div>
         </div>
         <div class="form-grid">
           <label class="wide">
-            每日 Token 上限（0 = 不限）
+            {{ t("每日 Token 上限（0 = 不限）") }}
             <input
               v-model.number="settings.budget.dailyTokens"
               type="number"
               min="0"
             />
-            <small
-              >滚动 24 小时计算。快用完时，TA
-              在群里只在被叫到时细看；用完后后台独处和整理暂停。</small
-            >
+            <small>{{
+              t(
+                "滚动 24 小时计算。快用完时，TA 在群里只在被叫到时细看；用完后后台独处和整理暂停。",
+              )
+            }}</small>
           </label>
           <label
-            >独处与日记最多占<input
+            >{{ t("独处与日记最多占")
+            }}<input
               v-model.number="settings.budget.innerShare"
               type="number"
               min="0"
@@ -641,7 +744,8 @@ onUnmounted(() => {
               step="0.05"
           /></label>
           <label
-            >记忆整理与压缩最多占<input
+            >{{ t("记忆整理与压缩最多占")
+            }}<input
               v-model.number="settings.budget.upkeepShare"
               type="number"
               min="0"
@@ -650,20 +754,27 @@ onUnmounted(() => {
           /></label>
         </div>
         <p class="faint budget-note">
-          扫一眼群聊不花 Token；TA
-          细看时一次调用同时完成理解、心情和回复。私聊和 @ 永远优先。
+          {{
+            t(
+              "扫一眼群聊不花 Token；TA 细看时一次调用同时完成理解、心情和回复。私聊和 @ 永远优先。",
+            )
+          }}
         </p>
         <div class="save-bar">
-          <button class="primary" type="submit">保存 TA 的日子</button
+          <button class="primary" type="submit">
+            {{ t("保存 TA 的日子") }}</button
           ><span class="faint" role="status">{{
-            pending.days ? "日常安排有未保存的修改" : "日常安排已保存"
+            pending.days ? t("日常安排有未保存的修改") : t("日常安排已保存")
           }}</span>
         </div>
       </section>
     </form>
 
     <details class="card prompts">
-      <summary><span class="eyebrow">高级</span><b>指令（Prompt）</b></summary>
+      <summary>
+        <span class="eyebrow">{{ t("高级") }}</span
+        ><b>{{ t("指令（Prompt）") }}</b>
+      </summary>
       <form
         id="promptsForm"
         class="stack tight"
@@ -671,10 +782,10 @@ onUnmounted(() => {
         @input="dirty('prompts')"
       >
         <label>
-          要编辑的指令
+          {{ t("要编辑的指令") }}
           <Select
             v-model="promptKey"
-            aria-label="要编辑的指令"
+            :aria-label="t('要编辑的指令')"
             :options="
               Object.keys(prompts).map((key) => ({
                 value: key,
@@ -684,16 +795,17 @@ onUnmounted(() => {
           />
         </label>
         <label
-          >指令正文<textarea
+          >{{ t("指令正文")
+          }}<textarea
             v-model="prompts[promptKey]"
             rows="14"
             class="mono"
           ></textarea>
         </label>
         <div class="save-bar">
-          <button class="primary">保存指令</button
+          <button class="primary">{{ t("保存指令") }}</button
           ><span class="faint" role="status">{{
-            pending.prompts ? "指令有未保存的修改" : "指令已保存"
+            pending.prompts ? t("指令有未保存的修改") : t("指令已保存")
           }}</span>
         </div>
       </form>
