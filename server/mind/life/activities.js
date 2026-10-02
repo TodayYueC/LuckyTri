@@ -1,5 +1,5 @@
-import { parse } from "./util.js";
-import { TimeExecutor } from "./time/executor.js";
+import { parse } from "../util.js";
+import { TimeExecutor } from "../time/executor.js";
 
 export class LifeActivities {
   constructor(life) {

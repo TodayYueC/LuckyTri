@@ -1,8 +1,10 @@
 import { localClock } from "../core/conversation-cues.js";
 
+export const JUST_NOW = 5 * 60000;
+
 export function elapsedLabel(time, now, zone = "Asia/Shanghai") {
   const age = Math.max(0, now - time);
-  if (age < 5 * 60000) return "刚才";
+  if (age < JUST_NOW) return "刚才";
   const day = localClock(time, zone).local.slice(0, 10);
   const today = localClock(now, zone).local.slice(0, 10);
   if (day === today) return "今天早些时候";

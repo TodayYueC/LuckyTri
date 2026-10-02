@@ -2,6 +2,17 @@ import { wrap } from "../../http.js";
 import { displayNames } from "../../studio/display-names.js";
 import { zonedTime } from "../util.js";
 import { experiences } from "./experiences.js";
+
+// What a waiting task is waiting for, as a code the page can rely on in any
+// language. The wording of `wait_reason` is for people, not for logic.
+function waitKind(task) {
+  if (task.state !== "waiting") return "";
+  const reason = String(task.wait_reason || "");
+  if (/执行能力|调整.*约定|仍未兑现/.test(reason)) return "adjust";
+  if (/选定|想具体|明确.*内容/.test(reason)) return "specify";
+  return "condition";
+}
+
 export function mountTime(app, life) {
   const time = life.mind.time;
   app.get(
@@ -156,6 +167,7 @@ export function mountTime(app, life) {
           person: task.subject
             ? names.get(String(task.subject)) || "相关的人"
             : null,
+          waitKind: waitKind(task),
           elapsedMs: time.elapsed(task.id),
         })),
       );

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseModelJson, repairJson } from "../server/core/model-json.js";
-import { createStore } from "../server/store.js";
+import { createStore } from "../server/storage/store.js";
 import { Repository } from "../server/core/repository.js";
 import { ModelManager, defaultModel } from "../server/core/model-manager.js";
 

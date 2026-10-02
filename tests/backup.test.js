@@ -12,7 +12,7 @@ import { EventEmitter } from "node:events";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
-import { createStore } from "../server/store.js";
+import { createStore } from "../server/storage/store.js";
 import { Repository } from "../server/core/repository.js";
 import {
   AUTO_PREFIX,
@@ -20,7 +20,7 @@ import {
   autoBackupDue,
   autoBackupOptions,
 } from "../scripts/backup.js";
-import { createBackupScheduler } from "../server/backup-scheduler.js";
+import { createBackupScheduler } from "../server/storage/backup-scheduler.js";
 import { createApp } from "../server/app.js";
 import { world } from "./helpers/world.js";
 

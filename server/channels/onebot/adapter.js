@@ -1,4 +1,5 @@
-import { formatSessionKey, parseSessionKey } from "./session-key.js";
+import { formatSessionKey, parseSessionKey } from "../session-key.js";
+import { segmentFacts } from "../segments.js";
 
 const CQ_ESCAPES = {
   "&#44;": ",",
@@ -237,6 +238,7 @@ export function normalize(event, { botMessageIds } = {}) {
   const mediaCount = media.images + media.stickers + media.other;
   const kind = event.message_type;
   const nativeId = String(event.group_id || event.user_id);
+  const facts = segmentFacts(safeSegments);
   return {
     sessionId: formatSessionKey({
       channel: "onebot",
@@ -258,6 +260,11 @@ export function normalize(event, { botMessageIds } = {}) {
     text: text.slice(0, 4000),
     mentioned: atSelf || replyToBot,
     replyToBot,
+    platformId: String(event.message_id),
+    time: event.time ? event.time * 1000 : Date.now(),
+    mentions: facts.mentions,
+    replyId: facts.replyId,
+    attachments: facts.attachments,
     media: {
       ...media,
       count: mediaCount,

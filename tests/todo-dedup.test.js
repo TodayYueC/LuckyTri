@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { world, MINUTE } from "./helpers/world.js";
-import { repairTodoGroup } from "../scripts/repair-current-todos.js";
+import { mergeReferenceNote } from "./helpers/reference-note.js";
 import { dayKey, zonedTime } from "../server/mind/util.js";
 import { reviewReport } from "./helpers/report.js";
 function make(w, title, extra = {}) {
@@ -113,7 +113,7 @@ test("整理保留原记录，明确外部建议、资源条件和首段成果�
       JSON.stringify(data.sources),
       data.intent_key,
     );
-  const result = repairTodoGroup(w.mind.time, [one, id2]);
+  const result = mergeReferenceNote(w.mind.time, [one, id2]);
   assert.equal(result.task.kind, "suggestion");
   assert.equal(result.task.state, "todo");
   assert.equal(result.task.wait_reason, "");
@@ -122,7 +122,10 @@ test("整理保留原记录，明确外部建议、资源条件和首段成果�
   assert.equal(result.task.due_at, null);
   assert.equal(w.mind.time.tasks.list().length, 1);
   assert.equal(w.mind.time.tasks.get(id2).checkpoint.mergedInto, one);
-  assert.equal(repairTodoGroup(w.mind.time, [one, id2]).alreadyRepaired, true);
+  assert.equal(
+    mergeReferenceNote(w.mind.time, [one, id2]).alreadyRepaired,
+    true,
+  );
   assert.equal(w.sent.length, 0);
 });
 test("有来源的首段札记是有限任务，先由她采纳；不捏造整章完成或原游玩兑现", async (t) => {
@@ -130,7 +133,7 @@ test("有来源的首段札记是有限任务，先由她采纳；不捏造整�
   t.after(w.close);
   const id = make(w, "盲开Rewrite第一章给你汇报", { kind: "promise" }).id;
   w.mind.time.tasks.control(id, { action: "abandon" });
-  repairTodoGroup(w.mind.time, [id]);
+  mergeReferenceNote(w.mind.time, [id]);
   w.mind.time.search.save({ apiKey: "test-search" });
   w.advance(5 * MINUTE);
   w.answers.reflection = {
@@ -186,7 +189,7 @@ test("拒绝建议或只有简介时不冒充正在完成指定章节", async (t
   t.after(w.close);
   const id = make(w, "盲开Rewrite第一章给你汇报", { kind: "promise" }).id;
   w.mind.time.tasks.control(id, { action: "abandon" });
-  repairTodoGroup(w.mind.time, [id]);
+  mergeReferenceNote(w.mind.time, [id]);
   w.mind.time.search.save({ apiKey: "test-search" });
   w.advance(5 * MINUTE);
   w.answers.reflection = { accepted: false, reason: "先不做" };
@@ -199,7 +202,7 @@ test("资料只有游戏简介时不算第一章目标，保留具体等待条�
   t.after(w.close);
   const id = make(w, "盲开Rewrite第一章给你汇报", { kind: "promise" }).id;
   w.mind.time.tasks.control(id, { action: "abandon" });
-  repairTodoGroup(w.mind.time, [id]);
+  mergeReferenceNote(w.mind.time, [id]);
   w.mind.time.search.save({ apiKey: "test-search" });
   w.advance(5 * MINUTE);
   w.answers.reflection = { accepted: true, reason: "想读第一章" };

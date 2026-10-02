@@ -1,7 +1,7 @@
-import { createStore } from "../../server/store.js";
+import { createStore } from "../../server/storage/store.js";
 import { ChatSystem } from "../../server/core/orchestrator.js";
 import { defaultModel } from "../../server/core/model-manager.js";
-import { Life } from "../../server/mind/life.js";
+import { Life } from "../../server/mind/life/index.js";
 
 // A small, fully deterministic world: one of her, a clock the test moves,
 // and a model whose answers are scripted per stage.

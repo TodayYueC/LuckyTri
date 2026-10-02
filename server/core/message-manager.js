@@ -1,46 +1,29 @@
 import { randomUUID } from "node:crypto";
 import { bindSessionId, sessionNativeId } from "../channels/session-key.js";
+import { segmentFacts } from "../channels/segments.js";
+// The neutral message every channel hands to the core. An adapter fills
+// platformId, accountId, time, mentions, replyId and attachments itself; the
+// segment parsing is only the fallback for events saved before it did.
 export function messageEnvelope(m) {
   const raw = m.raw || {},
-    segments = m.segments || (Array.isArray(raw.message) ? raw.message : []);
+    segments = m.segments || (Array.isArray(raw.message) ? raw.message : []),
+    facts = segmentFacts(segments),
+    given = (value) => (Array.isArray(value) && value.length ? value : null);
   return {
     ...m,
     role: m.role || "user",
-    platformId: String(raw.message_id ?? m.platformId ?? ""),
-    accountId: String(raw.self_id ?? m.accountId ?? ""),
-    time: raw.time ? raw.time * 1000 : m.time || Date.now(),
+    platformId: String(m.platformId || raw.message_id || ""),
+    accountId: String(m.accountId || raw.self_id || ""),
+    time:
+      Number.isFinite(m.time) && m.time > 0
+        ? m.time
+        : raw.time
+          ? raw.time * 1000
+          : Date.now(),
     receivedAt: Date.now(),
-    mentions: segments
-      .filter((s) => String(s?.type || "").toLowerCase() === "at")
-      .map((s) => {
-        const id = s.data?.qq ?? s.data?.user_id;
-        return id == null || id === "" ? "" : String(id);
-      })
-      .filter(Boolean),
-    replyId: String(segments.find((s) => s.type === "reply")?.data?.id || ""),
-    attachments: segments
-      .filter((s) =>
-        [
-          "image",
-          "mface",
-          "market_face",
-          "sticker",
-          "file",
-          "video",
-          "record",
-          "face",
-        ].includes(s.type),
-      )
-      .map((s) => ({
-        type: s.type,
-        ...s.data,
-        // QQ's built-in faces carry their readable name inside raw. Keep it
-        // alongside the placeholder so a reaction is not reduced to [表情].
-        summary: String(s.data?.summary || s.data?.raw?.faceText || "").slice(
-          0,
-          80,
-        ),
-      })),
+    mentions: given(m.mentions)?.map(String) ?? facts.mentions,
+    replyId: String(m.replyId || facts.replyId || ""),
+    attachments: given(m.attachments) ?? facts.attachments,
     segments,
     raw: undefined,
   };

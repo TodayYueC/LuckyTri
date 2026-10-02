@@ -1,10 +1,10 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { summarizeGroupStyle } from "./group-style.js";
-import { isGroupSession } from "./channels/session-key.js";
-import { NATURE_DEFAULTS } from "./mind/nature.js";
-import { prepareDatabaseMigration } from "./database-archive.js";
+import { summarizeGroupStyle } from "../core/group-style.js";
+import { isGroupSession } from "../channels/session-key.js";
+import { NATURE_DEFAULTS } from "../mind/nature.js";
+import { prepareDatabaseMigration } from "./archive.js";
 export function createStore(path = process.env.DB_PATH || "data/friend.db") {
   prepareDatabaseMigration(path);
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
@@ -76,6 +76,9 @@ export function createStore(path = process.env.DB_PATH || "data/friend.db") {
     memoryEnabled: true,
     memoryCandidates: true,
     onebotToken: "",
+    channel: "onebot",
+    qqbotAppId: "",
+    qqbotSecret: "",
     providerPreset: "custom",
     reasoningEffort: "none",
     temperature: 0.85,

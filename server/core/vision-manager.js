@@ -3,7 +3,7 @@ import { lookup as dnsLookup } from "node:dns/promises";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { isIP } from "node:net";
 import { fileURLToPath } from "node:url";
-import { adapterFor } from "../channels/index.js";
+import { adapterFor } from "../channels/adapters.js";
 
 const MAX_BYTES = 4 * 1024 * 1024;
 const KNOWN_REASONS = new Set([

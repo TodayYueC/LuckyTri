@@ -1,6 +1,6 @@
-import { localClock } from "../core/conversation-cues.js";
-import { agoLabel, elapsedLabel } from "./clock.js";
-import { isPrivateSession } from "./memory.js";
+import { localClock } from "../../core/conversation-cues.js";
+import { agoLabel, elapsedLabel } from "../clock.js";
+import { isPrivateSession } from "../memory.js";
 import {
   DAY,
   evidence,
@@ -8,7 +8,7 @@ import {
   messageSeqs,
   parse,
   text,
-} from "./util.js";
+} from "../util.js";
 const LIVE = "COALESCE(json_extract(payload,'$.simulated'),0)=0";
 
 // Owns this part of the lifecycle; the facade keeps the shared runtime state.

@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createStore } from "../server/store.js";
+import { createStore } from "../server/storage/store.js";
 import { Repository } from "../server/core/repository.js";
 import {
   messageEnvelope,
   persistIncoming,
 } from "../server/core/message-manager.js";
 import { applyDirectoryNames } from "../server/core/sessions.js";
-import { normalize, onebot } from "../server/channels/onebot.js";
+import { normalize, onebot } from "../server/channels/onebot/adapter.js";
 import {
   bindSessionId,
   formatSessionKey,

@@ -1,5 +1,6 @@
 import { fitInput } from "./input-budget.js";
 import { parseModelJson } from "./model-json.js";
+import { USER_AGENT } from "../version.js";
 import { createHmac } from "node:crypto";
 import {
   RETRYABLE_STATUS,
@@ -11,7 +12,6 @@ import {
   withTransientRequestRetry,
 } from "./network.js";
 
-const USER_AGENT = "LuckyTri/0.8.2";
 const GPT_MODEL = /(?:^|[/.])gpt-/i;
 const CACHE_KEY_PROVIDERS = new Set([
   "openai",

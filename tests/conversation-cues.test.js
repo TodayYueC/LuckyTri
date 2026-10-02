@@ -163,11 +163,9 @@ test("接玩笑不捏造自己拿着实物的日常经历", () => {
     /虚构自己有身体做过的日常经历/,
   );
   assert.deepEqual(
-    conversationalIssues(
-      { bubbles: ["hh，伞就举在手里还四处找"] },
-      snapshot,
-      { targetMessageIds: [1] },
-    ),
+    conversationalIssues({ bubbles: ["hh，伞就举在手里还四处找"] }, snapshot, {
+      targetMessageIds: [1],
+    }),
     [],
   );
 });

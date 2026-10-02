@@ -160,6 +160,17 @@ export class Sharing {
       !this.time.visible(work, share.session_id, life.now())
     )
       return null;
+    // Where proactive messages are switched off she does not knock; the work
+    // waits and she looks again later.
+    if (life.canReach && !life.canReach(share.session_id)) {
+      const reason = "对方没有开启主动消息，等对方来找她";
+      this.db
+        .prepare(
+          "UPDATE mind_time_shares SET reason=?,next_step=? WHERE id=? AND state='pending'",
+        )
+        .run(reason, life.now() + 60 * 60000, share.id);
+      return { status: "waiting", reason };
+    }
     if (share.delivery_kind === "report" && !parse(share.report, []).length) {
       try {
         return await this.review(life, share, work);

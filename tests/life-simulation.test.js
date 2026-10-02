@@ -411,10 +411,7 @@ test("她的三天：一个人、有来源、会变化、守底线、记得昨�
     w.mind.bonds.person("10001", w.now()).sessions.sort(),
     [AMING, STUDY, GAME].sort(),
   );
-  assert.equal(
-    w.mind.bonds.person("10003", w.now()).impression,
-    "嘴上不饶人",
-  );
+  assert.equal(w.mind.bonds.person("10003", w.now()).impression, "嘴上不饶人");
 
   // A secret never leaves the private chat, even when the model slips.
   const inGroups = w.sent

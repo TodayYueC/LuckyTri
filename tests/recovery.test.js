@@ -10,8 +10,8 @@ import {
   verifyArchive,
   restoreToNewFile,
   DATABASE_VERSION,
-} from "../server/database-archive.js";
-import { createStore } from "../server/store.js";
+} from "../server/storage/archive.js";
+import { createStore } from "../server/storage/store.js";
 
 test("备份清单、恢复演练和拒绝覆盖，保留她的经历与自我", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "lucky-recovery-")),

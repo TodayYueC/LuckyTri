@@ -302,6 +302,13 @@ export class Initiative {
   blocked(session, now, settings) {
     if (!session || !this.life.chat.enabled(session, { simulated: false }))
       return { reason: "会话不可用", permanent: true };
+    // A room that has switched proactive messages off is not a place she can
+    // knock on: she waits to be sought out, and looks again later.
+    if (!this.life.canReach(session))
+      return {
+        reason: "对方没有开启主动消息，等对方来找她",
+        retryAt: now + 6 * HOUR,
+      };
     const lastUser = this.db
       .prepare(
         "SELECT time,payload FROM core_events WHERE session_id=? AND role='user' AND seq NOT IN (SELECT seq FROM mind_unlived) AND COALESCE(json_extract(payload,'$.simulated'),0)=0 ORDER BY seq DESC LIMIT 1",

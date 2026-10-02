@@ -13,11 +13,10 @@ import {
   linkSync,
 } from "node:fs";
 import { dirname, basename, resolve, join } from "node:path";
+import { VERSION } from "../version.js";
 
 export const DATABASE_VERSION = 3;
-const appVersion = JSON.parse(
-  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
-).version;
+const appVersion = VERSION;
 
 function fileHash(file) {
   const fd = openSync(file, "r"),

@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
-import { evidenceRoots } from "./evidence.js";
-import { localClock } from "../core/conversation-cues.js";
-import { replyPrompt, prompts } from "../core/persona-manager.js";
-import { estimateTokens } from "../core/model-manager.js";
-import { elapsedLabel } from "./clock.js";
-import { isPrivateSession } from "./memory.js";
-import { lifeDayKey, rhythmPhase } from "./nature.js";
-import { THOUGHT_KINDS } from "./thoughts.js";
-import { Initiative } from "./initiative.js";
-import { OwnVoice } from "./own-voice.js";
+import { evidenceRoots } from "../evidence.js";
+import { localClock } from "../../core/conversation-cues.js";
+import { replyPrompt, prompts } from "../../core/persona-manager.js";
+import { estimateTokens } from "../../core/model-manager.js";
+import { elapsedLabel } from "../clock.js";
+import { isPrivateSession } from "../memory.js";
+import { lifeDayKey, rhythmPhase } from "../nature.js";
+import { THOUGHT_KINDS } from "../thoughts.js";
+import { Initiative } from "../initiative.js";
+import { OwnVoice } from "../own-voice.js";
 import {
   DAY,
   HOUR,
@@ -18,7 +18,7 @@ import {
   parse,
   similar,
   text,
-} from "./util.js";
+} from "../util.js";
 export const LIFE_DEFAULTS = {
   solitude: true,
   proactive: true,
@@ -37,16 +37,24 @@ export const LIFE_DEFAULTS = {
 const MINUTE = 60000;
 const LIVE = "COALESCE(json_extract(payload,'$.simulated'),0)=0";
 const SOLITUDE_INPUT_CAP = 24000;
-import { LifeContext } from "./life-context.js";
-import { LifeGrowth } from "./life-growth.js";
-import { LifeDiary } from "./life-diary.js";
-import { LifePresence } from "./life-presence.js";
-import { LifeActivities } from "./life-activities.js";
-import { OwnDay } from "./own-day.js";
-import { DayPlanner } from "./day-planner.js";
+import { LifeContext } from "./context.js";
+import { LifeGrowth } from "./growth.js";
+import { LifeDiary } from "./diary.js";
+import { LifePresence } from "./presence.js";
+import { LifeActivities } from "./activities.js";
+import { OwnDay } from "../own-day.js";
+import { DayPlanner } from "../day-planner.js";
 
 export class Life {
-  constructor(chat, { now = chat.now || Date.now, online = () => false } = {}) {
+  constructor(
+    chat,
+    {
+      now = chat.now || Date.now,
+      online = () => false,
+      // Whether the channel lets her start a conversation in a room right now.
+      canReach = () => true,
+    } = {},
+  ) {
     this.chat = chat;
     this.mind = chat.mind;
     this.repo = chat.repo;
@@ -55,6 +63,7 @@ export class Life {
     this.mind.time.now = now;
     this.mind.time.search.bind(this);
     this.online = online;
+    this.canReach = canReach;
     this.busy = false;
     this.closed = false;
     this.initiative = new Initiative(this);

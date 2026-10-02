@@ -7,6 +7,7 @@ import {
 } from "./model-manager.js";
 import { prompts, PROMPTS } from "./persona-manager.js";
 import { publicSession, parseSessionKey } from "../channels/session-key.js";
+import { qqbotCredentials } from "../channels/qqbot/credentials.js";
 import { wrap } from "../http.js";
 import {
   parseNewSession,
@@ -81,7 +82,9 @@ export function mountCore(app, system) {
   app.post(
     "/api/core/sessions",
     wrap((req, res) => {
-      const parsed = parseNewSession(req.body || {});
+      const parsed = parseNewSession(req.body || {}, {
+        qqbotAppId: qqbotCredentials(repo.store).appId,
+      });
       upsertSession(repo.db, parsed);
       repo.store.revision++;
       res.json({ ok: true, sessionId: parsed.sessionId });
@@ -108,7 +111,14 @@ export function mountCore(app, system) {
   app.patch(
     "/api/core/sessions/:id",
     wrap((req, res) => {
-      setSessionEnabled(repo.db, req.params.id, req.body.enabled);
+      const { enabled, name } = req.body || {};
+      if (enabled === undefined && name === undefined)
+        throw Error("没有要修改的内容");
+      // The official bot has no way to look up a group's name, so naming a
+      // room is something the person does, here, for either channel.
+      if (name !== undefined) renameSession(repo.db, req.params.id, name);
+      if (enabled !== undefined)
+        setSessionEnabled(repo.db, req.params.id, enabled);
       repo.store.revision++;
       res.json({ ok: true });
     }),
@@ -515,13 +525,13 @@ export function mountCore(app, system) {
       !text.trim() ||
       text.length > 4000 ||
       typeof userId !== "string" ||
-      !/^\d{4,20}$/.test(userId) ||
+      !/^[0-9A-Za-z_-]{4,64}$/.test(userId) ||
       typeof sessionId !== "string" ||
       !repo.db.prepare("SELECT id FROM sessions WHERE id=?").get(sessionId)
     )
       return res
         .status(400)
-        .json({ error: "请选择会话并输入消息和有效 QQ 号" });
+        .json({ error: "请选择会话并输入消息和有效的用户 ID" });
     const trace = await system.receive({
       sessionId,
       kind: (() => {

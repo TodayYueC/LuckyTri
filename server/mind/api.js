@@ -1,7 +1,7 @@
 import { wrap } from "../http.js";
 import { mountTime } from "./time/api.js";
 import { localClock } from "../core/conversation-cues.js";
-import { agoLabel, elapsedLabel } from "./clock.js";
+import { agoLabel, elapsedLabel, JUST_NOW } from "./clock.js";
 import { diffSnapshots } from "./index.js";
 import { SELF_KINDS } from "./self.js";
 import { THOUGHT_KINDS } from "./thoughts.js";
@@ -176,6 +176,7 @@ export function mountMind(app, chat, life) {
           return {
             text: text(row.appraisal, 80),
             when: elapsedLabel(row.created, now, mind.timeZone()),
+            recent: now - row.created < JUST_NOW,
             spoke: row.choice !== "silent",
           };
         })(),

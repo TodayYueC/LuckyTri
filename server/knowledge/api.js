@@ -78,7 +78,7 @@ export function mountKnowledge(app, system) {
       const { session, subject, content } = req.body;
       if (
         typeof subject !== "string" ||
-        !/^\d+$/.test(subject) ||
+        !/^[0-9A-Za-z_-]{1,64}$/.test(subject) ||
         typeof content !== "string" ||
         !content.trim() ||
         content.length > 4000 ||

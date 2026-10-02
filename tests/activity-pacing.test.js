@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { world, MINUTE } from "./helpers/world.js";
 import { activityEstimate } from "../server/mind/time/activity-clock.js";
 import { TimeSystem } from "../server/mind/time/index.js";
-import { LifeActivities } from "../server/mind/life-activities.js";
+import { LifeActivities } from "../server/mind/life/activities.js";
 import { naturalReport } from "../server/mind/time/sharing.js";
 import { activityPresentation } from "../server/mind/time/presentation.js";
 function make(w, activity = "write") {

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { defaultModel, pickModel } from "./core/model-manager.js";
+import { defaultModel, pickModel } from "../core/model-manager.js";
 
 // The health panel and connection test must describe the same saved profile.
 export function savedConnectionSettings(store, modelId = "") {
@@ -61,25 +61,38 @@ export function recordModelCheck(store, settings, ok, latency, error = "") {
     )
     .run(modelSignature(settings), Number(ok), latency, Date.now(), error);
 }
-export function readiness(
-  store,
-  { online = false, tokenConfigured = !!process.env.ONEBOT_TOKEN } = {},
-) {
-  const s = store.settings(),
-    record = store.db.prepare("SELECT * FROM model_checks WHERE id=1").get();
-  const effective = savedConnectionSettings(store).settings;
-  // Previous connection tests signed their temporary 256-token test budget.
-  // Accept that exact historical signature, without marking untested profiles ready.
-  const current =
-    !!record &&
-    [
-      effective,
-      { ...effective, maxTokens: Math.min(effective.maxTokens || 256, 256) },
-    ].some((value) => record.signature === modelSignature(value));
-  const sessions = store.db
-    .prepare("SELECT COUNT(*) n FROM sessions WHERE enabled=1")
-    .get().n;
-  const checks = [
+// The steps to get a channel talking. Which two come first depends on how she
+// is connected: a OneBot client needs the shared token, the official bot needs
+// its AppID and AppSecret.
+function connectionChecks({ channel, online, tokenConfigured, qqbot }) {
+  if (channel === "qqbot") {
+    const configured = !!qqbot?.configured;
+    const groups = qqbot?.groupMessages;
+    return [
+      {
+        id: "credentials",
+        name: "QQ 官方机器人凭据",
+        done: configured,
+        detail: configured
+          ? `AppID ${qqbot.appId}`
+          : "在「系统 → 连接 QQ」填写机器人的 AppID 和 AppSecret",
+        tab: "setup",
+      },
+      {
+        id: "qq",
+        name: "QQ 连接",
+        done: online,
+        detail: online
+          ? groups === "mentions"
+            ? "已连接 QQ 开放平台；群里目前只收到 @ 她的消息，在开放平台开启「接收所有消息」后她才能看到整个群"
+            : "已连接 QQ 开放平台"
+          : qqbot?.error ||
+            (configured ? "正在连接 QQ 开放平台" : "填写凭据后自动连接"),
+        tab: "settings",
+      },
+    ];
+  }
+  return [
     {
       id: "token",
       name: "QQ 接入令牌",
@@ -98,6 +111,34 @@ export function readiness(
         : "在接入端配置 OneBot 11 反向 WebSocket 客户端",
       tab: "settings",
     },
+  ];
+}
+
+export function readiness(
+  store,
+  {
+    online = false,
+    tokenConfigured = !!process.env.ONEBOT_TOKEN,
+    channel = "onebot",
+    qqbot = null,
+  } = {},
+) {
+  const s = store.settings(),
+    record = store.db.prepare("SELECT * FROM model_checks WHERE id=1").get();
+  const effective = savedConnectionSettings(store).settings;
+  // Previous connection tests signed their temporary 256-token test budget.
+  // Accept that exact historical signature, without marking untested profiles ready.
+  const current =
+    !!record &&
+    [
+      effective,
+      { ...effective, maxTokens: Math.min(effective.maxTokens || 256, 256) },
+    ].some((value) => record.signature === modelSignature(value));
+  const sessions = store.db
+    .prepare("SELECT COUNT(*) n FROM sessions WHERE enabled=1")
+    .get().n;
+  const checks = [
+    ...connectionChecks({ channel, online, tokenConfigured, qqbot }),
     {
       id: "model",
       name: "当前模型已测试",

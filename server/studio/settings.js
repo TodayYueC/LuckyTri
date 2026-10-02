@@ -1,13 +1,14 @@
 import { realpathSync } from "node:fs";
 import { publicSession } from "../channels/session-key.js";
-import { readiness } from "../readiness.js";
-import { FEEDBACK_LABELS } from "../feedback.js";
+import { CHANNEL_TYPES } from "../channels/hub.js";
+import { readiness } from "./readiness.js";
+import { FEEDBACK_LABELS } from "../core/feedback.js";
 import {
   EFFORT_LABELS,
   MODEL_CATALOG,
   MODEL_PRESETS,
   REASONING_EFFORTS,
-} from "../model-presets.js";
+} from "../core/model-presets.js";
 import { applySpeakerNames, speakerNames } from "../core/speaker-names.js";
 import { displayNames, displaySession } from "./display-names.js";
 
@@ -25,7 +26,13 @@ export function mountStudio(app, store, runtime, chat) {
     setTimeout(runtime.shutdown, 150);
   });
   app.get("/api/state", (req, res) => {
-    const { apiKey, ...settings } = store.settings();
+    // Secrets are written from the studio and never read back into it.
+    const {
+      apiKey,
+      qqbotSecret,
+      onebotToken: _onebotToken,
+      ...settings
+    } = store.settings();
     const demo = Number(settings.demo);
     const connection = runtime.connection();
     const namesForDisplay = displayNames(store.db, chat?.now() ?? Date.now());
@@ -33,10 +40,13 @@ export function mountStudio(app, store, runtime, chat) {
       settings: {
         ...settings,
         hasApiKey: !!(apiKey || process.env.LLM_API_KEY),
+        hasQqbotSecret: !!(qqbotSecret || process.env.QQBOT_APP_SECRET),
       },
       readiness: readiness(store, {
         online: connection.online,
-        tokenConfigured: connection.tokenConfigured,
+        tokenConfigured: connection.onebot?.tokenConfigured,
+        channel: connection.channel,
+        qqbot: connection.qqbot,
       }),
       feedbackLabels: FEEDBACK_LABELS,
       modelPresets: MODEL_PRESETS,
@@ -93,12 +103,37 @@ export function mountStudio(app, store, runtime, chat) {
       "apiKey",
       "providerPreset",
       "reasoningEffort",
+      "channel",
+      "qqbotAppId",
+      "qqbotSecret",
     ])
       if (k in v) {
         if (typeof v[k] !== "string" || v[k].length > 4000)
           return res.status(400).json({ error: "文本配置无效" });
         allowed[k] = v[k];
       }
+    if ("channel" in allowed) {
+      if (!CHANNEL_TYPES.includes(allowed.channel))
+        return res.status(400).json({ error: "接入方式无效" });
+      const forced = String(process.env.LUCKYTRI_CHANNEL || "").trim();
+      if (forced && forced !== allowed.channel)
+        return res
+          .status(409)
+          .json({ error: "接入方式已由环境变量 LUCKYTRI_CHANNEL 固定" });
+    }
+    if ("qqbotAppId" in allowed) {
+      allowed.qqbotAppId = allowed.qqbotAppId.trim();
+      if (
+        allowed.qqbotAppId &&
+        !/^[0-9A-Za-z_-]{1,40}$/.test(allowed.qqbotAppId)
+      )
+        return res.status(400).json({ error: "AppID 格式无效" });
+    }
+    if ("qqbotSecret" in allowed) {
+      allowed.qqbotSecret = allowed.qqbotSecret.trim();
+      if (allowed.qqbotSecret.length > 200)
+        return res.status(400).json({ error: "AppSecret 格式无效" });
+    }
     for (const k of ["enabled", "demo", "memoryEnabled", "memoryCandidates"])
       if (k in v) {
         if (typeof v[k] !== "boolean")
@@ -163,6 +198,13 @@ export function mountStudio(app, store, runtime, chat) {
     if ("model" in allowed && !allowed.model.trim())
       return res.status(400).json({ error: "模型名称不能为空" });
     store.save(allowed);
+    // A new channel or new credentials take effect now, without a restart.
+    if (
+      "channel" in allowed ||
+      "qqbotAppId" in allowed ||
+      "qqbotSecret" in allowed
+    )
+      runtime.syncChannel?.();
     res.json({ ok: true });
   });
 }

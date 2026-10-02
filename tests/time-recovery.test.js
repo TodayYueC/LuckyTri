@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { world, MINUTE } from "./helpers/world.js";
 import { backupDatabase } from "../scripts/backup.js";
-import { restoreToNewFile, verifyArchive } from "../server/database-archive.js";
+import { restoreToNewFile, verifyArchive } from "../server/storage/archive.js";
 import { evidenceRoots, externalEvidence } from "../server/mind/evidence.js";
 test("时间、草稿与检查点能随快照恢复；重启不补算停机，不重复迁移或生成", async (t) => {
   const dir = mkdtempSync(join(tmpdir(), "lucky-time-")),

@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createStore } from "../server/store.js";
+import { createStore } from "../server/storage/store.js";
 test("v0.1 数据库升级保留记忆，迁移模拟上下文、去重与冷却；重复启动安全", () => {
   const path = join(mkdtempSync(join(tmpdir(), "lucky-migrate-")), "legacy.db");
   let db = new DatabaseSync(path);

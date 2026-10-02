@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createStore } from "../server/store.js";
+import { createStore } from "../server/storage/store.js";
 import { ChatSystem } from "../server/core/orchestrator.js";
 import { attend, interestTerms } from "../server/mind/attention.js";
 import {

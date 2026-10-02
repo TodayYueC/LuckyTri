@@ -1,4 +1,4 @@
-import { summarizeGroupStyle } from "../group-style.js";
+import { summarizeGroupStyle } from "../core/group-style.js";
 import { relevantContext, boundMindContext } from "./context-selection.js";
 import { interestTerms } from "./attention.js";
 import { agoLabel, elapsedLabel } from "./clock.js";

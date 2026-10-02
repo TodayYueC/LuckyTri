@@ -5,9 +5,11 @@ import {
   autoBackupDue,
   autoBackupOptions,
   listAutoBackups,
-} from "../scripts/backup.js";
+} from "../../scripts/backup.js";
 
-const SCRIPT = fileURLToPath(new URL("../scripts/backup.js", import.meta.url));
+const SCRIPT = fileURLToPath(
+  new URL("../../scripts/backup.js", import.meta.url),
+);
 const MINUTE = 60000;
 const HOUR = 60 * MINUTE;
 

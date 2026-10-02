@@ -3,14 +3,14 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createStore } from "../server/store.js";
+import { createStore } from "../server/storage/store.js";
 import { initializeEnvironment } from "../scripts/setup.js";
 import { backupDatabase } from "../scripts/backup.js";
 import {
   recordModelCheck,
   readiness,
   savedConnectionSettings,
-} from "../server/readiness.js";
+} from "../server/studio/readiness.js";
 import { ChatSystem } from "../server/core/orchestrator.js";
 
 test("生成两枚不同随机令牌且不覆盖已有配置", () => {

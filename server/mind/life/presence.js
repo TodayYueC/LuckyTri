@@ -1,7 +1,7 @@
-import { isNameCall } from "../core/name-call.js";
-import { agoLabel } from "./clock.js";
-import { isPrivateSession } from "./memory.js";
-import { messageSeqs, parse, text } from "./util.js";
+import { isNameCall } from "../../core/name-call.js";
+import { agoLabel } from "../clock.js";
+import { isPrivateSession } from "../memory.js";
+import { messageSeqs, parse, text } from "../util.js";
 const MINUTE = 60000;
 
 // Owns this part of the lifecycle; the facade keeps the shared runtime state.

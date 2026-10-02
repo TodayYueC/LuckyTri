@@ -1,14 +1,19 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
-import { tokenEqual } from "../http.js";
-import { effectiveOneBotToken } from "./onebot-token.js";
-import { onebot, normalize } from "./onebot.js";
-import { applyDirectoryNames } from "../core/sessions.js";
-import { saveAccountNames } from "../studio/display-names.js";
+import { tokenEqual } from "../../http.js";
+import { effectiveOneBotToken } from "./token.js";
+import { onebot, normalize } from "./adapter.js";
+import { defineChannel } from "../contract.js";
+import { parseSessionKey } from "../session-key.js";
+import { applyDirectoryNames } from "../../core/sessions.js";
+import { saveAccountNames } from "../../studio/display-names.js";
 
-export function createOneBotGateway(store) {
+// OneBot 11 over a reverse WebSocket: a client she does not manage (any
+// OneBot 11 implementation) connects to /onebot/v11/ws with the shared token.
+export function createOneBotChannel(store) {
   const pending = new Map();
   const botMessageIds = new Set();
+  let running = false;
   let socket = null;
   let connectedAt = null;
   let lastEventAt = null;
@@ -145,6 +150,7 @@ export function createOneBotGateway(store) {
     wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 });
     httpServer.on("upgrade", (req, sock, head) => {
       if (
+        !running ||
         req.url !== "/onebot/v11/ws" ||
         !effectiveOneBotToken(store) ||
         !tokenEqual(
@@ -228,8 +234,14 @@ export function createOneBotGateway(store) {
     heartbeat.unref();
   }
 
-  function close() {
-    if (heartbeat) clearInterval(heartbeat);
+  // Whether a client may connect at all. Stopping also drops the one that is
+  // connected, so switching to another channel never leaves a stale line open.
+  function start() {
+    running = true;
+  }
+
+  function stop() {
+    running = false;
     if (wss) for (const ws of wss.clients) ws.terminate();
     for (const p of pending.values()) {
       clearTimeout(p.timer);
@@ -238,8 +250,25 @@ export function createOneBotGateway(store) {
     pending.clear();
   }
 
+  function close() {
+    if (heartbeat) clearInterval(heartbeat);
+    stop();
+  }
+
+  // A connected client can reach every room it knows; there is no window and
+  // no per-room permission to respect.
+  function canReach(sessionId) {
+    if (!socket) return false;
+    try {
+      return parseSessionKey(sessionId).channel === "onebot";
+    } catch {
+      return false;
+    }
+  }
+
   function status() {
     return {
+      type: "onebot",
       online: !!socket,
       connectedAt,
       lastEventAt,
@@ -251,13 +280,18 @@ export function createOneBotGateway(store) {
     };
   }
 
-  return {
+  return defineChannel({
+    type: "onebot",
+    capabilities: onebot.capabilities,
+    attach,
+    start,
+    stop,
     send,
     fetchQuoted,
     fetchImage,
     refreshDirectory,
-    attach,
-    close,
+    canReach,
     status,
-  };
+    close,
+  });
 }

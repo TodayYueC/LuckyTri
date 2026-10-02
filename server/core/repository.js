@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { DATABASE_VERSION } from "../database-archive.js";
+import { DATABASE_VERSION } from "../storage/archive.js";
 import { parseSessionKey } from "../channels/session-key.js";
 import { migrateKnowledge } from "../knowledge/schema.js";
 import { migrateMind } from "../mind/schema.js";
