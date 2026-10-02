@@ -2,9 +2,9 @@
 // never writes model credentials into the report. Costs a few model calls.
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { createStore } from "../server/store.js";
-import { ChatSystem } from "../server/core/orchestrator.js";
-import { Life } from "../server/mind/life.js";
+import { createStore } from "../../server/storage/store.js";
+import { ChatSystem } from "../../server/core/orchestrator.js";
+import { Life } from "../../server/mind/life/index.js";
 
 const db = new DatabaseSync(process.env.DB_PATH || "data/friend.db", {
   readOnly: true,

@@ -11,7 +11,7 @@ import { resolve, join, basename } from "node:path";
 import {
   copyDatabaseFile,
   writeArchiveManifest,
-} from "../server/database-archive.js";
+} from "../server/storage/archive.js";
 import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
 

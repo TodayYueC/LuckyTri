@@ -5,7 +5,7 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const root = fileURLToPath(new URL("..", import.meta.url));
+const root = fileURLToPath(new URL("../..", import.meta.url));
 const shifts = (process.argv[2] || "-60,400")
   .split(",")
   .map(Number)
@@ -17,7 +17,7 @@ for (const days of shifts) {
     process.execPath,
     [
       "--import",
-      "./tests/awake.mjs",
+      "./tests/helpers/awake.mjs",
       "--import",
       "./tests/helpers/shifted-clock.mjs",
       "--test",

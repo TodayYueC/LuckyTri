@@ -2,17 +2,17 @@
 // Configuration is copied read-only from the local database; everything else
 // happens in memory. Nothing is sent to QQ.
 //
-//   node scripts/evaluate-life.js              real model, spends tokens
-//   node scripts/evaluate-life.js --weeks 3    then weeks of ordinary days,
+//   node scripts/dev/evaluate-life.js              real model, spends tokens
+//   node scripts/dev/evaluate-life.js --weeks 3    then weeks of ordinary days,
 //                                              compressed (spends much more)
-//   node scripts/evaluate-life.js --mock       scripted model, checks the script
+//   node scripts/dev/evaluate-life.js --mock       scripted model, checks the script
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { createStore } from "../server/store.js";
-import { ChatSystem } from "../server/core/orchestrator.js";
-import { defaultModel } from "../server/core/model-manager.js";
-import { Life } from "../server/mind/life.js";
-import { localClock } from "../server/core/conversation-cues.js";
+import { createStore } from "../../server/storage/store.js";
+import { ChatSystem } from "../../server/core/orchestrator.js";
+import { defaultModel } from "../../server/core/model-manager.js";
+import { Life } from "../../server/mind/life/index.js";
+import { localClock } from "../../server/core/conversation-cues.js";
 
 const mock = process.argv.includes("--mock");
 const weeksAt = process.argv.indexOf("--weeks");

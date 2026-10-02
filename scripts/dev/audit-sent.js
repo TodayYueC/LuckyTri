@@ -4,13 +4,13 @@
 // able to answer with real data: what would now be refused, and what would a
 // new rule wrongly refuse.
 //
-//   node scripts/audit-sent.js            last 3 days
-//   node scripts/audit-sent.js --days 14
-//   node scripts/audit-sent.js --show 40  print more examples
+//   node scripts/dev/audit-sent.js            last 3 days
+//   node scripts/dev/audit-sent.js --days 14
+//   node scripts/dev/audit-sent.js --show 40  print more examples
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { validateResponse } from "../server/core/response-validator.js";
+import { validateResponse } from "../../server/core/response-validator.js";
 
 const DAY = 86400000;
 const args = process.argv.slice(2);

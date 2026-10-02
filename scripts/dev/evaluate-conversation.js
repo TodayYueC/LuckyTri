@@ -2,8 +2,8 @@
 // No production writes: configuration is read-only, all conversations run in memory.
 import { DatabaseSync } from "node:sqlite";
 import { writeFileSync, mkdirSync } from "node:fs";
-import { createStore } from "../server/store.js";
-import { ChatSystem } from "../server/core/orchestrator.js";
+import { createStore } from "../../server/storage/store.js";
+import { ChatSystem } from "../../server/core/orchestrator.js";
 
 const source = new DatabaseSync(process.env.DB_PATH || "data/friend.db", {
   readOnly: true,

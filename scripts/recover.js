@@ -1,4 +1,4 @@
-import { verifyArchive, restoreToNewFile } from "../server/database-archive.js";
+import { verifyArchive, restoreToNewFile } from "../server/storage/archive.js";
 const args = process.argv.slice(2);
 const value = (flag) => {
   const index = args.indexOf(flag);

@@ -1,35 +1,37 @@
+# Dependencies and build leftovers
 node_modules/
 /vendor/
-workspace/
-data/
-.env
-.env.*
-!.env.example
 test-results/
 npm-debug.log*
 *.log
+
+# Everything the running instance owns: databases, backups, reports, chats
+data/
 *.db
 *.db-shm
 *.db-wal
 *.sqlite
 *.sqlite3
-.DS_Store
-Thumbs.db
+*.bundle
+reports/
+evaluations/
+
+# Secrets stay on the machine; only the empty template is tracked
+.env
+.env.*
+!.env.example
 
 # Local previews and isolated checkouts
 workspace/
 
-# Agent attachment drops, not part of the project
+# Editor, OS and agent tooling
+.DS_Store
+Thumbs.db
+.cursor/
+.codex/
 .codex-remote-attachments/
 
-# Local Codex project settings
-.codex/
-
-# Investigation, fix and acceptance notes are local working papers. Only design
-# documents belong in the repository.
-/docs/MiMo性能排查.md
-/docs/上下文压缩与请求稳定性.md
-/docs/实时会话与回复修复.md
-/docs/缓存与口吻优化.md
-/docs/回复口吻与时间回归.md
-/docs/重构版使用与验收.md
+# Working notes. Only the bilingual docs under docs/zh, docs/en and
+# docs/brand belong in the repository; loose files in docs/ stay local.
+/docs/*.md
+/docs/log/

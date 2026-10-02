@@ -1,7 +1,7 @@
 // Uses a SQLite snapshot. Never starts OneBot or sends QQ messages.
-import { backupDatabase } from "./backup.js";
-import { createStore } from "../server/store.js";
-import { ChatSystem } from "../server/core/orchestrator.js";
+import { backupDatabase } from "../backup.js";
+import { createStore } from "../../server/storage/store.js";
+import { ChatSystem } from "../../server/core/orchestrator.js";
 import { writeFileSync } from "node:fs";
 const path = backupDatabase(undefined, "data/evaluations");
 const store = createStore(path);
