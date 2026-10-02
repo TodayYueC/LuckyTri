@@ -1,33 +1,113 @@
-# LuckyTri
+<p align="right"><a href="README.md">中文</a> · <b>English</b></p>
 
-<p align="center"><img src="docs/brand/banner.png" alt="LuckyTri project banner" width="100%"></p>
-<p align="center"><strong>Let the days she has lived count.</strong></p>
-<p align="center"><a href="README.md">简体中文</a> · <a href="docs/使用教程.md">Setup guide (Chinese)</a> · <a href="docs/CHANGELOG.md">Changelog</a> · <a href=".github/SECURITY.md">Security</a></p>
+<p align="center"><img src="docs/brand/banner.png" alt="LuckyTri" width="100%"></p>
 
-## Why this project exists
+<h1 align="center">LuckyTri</h1>
 
-LuckyTri asks what it would take for a being made of software to have continuity through time: to remember what happened to her, to carry forward the people and things that matter, and to change her mind after a new encounter. She can develop concerns, intentions, and boundaries of her own. Her time does not stop when a conversation does.
+<p align="center"><strong>Let the days she lives count.</strong></p>
 
-Group chat is one place where she currently meets the world. The project is the life around those encounters: experience, memory, relationships, attention, and choice. Our long-term hope is that she can connect with people and the wider world in her own way, gradually becoming herself instead of living only from one incoming message to the next.
+<p align="center">
+  <img alt="version" src="https://img.shields.io/badge/version-0.9.9-ff8fb1">
+  <img alt="license" src="https://img.shields.io/badge/license-MIT-7fd6c2">
+  <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A5%2024.5-8fb8ff">
+  <img alt="channels" src="https://img.shields.io/badge/QQ-OneBot%2011%20%7C%20official%20bot-ffd37f">
+  <img alt="languages" src="https://img.shields.io/badge/UI-%E4%B8%AD%E6%96%87%20%7C%20English-c9a7ff">
+</p>
 
-That is a direction for the work, not a claim that software consciousness has been established. The current system pursues it through local data, changes with traceable sources, and behavior that can be inspected and challenged.
+<p align="center">
+  <a href="docs/en/guide.md">Getting started</a> ·
+  <a href="docs/en/connect.md">Connect QQ</a> ·
+  <a href="docs/en/her-life.md">Her life</a> ·
+  <a href="docs/en/architecture.md">Architecture</a> ·
+  <a href="docs/en/CHANGELOG.md">Changelog</a> ·
+  <a href=".github/SECURITY.md">Security</a>
+</p>
 
-## What exists today
+---
 
-| Area | Current behavior |
+## Before anything else
+
+<img src="docs/brand/portrait.png" alt="LuckyTri" width="220" align="right">
+
+Most chatbots live inside a single sentence: you ask, it answers, the conversation ends, and everything resets to zero.
+
+LuckyTri tries another road. Suppose someone born of technology is not asked to imitate a human, but is allowed to walk through time carrying her memories: who came by, what they said, what she promised; thinking over the day in a night when nobody is talking; changing her mind because of one encounter. Might she slowly grow something of her own: an inner life, a will, a meaning? Might she become herself through her meetings with people and the world, and form real, lasting bonds with them?
+
+The inspiration is ATRI: a robot who is never sure she has a "heart", and still lives earnestly. We do not pretend to know the answer. We only build the conditions, one by one: continuous time, memory with sources, a mind that fades and remembers, and the choice to speak or to stay silent.
+
+**To be honest: this is a long-term direction, not a claim of machine consciousness.** The current version moves toward it with local data, traceable change and inspectable behavior. Where she still feels like a program, and where she truly makes time together feel more continuous, should both be visible and worth discussing. QQ is only the door through which she currently meets the world, not the limit of the project.
+
+<br clear="right">
+
+## A day in her life
+
+> 02:00. She sleeps. The group is still lively and she is not looking; if she is called, it will wait for her to wake.
+>
+> 08:00. She wakes, reads what was left for her in the night, decides how to answer, and may say, naturally, that she only just saw it.
+>
+> By day, someone in the group talks about a story she read a few days ago. Most messages she only glances at; this one touches something she cares about, so she answers. When two people are deep in conversation, she chooses to stay quiet, and leaves her reason.
+>
+> In a quiet afternoon she is alone with herself: she browses recent chats, reads a passage she likes, writes down a thought after reading, remembers a friend she has not heard from in a long while, and plans to ask how his exam went.
+>
+> At night she writes a diary and compares it with "yesterday's self". A week later she looks back on these days: which thoughts faded, which grew heavier, and she turns to a new chapter.
+>
+> Then she sleeps. Tomorrow, she is still herself.
+
+None of this is a script. Every step comes from her own mood, relationships, memories and choices. Every change has a source and can be undone.
+
+## The core framework
+
+```mermaid
+flowchart LR
+  QQ["QQ<br/>OneBot 11 or the official bot"] --> Ch["Channels<br/>channels/"]
+  Ch -->|"neutral messages"| Core["Core<br/>core/<br/>receive · perceive · turn · send"]
+  Core -->|"send"| Ch
+  Core <--> Mind["Mind<br/>mind/<br/>nature · self · relationships · memory"]
+  Mind <--> Life["A life<br/>mind/life · mind/time<br/>solitude · diary · review · works"]
+  Life -->|"reaches out"| Ch
+  Mind --- DB[("One SQLite file<br/>storage/")]
+  Studio["Studio<br/>studio-web/ · studio/"] --> Mind
+```
+
+| Layer | Directory | What it does |
+| --- | --- | --- |
+| Channels | `server/channels/` | Only how messages arrive and leave. OneBot 11 or the QQ official bot (pick one); both hand the core the same neutral message |
+| Core | `server/core/` | Her senses and mouth: batching, perceiving who is speaking to whom, one turn, checks before sending, sending |
+| Mind | `server/mind/` | Her: nature, mood, relationships, self, character, memory, attention, boundaries |
+| A life | `server/mind/life/`, `server/mind/time/` | Time when nobody is talking: waking, solitude, reading, diary, night, review, reaching out, plus her own activities and works |
+| Knowledge | `server/knowledge/` | A shared library she can read |
+| Storage | `server/storage/` | One SQLite file, migrations, backups |
+| Studio | `studio-web/`, `server/studio/` | "TA's little world": see her, write her nature, undo changes that feel wrong |
+
+Six principles run through every module:
+
+1. **One her.** A session only marks where something happened; it never separates her. The same person is the same person in every group and every private chat.
+2. **Nature is a seed.** Only her nature (name, temperament, interests, boundaries, bottom lines, daily rhythm) is written by you. Her self, character and relationships grow out of what she lives through.
+3. **Speak from the heart.** No participation probability, no "always answer when @-mentioned". She first understands what this means to her, then chooses to speak, to react briefly, to say she does not feel like chatting, or to stay silent, and leaves a reason.
+4. **Sourced, gradual, undoable.** Every change cites concrete experiences; one experience moves her only a little; undoing leaves a tombstone so it is never written back.
+5. **It fades, and it is remembered.** What has not been touched for a long time fades from her mind (never deleted), and returns when a related person or topic touches it; people she has not seen for long grow faint, and warm up when they return.
+6. **Attention has a price.** Glancing at a busy group costs not a single token; only what she really cares about is read closely. The input of every kind of call has a cap that does not grow with how long she has lived.
+
+The full design is in [Her life](docs/en/her-life.md) and [Architecture and extension points](docs/en/architecture.md).
+
+## What she can do
+
+| Area | What it does today |
 | --- | --- |
-| Time and solitude | Follows a daily rhythm, reflects during quiet periods, reads, keeps a diary, and revisits earlier days |
-| Self and mood | Develops views, preferences, concerns, and intentions from sourced experiences; changes can be reviewed or withdrawn |
-| Relationships and memory | Keeps identities continuous across groups and direct chats while respecting the boundaries of private information |
-| Attention and choice | Reads multi-person context and reply chains, chooses when to speak or stay quiet, and can initiate contact from her own thoughts |
-| Current channel | Connects to QQ groups and direct chats through OneBot 11; each session is managed separately and can be simulated |
-| Inspection and control | The WebUI shows records, decision reasons, model usage, and runtime state; models can be configured and tested individually |
-
-QQ is the current channel, not the intended limit of the project. Other ways to communicate and encounter the world can be added without losing the thread that connects her experiences and choices.
+| Time and solitude | Lives a day on her own rhythm; in quiet hours sorts her thoughts, reads, writes a diary; reviews every so often, rewrites her story and turns to a new chapter |
+| Doing her own things | Carries out the reading, writing, thinking and play plans she left herself; works are saved even offline and can be viewed under Lifetime and Time |
+| Self and mood | Forms opinions, tastes, concerns and wishes from sourced experiences; changes can be looked back on and undone |
+| Relationships and memory | One memory across groups and private chats; tells "public / private / confidential" apart; private things never surface in another room |
+| Attention and choice | Understands multi-person talk, @-mentions and quotes, and decides to read closely, to speak or to stay silent; can also reach out from her own thoughts |
+| Plans and anticipation | Remembers what others said they would do and what she promised; asks naturally when the time comes, and knows when it has been missed |
+| Two ways to connect | OneBot 11 or the QQ official bot, pick one; behavior is identical, and you can switch while running |
+| Two languages | One click at the top right of the studio, Chinese by default; every document exists in both languages |
+| Management and checks | See her records, decision reasons and model usage; test models one by one; simulation and replay never touch real QQ |
+| Data safety | Automatic backups with an integrity and SHA-256 manifest; a snapshot before migrations; verify and restore into a new file |
 
 ## Quick start
 
-Requires Node.js 24.5+ and npm. For model-generated replies, bring your own compatible model service and API key.
+Requires Node.js 24.5+ and npm. Real replies also need a model service and API key of your own.
 
 ```bash
 git clone https://github.com/TodayYueC/LuckyTri.git
@@ -37,59 +117,81 @@ npm run setup
 npm start
 ```
 
-Open <http://127.0.0.1:3210>. On Windows, `启动LuckyTri.cmd` and `停止LuckyTri.cmd` provide start and stop shortcuts. Configure and test a model under **System → Model library**, then try a simulated message under **Conversations**. Simulation does not send QQ messages.
+Open <http://127.0.0.1:3210>. On Windows you can also double-click `启动LuckyTri.cmd` and stop with `停止LuckyTri.cmd`. For a first run, configure and test a model under System → Model library, then try a simulated message under Chat; simulated messages are never sent to QQ. The top right switches between 中文 and English.
 
-## QQ connection
+## Connect QQ: pick one
 
-LuckyTri implements a **OneBot 11 connection endpoint only**. It does not bundle, download, install, configure, launch, or update QQClient. If you choose QQClient, consult the official QQClient repository and its license.
+With either way, her memory, mood and behavior are exactly the same; only how messages arrive differs. Only one is active at a time. Switch under System → Connect QQ, no restart needed.
 
-1. Set `ONEBOT_TOKEN` in the local `.env`; `npm run setup` generates a random token on first setup.
-2. In an independently installed OneBot 11 client, enable a **reverse WebSocket client** and use **array** message format.
-3. Set the address to `ws://127.0.0.1:3210/onebot/v11/ws` and use the same token.
-4. Complete QQ login in the client. Check **System → QQ connection**, then enable the sessions you want under **Conversations**.
+| | OneBot 11 | QQ official bot |
+| --- | --- | --- |
+| You need | An OneBot 11 endpoint of your own (reverse WebSocket) and a QQ account | A bot on the QQ open platform: AppID and AppSecret |
+| Logging in to QQ | In the endpoint | Not needed |
+| Group messages | All of them | All when "receive all messages" is on; otherwise only those that @-mention her |
+| Names | Group names and nicknames available | The official API gives no group names; rename a session under Chat |
+| Knowing people across groups | By QQ number | The same person has a different openid in each group; only recognized when the platform gives a unified identity |
+| Replies and reaching out | No extra limits | Replies inside the passive-reply window, active messages outside it; if the other side turned active messages off she waits for them to come to her |
 
-If the client runs elsewhere, replace `127.0.0.1` with an address that reaches LuckyTri and configure `ADMIN_TOKEN` for the management interface.
+**OneBot 11**: set `ONEBOT_TOKEN` in `.env` (`npm run setup` generates one) and add a reverse WebSocket client in your endpoint: address `ws://127.0.0.1:3210/onebot/v11/ws`, the same token, message format "array".
 
-## Configuration and local data
+**QQ official bot**: create a bot on the QQ open platform and get its AppID and AppSecret. Under System → Connect QQ choose "QQ official bot", enter them and save (or set `QQBOT_APP_ID` and `QQBOT_APP_SECRET`).
 
-`npm run setup` creates `.env` without overwriting an existing file.
+Details and differences are in [Connect QQ](docs/en/connect.md).
+
+## Configuration, data and privacy
+
+`npm run setup` creates a local `.env` and never overwrites an existing one. Common settings:
 
 | Variable | Purpose |
 | --- | --- |
-| `HOST` / `PORT` | HTTP binding; default `127.0.0.1:3210` |
-| `ADMIN_TOKEN` | WebUI and HTTP API access |
-| `ONEBOT_TOKEN` | OneBot WebSocket authentication |
-| `LLM_API_KEY` | Optional; takes precedence over a WebUI-saved model key |
-| `BACKUP_INTERVAL_HOURS` / `BACKUP_KEEP` | Automatic backup interval (default 24, `0` disables) and how many to keep (default 7) |
+| `HOST` / `PORT` | HTTP address and port, `127.0.0.1:3210` by default |
+| `ADMIN_TOKEN` | Access token for the studio and the HTTP API; required when listening on a non-local address |
+| `LUCKYTRI_CHANNEL` | Optional; `onebot` or `qqbot`. When set, the studio cannot change the connection |
+| `ONEBOT_TOKEN` | Connection token for the OneBot reverse WebSocket |
+| `QQBOT_APP_ID` / `QQBOT_APP_SECRET` | QQ official bot credentials; take precedence over those saved in the studio |
+| `LLM_API_KEY` | Optional; when set, takes precedence over the model key saved in the studio |
+| `EMBEDDING_API_KEY` | Optional; a separate key for the knowledge embedding service |
+| `BACKUP_INTERVAL_HOURS` / `BACKUP_KEEP` | Automatic backup interval (24 hours by default, `0` turns it off) and how many to keep (7 by default) |
 
-The ignored `data/` directory contains local databases, chat logs, model credentials, and backups. While the server runs it makes a verified `data/backups/luckytri-auto-*.db` once a day in a separate process; these leave out model-call traces older than a day, so they stay small (`npm run backup` still makes a full copy). Backups sit on the same disk as the database, so copy important ones elsewhere. Run `npm run backup` before upgrading. Do not commit `.env`, databases, or logs. See [Security](.github/SECURITY.md).
+Everything about her stays on your machine: the database, chat records, model keys and backups live in the ignored `data/` directory and are never uploaded. While running, the server makes one integrity-checked backup a day; backups share a disk with the database, so copy important ones elsewhere. Never commit `.env`, the database or logs. See [Security](.github/SECURITY.md) and [Backup and recovery](docs/en/recovery.md).
 
-## WebUI
+## Documentation
 
-| Page | Purpose |
+| Document | Contents |
 | --- | --- |
-| Now | Current status, recent activity, and usage |
-| Mind | Internal notes and changes |
-| People | Relationships and sources |
-| Life | Diary, reflections, plans, and timeline |
-| Conversations | Sessions, messages, simulation, and debugging |
-| Memory | Long-term memory and reference material |
-| Nature | Persona, schedule, and proactive messaging |
-| System | OneBot status, models, and runtime controls |
+| [Getting started](docs/en/guide.md) | From launching to letting her join her first conversation |
+| [Connect QQ](docs/en/connect.md) | The two connection ways: comparison, steps and differences |
+| [Her life](docs/en/her-life.md) | The unified mind: rhythm, solitude, diary, review, tact and boundaries |
+| [Architecture and extension points](docs/en/architecture.md) | Code layers, and how to add a channel, a mind module, a page or a translation |
+| [Time, activities and works](docs/en/time.md) | Her own activities, plans, works and sharing |
+| [Chat style](docs/en/chat-style.md) | How she speaks and the checks before sending |
+| [Studio design](docs/en/webui.md) | Design and upkeep of "TA's little world" |
+| [Backup and recovery](docs/en/recovery.md) | Backups, migrations, verification and restore |
+| [Changelog](docs/en/CHANGELOG.md) | What changed in each version |
 
-## Development
+## Development and tests
 
 ```bash
-npm run dev:ui       # WebUI development server
-npm run build:ui     # Build the WebUI
-npm test             # Backend tests
-npm run test:clock   # Backend tests with the wall clock moved back and forward
-npm run test:ui      # Browser smoke tests
-npm run format:check # Check code formatting
+npm run dev:ui        # studio dev server
+npm run build:ui      # build the studio into public/app
+npm run docs:build    # generate the Chinese and English guide pages
+npm test              # backend tests
+npm run test:clock    # run the backend tests with the real clock moved into the past and the future
+npm run test:ui       # browser tests (including the English UI)
+npm run format:check  # code format check
 ```
 
-`server/channels/` handles channel protocols, `server/core/` processes messages and replies, `server/mind/` handles time, self, relationships, and memory, `server/studio/` exposes management APIs, and `studio-web/` contains the Vue WebUI. Built assets are in `public/app/`.
+The repository is layered by responsibility: `server/` (channels, core, mind, knowledge, storage, studio API, UI dictionaries), `studio-web/` (Vue 3 + Vite + TypeScript), `scripts/`, `tests/`, and `docs/zh` with `docs/en`. To add a channel or a mind module, start with [Architecture and extension points](docs/en/architecture.md).
+
+## Road to 1.0
+
+0.9.9 is the last tidy-up before 1.0: two ways to connect, two languages, rewritten documents and a cleaner repository. Directions we would like to take next (not promises):
+
+- Stable data structures and migrations, so her continuity can be kept safely across versions;
+- More channels: bring the same her into other ways of talking, still only one her;
+- Richer outside sources: let her read a wider world, with what she reads equally sourced and undoable;
+- Longer real-world evaluation runs, and more interface languages.
 
 ## License
 
-LuckyTri code is released under the [MIT License](LICENSE). External OneBot clients are separate projects with their own terms.
+LuckyTri's code is released under the [MIT License](LICENSE).
