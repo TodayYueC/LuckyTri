@@ -1,1 +1,0 @@
-import{et as e,ht as t}from"./Empty-BgoraFTm.js";function n(n){let r=matchMedia(n),i=t(r.matches),a=e=>i.value=e.matches;return r.addEventListener(`change`,a),e(()=>r.removeEventListener(`change`,a)),i}export{n as t};

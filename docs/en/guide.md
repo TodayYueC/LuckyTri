@@ -173,6 +173,10 @@ Everything of TA lives in this one database, so the service backs it up automati
 
 To take an automatic backup right now: `node scripts/backup.js --auto --force`. A failed automatic backup is noted in the launcher window or `data/launcher.log` and retried after longer and longer pauses. A backup on the same disk as the database cannot survive disk failure; copy important backups elsewhere yourself.
 
+When `DB_PATH` points to a different database and `BACKUP_DIR` is unset, backups go into a `backups` folder beside that database, keeping separate instances apart.
+
+Under System → Data and backups, you can inspect the size of each historical database copy, set a daily cleanup time, full-backup retention in days and a minimum number to keep, or select individual copies for manual removal. By default, a daily check at 04:30 server local time removes only manual full backups older than 14 days, while keeping at least the newest two. Automatic backups keep their separate rotation; migration, older-version and pre-upgrade snapshots require manual selection. Cleanup requires a verified automatic backup from the last 72 hours. The newest two automatic and full backups, and the newest migration snapshot, are protected. The live database and its WAL/SHM files never appear in the list. A removed backup's `.db.json` manifest is removed with it; copy restore points worth keeping to another disk first.
+
 To restore, stop the service, move the current `data/friend.db` and its `-wal` and `-shm` files away, then copy the chosen backup to `data/friend.db`. When `DB_PATH` is set, work on that path. Never keep an old WAL file next to a restored database. The safer way is `npm run recovery`, which verifies a backup and restores it into a brand new file; see `docs/en/recovery.md`.
 
 ## 9. Troubleshooting

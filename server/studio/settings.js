@@ -13,6 +13,29 @@ import { applySpeakerNames, speakerNames } from "../core/speaker-names.js";
 import { displayNames, displaySession } from "./display-names.js";
 
 export function mountStudio(app, store, runtime, chat) {
+  app.get("/api/storage/cleanup", (req, res) => {
+    if (!runtime.cleanup)
+      return res.status(501).json({ error: "备份整理不可用" });
+    res.json(runtime.cleanup.info());
+  });
+  app.patch("/api/storage/cleanup", (req, res) => {
+    if (!runtime.cleanup)
+      return res.status(501).json({ error: "备份整理不可用" });
+    try {
+      res.json(runtime.cleanup.save(req.body));
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+  app.post("/api/storage/cleanup/manual", async (req, res) => {
+    if (!runtime.cleanup)
+      return res.status(501).json({ error: "备份整理不可用" });
+    try {
+      res.json(await runtime.cleanup.manual(req.body.items));
+    } catch (error) {
+      res.status(409).json({ error: error.message });
+    }
+  });
   app.get("/api/service/status", (req, res) =>
     res.json({
       app: "luckybot",

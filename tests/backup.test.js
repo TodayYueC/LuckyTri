@@ -19,6 +19,7 @@ import {
   autoBackup,
   autoBackupDue,
   autoBackupOptions,
+  backupDirectory,
 } from "../scripts/backup.js";
 import { createBackupScheduler } from "../server/storage/backup-scheduler.js";
 import { createApp } from "../server/app.js";
@@ -249,6 +250,20 @@ test("备份设置来自环境变量，0 表示关闭，非法值回到默认", 
     keepTraceDays: 1,
   });
   assert.equal(autoBackupOptions({ BACKUP_KEEP: "3.9" }).keep, 3);
+});
+
+test("自定义数据库的备份留在该数据库旁，子进程沿用相同目录", () => {
+  const w = workspace();
+  try {
+    assert.equal(backupDirectory(w.source, {}), w.backups);
+    assert.equal(backupDirectory(w.source, { BACKUP_DIR: "chosen" }), "chosen");
+    const h = harness({ DB_PATH: w.source }, w.dir);
+    h.advance(3 * 60000);
+    assert.equal(h.scheduler.tick(), true);
+    assert.equal(h.started[0].options.env.BACKUP_DIR, w.backups);
+  } finally {
+    w.store.db.close();
+  }
 });
 
 function fakeChild(pid = 4242) {

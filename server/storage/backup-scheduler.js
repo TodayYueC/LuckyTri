@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import {
   autoBackupDue,
   autoBackupOptions,
+  backupDirectory,
   listAutoBackups,
 } from "../../scripts/backup.js";
 
@@ -18,7 +19,7 @@ const HOUR = 60 * MINUTE;
 // newest few are kept. `BACKUP_INTERVAL_HOURS=0` turns it off.
 export function createBackupScheduler({
   env = process.env,
-  directory = env.BACKUP_DIR || "data/backups",
+  directory = backupDirectory(env.DB_PATH || "data/friend.db", env),
   now = () => Date.now(),
   start = spawn,
   log = console,
@@ -71,7 +72,7 @@ export function createBackupScheduler({
       }
       if (!due) return false;
       const child = start(process.execPath, [SCRIPT, "--auto"], {
-        env,
+        env: { ...env, BACKUP_DIR: directory },
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
       });

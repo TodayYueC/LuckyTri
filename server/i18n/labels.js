@@ -567,6 +567,9 @@ export const LABELS = {
 // Wording that carries a value. `{0}`, `{1}` are filled with what the code put
 // in, and each value goes through the dictionaries again.
 export const LABEL_PATTERNS = [
+  ["定时备份整理调度失败：{0}", "Scheduling backup cleanup failed: {0}"],
+  ["定时备份整理完成：{0} 份", "Scheduled backup cleanup finished: {0} copies"],
+  ["定时备份整理失败：{0}", "Scheduled backup cleanup failed: {0}"],
   ["检查自动备份失败：{0}", "Checking the automatic backup failed: {0}"],
   ["退出码 {0}", "Exit code {0}"],
   ["自动备份失败：{0}", "The automatic backup failed: {0}"],

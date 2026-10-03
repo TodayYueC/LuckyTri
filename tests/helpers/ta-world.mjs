@@ -187,7 +187,7 @@ export async function livedWorld() {
   return w;
 }
 
-export async function serve(w, port = 0) {
+export async function serve(w, port = 0, runtime = {}) {
   const server = createApp({
     store: w.store,
     chatSystem: w.system,
@@ -208,6 +208,7 @@ export async function serve(w, port = 0) {
         lastError: null,
       }),
       shutdown: () => {},
+      ...runtime,
     },
   }).listen(port, "127.0.0.1");
   await new Promise((resolve) => server.on("listening", resolve));

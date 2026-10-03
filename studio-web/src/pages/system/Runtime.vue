@@ -116,16 +116,18 @@ async function save() {
         <b>{{ studio.health.connection?.online ? t("在线") : t("离线") }}</b
         ><span>{{ t("QQ 连接") }}</span>
       </button>
-      <div
+      <button
         v-if="backup"
         class="stat"
         :class="backup.tone"
         :title="backup.title"
         data-testid="backup-status"
+        type="button"
+        @click="go('system', 'storage')"
       >
         <b>{{ backup.value }}</b
         ><span>{{ backup.caption }}</span>
-      </div>
+      </button>
     </section>
   </div>
 </template>

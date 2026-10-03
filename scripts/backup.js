@@ -7,7 +7,7 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
-import { resolve, join, basename } from "node:path";
+import { resolve, join, basename, dirname } from "node:path";
 import {
   copyDatabaseFile,
   writeArchiveManifest,
@@ -20,13 +20,20 @@ const DAY = 24 * HOUR;
 export const AUTO_PREFIX = "luckytri-auto-";
 const MISSING = "数据库不存在，请先启动一次 LuckyTri";
 
+export function backupDirectory(
+  source = process.env.DB_PATH || "data/friend.db",
+  env = process.env,
+) {
+  return env.BACKUP_DIR || join(dirname(resolve(source)), "backups");
+}
+
 function copyDatabase(source, target) {
   copyDatabaseFile(source, target);
 }
 
 export function backupDatabase(
   source = process.env.DB_PATH || "data/friend.db",
-  directory = process.env.BACKUP_DIR || "data/backups",
+  directory = backupDirectory(source),
 ) {
   if (!existsSync(source)) throw new Error(MISSING);
   mkdirSync(directory, { recursive: true });
@@ -123,7 +130,7 @@ function slimAndVerify(file, traceCutoff) {
 
 export function autoBackup({
   source = process.env.DB_PATH || "data/friend.db",
-  directory = process.env.BACKUP_DIR || "data/backups",
+  directory = backupDirectory(source),
   now = Date.now(),
   intervalMs = DAY,
   keep = 7,

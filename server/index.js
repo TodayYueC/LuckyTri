@@ -4,6 +4,7 @@ import { Life } from "./mind/life/index.js";
 import { createApp } from "./app.js";
 import { createChannelHub, createChannels } from "./channels/index.js";
 import { createBackupScheduler } from "./storage/backup-scheduler.js";
+import { createBackupCleanup } from "./storage/backup-cleanup.js";
 
 const store = createStore();
 // One channel at a time connects her to QQ; the rest of the system only ever
@@ -19,6 +20,7 @@ const life = new Life(chatSystem, {
 });
 life.start();
 const backups = createBackupScheduler();
+const cleanup = createBackupCleanup({ store, backup: backups });
 const host = process.env.HOST || "127.0.0.1";
 if (
   !["127.0.0.1", "localhost", "::1"].includes(host) &&
@@ -55,6 +57,7 @@ const app = createApp({
     connection: () => channel.status(),
     syncChannel: () => channel.sync(),
     backup: () => backups.status(),
+    cleanup,
     shutdown,
   },
 });
@@ -70,9 +73,14 @@ function runMaintenance() {
     console.error(`后台维护失败：${error.message}`);
   }
   try {
-    backups.tick();
+    if (!cleanup.running) backups.tick();
   } catch (error) {
     console.error(`自动备份调度失败：${error.message}`);
+  }
+  try {
+    cleanup.tick();
+  } catch (error) {
+    console.error(`定时备份整理调度失败：${error.message}`);
   }
   channel.refreshDirectory().catch(() => {});
 }

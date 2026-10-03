@@ -23,7 +23,7 @@
     "test": "node --import ./tests/helpers/awake.mjs --test tests/*.test.js",
     "test:clock": "node scripts/dev/test-clock.js",
     "audit:sent": "node --env-file-if-exists=.env scripts/dev/audit-sent.js",
-    "test:ui": "node tests/ui/smoke.js && node tests/ui/ta.mjs && node tests/ui/navigation.mjs && node tests/ui/time.mjs && node tests/ui/time-arrangement.mjs && node tests/ui/performance.mjs && node tests/ui/search.mjs && node tests/ui/i18n.mjs",
+    "test:ui": "node tests/ui/smoke.js && node tests/ui/ta.mjs && node tests/ui/navigation.mjs && node tests/ui/time.mjs && node tests/ui/time-arrangement.mjs && node tests/ui/performance.mjs && node tests/ui/search.mjs && node tests/ui/storage.mjs && node tests/ui/i18n.mjs",
     "setup": "node scripts/setup.js",
     "stop": "node --env-file-if-exists=.env scripts/stop.js",
     "backup": "node --env-file-if-exists=.env scripts/backup.js",
