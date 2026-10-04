@@ -204,15 +204,13 @@ function stateLabel(plugin: any) {
     />
     <section v-if="view === 'installed'" class="stack">
       <p class="lead">
-        {{ t("这几件随 LuckyTri 附带，默认关闭。启用前会先列出它要的权限。") }}
+        {{ t("天气随 LuckyTri 附带，默认关闭。启用前会先列出它要的权限。") }}
       </p>
       <div class="grid">
         <Empty
           v-if="!plugins.length"
           :title="t('还没有接上插件')"
-          :text="
-            t('内置的天气、订阅和网页聊天可以在这里启用，也可以从市场安装。')
-          "
+          :text="t('内置的天气可以在这里启用，也可以从市场安装。')"
         />
         <Card
           v-for="plugin in plugins"

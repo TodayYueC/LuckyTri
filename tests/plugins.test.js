@@ -49,11 +49,9 @@ test("a manifest is refused when it asks for the wrong shape", () => {
   assert.equal(satisfies(">=1.0.0 <2.0.0", "0.9.9"), false);
 });
 
-test("the three plugins that ship with her all load", () => {
-  for (const id of ["weather", "rss-reader", "webchat"]) {
-    const manifest = readManifest(join("plugins", id));
-    assert.equal(manifest.id, id);
-  }
+test("the plugin that ships with her loads", () => {
+  const manifest = readManifest(join("plugins", "weather"));
+  assert.equal(manifest.id, "weather");
 });
 
 test("a zip cannot carry a path that leaves its folder", () => {

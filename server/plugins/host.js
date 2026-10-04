@@ -143,6 +143,22 @@ export class PluginHost {
         now: this.now(),
       });
     }
+    const present = new Set(found.map((item) => item.manifest.id));
+    const dropInstall = this.db.prepare(
+      "DELETE FROM plugin_installs WHERE id=?",
+    );
+    const dropSettings = this.db.prepare(
+      "DELETE FROM plugin_settings WHERE plugin_id=?",
+    );
+    const dropKv = this.db.prepare("DELETE FROM plugin_kv WHERE plugin_id=?");
+    for (const row of this.db
+      .prepare("SELECT id FROM plugin_installs WHERE source='builtin'")
+      .all()) {
+      if (present.has(row.id)) continue;
+      dropInstall.run(row.id);
+      dropSettings.run(row.id);
+      dropKv.run(row.id);
+    }
     return this.list();
   }
   list() {

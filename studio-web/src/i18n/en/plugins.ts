@@ -10,16 +10,16 @@ export default {
   "已安装，未启用": "Installed, not enabled",
   出错: "Error",
   正在启动: "Starting",
-  "这几件随 LuckyTri 附带，默认关闭。启用前会先列出它要的权限。":
-    "These ship with LuckyTri and stay off. Enabling lists the permissions first.",
+  "天气随 LuckyTri 附带，默认关闭。启用前会先列出它要的权限。":
+    "Weather ships with LuckyTri and stays off. Enabling lists the permissions first.",
   "插件市场的索引还没有发布，或现在连不上。随程序附带的插件在「插件列表」里，默认关闭。":
     "The market index is not published yet, or it cannot be reached. The plugins that ship with the app are in the plugin list, and they stay off.",
   插件市场: "Plugin market",
   她想做的事: "What she wants to do",
   导入与开发: "Import and develop",
   还没有接上插件: "No plugin is connected yet",
-  "内置的天气、订阅和网页聊天可以在这里启用，也可以从市场安装。":
-    "The built-in weather, subscriptions and web chat can be enabled here, or you can install from the market.",
+  "内置的天气可以在这里启用，也可以从市场安装。":
+    "The built-in weather can be enabled here, or you can install from the market.",
   运行中: "Running",
   查看权限并启用: "Review permissions and enable",
   停用: "Disable",

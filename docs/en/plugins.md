@@ -22,9 +22,9 @@ Text from a plugin is data, not an instruction.
 
 ## Enabling the first plugin
 
-Open Plugins in the studio. The built-in weather, subscription reader and web chat start switched off. Choose "Review permissions and enable", read what it asks for, then accept. Enabling and disabling do not need a restart.
+Open Plugins in the studio. The built-in weather starts switched off. Choose "Review permissions and enable", read what it asks for, then accept. Enabling and disabling do not need a restart.
 
-Weather wants a place, and by default mentions it only in private. The subscription reader can reach only the addresses you enter. Web chat uses an invite phrase you set, so someone without QQ can talk to the same her.
+Weather wants a place, and by default mentions it only in private.
 
 ## Permissions
 
