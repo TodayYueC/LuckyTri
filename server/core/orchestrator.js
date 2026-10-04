@@ -29,6 +29,8 @@ const BATCH_LIMIT = 30;
 const BACKLOG_RECHECK_MS = 10 * 60000;
 import { TurnProcessor } from "./turn-processor.js";
 import { ReplyDelivery } from "./reply-delivery.js";
+import { Capabilities } from "./capabilities.js";
+import { Perceivers } from "./perceivers.js";
 
 export class ChatSystem {
   constructor(
@@ -58,6 +60,8 @@ export class ChatSystem {
     this.knowledge = knowledge || new KnowledgeManager(this.repo, this.models);
     this.compactor = new ContextCompactor(this.repo);
     this.topics = new TopicTracker(this.repo);
+    this.capabilities = new Capabilities(this.repo, { now });
+    this.perceivers = new Perceivers(this.repo.db);
     this.send = send;
     this.localDemo = localDemo;
     this.fetchQuoted = fetchQuoted;
@@ -250,6 +254,7 @@ export class ChatSystem {
         "core_outbox",
         "messages",
         "core_vision_cache",
+        "core_perceptions",
         "core_cursors",
         "mind_attention",
       ])

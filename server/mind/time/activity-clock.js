@@ -1,13 +1,8 @@
 import { text } from "../util.js";
+import { activityMinutes } from "./kinds.js";
 const MINUTE = 60000;
-const DEFAULTS = {
-  game: [25, "本段剧情与场景体验"],
-  write: [15, "写作、推敲与收尾"],
-  read: [15, "阅读与消化本段内容"],
-  think: [10, "思考与整理本段想法"],
-};
 export function activityEstimate(activity, hint, speed = 1.25) {
-  const fallback = DEFAULTS[activity] || [15, "本段活动"],
+  const fallback = activityMinutes(activity),
     proposed = Number(hint?.minutes);
   const referenceMinutes =
     Number.isFinite(proposed) && proposed >= 5 && proposed <= 240

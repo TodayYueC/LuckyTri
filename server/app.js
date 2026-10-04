@@ -9,9 +9,10 @@ import { mountCore } from "./core/api.js";
 import { mountKnowledge } from "./knowledge/api.js";
 import { mountEvents } from "./core/events.js";
 import { mountMind } from "./mind/api.js";
+import { mountPlugins } from "./plugins/api.js";
 import { Life } from "./mind/life/index.js";
 
-export function createApp({ store, chatSystem, runtime, life }) {
+export function createApp({ store, chatSystem, runtime, life, plugins }) {
   const app = express();
   app.use("/api", localizeApi);
   app.use("/api", (req, res, next) => {
@@ -31,6 +32,19 @@ export function createApp({ store, chatSystem, runtime, life }) {
       return res.status(401).json({ error: "请输入管理令牌" });
     next();
   });
+  if (plugins) {
+    app.post(
+      "/api/plugins/import/upload",
+      express.raw({ type: "*/*", limit: "21mb" }),
+      (req, res) => {
+        try {
+          res.json(plugins.install.stageUpload(req.body));
+        } catch (error) {
+          res.status(400).json({ error: error.message });
+        }
+      },
+    );
+  }
   app.use(express.json({ limit: "4mb" }));
   app.use("/api", (req, res, next) => {
     if (
@@ -46,6 +60,7 @@ export function createApp({ store, chatSystem, runtime, life }) {
   mountMind(app, chatSystem, life || new Life(chatSystem));
   mountKnowledge(app, chatSystem);
   mountEvents(app, chatSystem);
+  mountPlugins(app, plugins);
   // Built assets carry a content hash; the page that names them must not be
   // cached, or an upgrade leaves the browser asking for files that are gone.
   app.use(

@@ -95,7 +95,7 @@ export function evidence(list) {
     if (Number.isSafeInteger(item) && item > 0) out.push(`m:${item}`);
     else if (
       typeof item === "string" &&
-      /^[mtdfrasgx]:[\w:.-]{1,80}$/.test(item)
+      /^[mtdfrasgxoe]:[\w:.-]{1,80}$/.test(item)
     )
       out.push(item);
     else if (/^\d+$/.test(String(item))) out.push(`m:${item}`);

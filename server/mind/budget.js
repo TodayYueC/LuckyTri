@@ -15,11 +15,13 @@ export const STAGE_CATEGORY = {
   weekly: "inner",
   memory: "upkeep",
   summary: "upkeep",
+  plugin: "plugins",
 };
 export const BUDGET_DEFAULTS = {
   dailyTokens: 0,
   innerShare: 0.25,
   upkeepShare: 0.15,
+  pluginShare: 0.1,
 };
 
 const estimate = (value) =>
@@ -62,10 +64,10 @@ export class Budget {
       next.dailyTokens > 1e10
     )
       throw Error("每日 Token 上限无效");
-    for (const key of ["innerShare", "upkeepShare"])
+    for (const key of ["innerShare", "upkeepShare", "pluginShare"])
       if (!Number.isFinite(next[key]) || next[key] < 0 || next[key] > 0.9)
         throw Error("预算份额应在 0–0.9");
-    if (next.innerShare + next.upkeepShare > 0.95)
+    if (next.innerShare + next.upkeepShare + next.pluginShare > 0.95)
       throw Error("后台份额之和不能超过 95%");
     this.repo.saveConfig(
       "budget",
@@ -86,6 +88,7 @@ export class Budget {
       conversation: 0,
       inner: 0,
       upkeep: 0,
+      plugins: 0,
       stages: {},
     };
     for (const row of rows) {
@@ -106,12 +109,13 @@ export class Budget {
   limits() {
     const s = this.settings();
     if (!s.dailyTokens)
-      return { total: 0, conversation: 0, inner: 0, upkeep: 0 };
+      return { total: 0, conversation: 0, inner: 0, upkeep: 0, plugins: 0 };
     return {
       total: s.dailyTokens,
       conversation: s.dailyTokens,
       inner: Math.floor(s.dailyTokens * s.innerShare),
       upkeep: Math.floor(s.dailyTokens * s.upkeepShare),
+      plugins: Math.floor(s.dailyTokens * s.pluginShare),
     };
   }
   // 0 means unlimited or idle; 1 means the allowance is spent.
@@ -141,6 +145,7 @@ export class Budget {
         conversation: this.pressure("conversation", now),
         inner: this.pressure("inner", now),
         upkeep: this.pressure("upkeep", now),
+        plugins: this.pressure("plugins", now),
       },
     };
   }

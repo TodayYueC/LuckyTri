@@ -7,6 +7,7 @@ import { TaskLinks } from "./task-links.js";
 import { deadlineAt, taskSchedule, spokenDate } from "./schedule.js";
 import { DeliveryLinks } from "./delivery-links.js";
 import { activityPresentation } from "./presentation.js";
+import { activityLabel, classifyActivity, isExecutable } from "./kinds.js";
 
 export const TASK_STATES = [
   "todo",
@@ -25,13 +26,7 @@ export const ACTIVITY_LABELS = {
   game: "正在玩",
   unknown: "等待澄清",
 };
-export function classifyActivity(words) {
-  if (/写|小说|短篇|诗|随笔|故事/.test(words)) return "write";
-  if (/游戏|Rewrite|ATRI|盲开|通关|打完.+章|游玩/i.test(words)) return "game";
-  if (/读|阅读|看.{0,12}(?:书|资料|文章)/.test(words)) return "read";
-  if (/思考|想一想|想想|整理思路/.test(words)) return "think";
-  return "unknown";
-}
+export { classifyActivity, activityLabel, isExecutable };
 const decode = (row) =>
   row
     ? {
@@ -111,7 +106,7 @@ export class Tasks {
     session = privateRoots[0] || session;
     if (privateRoots.length && discretion !== "secret") discretion = "private";
     const type =
-      activity && ACTIVITY_LABELS[activity]
+      activity && (ACTIVITY_LABELS[activity] || isExecutable(activity))
         ? activity
         : classifyActivity(title);
     subject =

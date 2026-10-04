@@ -5,6 +5,7 @@ import { createApp } from "./app.js";
 import { createChannelHub, createChannels } from "./channels/index.js";
 import { createBackupScheduler } from "./storage/backup-scheduler.js";
 import { createBackupCleanup } from "./storage/backup-cleanup.js";
+import { PluginHost } from "./plugins/host.js";
 
 const store = createStore();
 // One channel at a time connects her to QQ; the rest of the system only ever
@@ -12,13 +13,17 @@ const store = createStore();
 const channel = createChannelHub(store, createChannels(store));
 const chatSystem = new ChatSystem(store, channel.send, {
   fetchQuoted: (message) => channel.fetchQuoted(message),
-  fetchImage: (file) => channel.fetchImage(file),
+  fetchImage: (file, sessionId) => channel.fetchImage(file, sessionId),
 });
 const life = new Life(chatSystem, {
   online: () => channel.online(),
   canReach: (session) => channel.canReach(session),
 });
 life.start();
+const plugins = new PluginHost({ store, chat: chatSystem, channel, life });
+plugins
+  .start()
+  .catch((error) => console.error(`插件没有启动：${error.message}`));
 const backups = createBackupScheduler();
 const cleanup = createBackupCleanup({ store, backup: backups });
 const host = process.env.HOST || "127.0.0.1";
@@ -33,6 +38,7 @@ function shutdown() {
   if (stopping) return;
   stopping = true;
   backups.stop();
+  plugins.close();
   life.close();
   chatSystem.close();
   channel.close();
@@ -53,6 +59,7 @@ const app = createApp({
   store,
   chatSystem,
   life,
+  plugins,
   runtime: {
     connection: () => channel.status(),
     syncChannel: () => channel.sync(),

@@ -15,7 +15,7 @@ import {
 import { dirname, basename, resolve, join } from "node:path";
 import { VERSION } from "../version.js";
 
-export const DATABASE_VERSION = 3;
+export const DATABASE_VERSION = 4;
 const appVersion = VERSION;
 
 function fileHash(file) {
@@ -54,7 +54,7 @@ export function inspectDatabase(file) {
     for (const row of schema.filter(
       (row) =>
         row.type === "table" &&
-        /^(mind_|core_events$|core_memories$|core_chunks$|settings$)/.test(
+        /^(mind_|core_events$|core_memories$|core_chunks$|settings$|plugin_installs$)/.test(
           row.name,
         ),
     ))

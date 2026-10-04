@@ -124,7 +124,11 @@ export function taskIntent(
   let topic = "",
     operation = "do";
   if (activity === "game") topic = gameTopic(title);
-  else if (["write", "read"].includes(activity))
+  else if (
+    activity === "write" ||
+    activity === "read" ||
+    String(activity).includes(".")
+  )
     topic = String(title).match(/[《「]([^》」]{1,100})[》」]/)?.[1] || "";
   if (activity === "write") {
     operation = /修改|重写|修订/.test(title)

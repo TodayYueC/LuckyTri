@@ -40,6 +40,20 @@ export function evidenceRoots(
       roots.add(ref);
       continue;
     }
+    if (kind === "o" || kind === "e") {
+      const row =
+        kind === "o"
+          ? read(
+              "SELECT created FROM mind_observations WHERE id=? AND revoked=0",
+              [id],
+            )
+          : read(
+              "SELECT finished AS created FROM mind_actions WHERE id=? AND state='done'",
+              [id],
+            );
+      if (row && row.created <= before) roots.add(ref);
+      continue;
+    }
     let rows = [];
     if (kind === "x") {
       rows = read(

@@ -348,8 +348,9 @@ export const LABELS = {
   相关的人: "People involved",
 
   // mind/time/availability.js
-  "目前没有下单或实拍的执行能力，需要调整这条约定；仍未兑现":
-    "She cannot place orders or take real photos right now; this promise needs adjusting and is still unfulfilled",
+  "除了她此刻真正能做的事，没有下单或实拍的执行能力，需要调整这条约定；仍未兑现":
+    "Apart from what she can actually do right now, she cannot place orders or take real photos; this promise needs adjusting and is still unfulfilled",
+  所需插件已停用: "The plugin this needs is switched off",
   来源已经撤销: "The source was undone",
   等待前一件事完成: "Waiting for the previous item to finish",
   书架这段内容已不可用: "This bookshelf passage is no longer available",

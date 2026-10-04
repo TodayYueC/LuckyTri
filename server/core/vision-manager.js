@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { lookup as dnsLookup } from "node:dns/promises";
 import { readFile, realpath, stat } from "node:fs/promises";
-import { isIP } from "node:net";
 import { fileURLToPath } from "node:url";
+import { assertPublicHost } from "./net-guard.js";
 import { adapterFor } from "../channels/adapters.js";
 
 const MAX_BYTES = 4 * 1024 * 1024;
@@ -217,47 +217,6 @@ export function imageMime(bytes) {
   return "";
 }
 
-function blockedAddress(address) {
-  const raw = String(address || "")
-    .toLowerCase()
-    .replace(/^\[|\]$/g, "");
-  const mapped = raw.startsWith("::ffff:") ? raw.slice(7) : raw;
-  if (mapped === "::1" || mapped === "::" || raw === "::1" || raw === "::")
-    return true;
-  if (raw.startsWith("fe80:") || raw.startsWith("fc") || raw.startsWith("fd"))
-    return true;
-  const ip = isIP(mapped) === 4 ? mapped : isIP(raw) === 4 ? raw : "";
-  if (!ip) return isIP(raw) !== 6;
-  const [a, b] = ip.split(".").map(Number);
-  return (
-    a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168) ||
-    (a === 100 && b >= 64 && b <= 127)
-  );
-}
-
-async function assertPublicHost(hostname, lookupHost) {
-  const host = String(hostname || "").replace(/^\[|\]$/g, "");
-  if (!host) throw Error("图片地址不可访问");
-  if (isIP(host)) {
-    if (blockedAddress(host)) throw Error("图片地址不可访问");
-    return;
-  }
-  let records;
-  try {
-    records = await lookupHost(host, { all: true });
-  } catch {
-    throw Error("图片地址不可访问");
-  }
-  const list = Array.isArray(records) ? records : [records];
-  if (!list.length || list.some((item) => blockedAddress(item?.address)))
-    throw Error("图片地址不可访问");
-}
-
 function header(response, name) {
   const headers = response?.headers;
   if (!headers) return "";
@@ -300,7 +259,7 @@ async function downloadImage(startUrl, { fetch: fetcher, lookup, usable }) {
     if (parsed.protocol !== "https:" || parsed.username || parsed.password)
       throw Error("图片地址不可访问");
     if (!usable(current)) throw Error("图片地址不可访问");
-    await assertPublicHost(parsed.hostname, lookup);
+    await assertPublicHost(parsed.hostname, lookup, "图片地址不可访问");
     let response;
     try {
       response = await fetcher(current, {
@@ -411,7 +370,10 @@ async function resolveBytes(image, options, depth) {
     if (bytes) return bytes;
   }
   if (depth === 0 && source.file && options.fetchImage) {
-    const fresh = await tryStep(() => options.fetchImage(source.file), errors);
+    const fresh = await tryStep(
+      () => options.fetchImage(source.file, options.sessionId),
+      errors,
+    );
     if (fresh && typeof fresh === "object") {
       const inline = fresh.base64
         ? /^(?:data:|base64:\/\/)/i.test(fresh.base64)

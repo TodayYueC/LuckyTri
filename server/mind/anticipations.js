@@ -3,7 +3,7 @@ import { localClock } from "../core/conversation-cues.js";
 import { hasCredential } from "./guard.js";
 import { isPrivateSession } from "./memory.js";
 import { lifeSpan } from "./nature.js";
-import { classifyActivity } from "./time/tasks.js";
+import { classifyActivity, isExecutable } from "./time/tasks.js";
 import { taskIntent } from "./time/intent.js";
 import { DAY, evidence, parse, similar, text, zonedTime } from "./util.js";
 
@@ -266,9 +266,7 @@ export class Anticipations {
           : "open",
         JSON.stringify(refs),
         origin,
-        kind === "plan" && ["read", "write", "think", "game"].includes(activity)
-          ? activity
-          : "",
+        kind === "plan" && isExecutable(activity) ? activity : "",
       );
     return { id };
   }

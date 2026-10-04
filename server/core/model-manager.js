@@ -42,6 +42,7 @@ const STAGE_OUTPUT = {
   daily: 6144,
   weekly: 6144,
   memory: 8192,
+  plugin: 2048,
 };
 const EFFORT_HEADROOM = {
   none: 0,

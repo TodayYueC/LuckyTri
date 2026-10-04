@@ -488,5 +488,21 @@ export function validateResponse(result, snapshot, decision, maxChars = 180) {
       "对方只是确认，不要突然把别处的话题和未经核实的说法安到对方头上",
     );
   issues.push(...conversationalIssues(result, snapshot, decision));
+  const undone = claimedUndoneAction(result.bubbles, snapshot);
+  if (undone) issues.push(undone);
   return [...new Set(issues)];
+}
+
+// She may only say an action is done when the ledger says it is.
+export function claimedUndoneAction(bubbles, snapshot) {
+  const action = snapshot?.actionResult;
+  if (!action || action.state === "done") return "";
+  const said = (Array.isArray(bubbles) ? bubbles : []).join("");
+  if (
+    /已经(?:帮你)?(?:做好|做完|办好|发出去|发过去|打开|关掉|设好|记下|完成)/.test(
+      said,
+    )
+  )
+    return "这句话说已经做完了，但这件事还没有完成";
+  return "";
 }

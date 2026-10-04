@@ -146,6 +146,12 @@ export function createOneBotChannel(store) {
     return data && typeof data === "object" ? data : null;
   }
 
+  async function fetchMedia(file, type) {
+    const action = type === "record" ? "get_record" : "get_file";
+    const data = await rpc(action, { file: String(file) }, 8000);
+    return data && typeof data === "object" ? data : null;
+  }
+
   function attach(httpServer, chatSystem) {
     wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 });
     httpServer.on("upgrade", (req, sock, head) => {
@@ -289,6 +295,7 @@ export function createOneBotChannel(store) {
     send,
     fetchQuoted,
     fetchImage,
+    fetchMedia,
     refreshDirectory,
     canReach,
     status,
