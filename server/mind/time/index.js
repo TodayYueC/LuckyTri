@@ -260,7 +260,8 @@ export class TimeSystem {
           "INSERT INTO mind_time_spans(id,task_id,started,updated) VALUES (?,?,?,?)",
         )
         .run(randomUUID(), task.id, now, now);
-    this.event(task.id, "doing", "开始接着做", {}, now);
+    if (refreshed.state !== "doing")
+      this.event(task.id, "doing", "开始接着做", {}, now);
     return this.tasks.get(task.id);
   }
   valid(task) {

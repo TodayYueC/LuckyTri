@@ -182,7 +182,9 @@ export class Life {
   }
   runs(limit = 60) {
     return this.db
-      .prepare("SELECT * FROM mind_runs ORDER BY started DESC LIMIT ?")
+      .prepare(
+        "SELECT * FROM mind_runs WHERE NOT (kind='activity' AND status IN ('reading','engaged')) ORDER BY started DESC LIMIT ?",
+      )
       .all(limit)
       .map((r) => ({ ...r, summary: parse(r.summary, null) }));
   }

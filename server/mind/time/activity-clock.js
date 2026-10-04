@@ -69,7 +69,9 @@ export class ActivityClock {
       0,
       Math.min(
         delta,
-        clock.plannedMs - (this.committed(task.id) - clock.baselineMs),
+        Math.round(
+          clock.plannedMs - (this.committed(task.id) - clock.baselineMs),
+        ),
       ),
     );
   }
@@ -134,7 +136,7 @@ export class ActivityClock {
       elapsedMs,
       stepMs,
       plannedMs: clock.plannedMs,
-      remainingMs: Math.max(0, clock.plannedMs - stepMs),
+      remainingMs: Math.max(0, Math.round(clock.plannedMs - stepMs)),
       progress: clock.plannedMs > 0 ? Math.min(1, stepMs / clock.plannedMs) : 0,
       referenceMinutes: clock.referenceMinutes,
       speed: clock.speed,
@@ -181,8 +183,10 @@ export class ActivityClock {
     const rest = this.time.focusMs(task),
       remaining = Math.max(
         0,
-        checkpoint.activityClock.plannedMs -
-          (this.committed(task.id) - checkpoint.activityClock.baselineMs),
+        Math.round(
+          checkpoint.activityClock.plannedMs -
+            (this.committed(task.id) - checkpoint.activityClock.baselineMs),
+        ),
       );
     this.db
       .prepare(

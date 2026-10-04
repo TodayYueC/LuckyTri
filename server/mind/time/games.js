@@ -53,7 +53,12 @@ export class Games {
       60000,
       this.time.focusMs(task) - Math.max(0, base - (slot.baselineMs || 0)),
     );
-    const allocated = Math.min(totalMs * (1 - from), quota);
+    // The span ledger stores whole milliseconds. Fractions at the end of a
+    // window must not become an unreachable remainder on every later tick.
+    const allocated = Math.max(
+      0,
+      Math.round(Math.min(totalMs - (base - origin), quota)),
+    );
     return {
       ...checkpoint,
       stage: "contact",
@@ -64,7 +69,7 @@ export class Games {
         materialBaseline: origin,
         totalMs,
         from,
-        to: Math.min(1, from + allocated / totalMs),
+        to: Math.min(1, (base - origin + allocated) / totalMs),
         noteFrom: window?.notedUntil || 0,
         notedUntil: window?.notedUntil || 0,
         slotChosenAt: slot.chosenAt,
@@ -348,7 +353,7 @@ export class Games {
     }
     if (
       time.clock.elapsed(task, now) - (checkpoint.contactElapsed || 0) <
-      checkpoint.requiredMs
+      Math.round(checkpoint.requiredMs)
     ) {
       time.clock.release(task, checkpoint, now);
       return { status: "reading", reason: "接着玩这一段" };
