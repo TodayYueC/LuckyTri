@@ -2,6 +2,16 @@
 
 # Changelog
 
+## 1.0.0 — 2026-10-04
+
+Plugins. The core still defines who she is; a plugin decides what of the world she can touch.
+
+- **Plugin API v1.** A plugin can offer a channel, a sense, a sourced experience, material for an activity, an action she may choose, shelf reading and a sandboxed page. It cannot speak for her, and it cannot write her nature, self, bonds or memory.
+- **Permissions are enforced.** Each plugin is a restricted process. Without the matching permission it cannot read her state, use the network, register a channel or call a model. Accepted once when enabled, and again if an upgrade asks for more.
+- **Market and import.** The studio can browse an index, import a zip link, a GitHub repository, an uploaded package or a local folder, check sha256, roll back and remove. What she already lived through does not leave with the plugin.
+- **Three built-in plugins, off by default.** Weather, subscription reading and web chat.
+- **Database version 4.** A snapshot is kept before the upgrade. With no plugin enabled, she behaves as in 0.9.9.
+
 ## 0.9.9 — 2026-10-02
 
 The last tidy-up before 1.0: two ways to connect, a bilingual interface, rewritten documentation, and a cleaner, easier-to-extend repository.

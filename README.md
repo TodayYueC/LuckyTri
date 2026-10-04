@@ -7,7 +7,7 @@
 <p align="center"><strong>让她走过的日子算数。</strong></p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.9.9-ff8fb1">
+  <img alt="version" src="https://img.shields.io/badge/version-1.0.0-ff8fb1">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-7fd6c2">
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A5%2024.5-8fb8ff">
   <img alt="channels" src="https://img.shields.io/badge/QQ-OneBot%2011%20%7C%20%E5%AE%98%E6%96%B9%E6%9C%BA%E5%99%A8%E4%BA%BA-ffd37f">
@@ -104,6 +104,7 @@ flowchart LR
 | 中英双语 | 工作室右上角一键切换，默认中文；所有文档中英各一份 |
 | 管理与验证 | 查看她的记录、决策依据、模型用量；逐个测试模型；模拟模式与回放不碰真实 QQ |
 | 数据保障 | 自动备份附带完整性与 SHA-256 清单；迁移前留快照；可验证并恢复到新文件 |
+| 插件 | 通道、感官、活动、行动、资料和页面。每个插件一个受限进程，权限在启用时同意。见 [插件](docs/zh/plugins.md) |
 
 ## 快速开始
 
@@ -183,13 +184,15 @@ npm run format:check  # 代码格式检查
 
 仓库按职责分层：`server/`（通道、核心、心智、资料、存储、管理 API、界面词典）、`studio-web/`（Vue 3 + Vite + TypeScript）、`scripts/`、`tests/`、`docs/zh` 与 `docs/en`。想新增一个通道或心智模块，从 [架构与扩展点](docs/zh/architecture.md) 开始。
 
-## 通往 1.0
+## 1.0
 
-0.9.9 是 1.0 之前的最后一次整理：两种连接方式、中英双语、重写的文档和更干净的仓库。接下来想做的方向（不是承诺）：
+1.0 接上了插件。核心仍然定义她是谁；插件决定她能接触什么世界。每个插件跑在自己的进程里，经 Plugin API v1 和一份在启用时同意的权限接触她，读不到数据库和密钥。工作室里可以启用内置插件、从市场或外部导入，也可以卸载。说明见 [插件](docs/zh/plugins.md)。
+
+接下来想做的方向（不是承诺）：
 
 - 稳定数据结构与迁移，让她的连续性可以放心地跨版本保存；
-- 更多通道：把同一个她带到别的交流方式里，仍然只是一个她；
-- 更丰富的外部信息来源：让她读到更广阔的世界，并且读到的东西同样有来源、可撤销；
+- 只能否决、不能改写的回复守卫；
+- 跨平台认出同一个人；
 - 更长时间的真实运行评测，以及更多界面语言。
 
 ## 许可

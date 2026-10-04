@@ -1,0 +1,29 @@
+{
+  "id": "weather",
+  "name": "天气",
+  "version": "1.0.0",
+  "pluginApi": "1.0",
+  "luckytri": ">=1.0.0 <2.0.0",
+  "description": "让她感觉到窗外的天气。地点默认只出现在私聊里。",
+  "author": "TodayYueC",
+  "license": "MIT",
+  "entry": "index.js",
+  "permissions": ["senses", "observe", "net.fetch"],
+  "network": ["api.open-meteo.com", "geocoding-api.open-meteo.com"],
+  "settings": [
+    { "key": "place", "type": "text", "label": "地点", "required": true },
+    {
+      "key": "shareInGroups",
+      "type": "boolean",
+      "label": "在群里也能提起天气",
+      "default": false
+    }
+  ],
+  "contributes": { "senses": ["weather"] },
+  "i18n": {
+    "en": {
+      "name": "Weather",
+      "description": "Lets her feel the weather outside."
+    }
+  }
+}

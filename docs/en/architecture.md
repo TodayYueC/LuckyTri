@@ -98,6 +98,10 @@ These are the promises the code and the tests guard together; make sure they sti
 
 ## Extension points
 
+### Connecting a plugin
+
+A plugin does not edit the core. It runs in its own process and uses Plugin API v1: a channel registers on `ChannelHub`, a sense lands in `inner.senses`, an experience is stored in `mind_observations`, an activity kind joins `server/mind/time/kinds.js`, an action joins `server/core/capabilities.js`, and attachment perception joins `server/core/perceivers.js`. The host lives in `server/plugins/`. See [Plugins](plugins.md).
+
 ### Adding a channel
 
 1. Create a folder under `server/channels/` that fulfils the contract in `contract.js` (`type`, `capabilities`, `attach`, `start`, `stop`, `send`, `fetchQuoted`, `fetchImage`, `refreshDirectory`, `canReach`, `status`, `close`), wrapped with `defineChannel`.

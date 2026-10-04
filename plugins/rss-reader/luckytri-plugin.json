@@ -1,0 +1,33 @@
+{
+  "id": "rss-reader",
+  "name": "订阅阅读",
+  "version": "1.0.0",
+  "pluginApi": "1.0",
+  "luckytri": ">=1.0.0 <2.0.0",
+  "description": "给她一条订阅。她按自己的节奏读，长文会放到书架上。",
+  "author": "TodayYueC",
+  "license": "MIT",
+  "entry": "index.js",
+  "permissions": ["activities", "knowledge.offer", "net.fetch"],
+  "network": [],
+  "settings": [
+    {
+      "key": "feeds",
+      "type": "urls",
+      "label": "订阅地址，一行一个",
+      "allowNetwork": true,
+      "default": []
+    }
+  ],
+  "contributes": {
+    "activities": [
+      {
+        "kind": "browse",
+        "label": "浏览订阅",
+        "describe": "读一篇订阅里的文章",
+        "keywords": "订阅|rss|文章",
+        "minutes": 15
+      }
+    ]
+  }
+}

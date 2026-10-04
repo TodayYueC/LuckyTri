@@ -7,7 +7,7 @@
 <p align="center"><strong>Let the days she lives count.</strong></p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.9.9-ff8fb1">
+  <img alt="version" src="https://img.shields.io/badge/version-1.0.0-ff8fb1">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-7fd6c2">
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A5%2024.5-8fb8ff">
   <img alt="channels" src="https://img.shields.io/badge/QQ-OneBot%2011%20%7C%20official%20bot-ffd37f">
@@ -104,6 +104,7 @@ The full design is in [Her life](docs/en/her-life.md) and [Architecture and exte
 | Two languages | One click at the top right of the studio, Chinese by default; every document exists in both languages |
 | Management and checks | See her records, decision reasons and model usage; test models one by one; simulation and replay never touch real QQ |
 | Data safety | Automatic backups with an integrity and SHA-256 manifest; a snapshot before migrations; verify and restore into a new file |
+| Plugins | Channels, senses, activities, actions, reading and pages. Each plugin is a restricted process, and its permissions are accepted when it is enabled. See [Plugins](docs/en/plugins.md) |
 
 ## Quick start
 
@@ -183,13 +184,15 @@ npm run format:check  # code format check
 
 The repository is layered by responsibility: `server/` (channels, core, mind, knowledge, storage, studio API, UI dictionaries), `studio-web/` (Vue 3 + Vite + TypeScript), `scripts/`, `tests/`, and `docs/zh` with `docs/en`. To add a channel or a mind module, start with [Architecture and extension points](docs/en/architecture.md).
 
-## Road to 1.0
+## 1.0
 
-0.9.9 is the last tidy-up before 1.0: two ways to connect, two languages, rewritten documents and a cleaner repository. Directions we would like to take next (not promises):
+1.0 connects plugins. The core still defines who she is; a plugin decides what of the world she can touch. Each plugin runs in its own process and reaches her through Plugin API v1 and permissions accepted when it is enabled. It cannot read the database or the keys. The studio can enable the built-in plugins, import from the market or from outside, and remove them. See [Plugins](docs/en/plugins.md).
+
+Directions we would like to take next (not promises):
 
 - Stable data structures and migrations, so her continuity can be kept safely across versions;
-- More channels: bring the same her into other ways of talking, still only one her;
-- Richer outside sources: let her read a wider world, with what she reads equally sourced and undoable;
+- A reply guard that can only refuse, never rewrite;
+- Recognizing the same person across platforms;
 - Longer real-world evaluation runs, and more interface languages.
 
 ## License

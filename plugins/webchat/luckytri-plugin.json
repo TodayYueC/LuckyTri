@@ -1,0 +1,26 @@
+{
+  "id": "webchat",
+  "name": "网页聊天",
+  "version": "1.0.0",
+  "pluginApi": "1.0",
+  "luckytri": ">=1.0.0 <2.0.0",
+  "description": "没有 QQ 的人，拿着邀请链接，也能和同一个她说话。",
+  "author": "TodayYueC",
+  "license": "MIT",
+  "entry": "index.js",
+  "permissions": ["channel", "http.public", "ui"],
+  "network": [],
+  "settings": [
+    { "key": "invite", "type": "secret", "label": "邀请口令", "required": true }
+  ],
+  "contributes": {
+    "channels": [
+      {
+        "type": "webchat",
+        "label": "网页",
+        "capabilities": { "mention": false, "quote": false, "image": false }
+      }
+    ],
+    "ui": { "page": true }
+  }
+}

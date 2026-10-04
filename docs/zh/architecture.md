@@ -98,6 +98,10 @@ public/                     构建后的工作室（app/）与教程页
 
 ## 扩展点
 
+### 接上一个插件
+
+插件不改核心代码。它跑在自己的进程里，通过 Plugin API v1 使用下面这些扩展点：通道注册到 `ChannelHub`，感官进入 `inner.senses`，经历写入 `mind_observations`，活动类型进入 `server/mind/time/kinds.js`，行动进入 `server/core/capabilities.js`，附件感知进入 `server/core/perceivers.js`。宿主在 `server/plugins/`。说明见 [插件](plugins.md)。
+
 ### 新增一个通道
 
 1. 在 `server/channels/` 下新建目录，实现 `contract.js` 里的契约（`type`、`capabilities`、`attach`、`start`、`stop`、`send`、`fetchQuoted`、`fetchImage`、`refreshDirectory`、`canReach`、`status`、`close`），用 `defineChannel` 包起来。

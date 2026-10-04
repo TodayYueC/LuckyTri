@@ -20,7 +20,7 @@ Open <http://127.0.0.1:3210>. The experimental-SQLite notice in the terminal doe
 
 On Windows you can double-click `启动LuckyTri.cmd` for daily use. If the service is already running, it only opens LuckyTri. Closing the browser does not stop the service; to stop it double-click `停止LuckyTri.cmd` or run `npm run stop` in the project folder. That command stops this project only and leaves other Node processes alone. When running in the foreground you can also press `Ctrl+C` in that terminal.
 
-LuckyTri is "TA's little world". The left navigation has three groups and nine entries:
+LuckyTri is "TA's little world". The left navigation has three groups and ten entries:
 
 | Group | Entry | What is inside |
 | --- | --- | --- |
@@ -33,6 +33,7 @@ LuckyTri is "TA's little world". The left navigation has three groups and nine e
 | Daily life | Memory | What TA remembers, the bookshelf |
 | Settings | Nature | Name and character (the glow beside it previews live), daily rhythm, TA's days, daily tokens, advanced prompts, trial chat |
 | Settings | System | Connect QQ, model library, run switches |
+| Settings | Plugins | Enable, install and remove the ways she touches the world. See [Plugins](plugins.md) |
 
 The colors, sky and motion follow TA's mood and rhythm: warm when she is happy, grey-blue when she is low, night once she is asleep. At the bottom left you can pin one theme or turn on "Reduce motion". The small TA at the bottom right answers a poke, a long press is a head-pat, and a double click or "Chat" opens the trial chat. These are interface animations only and never change her mind. On a phone the navigation sits at the bottom and the other entries are under "More".
 
