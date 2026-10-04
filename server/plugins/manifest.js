@@ -12,6 +12,7 @@ export const RESERVED_IDS = new Set([
   "luckytri",
 ]);
 const ID = /^[a-z][a-z0-9-]{1,39}$/;
+const SETTING_KEY = /^[a-z][A-Za-z0-9-]{0,39}$/;
 const SEMVER =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 const HOST = /^[a-z0-9.-]+$/i;
@@ -57,7 +58,11 @@ function setting(field) {
     "textarea",
     "urls",
   ];
-  if (!field || !ID.test(field.key || "") || !types.includes(field.type))
+  if (
+    !field ||
+    !SETTING_KEY.test(field.key || "") ||
+    !types.includes(field.type)
+  )
     throw Error("插件设置项无效");
   if (typeof field.label !== "string" || !field.label.trim())
     throw Error("插件设置项无效");

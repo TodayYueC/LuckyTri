@@ -1,3 +1,4 @@
+import { claimServer, clearStarting } from "./startup-lock.js";
 import { createStore } from "./storage/store.js";
 import { ChatSystem } from "./core/orchestrator.js";
 import { Life } from "./mind/life/index.js";
@@ -7,6 +8,7 @@ import { createBackupScheduler } from "./storage/backup-scheduler.js";
 import { createBackupCleanup } from "./storage/backup-cleanup.js";
 import { PluginHost } from "./plugins/host.js";
 
+claimServer();
 const store = createStore();
 // One channel at a time connects her to QQ; the rest of the system only ever
 // talks to the hub.
@@ -37,6 +39,7 @@ let stopping = false;
 function shutdown() {
   if (stopping) return;
   stopping = true;
+  clearStarting();
   backups.stop();
   plugins.close();
   life.close();
@@ -68,9 +71,11 @@ const app = createApp({
     shutdown,
   },
 });
-const server = app.listen(Number(process.env.PORT || 3210), host, () =>
-  console.log(`LuckyTri 管理台 http://${host}:${process.env.PORT || 3210}`),
-);
+const server = app.listen(Number(process.env.PORT || 3210), host, () => {
+  clearStarting();
+  console.log(`LuckyTri 管理台 http://${host}:${process.env.PORT || 3210}`);
+});
+process.on("exit", clearStarting);
 channel.attach(server, chatSystem);
 function runMaintenance() {
   store.maintenance();

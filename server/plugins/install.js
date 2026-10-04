@@ -10,20 +10,25 @@ import { readZip, stripRoot, writeTree } from "./zip.js";
 const DOWNLOAD = 20 * 1024 * 1024;
 const STAGED_FOR = 30 * 60000;
 
-async function download(url, hops = 0) {
+async function download(url, hops = 0, timeoutMs = 30000) {
   if (hops > 3) throw new Error("跳转过多");
   const parsed = new URL(url);
   if (parsed.protocol !== "https:" || parsed.username || parsed.password)
     throw new Error("这个地址不能访问");
   await assertPublicHost(parsed.hostname, lookup, "这个地址不能访问");
-  const response = await fetch(parsed, {
-    redirect: "manual",
-    headers: { "User-Agent": `LuckyTri/${VERSION}` },
-    signal: AbortSignal.timeout(30000),
-  });
+  let response;
+  try {
+    response = await fetch(parsed, {
+      redirect: "manual",
+      headers: { "User-Agent": `LuckyTri/${VERSION}` },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch {
+    throw new Error("插件包下载失败");
+  }
   if ([301, 302, 303, 307, 308].includes(response.status)) {
     const next = new URL(response.headers.get("location") || "", parsed).href;
-    return download(next, hops + 1);
+    return download(next, hops + 1, timeoutMs);
   }
   if (!response.ok) throw new Error("插件包下载失败");
   const length = Number(response.headers.get("content-length"));
@@ -193,10 +198,11 @@ export function createInstaller(host) {
       host.db.prepare("DELETE FROM plugin_sources WHERE id=?").run(id);
     },
     async catalog() {
-      const out = [];
+      const plugins = [];
+      let unavailable = false;
       for (const source of await this.registries()) {
         try {
-          const bytes = await download(source.url);
+          const bytes = await download(source.url, 0, 8000);
           const index = JSON.parse(bytes.toString("utf8"));
           if (index.format !== 1 || !Array.isArray(index.plugins))
             throw new Error("插件索引无效");
@@ -207,18 +213,18 @@ export function createInstaller(host) {
                 satisfies(item.luckytri || ">=1.0.0 <2.0.0", VERSION),
             );
             if (!versions.length) continue;
-            out.push({
+            plugins.push({
               ...plugin,
               source: source.url,
               versions,
               latest: versions[versions.length - 1],
             });
           }
-        } catch (error) {
-          out.push({ source: source.url, error: error.message });
+        } catch {
+          unavailable = true;
         }
       }
-      return out;
+      return { plugins, unavailable };
     },
     async remove(id, { data = false } = {}) {
       await host.disable(id);

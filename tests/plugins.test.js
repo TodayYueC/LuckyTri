@@ -4,7 +4,11 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { world } from "./helpers/world.js";
-import { validateManifest, satisfies } from "../server/plugins/manifest.js";
+import {
+  readManifest,
+  satisfies,
+  validateManifest,
+} from "../server/plugins/manifest.js";
 import { readZip } from "../server/plugins/zip.js";
 import { PluginHost } from "../server/plugins/host.js";
 import { classifyActivity } from "../server/mind/time/kinds.js";
@@ -43,6 +47,13 @@ test("a manifest is refused when it asks for the wrong shape", () => {
   );
   assert.equal(satisfies(">=1.0.0 <2.0.0", "1.0.0"), true);
   assert.equal(satisfies(">=1.0.0 <2.0.0", "0.9.9"), false);
+});
+
+test("the three plugins that ship with her all load", () => {
+  for (const id of ["weather", "rss-reader", "webchat"]) {
+    const manifest = readManifest(join("plugins", id));
+    assert.equal(manifest.id, id);
+  }
 });
 
 test("a zip cannot carry a path that leaves its folder", () => {

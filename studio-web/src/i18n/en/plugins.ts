@@ -5,7 +5,15 @@ export default {
   "插件只能经她同意接触世界。它们读不到她的数据库，也不能替她开口。":
     "A plugin touches the world only with her leave. It cannot read her database, and it cannot speak for her.",
   插件的分区: "Plugin sections",
-  已接上: "Connected",
+  插件列表: "Plugin list",
+  "内置，未启用": "Built in, not enabled",
+  "已安装，未启用": "Installed, not enabled",
+  出错: "Error",
+  正在启动: "Starting",
+  "这几件随 LuckyTri 附带，默认关闭。启用前会先列出它要的权限。":
+    "These ship with LuckyTri and stay off. Enabling lists the permissions first.",
+  "插件市场的索引还没有发布，或现在连不上。随程序附带的插件在「插件列表」里，默认关闭。":
+    "The market index is not published yet, or it cannot be reached. The plugins that ship with the app are in the plugin list, and they stay off.",
   插件市场: "Plugin market",
   她想做的事: "What she wants to do",
   导入与开发: "Import and develop",
@@ -16,6 +24,9 @@ export default {
   查看权限并启用: "Review permissions and enable",
   停用: "Disable",
   详情: "Details",
+  正在查看市场: "Looking at the market",
+  "连不上的话，这里会说明，不会再显示一串英文错误。":
+    "If it cannot be reached, this page says so, instead of an English error.",
   市场暂时没有条目: "The market has no entries right now",
   "索引仓库还是空的，或者现在连不上。你仍然可以导入一个插件包。":
     "The index repository is empty, or it cannot be reached. You can still import a package.",
@@ -42,10 +53,12 @@ export default {
   校验通过: "Checksum matches",
   未登记来源: "Unlisted source",
   同意这些权限并安装: "Accept these permissions and install",
+  同意这些权限并启用: "Accept these permissions and enable",
   高风险: "High risk",
   中风险: "Medium risk",
   低风险: "Low risk",
   已保存的不会回显: "A saved value is not shown again",
+  一行一个地址: "One address per line",
   保存设置: "Save settings",
   卸载: "Remove",
   插件: "Plugins",

@@ -33,8 +33,11 @@ async function lookup(place) {
   };
 }
 
+let timer;
+
 export default {
   async activate(ctx) {
+    clearInterval(timer);
     const refresh = async () => {
       const settings = await ctx.settings.get();
       if (!settings.place) {
@@ -70,8 +73,10 @@ export default {
     };
     ctx.settings.onChange(refresh);
     await refresh();
-    const timer = setInterval(refresh, 30 * 60000);
-    ctx.deactivate = () => clearInterval(timer);
+    timer = setInterval(refresh, 30 * 60000);
   },
-  deactivate() {},
+  deactivate() {
+    clearInterval(timer);
+    timer = null;
+  },
 };

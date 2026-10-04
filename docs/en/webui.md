@@ -25,7 +25,7 @@ The studio is not "a tab inside an admin console" but "TA's little world": she i
 | Daily life | Memory | What she remembers, the reference bookshelf |
 | Settings | Nature | The only part you write: name, character, interests, boundaries, bottom lines, daily rhythm, daily tokens, trial chat |
 | Settings | System | Connect QQ (OneBot 11 or the official bot, either-or), model library, run switches |
-| Settings | Plugins | Connected plugins, the market, things she wants to do that need your yes, import and development |
+| Settings | Plugins | Plugins that ship with her and ones already installed, the market, things she wants to do that need your yes, import and development |
 
 On a phone the bottom bar holds "Now, Chat, Inner life, Lifetime" and the other entries are under "More". Links from the old studio (`#her`, `#live`, `#spaces`, `#lab`, `#knowledge`, `#models`, `#connect`, …) jump to their new places automatically.
 

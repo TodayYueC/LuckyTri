@@ -167,6 +167,9 @@ export function prepareDatabaseMigration(file) {
     db.close();
   }
   if (version === DATABASE_VERSION || !hasData) return null;
+  console.log(
+    `正在把数据库从 v${version} 升级到 v${DATABASE_VERSION}。会先复制整份数据，记录越多越久，请不要关闭窗口。`,
+  );
   const directory = join(dirname(resolve(file)), "backups");
   mkdirSync(directory, { recursive: true });
   const target = join(

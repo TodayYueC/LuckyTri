@@ -199,7 +199,6 @@ export class PluginHost {
         "UPDATE plugin_installs SET enabled=0,state='installed',updated=? WHERE id=?",
       )
       .run(this.now(), id);
-    this.detach(id);
     this.store.revision++;
     return this.list().find((item) => item.id === id);
   }

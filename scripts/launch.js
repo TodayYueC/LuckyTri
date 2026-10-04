@@ -2,6 +2,11 @@ import { openSync, closeSync, mkdirSync, realpathSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
+  claimLaunch,
+  clearStarting,
+  starting,
+} from "../server/startup-lock.js";
+import {
   resolveProxyEnvironment,
   supportsNodeEnvironmentProxy,
 } from "./proxy-config.js";
@@ -24,7 +29,7 @@ const base = new URL(
 ).origin;
 const normalize = (value) =>
   process.platform === "win32" ? value.toLowerCase() : value;
-async function running() {
+async function running(lenient = false) {
   let response;
   try {
     response = await fetch(base + "/api/service/status", {
@@ -32,7 +37,7 @@ async function running() {
       signal: AbortSignal.timeout(1500),
     });
   } catch (error) {
-    if (error.cause?.code === "ECONNREFUSED") return false;
+    if (lenient || error.cause?.code === "ECONNREFUSED") return false;
     throw new Error("无法确认端口状态，请检查服务或网络；未重复启动。");
   }
   if (!response.ok)
@@ -59,36 +64,56 @@ try {
       "系统代理转发需要 Node.js 24.5 或更高版本。请升级 Node.js 后重试。",
     );
   if (!(await running())) {
-    await import("express").catch(() => {
-      throw new Error("缺少依赖，请先在项目目录执行 npm install。");
-    });
-    mkdirSync("data", { recursive: true });
-    const log = openSync("data/launcher.log", "a");
-    const args = [
-      ...(proxy.enabled ? ["--use-env-proxy"] : []),
-      "--env-file-if-exists=.env",
-      "server/index.js",
-    ];
-    const child = spawn(process.execPath, args, {
-      cwd: process.cwd(),
-      detached: true,
-      windowsHide: true,
-      env: { ...process.env, ...proxy.env },
-      stdio: ["ignore", log, log],
-    });
-    closeSync(log);
-    await new Promise((resolve, reject) => {
-      child.once("spawn", resolve);
-      child.once("error", reject);
-    });
-    child.unref();
+    let childExited = false;
+    const fresh = claimLaunch();
+    if (!fresh) console.log("上一次启动还在进行，正在等它就绪，不会再开一份。");
+    else {
+      console.log("正在启动 LuckyTri…");
+      console.log("窗口会停在这里直到服务就绪，请不要关闭。");
+      try {
+        await import("express").catch(() => {
+          throw new Error("缺少依赖，请先在项目目录执行 npm install。");
+        });
+        mkdirSync("data", { recursive: true });
+        const log = openSync("data/launcher.log", "a");
+        const args = [
+          ...(proxy.enabled ? ["--use-env-proxy"] : []),
+          "--env-file-if-exists=.env",
+          "server/index.js",
+        ];
+        const child = spawn(process.execPath, args, {
+          cwd: process.cwd(),
+          detached: true,
+          windowsHide: true,
+          env: { ...process.env, ...proxy.env },
+          stdio: ["ignore", log, log],
+        });
+        closeSync(log);
+        child.once("exit", () => {
+          childExited = true;
+        });
+        await new Promise((resolve, reject) => {
+          child.once("spawn", resolve);
+          child.once("error", reject);
+        });
+        child.unref();
+      } catch (error) {
+        clearStarting();
+        throw error;
+      }
+    }
     let ready = false;
-    for (let attempt = 0; attempt < 200; attempt++) {
+    for (let attempt = 0; attempt < 2000; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 300));
-      if (await running()) {
+      if (attempt > 0 && attempt % 16 === 0) console.log("仍在启动…");
+      if (await running(true)) {
         ready = true;
         break;
       }
+      if (fresh && childExited)
+        throw new Error("启动进程已退出，请查看 data/launcher.log。");
+      if (!fresh && !starting())
+        throw new Error("上一次启动已中断，请再试一次。");
     }
     if (!ready) throw new Error("启动未完成，请查看 data/launcher.log。");
     console.log(

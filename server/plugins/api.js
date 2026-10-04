@@ -20,7 +20,7 @@ export function mountPlugins(app, plugins) {
   });
   app.get("/api/plugins/market", async (req, res) => {
     try {
-      res.json({ plugins: await plugins.install.catalog() });
+      res.json(await plugins.install.catalog());
     } catch (error) {
       res.status(400).json({ error: error.message });
     }
