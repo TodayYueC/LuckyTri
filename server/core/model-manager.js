@@ -619,7 +619,7 @@ function imageParts(images) {
   return images.flatMap((x) => [
     {
       type: "text",
-      text: `下面这张${x.kind === "sticker" ? "表情包" : "图"}属于消息 ${x.messageId}，发送人 ${x.speaker}${x.summary ? `，QQ 附带标签 ${JSON.stringify(x.summary)}` : ""}。先判断这条消息是在表达情绪、接梗，还是认真提供信息；不要自动沿用前一条消息的话题。请看画面本身，不要只根据占位符或标签回答。`,
+      text: `下面这张${x.kind === "sticker" ? "表情包" : "图"}属于消息 ${x.messageId}，发送人 ${x.speaker}${x.summary ? `，QQ 附带标签 ${JSON.stringify(x.summary)}` : ""}。${x.frameOnly ? "这里只读取了动态图的第一帧，不要据此声称看到了完整动画。" : ""}先判断这条消息是在表达情绪、接梗，还是认真提供信息；不要自动沿用前一条消息的话题。请看画面本身，不要只根据占位符或标签回答。`,
     },
     { type: "image_url", image_url: { url: x.url } },
   ]);

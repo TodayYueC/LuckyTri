@@ -7,6 +7,10 @@ import { defineChannel } from "../contract.js";
 import { parseSessionKey } from "../session-key.js";
 import { applyDirectoryNames } from "../../core/sessions.js";
 import { saveAccountNames } from "../../studio/display-names.js";
+import { visionImageLimits } from "../../core/image-preprocessor.js";
+
+const EVENT_MAX_BYTES = 1024 * 1024;
+const IMAGE_TIMEOUT_MS = 30000;
 
 // OneBot 11 over a reverse WebSocket: a client she does not manage (any
 // OneBot 11 implementation) connects to /onebot/v11/ws with the shared token.
@@ -112,11 +116,13 @@ export function createOneBotChannel(store) {
           new Error(
             action === "get_msg"
               ? "引用恢复超时"
-              : "QQ 发送确认超时，不自动重发",
+              : action === "get_image"
+                ? "QQ 图片读取超时"
+                : "QQ 发送确认超时，不自动重发",
           ),
         );
       }, timeoutMs);
-      pending.set(echo, { resolve, reject, timer });
+      pending.set(echo, { action, resolve, reject, timer });
       socket.send(JSON.stringify({ action, params, echo }));
     });
   };
@@ -142,7 +148,11 @@ export function createOneBotChannel(store) {
   }
 
   async function fetchImage(file) {
-    const data = await rpc("get_image", { file: String(file) }, 8000);
+    const data = await rpc(
+      "get_image",
+      { file: String(file) },
+      IMAGE_TIMEOUT_MS,
+    );
     return data && typeof data === "object" ? data : null;
   }
 
@@ -153,7 +163,14 @@ export function createOneBotChannel(store) {
   }
 
   function attach(httpServer, chatSystem) {
-    wss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 });
+    // Only authenticated OneBot clients reach this server. get_image may carry
+    // base64 rather than a URL, so its frame must fit the source-image budget.
+    // Ordinary events still have the smaller independent limit below.
+    const imageBytes = visionImageLimits().maxSourceBytes;
+    wss = new WebSocketServer({
+      noServer: true,
+      maxPayload: Math.ceil(imageBytes / 3) * 4 + EVENT_MAX_BYTES,
+    });
     httpServer.on("upgrade", (req, sock, head) => {
       if (
         !running ||
@@ -176,6 +193,7 @@ export function createOneBotChannel(store) {
       connectedAt = Date.now();
       directoryAt = 0;
       const pullNames = (attempt = 0) => {
+        if (!running || socket !== ws) return;
         directoryAt = 0;
         refreshDirectory()
           .then((changed) => {
@@ -190,10 +208,24 @@ export function createOneBotChannel(store) {
       ws.on("message", async (raw) => {
         try {
           const event = JSON.parse(raw.toString());
-          if (!event || typeof event !== "object") return;
+          if (!event || typeof event !== "object" || Array.isArray(event))
+            return;
+          const reply =
+            typeof event.echo === "string" && pending.get(event.echo);
+          const imageReply =
+            reply?.action === "get_image" &&
+            !event.post_type &&
+            ((["number", "string"].includes(typeof event.retcode) &&
+              String(event.retcode).trim() !== "" &&
+              Number.isFinite(Number(event.retcode))) ||
+              ["ok", "success", "failed"].includes(event.status));
+          if (raw.byteLength > EVENT_MAX_BYTES && !imageReply) {
+            console.error("OneBot: 超过普通消息大小限制，已忽略");
+            return;
+          }
           lastEventAt = Date.now();
-          if (event.echo && pending.has(event.echo)) {
-            const p = pending.get(event.echo);
+          if (reply) {
+            const p = reply;
             clearTimeout(p.timer);
             pending.delete(event.echo);
             Number(event.retcode) === 0 ||

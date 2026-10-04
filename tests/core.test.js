@@ -1356,7 +1356,12 @@ test("QQ 图片表情可以进入视觉，内网和不带画面的 face 不行",
 });
 
 test("图片在送给模型前变成画面数据，不把 QQ 外链或内网地址发出去", async () => {
-  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+  const { default: sharp } = await import("sharp");
+  const jpeg = await sharp({
+    create: { width: 16, height: 16, channels: 3, background: "#f6d9ec" },
+  })
+    .jpeg()
+    .toBuffer();
   const inline = await loadVisionImages([
     {
       messageId: 1,

@@ -93,6 +93,14 @@ After saving, click "Test this model's connection". The test carries no group ch
 
 You can also stay in simulation mode and trial-chat with TA under "Nature" to see how she speaks before letting her join real QQ.
 
+### Reading images
+
+Enable "Image understanding" in the model profile and use a model whose provider supports vision. Images can be read from QQ URLs, local cache files or the image-cache API. Originals up to 32 MiB and 80 million pixels are accepted by default, so ordinary photos and screenshots larger than 4 MiB are no longer rejected outright. Small images retain their bytes after decoding validation. Large screenshots first try lossless compression, then encoding compression or proportional resizing as needed. Photos are oriented correctly without cropping. Each image sent to the model defaults to at most 4 MiB, 8192 pixels on its longest side and 16 million output pixels. Originals stay unchanged and duplicate detection uses their original contents.
+
+Downloads have a 30-second timeout by default. An interrupted or damaged image fails independently of other images in the batch. AVIF is converted to a common format; animated images contribute their first frame, which does not establish the full animation. Large Base64 images returned by QQ's image-cache API no longer fall under the ordinary 1 MiB message limit; ordinary messages keep that limit.
+
+To adjust this, set `VISION_SOURCE_MAX_MB` (4–64, default 32), `VISION_MODEL_MAX_MB` (1–4, default 4) or `VISION_DOWNLOAD_TIMEOUT_SECONDS` (5–120, default 30) in `.env`, then restart. Interpretation still depends on the selected model's visual abilities and an available provider endpoint.
+
 ## 5. Connect QQ
 
 Open "System → Connect QQ". There are two options at the top: **OneBot 11** and **QQ official bot**, and only one is used at a time. Switching drops the current connection; sessions from the previous method stay readable but can no longer be sent to. See `docs/en/connect.md` for how the two compare; the steps are below.

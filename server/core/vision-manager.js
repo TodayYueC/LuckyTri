@@ -4,8 +4,14 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { assertPublicHost } from "./net-guard.js";
 import { adapterFor } from "../channels/adapters.js";
+import {
+  imageMime,
+  prepareVisionImage,
+  visionImageLimits,
+  withVisionImageSlot,
+} from "./image-preprocessor.js";
 
-const MAX_BYTES = 4 * 1024 * 1024;
+export { imageMime };
 const KNOWN_REASONS = new Set([
   "图片地址不可访问",
   "图片超过大小限制",
@@ -18,6 +24,9 @@ const KNOWN_REASONS = new Set([
   "图片跳转无效",
   "图片读取失败",
   "图片缓存不可用",
+  "图片像素超过处理限制",
+  "图片处理超时",
+  "QQ 图片读取超时",
 ]);
 
 const IMAGE_REQUEST =
@@ -184,39 +193,6 @@ function sourceFields(image, usable) {
   return classify([image.url, image.inline, image.local, image.file], usable);
 }
 
-export function imageMime(bytes) {
-  if (
-    bytes.length >= 3 &&
-    bytes[0] === 0xff &&
-    bytes[1] === 0xd8 &&
-    bytes[2] === 0xff
-  )
-    return "image/jpeg";
-  if (
-    bytes.length >= 8 &&
-    bytes[0] === 0x89 &&
-    bytes[1] === 0x50 &&
-    bytes[2] === 0x4e &&
-    bytes[3] === 0x47
-  )
-    return "image/png";
-  if (
-    bytes.length >= 6 &&
-    bytes[0] === 0x47 &&
-    bytes[1] === 0x49 &&
-    bytes[2] === 0x46 &&
-    bytes[3] === 0x38
-  )
-    return "image/gif";
-  if (
-    bytes.length >= 12 &&
-    bytes.toString("ascii", 0, 4) === "RIFF" &&
-    bytes.toString("ascii", 8, 12) === "WEBP"
-  )
-    return "image/webp";
-  return "";
-}
-
 function header(response, name) {
   const headers = response?.headers;
   if (!headers) return "";
@@ -247,8 +223,12 @@ async function readLimited(response, maxBytes) {
   return Buffer.concat(chunks);
 }
 
-async function downloadImage(startUrl, { fetch: fetcher, lookup, usable }) {
+async function downloadImage(
+  startUrl,
+  { fetch: fetcher, lookup, usable, imageLimits },
+) {
   let current = startUrl;
+  const signal = AbortSignal.timeout(imageLimits.downloadTimeoutMs);
   for (let hop = 0; hop < 3; hop++) {
     let parsed;
     try {
@@ -270,7 +250,7 @@ async function downloadImage(startUrl, { fetch: fetcher, lookup, usable }) {
           Referer: "https://qun.qq.com/",
           Accept: "image/avif,image/webp,image/png,image/jpeg,image/gif,*/*",
         },
-        signal: AbortSignal.timeout(12000),
+        signal,
       });
     } catch (error) {
       if (error?.name === "TimeoutError" || error?.name === "AbortError")
@@ -284,29 +264,43 @@ async function downloadImage(startUrl, { fetch: fetcher, lookup, usable }) {
       current = new URL(location, current).href;
       continue;
     }
-    if (response.status < 200 || response.status >= 300)
+    if (response.status < 200 || response.status >= 300) {
+      await response.body?.cancel?.().catch(() => {});
       throw Error(`图片下载失败 HTTP ${response.status}`);
+    }
     const declared = Number(header(response, "content-length"));
-    if (Number.isFinite(declared) && declared > MAX_BYTES)
+    if (Number.isFinite(declared) && declared > imageLimits.maxSourceBytes) {
+      await response.body?.cancel?.().catch(() => {});
       throw Error("图片超过大小限制");
-    return readLimited(response, MAX_BYTES);
+    }
+    try {
+      return await readLimited(response, imageLimits.maxSourceBytes);
+    } catch (error) {
+      if (
+        signal.aborted ||
+        ["TimeoutError", "AbortError"].includes(error?.name)
+      )
+        throw Error("图片下载超时");
+      throw error;
+    }
   }
   throw Error("图片跳转过多");
 }
 
-function inlineBytes(value) {
+function inlineBytes(value, maxBytes) {
   const text = String(value || "");
+  if (text.length > Math.ceil(maxBytes / 3) * 4 * 1.05 + 128)
+    throw Error("图片超过大小限制");
   const raw =
     text.match(/^data:image\/[a-z0-9.+-]+;base64,([a-z0-9+/=\r\n]+)$/i)?.[1] ||
     text.match(/^base64:\/\/([a-z0-9+/=\r\n]+)$/i)?.[1];
   if (!raw) throw Error("图片读取失败");
   const bytes = Buffer.from(raw, "base64");
-  if (!bytes.length || bytes.length > MAX_BYTES)
-    throw Error("图片超过大小限制");
+  if (!bytes.length || bytes.length > maxBytes) throw Error("图片超过大小限制");
   return bytes;
 }
 
-async function readLocalImage(value, fs) {
+async function readLocalImage(value, fs, maxBytes) {
   let resolved;
   try {
     const path = String(value).startsWith("file://")
@@ -323,9 +317,9 @@ async function readLocalImage(value, fs) {
     throw Error("本地图片无法读取");
   }
   if (!info.isFile() || info.size <= 0) throw Error("本地图片无法读取");
-  if (info.size > MAX_BYTES) throw Error("图片超过大小限制");
+  if (info.size > maxBytes) throw Error("图片超过大小限制");
   const bytes = await fs.readFile(resolved);
-  if (bytes.length > MAX_BYTES) throw Error("图片超过大小限制");
+  if (bytes.length > maxBytes) throw Error("图片超过大小限制");
   return bytes;
 }
 
@@ -352,12 +346,20 @@ async function resolveBytes(image, options, depth) {
   const source = sourceFields(image, options.usable);
   const errors = [];
   if (source.inline) {
-    const bytes = await tryStep(() => inlineBytes(source.inline), errors);
+    const bytes = await tryStep(
+      () => inlineBytes(source.inline, options.imageLimits.maxSourceBytes),
+      errors,
+    );
     if (bytes) return bytes;
   }
   if (source.local) {
     const bytes = await tryStep(
-      () => readLocalImage(source.local, options.fs),
+      () =>
+        readLocalImage(
+          source.local,
+          options.fs,
+          options.imageLimits.maxSourceBytes,
+        ),
       errors,
     );
     if (bytes) return bytes;
@@ -402,36 +404,43 @@ export async function loadVisionImages(images, options = {}) {
     lookup: options.lookup || dnsLookup,
     fs: options.fs || { realpath, readFile, stat },
     fetchImage: options.fetchImage,
+    sessionId: options.sessionId,
+    imageLimits: { ...visionImageLimits(), ...options.imageLimits },
   };
   const results = await Promise.all(
-    (images || []).map(async (image) => {
-      try {
-        const bytes = await resolveBytes(image, resolved, 0);
-        const mime = imageMime(bytes);
-        if (!mime) throw Error("不是支持的图片格式");
-        return {
-          ok: true,
-          image: {
-            messageId: image.messageId,
-            speaker: image.speaker,
-            index: image.index ?? 0,
-            kind: image.kind || "image",
-            summary: image.summary || "",
-            file: image.file || "",
-            sha256: createHash("sha256").update(bytes).digest("hex"),
-            url: `data:${mime};base64,${bytes.toString("base64")}`,
-          },
-        };
-      } catch (error) {
-        return {
-          ok: false,
-          unavailable: {
-            messageId: image.messageId,
-            reason: safeReason(error),
-          },
-        };
-      }
-    }),
+    (images || []).map((image) =>
+      withVisionImageSlot(async () => {
+        try {
+          const bytes = await resolveBytes(image, resolved, 0);
+          const prepared = await prepareVisionImage(
+            bytes,
+            resolved.imageLimits,
+          );
+          return {
+            ok: true,
+            image: {
+              messageId: image.messageId,
+              speaker: image.speaker,
+              index: image.index ?? 0,
+              kind: image.kind || "image",
+              summary: image.summary || "",
+              file: image.file || "",
+              sha256: createHash("sha256").update(bytes).digest("hex"),
+              frameOnly: prepared.frameOnly,
+              url: `data:${prepared.mime};base64,${prepared.bytes.toString("base64")}`,
+            },
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            unavailable: {
+              messageId: image.messageId,
+              reason: safeReason(error),
+            },
+          };
+        }
+      }),
+    ),
   );
   return {
     images: results.filter((item) => item.ok).map((item) => item.image),
