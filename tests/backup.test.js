@@ -2,13 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
+  rmSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
 import { EventEmitter } from "node:events";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
@@ -19,8 +23,17 @@ import {
   autoBackup,
   autoBackupDue,
   autoBackupOptions,
+  backupDatabase,
   backupDirectory,
+  listAutoBackups,
 } from "../scripts/backup.js";
+import {
+  archiveIdentity,
+  ensureArchiveIdentity,
+  restoreToNewFile,
+  verifyArchive,
+} from "../server/storage/archive.js";
+import { withBackupLock } from "../server/storage/backup-lock.js";
 import { createBackupScheduler } from "../server/storage/backup-scheduler.js";
 import { createApp } from "../server/app.js";
 import { world } from "./helpers/world.js";
@@ -223,6 +236,330 @@ test("备份复制的是一致的快照：源库之后再改，不影响已经�
   w.store.db.close();
 });
 
+test("自动与完整副本继承稳定数据库身份，恢复后仍属于同一个人的连续历史", () => {
+  const w = workspace();
+  try {
+    const first = autoBackup({
+      source: w.source,
+      directory: w.backups,
+      now: NOW,
+      force: true,
+    });
+    const identity = archiveIdentity(w.source);
+    assert.equal(typeof identity, "string");
+    assert.ok(identity.length > 8);
+    assert.equal(ensureArchiveIdentity(w.source), identity);
+    const full = backupDatabase(w.source, w.backups);
+    for (const file of [first.file, full]) {
+      const manifest = JSON.parse(readFileSync(`${file}.json`, "utf8"));
+      assert.equal(manifest.databaseId, identity);
+      assert.equal(archiveIdentity(file), identity);
+      assert.equal(verifyArchive(file).databaseId, identity);
+    }
+    const destination = join(w.dir, "restored-continuity.db");
+    restoreToNewFile(first.file, destination);
+    assert.equal(archiveIdentity(destination), identity);
+    assert.equal(
+      w.store.db.prepare("SELECT COUNT(*) n FROM core_events").get().n,
+      1,
+    );
+    assert.equal(
+      w.store.db.prepare("SELECT COUNT(*) n FROM core_traces").get().n,
+      2,
+    );
+  } finally {
+    w.store.db.close();
+    rmSync(w.dir, { recursive: true, force: true });
+  }
+});
+
+test("清单里的数据库身份必须与副本一致，不能把别人的副本伪装为本实例", () => {
+  const w = workspace();
+  const other = workspace();
+  try {
+    const first = autoBackup({
+      source: w.source,
+      directory: w.backups,
+      now: NOW,
+      force: true,
+    });
+    const second = autoBackup({
+      source: other.source,
+      directory: other.backups,
+      now: NOW,
+      force: true,
+    });
+    assert.notEqual(archiveIdentity(w.source), archiveIdentity(other.source));
+    const manifest = JSON.parse(readFileSync(`${second.file}.json`, "utf8"));
+    manifest.databaseId = archiveIdentity(w.source);
+    writeFileSync(`${second.file}.json`, JSON.stringify(manifest));
+    assert.throws(() => verifyArchive(second.file), /实例|身份|清单不匹配/);
+    assert.equal(
+      verifyArchive(first.file).databaseId,
+      archiveIdentity(w.source),
+    );
+  } finally {
+    w.store.db.close();
+    other.store.db.close();
+    rmSync(w.dir, { recursive: true, force: true });
+    rmSync(other.dir, { recursive: true, force: true });
+  }
+});
+
+test("目录被清理占用时自动与手动备份都拒绝启动，释放锁后正常执行", () => {
+  const w = workspace();
+  try {
+    withBackupLock(w.backups, () => {
+      assert.throws(
+        () => backupDatabase(w.source, w.backups),
+        /备份目录正在被使用/,
+      );
+      assert.throws(
+        () =>
+          autoBackup({
+            source: w.source,
+            directory: w.backups,
+            now: NOW,
+            force: true,
+          }),
+        /备份目录正在被使用/,
+      );
+    });
+    assert.ok(!names(w.backups).some((name) => name.endsWith(".db")));
+    assert.equal(
+      autoBackup({
+        source: w.source,
+        directory: w.backups,
+        now: NOW,
+        force: true,
+      }).status,
+      "created",
+    );
+  } finally {
+    w.store.db.close();
+    rmSync(w.dir, { recursive: true, force: true });
+  }
+});
+
+test("备份目录锁跨进程生效，异常结束锁范围后不遗留永久占用", () => {
+  const w = workspace();
+  try {
+    const moduleUrl = new URL(
+      "../server/storage/backup-lock.js",
+      import.meta.url,
+    ).href;
+    const childCode = `import { withBackupLock } from ${JSON.stringify(moduleUrl)};
+      try { withBackupLock(${JSON.stringify(w.backups)}, () => {}); process.exitCode = 1; }
+      catch (error) { if (!error.message.includes("备份目录正在被使用")) throw error; process.exitCode = 42; }`;
+    withBackupLock(w.backups, () => {
+      const child = spawnSync(
+        process.execPath,
+        ["--input-type=module", "-e", childCode],
+        {
+          encoding: "utf8",
+          windowsHide: true,
+          timeout: 10000,
+        },
+      );
+      assert.equal(child.error, undefined);
+      assert.equal(child.status, 42, child.stderr);
+    });
+    assert.throws(
+      () =>
+        withBackupLock(w.backups, () => {
+          throw Error("failed operation");
+        }),
+      /failed operation/,
+    );
+    assert.equal(
+      withBackupLock(w.backups, () => "ready"),
+      "ready",
+    );
+  } finally {
+    w.store.db.close();
+    rmSync(w.dir, { recursive: true, force: true });
+  }
+});
+
+test("共享目录按实例安排和轮换，不覆盖同毫秒生成的另一实例副本", () => {
+  const w = workspace();
+  const other = workspace();
+  try {
+    const a = autoBackup({
+      source: w.source,
+      directory: w.backups,
+      now: NOW,
+      force: true,
+      keep: 1,
+    });
+    const b = autoBackup({
+      source: other.source,
+      directory: w.backups,
+      now: NOW,
+      force: true,
+      keep: 1,
+    });
+    assert.notEqual(a.file, b.file);
+    assert.equal(verifyArchive(a.file).databaseId, archiveIdentity(w.source));
+    assert.equal(
+      verifyArchive(b.file).databaseId,
+      archiveIdentity(other.source),
+    );
+    const next = autoBackup({
+      source: w.source,
+      directory: w.backups,
+      now: NOW + DAY,
+      keep: 1,
+    });
+    assert.equal(next.status, "created");
+    assert.deepEqual(next.removed, [a.file.split(/[\\/]/).at(-1)]);
+    assert.ok(existsSync(b.file), "另一实例最后的副本不参与本实例轮换");
+    assert.equal(
+      autoBackupDue(w.backups, { source: other.source, now: NOW + 2 * DAY }),
+      true,
+    );
+    assert.equal(
+      autoBackup({
+        source: other.source,
+        directory: w.backups,
+        now: NOW + 2 * DAY,
+        keep: 1,
+      }).status,
+      "created",
+    );
+    assert.equal(listAutoBackups(w.backups, { source: w.source }).length, 1);
+    assert.equal(
+      listAutoBackups(w.backups, { source: other.source }).length,
+      1,
+    );
+  } finally {
+    w.store.db.close();
+    other.store.db.close();
+    rmSync(w.dir, { recursive: true, force: true });
+    rmSync(other.dir, { recursive: true, force: true });
+  }
+});
+
+test("无身份旧副本和伪配清单不影响本实例到期判断，也不自动删除", () => {
+  const w = workspace();
+  const other = workspace();
+  try {
+    const legacy = autoBackup({
+      source: w.source,
+      directory: w.backups,
+      now: NOW + 10 * DAY,
+      force: true,
+    });
+    const legacyManifest = JSON.parse(
+      readFileSync(`${legacy.file}.json`, "utf8"),
+    );
+    delete legacyManifest.databaseId;
+    writeFileSync(`${legacy.file}.json`, JSON.stringify(legacyManifest));
+    const mismatched = autoBackup({
+      source: other.source,
+      directory: w.backups,
+      now: NOW + 11 * DAY,
+      force: true,
+    });
+    const mismatchedManifest = JSON.parse(
+      readFileSync(`${mismatched.file}.json`, "utf8"),
+    );
+    mismatchedManifest.databaseId = archiveIdentity(w.source);
+    writeFileSync(
+      `${mismatched.file}.json`,
+      JSON.stringify(mismatchedManifest),
+    );
+    assert.equal(
+      autoBackupDue(w.backups, { source: w.source, now: NOW }),
+      true,
+    );
+    assert.equal(listAutoBackups(w.backups, { source: w.source }).length, 0);
+    const fresh = autoBackup({
+      source: w.source,
+      directory: w.backups,
+      now: NOW,
+      keep: 1,
+    });
+    assert.equal(fresh.status, "created");
+    assert.deepEqual(fresh.removed, []);
+    assert.ok(existsSync(legacy.file));
+    assert.ok(existsSync(mismatched.file));
+    assert.equal(
+      verifyArchive(fresh.file).databaseId,
+      archiveIdentity(w.source),
+    );
+  } finally {
+    w.store.db.close();
+    other.store.db.close();
+    rmSync(w.dir, { recursive: true, force: true });
+    rmSync(other.dir, { recursive: true, force: true });
+  }
+});
+
+test("命名成自动备份的源库及其硬链接始终排除，同名目标另取时间戳", () => {
+  const dir = mkdtempSync(join(tmpdir(), "luckytri-auto-source-"));
+  const stamp = new Date(NOW).toISOString().replace(/[:.]/g, "-");
+  const source = join(dir, `${AUTO_PREFIX}${stamp}.db`);
+  const store = createStore(source);
+  try {
+    store.save({ name: "运行源库不能被轮换" });
+    const first = autoBackup({
+      source,
+      directory: dir,
+      now: NOW,
+      force: true,
+      keep: 1,
+    });
+    assert.notEqual(first.file, source);
+    const alias = join(dir, `${AUTO_PREFIX}2026-09-01T00-00-00-000Z.db`);
+    linkSync(source, alias);
+    const manifest = JSON.parse(readFileSync(`${first.file}.json`, "utf8"));
+    writeFileSync(`${source}.json`, JSON.stringify(manifest));
+    writeFileSync(`${alias}.json`, JSON.stringify(manifest));
+    const second = autoBackup({
+      source,
+      directory: dir,
+      now: NOW + DAY,
+      force: true,
+      keep: 1,
+    });
+    assert.deepEqual(second.removed, [first.file.split(/[\\/]/).at(-1)]);
+    assert.equal(listAutoBackups(dir, { source }).length, 1);
+    assert.ok(existsSync(source));
+    assert.ok(existsSync(alias));
+    assert.equal(store.settings().name, "运行源库不能被轮换");
+    assert.equal(
+      verifyArchive(second.file).databaseId,
+      archiveIdentity(source),
+    );
+  } finally {
+    store.db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("源库扩展名即使是partial也不能被遗留半成品整理误删", () => {
+  const dir = mkdtempSync(join(tmpdir(), "luckytri-partial-source-"));
+  const source = join(dir, `${AUTO_PREFIX}source.db.aaaa.partial`);
+  const store = createStore(source);
+  try {
+    store.save({ name: "任意源文件名仍受保护" });
+    utimesSync(source, new Date(NOW - 8 * HOUR), new Date(NOW - 8 * HOUR));
+    const result = autoBackup({
+      source,
+      directory: dir,
+      now: NOW,
+      force: true,
+    });
+    assert.equal(result.status, "created");
+    assert.ok(existsSync(source));
+    assert.equal(store.settings().name, "任意源文件名仍受保护");
+  } finally {
+    store.db.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("备份设置来自环境变量，0 表示关闭，非法值回到默认", () => {
   assert.deepEqual(autoBackupOptions({}), {
     enabled: true,
@@ -286,7 +623,7 @@ function harness(
   const started = [];
   const messages = { log: [], error: [] };
   const scheduler = createBackupScheduler({
-    env,
+    env: { DB_PATH: join(dir, "life.db"), ...env },
     directory: join(dir, "backups"),
     now: () => clock,
     start: (command, args, options) => {
@@ -335,6 +672,42 @@ test("几小时前刚做过备份就不再做", () => {
   h.advance(DAY);
   assert.equal(h.scheduler.tick(), true, "过了一天就该再做一份");
   w.store.db.close();
+});
+
+test("调度状态只展示本实例副本，外实例的新副本不阻止本实例备份", () => {
+  const w = workspace();
+  const other = workspace();
+  try {
+    autoBackup({
+      source: other.source,
+      directory: w.backups,
+      now: NOW + 2 * DAY,
+      force: true,
+    });
+    const h = harness({ DB_PATH: w.source }, w.dir);
+    assert.equal(h.scheduler.status().count, 0);
+    assert.equal(h.scheduler.status().latest, null);
+    h.advance(3 * 60000);
+    assert.equal(h.scheduler.tick(), true);
+    assert.equal(h.started[0].options.env.DB_PATH, w.source);
+    h.started[0].child.emit("exit", 0);
+    const own = autoBackup({
+      source: w.source,
+      directory: w.backups,
+      now: NOW,
+      force: true,
+    });
+    assert.equal(h.scheduler.status().count, 1);
+    assert.equal(
+      h.scheduler.status().latest.name,
+      own.file.split(/[\\/]/).at(-1),
+    );
+  } finally {
+    w.store.db.close();
+    other.store.db.close();
+    rmSync(w.dir, { recursive: true, force: true });
+    rmSync(other.dir, { recursive: true, force: true });
+  }
 });
 
 test("备份失败会隔越来越久才重试，不反复折腾磁盘", () => {

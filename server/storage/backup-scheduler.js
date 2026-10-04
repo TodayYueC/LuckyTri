@@ -27,6 +27,7 @@ export function createBackupScheduler({
   checkEveryMs = 10 * MINUTE,
 } = {}) {
   const options = autoBackupOptions(env);
+  const source = env.DB_PATH || "data/friend.db";
   let running = null;
   let failures = 0;
   let lastError = null;
@@ -40,7 +41,7 @@ export function createBackupScheduler({
     status() {
       let backups = [];
       try {
-        backups = listAutoBackups(directory);
+        backups = listAutoBackups(directory, { source });
       } catch (error) {
         lastError ||= { at: now(), message: error.message };
       }
@@ -65,6 +66,7 @@ export function createBackupScheduler({
         due = autoBackupDue(directory, {
           now: now(),
           intervalMs: options.intervalMs,
+          source,
         });
       } catch (error) {
         log.error(`检查自动备份失败：${error.message}`);

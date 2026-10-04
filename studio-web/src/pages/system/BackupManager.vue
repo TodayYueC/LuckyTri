@@ -14,6 +14,7 @@ type Entry = {
   at: number;
   manifest: boolean;
   protected: boolean;
+  protectionReason?: string;
 };
 type Policy = {
   enabled: boolean;
@@ -41,6 +42,7 @@ const form = ref<Policy>({
 const selected = ref<string[]>([]);
 const busy = ref(false);
 const error = ref("");
+const failures = ref<{ name: string; error: string }[]>([]);
 let active = true;
 const key = (item: Entry) => `${item.scope}:${item.name}`;
 const chosen = computed(
@@ -103,7 +105,7 @@ function selectRecommended() {
   selected.value = (info.value?.plan.items || []).map(key);
 }
 
-function selectOldFull() {
+function selectFull() {
   selected.value = (info.value?.entries || [])
     .filter((item) => item.kind === "full" && !item.protected)
     .map(key);
@@ -154,13 +156,18 @@ async function clean() {
   busy.value = true;
   try {
     const result = await api("/storage/cleanup/manual", "POST", { items });
-    selected.value = [];
+    failures.value = result.failures || [];
+    const failed = new Set(
+      (result.failures || []).map((item: any) => `${item.scope}:${item.name}`),
+    );
+    selected.value = selected.value.filter((id) => failed.has(id));
     await load();
     toast(
       t("已清理 {count} 份备份，释放 {size}", {
         count: result.removed.length,
         size: size(result.bytes),
-      }),
+      }) + (failures.value.length ? t("；部分未清理，详情见列表") : ""),
+      failures.value.length > 0,
     );
   } catch (cause) {
     toast((cause as Error).message, true);
@@ -241,27 +248,27 @@ onBeforeUnmount(() => {
               @input="changed"
           /></label>
           <label
-            >{{ t("至少保留最近几份完整备份")
+            >{{ t("完整备份最多保留份数")
             }}<input
               v-model.number="form.keepFull"
               type="number"
-              min="2"
+              min="0"
               max="100"
-              :aria-label="t('至少保留最近几份完整备份')"
+              :aria-label="t('完整备份最多保留份数')"
               @input="changed"
           /></label>
         </div>
         <p class="storage-note">
           {{
             t(
-              "时间按服务器本地时区 {zone}。只有超过保留天数的完整备份会定时整理；最近两份自动备份、最近两份完整备份和最新迁移快照受到保护。执行前会校验近期自动备份。",
+              "时间按服务器本地时区 {zone}。完整备份超过保留天数或数量上限便会定时整理；数量填 0 表示不保留完整备份。手动清理可选择完整备份和迁移快照，执行前会校验同一实例的近期自动恢复点。",
               { zone: info.serverTimeZone },
             )
           }}
         </p>
         <p v-if="info.last" class="storage-note">
           {{
-            info.last.error
+            info.last.error && info.last.removed === 0
               ? t("上次整理未执行：{error}", { error: info.last.error })
               : t("上次整理：{time} · {count} 份 · {size}", {
                   time: date(info.last.at),
@@ -269,6 +276,12 @@ onBeforeUnmount(() => {
                   size: size(info.last.bytes),
                 })
           }}
+        </p>
+        <p
+          v-if="info.last?.error && info.last.removed > 0"
+          class="storage-error"
+        >
+          {{ info.last.error }}
         </p>
         <button class="primary" type="submit" :disabled="busy">
           {{ busy ? t("处理中…") : t("保存整理规则") }}
@@ -297,8 +310,8 @@ onBeforeUnmount(() => {
           >
             {{ t("选中规则建议") }}
           </button>
-          <button type="button" :disabled="busy" @click="selectOldFull">
-            {{ t("选中旧完整备份") }}
+          <button type="button" :disabled="busy" @click="selectFull">
+            {{ t("选中完整备份") }}
           </button>
           <button
             type="button"
@@ -327,11 +340,21 @@ onBeforeUnmount(() => {
               ><small
                 >{{ label(item.kind) }} · {{ date(item.at) }} ·
                 {{ item.manifest ? t("有校验清单") : t("旧备份无清单")
-                }}{{ item.protected ? " · " + t("保留恢复点") : "" }}</small
+                }}{{
+                  item.protected
+                    ? " · " + (item.protectionReason || t("保留恢复点"))
+                    : ""
+                }}</small
               ></span
             >
             <b>{{ size(item.bytes) }}</b>
           </label>
+        </div>
+        <div v-if="failures.length" class="storage-error" role="alert">
+          <p>{{ t("部分备份未清理，请刷新列表后重试") }}</p>
+          <p v-for="item in failures" :key="item.name">
+            {{ item.name }} · {{ item.error }}
+          </p>
         </div>
         <div class="storage-footer">
           <span>{{
@@ -507,6 +530,7 @@ onBeforeUnmount(() => {
 }
 .storage-error {
   color: var(--danger);
+  overflow-wrap: anywhere;
 }
 @media (max-width: 900px) {
   .storage-grid {

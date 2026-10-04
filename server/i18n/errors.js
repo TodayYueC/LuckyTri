@@ -11,15 +11,20 @@ export const ERRORS = {
   "请求失败，请检查输入或服务日志":
     "The request failed. Check the input or the service log.",
   备份整理不可用: "Backup cleanup is unavailable",
-  "清理规则无效：保留天数为 1–3650，完整备份至少保留 2 份":
-    "Invalid cleanup rules: keep backups for 1–3650 days and at least two full copies",
+  "清理规则无效：保留天数为 1–3650，完整备份数量为 0–100":
+    "Invalid cleanup rules: retain full backups for 1–3650 days and up to 0–100 copies",
   选择的备份信息无效: "The selected backup details are invalid",
   "备份已变化或属于必须保留的恢复点，请刷新列表":
     "A backup changed or is a protected restore point. Refresh the list.",
   清理方式无效: "Invalid cleanup mode",
   不能重复选择同一份备份: "The same backup cannot be selected twice",
-  "缺少近 72 小时内的自动备份及校验清单，已停止清理":
-    "No automatic backup with a manifest from the last 72 hours is available. Cleanup stopped.",
+  "缺少同一实例近 72 小时内可校验的自动备份，已停止清理":
+    "No verifiable automatic backup of this instance from the last 72 hours is available. Cleanup stopped.",
+  "备份目录正在被使用，请稍后再试":
+    "The backup folder is in use. Try again later.",
+  备份文件已变化或不可删除: "The backup changed or cannot be removed",
+  "部分备份未清理，请刷新列表后重试":
+    "Some backups were not removed. Refresh the list and try again.",
   "备份在清理期间发生变化，已停止后续清理":
     "A backup changed during cleanup. The remaining cleanup stopped.",
   "备份或清理正在进行，请稍后再试":
@@ -435,6 +440,7 @@ export const ERRORS = {
 // Messages that carry a value. `{0}`, `{1}` are filled with what the code put
 // in; the values are passed through the dictionaries again.
 export const ERROR_PATTERNS = [
+  ["删除失败（{0}）", "Removal failed ({0})"],
   ["清理工作异常结束：{0}", "Cleanup ended unexpectedly: {0}"],
   ["{0} Prompt 无效", "{0} prompt is invalid"],
   ["模型请求失败 HTTP {0}：{1}", "The model request failed with HTTP {0}: {1}"],

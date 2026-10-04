@@ -170,9 +170,9 @@ export default {
   启用定时整理: "Enable scheduled cleanup",
   每天执行时间: "Daily cleanup time",
   完整备份保留天数: "Keep full backups for days",
-  至少保留最近几份完整备份: "Minimum recent full backups",
-  "时间按服务器本地时区 {zone}。只有超过保留天数的完整备份会定时整理；最近两份自动备份、最近两份完整备份和最新迁移快照受到保护。执行前会校验近期自动备份。":
-    "Times use the server's local time zone ({zone}). Only full backups older than the retention period are scheduled for cleanup. The newest two automatic and full backups, and the newest migration snapshot, are protected. A recent automatic backup is verified first.",
+  完整备份最多保留份数: "Maximum full backups to keep",
+  "时间按服务器本地时区 {zone}。完整备份超过保留天数或数量上限便会定时整理；数量填 0 表示不保留完整备份。手动清理可选择完整备份和迁移快照，执行前会校验同一实例的近期自动恢复点。":
+    "Times use the server's local time zone ({zone}). Full backups beyond either the age or count limit are scheduled for cleanup. Set the count to 0 to retain no full backups. Full and migration snapshots can be selected manually; a recent restore point from this instance is verified first.",
   "上次整理未执行：{error}": "Last cleanup could not run: {error}",
   "上次整理：{time} · {count} 份 · {size}":
     "Last cleanup: {time} · {count} copies · {size}",
@@ -183,9 +183,13 @@ export default {
   "自动备份已有自己的轮换规则。迁移、旧版本和升级前快照只由你手动挑选；清理前会再次核对文件和恢复点。":
     "Automatic backups already rotate on their own. Migration, older-version, and pre-upgrade snapshots are removed only when you select them. Files and restore points are checked again before cleanup.",
   选中规则建议: "Select suggested",
-  选中旧完整备份: "Select older full backups",
+  选中完整备份: "Select full backups",
   取消选择: "Clear selection",
-  有校验清单: "Verified manifest",
+  有校验清单: "Has manifest",
+  "；部分未清理，详情见列表":
+    "; some were not removed, see the list for details",
+  "部分备份未清理，请刷新列表后重试":
+    "Some backups were not removed. Refresh the list and try again.",
   旧备份无清单: "No manifest",
   保留恢复点: "Protected restore point",
   "已选 {count} 份 · 约 {size}": "Selected {count} · about {size}",

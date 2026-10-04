@@ -3,6 +3,8 @@
 // key, exactly as the code writes it. Only a whole string that equals a key is
 // translated, so what she writes herself is never touched.
 export const LABELS = {
+  存在运行伴随文件: "Runtime sidecar files exist",
+  近期自动恢复点: "Recent automatic restore point",
   // feedback.js
   挺自然: "Feels natural",
   太长了: "Too long",

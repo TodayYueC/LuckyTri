@@ -1,7 +1,16 @@
 import { Worker } from "node:worker_threads";
 import { dirname, join, resolve } from "node:path";
-import { existsSync, lstatSync, readdirSync, rmSync } from "node:fs";
-import { verifyArchive } from "./archive.js";
+import {
+  existsSync,
+  lstatSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+} from "node:fs";
+import { archiveIdentity, verifyArchive } from "./archive.js";
+import { withBackupLock } from "./backup-lock.js";
 
 const DAY = 86400000;
 const DEFAULTS = Object.freeze({
@@ -42,10 +51,10 @@ export function cleanupPolicy(value = {}) {
     value.retainDays < 1 ||
     value.retainDays > 3650 ||
     !Number.isInteger(value.keepFull) ||
-    value.keepFull < 2 ||
+    value.keepFull < 0 ||
     value.keepFull > 100
   )
-    throw Error("清理规则无效：保留天数为 1–3650，完整备份至少保留 2 份");
+    throw Error("清理规则无效：保留天数为 1–3650，完整备份数量为 0–100");
   return Object.fromEntries(
     Object.keys(DEFAULTS).map((key) => [key, value[key]]),
   );
@@ -53,6 +62,13 @@ export function cleanupPolicy(value = {}) {
 
 export function backupInventory({ directory, source }) {
   const root = dirname(resolve(source));
+  const sourcePath = existsSync(source)
+    ? realpathSync(source)
+    : resolve(source);
+  const sourceStat = existsSync(source) ? statSync(source) : null;
+  const sourceId = sourceStat ? archiveIdentity(source) : null;
+  const normalize = (path) =>
+    process.platform === "win32" ? path.toLowerCase() : path;
   const folders = [
     ["backup", resolve(directory)],
     ["root", root],
@@ -66,6 +82,25 @@ export function backupInventory({ directory, source }) {
       const path = join(folder, entry.name);
       const stat = lstatSync(path);
       if (!stat.isFile()) continue;
+      if (
+        normalize(realpathSync(path)) === normalize(sourcePath) ||
+        (sourceStat?.ino &&
+          stat.ino === sourceStat.ino &&
+          stat.dev === sourceStat.dev)
+      )
+        continue;
+      let databaseId = null;
+      const manifestPath = `${path}.json`;
+      if (existsSync(manifestPath)) {
+        try {
+          if (lstatSync(manifestPath).isFile())
+            databaseId =
+              JSON.parse(readFileSync(manifestPath, "utf8")).databaseId || null;
+        } catch {
+          // A damaged manifest is not a trusted recovery point.
+        }
+      }
+      const inUse = existsSync(`${path}-wal`) || existsSync(`${path}-shm`);
       entries.push({
         scope,
         name: entry.name,
@@ -74,50 +109,61 @@ export function backupInventory({ directory, source }) {
         modified: stat.mtimeMs,
         at: stamped(entry.name, stat.mtimeMs),
         manifest: existsSync(`${path}.json`),
-        protected: false,
+        databaseId,
+        protected: inUse,
+        protectionReason: inUse ? "存在运行伴随文件" : "",
       });
     }
   }
   entries.sort((a, b) => b.at - a.at || b.name.localeCompare(a.name));
-  for (const [category, minimum] of [
-    ["auto", 2],
-    ["full", 2],
-    ["migration", 1],
-  ]) {
-    for (const entry of entries
-      .filter((item) => item.kind === category)
-      .slice(0, minimum))
-      entry.protected = true;
+  for (const entry of entries
+    .filter(
+      (item) =>
+        item.kind === "auto" && sourceId && item.databaseId === sourceId,
+    )
+    .slice(0, 2)) {
+    entry.protected = true;
+    entry.protectionReason = "近期自动恢复点";
   }
   return entries;
 }
 
 export function cleanupPlan(entries, policy, now = Date.now()) {
-  const chosen = entries.filter(
-    (item) =>
-      item.kind === "full" &&
-      !item.protected &&
-      item.at < now - policy.retainDays * DAY,
-  );
-  // keepFull can be greater than the two permanently protected copies.
   const full = entries.filter((item) => item.kind === "full");
-  const retained = new Set(
-    full.slice(0, policy.keepFull).map((item) => item.name),
+  const items = full.filter(
+    (item, index) =>
+      !item.protected &&
+      (index >= policy.keepFull || item.at < now - policy.retainDays * DAY),
   );
-  const items = chosen.filter((item) => !retained.has(item.name));
   return { items, bytes: items.reduce((sum, item) => sum + item.bytes, 0) };
 }
 
-function safeRecoveryPoint(entries, directory, now) {
-  const latest = entries.find((item) => item.kind === "auto");
-  if (
-    !latest ||
-    !latest.manifest ||
-    now - latest.at > 72 * 3600000 ||
-    latest.at > now + 5 * 60000
-  )
-    throw Error("缺少近 72 小时内的自动备份及校验清单，已停止清理");
-  verifyArchive(join(resolve(directory), latest.name));
+function safeRecoveryPoint(entries, directory, source, now, chosen) {
+  const identity = archiveIdentity(source);
+  const selected = new Set(chosen.map((item) => `${item.scope}:${item.name}`));
+  for (const candidate of entries.filter(
+    (item) =>
+      item.kind === "auto" &&
+      identity &&
+      item.databaseId === identity &&
+      item.manifest &&
+      now - item.at <= 72 * 3600000 &&
+      item.at <= now + 5 * 60000 &&
+      !selected.has(`${item.scope}:${item.name}`),
+  )) {
+    try {
+      const result = verifyArchive(join(resolve(directory), candidate.name));
+      if (result.databaseId === identity)
+        return {
+          name: candidate.name,
+          at: candidate.at,
+          bytes: candidate.bytes,
+        };
+    } catch {
+      // A newer damaged copy must not hide an older valid recovery point.
+    }
+  }
+  throw Error("缺少同一实例近 72 小时内可校验的自动备份，已停止清理");
 }
 
 export function executeCleanup({
@@ -127,6 +173,21 @@ export function executeCleanup({
   mode,
   selection = [],
   now = Date.now(),
+  remove = rmSync,
+}) {
+  return withBackupLock(directory, () =>
+    cleanupBatch({ directory, source, policy, mode, selection, now, remove }),
+  );
+}
+
+function cleanupBatch({
+  directory,
+  source,
+  policy,
+  mode,
+  selection,
+  now,
+  remove,
 }) {
   const entries = backupInventory({ directory, source });
   const chosen =
@@ -160,25 +221,43 @@ export function executeCleanup({
     chosen.length
   )
     throw Error("不能重复选择同一份备份");
-  if (!chosen.length) return { removed: [], bytes: 0 };
-  safeRecoveryPoint(entries, directory, now);
+  if (!chosen.length) return { removed: [], bytes: 0, failures: [] };
+  const recovery = safeRecoveryPoint(entries, directory, source, now, chosen);
   const removed = [];
+  const failures = [];
   for (const item of chosen) {
     const folder =
       item.scope === "root" ? dirname(resolve(source)) : resolve(directory);
     const path = join(folder, item.name);
-    const stat = lstatSync(path);
-    if (
-      !stat.isFile() ||
-      stat.size !== item.bytes ||
-      stat.mtimeMs !== item.modified
-    )
-      throw Error("备份在清理期间发生变化，已停止后续清理");
-    rmSync(path);
-    rmSync(`${path}.json`, { force: true });
-    removed.push({ scope: item.scope, name: item.name, bytes: item.bytes });
+    try {
+      const stat = lstatSync(path);
+      if (
+        !stat.isFile() ||
+        stat.size !== item.bytes ||
+        stat.mtimeMs !== item.modified ||
+        existsSync(`${path}-wal`) ||
+        existsSync(`${path}-shm`)
+      )
+        throw Error("备份在清理期间发生变化，已停止后续清理");
+      remove(path);
+      removed.push({ scope: item.scope, name: item.name, bytes: item.bytes });
+      remove(`${path}.json`, { force: true });
+    } catch (error) {
+      failures.push({
+        scope: item.scope,
+        name: item.name,
+        error: error.code
+          ? `删除失败（${error.code}）`
+          : "备份文件已变化或不可删除",
+      });
+    }
   }
-  return { removed, bytes: removed.reduce((sum, item) => sum + item.bytes, 0) };
+  return {
+    removed,
+    bytes: removed.reduce((sum, item) => sum + item.bytes, 0),
+    failures,
+    recovery,
+  };
 }
 
 function localDay(now) {
@@ -306,6 +385,12 @@ export function createBackupCleanup({
               at: now(),
               removed: result.removed.length,
               bytes: result.bytes,
+              ...(result.failures?.length
+                ? {
+                    error: "部分备份未清理，请刷新列表后重试",
+                    failures: result.failures,
+                  }
+                : {}),
             },
           });
           log.log(`定时备份整理完成：${result.removed.length} 份`);
