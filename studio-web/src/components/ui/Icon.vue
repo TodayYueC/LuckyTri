@@ -88,6 +88,10 @@ defineProps<{ name: string }>();
       <path d="M4 14c2.5-4 5.5-4 8 0s5.5 4 8 0" />
       <path d="M4 9c2.5-4 5.5-4 8 0s5.5 4 8 0" />
     </template>
+    <template v-else-if="name === 'plugins'">
+      <path d="M8 7h8v4H8zM6 11h12v6H6z" />
+      <path d="M9 11V7M15 11V7M12 14v3" />
+    </template>
     <template v-else-if="name === 'guide'">
       <circle cx="12" cy="12" r="8" />
       <path

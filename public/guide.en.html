@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>LuckyTri v0.9.9 · Getting Started</title>
+    <title>LuckyTri v1.0.0 · Getting Started</title>
     <style>
       * {
         box-sizing: border-box;
@@ -269,7 +269,7 @@
   <body>
     <header>
       <div>
-        <b>LuckyTri · Handbook</b><small>TIME · MEMORY · CHOICE / v0.9.9</small>
+        <b>LuckyTri · Handbook</b><small>TIME · MEMORY · CHOICE / v1.0.0</small>
       </div>
       <nav>
         <a href="/#setup">Back to the studio</a
@@ -329,7 +329,7 @@ npm start
         </p>
         <p>
           LuckyTri is &quot;TA&#39;s little world&quot;. The left navigation has
-          three groups and nine entries:
+          three groups and ten entries:
         </p>
         <table>
           <thead>
@@ -408,6 +408,14 @@ npm start
               <td>Settings</td>
               <td>System</td>
               <td>Connect QQ, model library, run switches</td>
+            </tr>
+            <tr>
+              <td>Settings</td>
+              <td>Plugins</td>
+              <td>
+                Enable, install and remove the ways she touches the world. See
+                <a href="plugins.md">Plugins</a>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -826,6 +834,27 @@ npm start
           failure; copy important backups elsewhere yourself.
         </p>
         <p>
+          When <code>DB_PATH</code> points to a different database and
+          <code>BACKUP_DIR</code> is unset, backups go into a
+          <code>backups</code> folder beside that database, keeping separate
+          instances apart.
+        </p>
+        <p>
+          Under System → Data and backups, you can inspect the size of each
+          historical database copy, set a daily cleanup time, full-backup
+          retention in days and a minimum number to keep, or select individual
+          copies for manual removal. By default, a daily check at 04:30 server
+          local time removes only manual full backups older than 14 days, while
+          keeping at least the newest two. Automatic backups keep their separate
+          rotation; migration, older-version and pre-upgrade snapshots require
+          manual selection. Cleanup requires a verified automatic backup from
+          the last 72 hours. The newest two automatic and full backups, and the
+          newest migration snapshot, are protected. The live database and its
+          WAL/SHM files never appear in the list. A removed backup&#39;s
+          <code>.db.json</code> manifest is removed with it; copy restore points
+          worth keeping to another disk first.
+        </p>
+        <p>
           To restore, stop the service, move the current
           <code>data/friend.db</code> and its <code>-wal</code> and
           <code>-shm</code> files away, then copy the chosen backup to
@@ -956,7 +985,7 @@ npm start
     </div>
     <footer>
       LuckyTri · so that experience and choice stay coherent. This guide matches
-      the v0.9.9 interface.
+      the v1.0.0 interface.
     </footer>
   </body>
 </html>

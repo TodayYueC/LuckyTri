@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>LuckyTri v0.9.9 · 使用教程</title>
+    <title>LuckyTri v1.0.0 · 使用教程</title>
     <style>
       * {
         box-sizing: border-box;
@@ -269,7 +269,7 @@
   <body>
     <header>
       <div>
-        <b>LuckyTri · 上手手册</b><small>TIME · MEMORY · CHOICE / v0.9.9</small>
+        <b>LuckyTri · 上手手册</b><small>TIME · MEMORY · CHOICE / v1.0.0</small>
       </div>
       <nav>
         <a href="/#setup">返回管理台</a
@@ -321,7 +321,7 @@ npm start
           <code>npm run stop</code>。这条命令只停止当前项目，不会结束其他 Node
           进程。前台运行时也可以在该终端按 <code>Ctrl+C</code>。
         </p>
-        <p>LuckyTri 是「TA 的小世界」，左侧导航分三组、九个入口：</p>
+        <p>LuckyTri 是「TA 的小世界」，左侧导航分三组、十个入口：</p>
         <table>
           <thead>
             <tr>
@@ -386,6 +386,14 @@ npm start
               <td>设置</td>
               <td>系统</td>
               <td>连接 QQ、模型库、运行开关</td>
+            </tr>
+            <tr>
+              <td>设置</td>
+              <td>插件</td>
+              <td>
+                启用、安装和卸下她接触世界的方式。见
+                <a href="plugins.md">插件</a>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -712,6 +720,22 @@ npm start
           >，并隔越来越久才重试。备份和数据库放在同一块磁盘上，防不了磁盘损坏；重要的备份请自己复制到别处。
         </p>
         <p>
+          设置 <code>DB_PATH</code> 使用另一份数据库时，若未指定
+          <code>BACKUP_DIR</code>，备份默认写到该数据库旁的
+          <code>backups</code> 目录，避免多个实例的副本混在一起。
+        </p>
+        <p>
+          在「系统 →
+          数据与备份」可以查看每份历史数据库副本的大小，设置每天的整理时间、完整备份保留天数和至少保留份数，也可以逐份勾选后手动清理。默认每天服务器本地时间
+          04:30 检查，只整理超过 14 天的手动完整备份，至少保留最近 2
+          份。自动备份继续按上面的独立规则轮换；迁移快照、旧版本备份和升级前快照仅手动清理。执行前必须有近
+          72 小时内、校验通过的自动备份，最近 2 份自动备份、最近 2
+          份完整备份和最新迁移快照不能手动清理。当前运行的数据库及 WAL/SHM
+          不在列表中。整理时会一并移走对应的
+          <code>.db.json</code>
+          清单；要长期保留的历史恢复点，请先连同清单复制到另一块磁盘。
+        </p>
+        <p>
           恢复时先停止服务，把当前 <code>data/friend.db</code> 及同名
           <code>-wal</code>、<code>-shm</code> 移开，再把选中的备份复制为
           <code>data/friend.db</code>。设置了
@@ -815,6 +839,6 @@ npm start
         <p>不要把 API 密钥、<code>.env</code> 或私聊原文发到公开位置。</p>
       </article>
     </div>
-    <footer>LuckyTri · 让经历和选择彼此连贯。教程与 v0.9.9 界面同步。</footer>
+    <footer>LuckyTri · 让经历和选择彼此连贯。教程与 v1.0.0 界面同步。</footer>
   </body>
 </html>

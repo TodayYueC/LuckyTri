@@ -1,0 +1,14 @@
+:root {
+  color: var(--ink, #2a241f);
+  background: transparent;
+  font-family: var(--font-ui, "Segoe UI", sans-serif);
+}
+body {
+  margin: 0;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}

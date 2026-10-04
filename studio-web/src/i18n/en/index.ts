@@ -7,6 +7,7 @@ import memory from "./memory.ts";
 import nature from "./nature.ts";
 import now from "./now.ts";
 import people from "./people.ts";
+import plugins from "./plugins.ts";
 import system from "./system.ts";
 import time from "./time.ts";
 
@@ -22,6 +23,7 @@ const english: Record<string, string> = {
   ...nature,
   ...now,
   ...people,
+  ...plugins,
   ...system,
   ...time,
 };

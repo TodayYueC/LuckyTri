@@ -18,7 +18,7 @@ Open <http://127.0.0.1:3210>. The experimental-SQLite notice in the terminal doe
 
 On Windows you can double-click `启动LuckyTri.cmd` for daily use. If the service is already running, it only opens LuckyTri. Closing the browser does not stop the service; to stop it double-click `停止LuckyTri.cmd` or run `npm run stop` in the project folder. That command stops this project only and leaves other Node processes alone. When running in the foreground you can also press `Ctrl+C` in that terminal.
 
-LuckyTri is "TA's little world". The left navigation has three groups and nine entries:
+LuckyTri is "TA's little world". The left navigation has three groups and ten entries:
 
 | Group      | Entry      | What is inside                                                                                                                                                  |
 | ---------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -31,6 +31,7 @@ LuckyTri is "TA's little world". The left navigation has three groups and nine e
 | Daily life | Memory     | What TA remembers, the bookshelf                                                                                                                                |
 | Settings   | Nature     | Name and character (the glow beside it previews live), daily rhythm, TA's days, daily tokens, advanced prompts, trial chat                                      |
 | Settings   | System     | Connect QQ, model library, run switches                                                                                                                         |
+| Settings   | Plugins    | Enable, install and remove the ways she touches the world. See [Plugins](plugins.md)                                                                            |
 
 The colors, sky and motion follow TA's mood and rhythm: warm when she is happy, grey-blue when she is low, night once she is asleep. At the bottom left you can pin one theme or turn on "Reduce motion". The small TA at the bottom right answers a poke, a long press is a head-pat, and a double click or "Chat" opens the trial chat. These are interface animations only and never change her mind. On a phone the navigation sits at the bottom and the other entries are under "More".
 
@@ -170,6 +171,10 @@ Everything of TA lives in this one database, so the service backs it up automati
 | `BACKUP_DIR`            | Backup folder                                          | `data/backups` |
 
 To take an automatic backup right now: `node scripts/backup.js --auto --force`. A failed automatic backup is noted in the launcher window or `data/launcher.log` and retried after longer and longer pauses. A backup on the same disk as the database cannot survive disk failure; copy important backups elsewhere yourself.
+
+When `DB_PATH` points to a different database and `BACKUP_DIR` is unset, backups go into a `backups` folder beside that database, keeping separate instances apart.
+
+Under System → Data and backups, you can inspect the size of each historical database copy, set a daily cleanup time, full-backup retention in days and a minimum number to keep, or select individual copies for manual removal. By default, a daily check at 04:30 server local time removes only manual full backups older than 14 days, while keeping at least the newest two. Automatic backups keep their separate rotation; migration, older-version and pre-upgrade snapshots require manual selection. Cleanup requires a verified automatic backup from the last 72 hours. The newest two automatic and full backups, and the newest migration snapshot, are protected. The live database and its WAL/SHM files never appear in the list. A removed backup's `.db.json` manifest is removed with it; copy restore points worth keeping to another disk first.
 
 To restore, stop the service, move the current `data/friend.db` and its `-wal` and `-shm` files away, then copy the chosen backup to `data/friend.db`. When `DB_PATH` is set, work on that path. Never keep an old WAL file next to a restored database. The safer way is `npm run recovery`, which verifies a backup and restores it into a brand new file; see `docs/en/recovery.md`.
 
