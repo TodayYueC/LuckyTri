@@ -28,9 +28,20 @@ const run = (home, source, extra = {}) =>
 
 test("concurrent launchers make exactly one claim and release it after exit", async () => {
   const home = mkdtempSync(join(tmpdir(), "luckytri-launch-lock-"));
+  const barrier = join(home, "attempts");
+  mkdirSync(barrier);
   const source = `import { claimLaunch, clearStarting } from ${JSON.stringify(moduleUrl)};
+    import { writeFileSync, readdirSync } from 'node:fs';
+    import { join } from 'node:path';
     const claimed = claimLaunch(); console.log(claimed);
-    if (claimed) { await new Promise(r => setTimeout(r, 500)); clearStarting(); }`;
+    writeFileSync(join(${JSON.stringify(barrier)}, String(process.pid)), String(claimed));
+    if (claimed) {
+      // Hold the claim until every child has attempted it. A fixed sleep can
+      // expire before a delayed child even starts on a busy machine.
+      for (let attempt = 0; attempt < 1000 && readdirSync(${JSON.stringify(barrier)}).length < 6; attempt++)
+        await new Promise(r => setTimeout(r, 10));
+      clearStarting();
+    }`;
   const results = await Promise.all(
     Array.from({ length: 6 }, () => run(home, source)),
   );

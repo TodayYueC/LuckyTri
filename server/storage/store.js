@@ -6,8 +6,11 @@ import { summarizeGroupStyle } from "../core/group-style.js";
 import { isGroupSession } from "../channels/session-key.js";
 import { NATURE_DEFAULTS } from "../mind/nature.js";
 import { prepareDatabaseMigration } from "./archive.js";
-export function createStore(path = runtimePaths().database) {
-  prepareDatabaseMigration(path);
+export function createStore(
+  path = runtimePaths().database,
+  { quietMigration = false } = {},
+) {
+  prepareDatabaseMigration(path, { quiet: quietMigration });
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   const legacyMessages =

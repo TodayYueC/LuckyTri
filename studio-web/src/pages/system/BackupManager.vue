@@ -4,11 +4,12 @@ import { api, toast } from "../../api";
 import { ask } from "../../dialog";
 import { intlLocale, t } from "../../i18n";
 import { studio } from "../../stores/studio";
+import DataTransfer from "./DataTransfer.vue";
 
 type Entry = {
   scope: string;
   name: string;
-  kind: "auto" | "full" | "migration" | "legacy" | "snapshot";
+  kind: "auto" | "full" | "migration" | "legacy" | "snapshot" | "import";
   bytes: number;
   modified: number;
   at: number;
@@ -67,6 +68,7 @@ const label = (kind: Entry["kind"]) =>
     migration: t("迁移快照"),
     legacy: t("旧版本备份"),
     snapshot: t("升级前快照"),
+    import: t("导入前快照"),
   })[kind];
 
 async function load(reset = false) {
@@ -212,6 +214,7 @@ onBeforeUnmount(() => {
     </section>
 
     <p v-if="error" class="storage-error" role="alert">{{ error }}</p>
+    <DataTransfer />
     <div v-if="info" class="storage-grid">
       <form class="card storage-policy" @submit.prevent="save">
         <div class="card-head">

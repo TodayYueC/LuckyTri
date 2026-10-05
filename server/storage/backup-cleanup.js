@@ -25,6 +25,7 @@ const DEFAULTS = Object.freeze({
 function kind(scope, name) {
   if (scope === "root")
     return /^friend\.pre-[\w-]+\.db$/.test(name) ? "snapshot" : null;
+  if (/^luckytri-before-import-\d+-[\da-f]{8}\.db$/.test(name)) return "import";
   if (/^luckytri-auto-\d{4}-\d\d-\d\dT[\d-]+Z\.db$/.test(name)) return "auto";
   if (/^luckytri-migration-v\d+-to-v\d+-\d+-[\da-f]{8}\.db$/.test(name))
     return "migration";

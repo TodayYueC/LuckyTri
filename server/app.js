@@ -12,6 +12,7 @@ import { mountMind } from "./mind/api.js";
 import { mountPlugins } from "./plugins/api.js";
 import { Life } from "./mind/life/index.js";
 import { runtimePaths } from "./paths.js";
+import { mountDataTransfer } from "./storage/data-transfer-api.js";
 
 export function createApp({
   store,
@@ -39,7 +40,7 @@ export function createApp({
     if (
       ["POST", "PATCH", "PUT"].includes(req.method) &&
       (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) &&
-      req.path !== "/plugins/import/upload"
+      !["/plugins/import/upload", "/storage/transfer/upload"].includes(req.path)
     )
       return res.status(400).json({ error: "请提交 JSON 对象" });
     next();
@@ -56,6 +57,7 @@ export function createApp({
     res.status(401).json({ error: "请先登录管理台" });
   });
   app.use("/api", objectBody);
+  mountDataTransfer(app, runtime.transfer);
   if (plugins) {
     app.post(
       "/api/plugins/import/upload",

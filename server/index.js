@@ -8,6 +8,11 @@ import { createBackupScheduler } from "./storage/backup-scheduler.js";
 import { createBackupCleanup } from "./storage/backup-cleanup.js";
 import { PluginHost } from "./plugins/host.js";
 import { createManagementAuth } from "./auth.js";
+import { createDataTransfer } from "./storage/data-transfer.js";
+import { runtimePaths } from "./paths.js";
+import { spawn } from "node:child_process";
+import { openSync, closeSync } from "node:fs";
+import { join } from "node:path";
 
 claimServer();
 process.on("exit", clearStarting);
@@ -37,6 +42,43 @@ plugins
   .catch((error) => console.error(`插件没有启动：${error.message}`));
 const backups = createBackupScheduler();
 const cleanup = createBackupCleanup({ store, backup: backups });
+const transfer = createDataTransfer({
+  backup: backups,
+  cleanup,
+  async onApply(id) {
+    const paths = runtimePaths();
+    const log = openSync(paths.log, "a", 0o600);
+    try {
+      const child = spawn(
+        process.execPath,
+        [
+          ...(process.execArgv.includes("--use-env-proxy")
+            ? ["--use-env-proxy"]
+            : []),
+          join(paths.package, "scripts", "import-data.js"),
+          id,
+          String(process.pid),
+        ],
+        {
+          cwd: paths.home,
+          detached: true,
+          windowsHide: true,
+          env: process.env,
+          stdio: ["ignore", log, log],
+        },
+      );
+      child.unref();
+      await new Promise((resolve, reject) => {
+        child.once("spawn", resolve);
+        child.once("error", reject);
+      });
+      setTimeout(shutdown, 300);
+      return child.pid;
+    } finally {
+      closeSync(log);
+    }
+  },
+});
 const host = process.env.HOST || "127.0.0.1";
 if (!["127.0.0.1", "localhost", "::1"].includes(host) && !auth.configured())
   throw new Error("绑定外网地址前请先在本机设置管理密码");
@@ -74,6 +116,7 @@ const app = createApp({
     syncChannel: () => channel.sync(),
     backup: () => backups.status(),
     cleanup,
+    transfer,
     shutdown,
   },
 });
@@ -89,12 +132,13 @@ function runMaintenance() {
     console.error(`后台维护失败：${error.message}`);
   }
   try {
-    if (!cleanup.running) backups.tick();
+    if (!cleanup.running && !transfer.busy) backups.tick();
   } catch (error) {
     console.error(`自动备份调度失败：${error.message}`);
   }
   try {
-    cleanup.tick();
+    if (!transfer.busy) cleanup.tick();
+    transfer.info();
   } catch (error) {
     console.error(`定时备份整理调度失败：${error.message}`);
   }

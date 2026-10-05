@@ -2,6 +2,42 @@
 // key, exactly as the code writes it. `{0}` stands for a value the code puts
 // into the message; patterns are used when a message carries one.
 export const ERRORS = {
+  数据清单过大: "The data manifest is too large",
+  数据文件包含不支持的数据库结构:
+    "The file contains unsupported database structures",
+  "不是有效的 LuckyTri 数据文件": "This is not a valid LuckyTri data file",
+  数据包已损坏: "The data package is damaged",
+  当前实例不支持文件导入: "This instance does not support file imports",
+  "当前数据库仍在使用，请稍后导入":
+    "The database is still in use. Import it later.",
+  请上传数据包或数据库文件: "Upload a data package or database file",
+  数据任务不存在: "The data operation does not exist",
+  数据处理失败: "Data processing failed",
+  "数据已导入，但自动重启未完成。请手动重新启动实例。":
+    "Data was imported, but the automatic restart did not complete. Restart the instance manually.",
+  "临时数据文件正在使用，请稍后再试":
+    "Temporary data files are in use. Try again later.",
+  "数据处理被中断，请重新操作":
+    "Data processing was interrupted. Start the operation again.",
+  "数据处理或备份正在进行，请稍后再试":
+    "Data processing or backup is in progress. Try again later.",
+  当前实例不支持文件导入导出:
+    "This instance does not support file import and export",
+  数据文件超过导入大小限制: "The data file exceeds the import size limit",
+  数据文件为空: "The data file is empty",
+  数据上传失败: "Data upload failed",
+  导出文件尚未就绪或已过期: "The export is not ready or has expired",
+  "当前实例不支持自动导入，请使用恢复命令":
+    "Automatic import is unavailable. Use the recovery command.",
+  导入数据尚未就绪或已过期: "The import is not ready or has expired",
+  "数据处理正在进行，请稍后再试":
+    "Data processing is in progress. Try again later.",
+  磁盘空间不足: "There is not enough disk space",
+  数据文件无法校验: "The data file could not be verified",
+  "导入未完成，原数据已保留。请重新上传或查看运行日志。":
+    "Import could not complete. The original data was retained. Upload again or check the runtime log.",
+  "导入启动未完成，未替换运行数据。请重新启动实例。":
+    "Import could not start. The running data was not replaced. Restart the instance.",
   请使用本机命令重置管理密码:
     "Use the local CLI to reset the management password",
   "LUCKYTRI_HOME / --home 必须是绝对路径 (must be an absolute path)":

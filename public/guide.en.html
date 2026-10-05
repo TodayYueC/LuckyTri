@@ -859,6 +859,46 @@ npm start
           and restores it into a brand new file; see
           <code>docs/en/recovery.md</code>.
         </p>
+        <h3>Import and export from the studio</h3>
+        <p>
+          &quot;System → Data and backups&quot; provides &quot;Export data
+          package&quot; and &quot;Choose import file&quot;. A
+          <code>.luckytri</code> package contains chats, memories,
+          relationships, personal state, diaries, tasks, work versions,
+          knowledge text and settings stored in the database, including saved
+          credentials. Management passwords and login sessions are not migrated.
+          Plugin programs, original knowledge files and the local
+          <code>.env</code> are outside the package. Export uses a consistent
+          snapshot while the instance continues running and streams large
+          downloads.
+        </p>
+        <p>
+          Imports accept <code>.luckytri</code> packages and existing
+          <code>.db</code> / SQLite backups. The default upload limit is 10 GiB;
+          adjust <code>DATA_TRANSFER_MAX_GB</code> (1–100) in <code>.env</code>.
+          Uploads are checked for package SHA-256, database integrity,
+          references and supported structures. Older versions are upgraded only
+          in staging. The preview shows the name, version and record counts
+          before current data changes, so it can be cancelled.
+        </p>
+        <p>
+          Confirming &quot;Import and restart&quot; stops the instance, retains
+          a complete <code>luckytri-before-import-*.db</code> snapshot, replaces
+          the data and restarts automatically. The local management password,
+          current logins, QQ connection settings and backup cleanup rules are
+          preserved. Automatic replies are turned off and plugin execution
+          grants reset. Review connections, models and tasks before enabling
+          replies; reinstall plugins or review their permissions. Import
+          replaces the whole database rather than merging records. Pre-import
+          snapshots can be managed manually and are excluded from scheduled
+          full-backup cleanup.
+        </p>
+        <p>
+          The server removes the export copy after download. Cancelled, expired
+          and interrupted staging files are reclaimed; unused previews expire
+          after one hour. Failed imports retain or restore the original database
+          rather than starting with a partial file.
+        </p>
         <h2 id="step-9">9. Troubleshooting</h2>
         <table>
           <thead>

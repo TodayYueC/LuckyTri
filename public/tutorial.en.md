@@ -168,6 +168,16 @@ Cleanup verifies a retained automatic backup of this instance from the last 72 h
 
 To restore, stop the service, move the current `data/friend.db` and its `-wal` and `-shm` files away, then copy the chosen backup to `data/friend.db`. When `DB_PATH` is set, work on that path. Never keep an old WAL file next to a restored database. The safer way is `npm run recovery`, which verifies a backup and restores it into a brand new file; see `docs/en/recovery.md`.
 
+### Import and export from the studio
+
+"System → Data and backups" provides "Export data package" and "Choose import file". A `.luckytri` package contains chats, memories, relationships, personal state, diaries, tasks, work versions, knowledge text and settings stored in the database, including saved credentials. Management passwords and login sessions are not migrated. Plugin programs, original knowledge files and the local `.env` are outside the package. Export uses a consistent snapshot while the instance continues running and streams large downloads.
+
+Imports accept `.luckytri` packages and existing `.db` / SQLite backups. The default upload limit is 10 GiB; adjust `DATA_TRANSFER_MAX_GB` (1–100) in `.env`. Uploads are checked for package SHA-256, database integrity, references and supported structures. Older versions are upgraded only in staging. The preview shows the name, version and record counts before current data changes, so it can be cancelled.
+
+Confirming "Import and restart" stops the instance, retains a complete `luckytri-before-import-*.db` snapshot, replaces the data and restarts automatically. The local management password, current logins, QQ connection settings and backup cleanup rules are preserved. Automatic replies are turned off and plugin execution grants reset. Review connections, models and tasks before enabling replies; reinstall plugins or review their permissions. Import replaces the whole database rather than merging records. Pre-import snapshots can be managed manually and are excluded from scheduled full-backup cleanup.
+
+The server removes the export copy after download. Cancelled, expired and interrupted staging files are reclaimed; unused previews expire after one hour. Failed imports retain or restore the original database rather than starting with a partial file.
+
 ## 9. Troubleshooting
 
 | Symptom                           | Check first                                                                                                                              |

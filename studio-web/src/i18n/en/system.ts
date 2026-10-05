@@ -1,5 +1,41 @@
 // English for the System section (models, embedding, search, runtime, page shell).
 export default {
+  "DATA · 导入与导出": "DATA · Import and export",
+  "带上记忆，继续生活。": "Carry her memories forward.",
+  "导出数据库内的聊天、记忆、待办、作品、知识与设置。插件文件、知识库原始文件和本机 .env 不在数据包中。":
+    "Export chats, memories, tasks, works, knowledge and settings stored in the database. Plugin files, original knowledge files and the local .env are outside the package.",
+  "数据包包含私聊内容和模型设置中的密钥，请存放在你信任的位置。导入前会校验，确认后才替换当前数据。":
+    "The package includes private chats and keys saved in model settings. Store it somewhere you trust. Imports are checked first and replace current data only after confirmation.",
+  导出数据包: "Export data package",
+  选择导入文件: "Choose import file",
+  导入数据文件: "Import data file",
+  "支持 .luckytri 数据包和已有 SQLite 备份，单个文件最多 {size} GiB。":
+    "Accepts .luckytri packages and existing SQLite backups, up to {size} GiB per file.",
+  "正在保留快照并重启加载，请等待…":
+    "Saving the snapshot and restarting. Please wait...",
+  "正在上传数据文件…": "Uploading the data file...",
+  "正在生成完整数据包…": "Preparing the complete data package...",
+  "正在校验数据文件…": "Checking the data file...",
+  "上次数据导入已完成，自动回复在导入时关闭。请检查连接、模型和待办后再开启；插件需重新安装或确认权限。":
+    "The last import completed with automatic replies turned off. Check connections, models and tasks before enabling them. Plugins need reinstalling or permission review.",
+  "校验通过 · 尚未导入": "Verified · Not yet imported",
+  "数据库版本 {from} → {to}": "Database version {from} -> {to}",
+  导入并重启: "Import and restart",
+  取消导入: "Cancel import",
+  "用这份数据替换当前数据，并保留导入前快照。实例将重启，导入后自动回复关闭。本机管理密码与 QQ 连接配置保持不变。":
+    "Replace current data with this file and retain a snapshot first. The instance will restart with automatic replies off. The local management password and QQ connection settings are preserved.",
+  确认导入数据: "Confirm data import",
+  "数据包已生成，浏览器将开始下载":
+    "Data package ready. Your browser will begin downloading it.",
+  数据处理失败: "Data processing failed",
+  "数据文件已过期，请重新选择": "The data file expired. Choose it again.",
+  "等待数据处理超时，请检查实例运行状态":
+    "Timed out waiting for data processing. Check the instance status.",
+  数据文件超过导入大小限制: "The data file exceeds the import size limit",
+  数据上传失败: "Data upload failed",
+  导入前快照: "Pre-import snapshot",
+  聊天记录: "Chat records",
+  请先登录管理台: "Sign in to the studio first",
   QQ: "QQ",
 
   // EmbeddingProfile.vue
