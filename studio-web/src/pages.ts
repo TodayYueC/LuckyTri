@@ -11,6 +11,7 @@ const loaders = {
   memory: () => import("./pages/memory/MemoryPage.vue"),
   nature: () => import("./pages/nature/NaturePage.vue"),
   system: () => import("./pages/system/SystemPage.vue"),
+  plugins: () => import("./pages/plugins/PluginsPage.vue"),
 };
 const pending = new Map<string, Promise<unknown>>();
 export function preloadPage(page: string) {

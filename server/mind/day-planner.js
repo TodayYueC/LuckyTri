@@ -8,6 +8,7 @@ import {
   gameName,
 } from "./time/availability.js";
 import { rhythmPhase } from "./nature.js";
+import { isExecutable, pluginAvailable, withActivities } from "./time/kinds.js";
 const MINUTE = 60000;
 
 export function chosenSlot(value, life, now, requestedAt = now) {
@@ -174,8 +175,9 @@ export class DayPlanner {
             life.mind.nature.current(now),
             {
               ...prompts(life.repo),
-              activity:
-                '为这件真实待办作一次自己的安排。先把想做的事想具体，再决定几点开始、投入多久。可以马上做，也可以安排晚一些；这不是机械按队列估时。已有主线项目可继续，游戏必须自己选定名称，不能停在“玩一会游戏”。承诺只按原话与语境理解，不能把做不到的承诺改成别的成果算兑现；没有下单、实拍、客户端操作能力。不虚构已执行。只安排本段，可以提前完成或以后续接。输出JSON {"action":"schedule|wait|rest","activity":"write|read|think|game|unknown","title":"具体行动","topic":"游戏名称或空","projectId":"提供的项目ID或null","startAt":"本地YYYY-MM-DD HH:mm","durationMinutes":20,"reason":"自己的选择理由"}。wait表示真正缺少条件，说明reason；rest表示暂时想休息，说明reason。已经明确的承诺不得换目标，私人来源继续属于这件私人事项。',
+              activity: withActivities(
+                '为这件真实待办作一次自己的安排。先把想做的事想具体，再决定几点开始、投入多久。可以马上做，也可以安排晚一些；这不是机械按队列估时。已有主线项目可继续，游戏必须自己选定名称，不能停在“玩一会游戏”。承诺只按原话与语境理解，不能把做不到的承诺改成别的成果算兑现；除了此刻真正能做的事，没有下单、实拍、客户端操作能力。不虚构已执行。只安排本段，可以提前完成或以后续接。输出JSON {"action":"schedule|wait|rest","activity":"write|read|think|game|unknown","title":"具体行动","topic":"游戏名称或空","projectId":"提供的项目ID或null","startAt":"本地YYYY-MM-DD HH:mm","durationMinutes":20,"reason":"自己的选择理由"}。wait表示真正缺少条件，说明reason；rest表示暂时想休息，说明reason。已经明确的承诺不得换目标，私人来源继续属于这件私人事项。',
+              ),
             },
             "activity",
           ),
@@ -210,6 +212,7 @@ export class DayPlanner {
               write: true,
               think: true,
               game: !time.search.ready(now),
+              ...pluginAvailable(),
             },
             busy: time.tasks
               .slots(now)
@@ -259,8 +262,7 @@ export class DayPlanner {
         } else if (answer?.action === "schedule") {
           const activity =
             task.activity === "unknown" ? answer.activity : task.activity;
-          if (!["write", "read", "think", "game"].includes(activity))
-            throw Error("需要把行动内容想具体");
+          if (!isExecutable(activity)) throw Error("需要把行动内容想具体");
           const topic = text(answer.topic, 80),
             title = text(answer.title, 240) || task.title;
           if (

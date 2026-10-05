@@ -237,6 +237,11 @@ export function innerView(
   const expectingLines = expecting.filter((line) =>
     mind.meetings.sayable(line, session),
   );
+  const senses = mind.senses?.lines({ kind, now }) || [];
+  const body = (mind.body?.({ kind, now }) || [])
+    .map((line) => text(line, 80))
+    .filter(Boolean)
+    .slice(0, 8);
   return boundMindContext({
     self,
     affect: cause ? affect : { ...affect, cause: "" },
@@ -261,6 +266,8 @@ export function innerView(
       ...(reminded.length ? { reminded } : {}),
       ...(room ? { room } : {}),
       ...(heard.length ? { heard } : {}),
+      ...(senses.length ? { senses } : {}),
+      ...(body.length ? { body } : {}),
     },
   });
 }

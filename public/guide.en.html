@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>LuckyTri v0.9.9 · Getting Started</title>
+    <title>LuckyTri v1.0.1 · Getting Started</title>
     <style>
       * {
         box-sizing: border-box;
@@ -269,7 +269,7 @@
   <body>
     <header>
       <div>
-        <b>LuckyTri · Handbook</b><small>TIME · MEMORY · CHOICE / v0.9.9</small>
+        <b>LuckyTri · Handbook</b><small>TIME · MEMORY · CHOICE / v1.0.1</small>
       </div>
       <nav>
         <a href="/#setup">Back to the studio</a
@@ -281,7 +281,8 @@
     <div class="layout">
       <nav class="toc" aria-label="Guide contents">
         <p>CONTENTS</p>
-        <a href="#step-1">1. Start</a><a href="#step-2">2. Local tokens</a
+        <a href="#step-1">1. Start</a
+        ><a href="#step-2">2. Set your management password</a
         ><a href="#step-3">3. Try it in simulation mode first</a
         ><a href="#step-4">4. Connect a model</a
         ><a href="#step-5">5. Connect QQ</a
@@ -308,15 +309,31 @@
           her own content.
         </p>
         <h2 id="step-1">1. Start</h2>
-        <p>You need Node.js 24.5 or newer. In the project folder:</p>
+        <p>You need Node.js 24.5 or newer. Install globally:</p>
         <pre><code class="language-powershell">node --version
-npm install
-npm start
+npm install -g luckytri
+luckytri
 </code></pre>
         <p>
-          Open <a href="http://127.0.0.1:3210">http://127.0.0.1:3210</a>. The
-          experimental-SQLite notice in the terminal does not mean the start
-          failed; what matters is whether LuckyTri opens.
+          LuckyTri starts in the background and opens
+          <a href="http://127.0.0.1:3210">http://127.0.0.1:3210</a>, creating
+          local configuration on the first run. The package includes the built
+          WebUI. The experimental-SQLite notice does not mean the start failed.
+        </p>
+        <p>
+          Set a password in the studio on your first visit. Use
+          <code>luckytri --no-browser</code>, <code>luckytri start</code> and
+          <code>luckytri stop</code> for background, foreground and stop. Update
+          with stop, <code>npm install -g luckytri@latest</code>, then launch;
+          password, configuration and data stay intact.
+        </p>
+        <p>
+          For source development, run <code>npm install</code>,
+          <code>npm run setup</code>, <code>npm run build</code> and
+          <code>npm start</code> in the checkout. Later examples using
+          <code>npm run setup/stop/backup/recovery/plugin</code> apply to source
+          checkouts; global users use the corresponding
+          <code>luckytri setup/stop/backup/recovery/plugin</code> commands.
         </p>
         <p>
           On Windows you can double-click <code>启动LuckyTri.cmd</code> for
@@ -329,7 +346,7 @@ npm start
         </p>
         <p>
           LuckyTri is &quot;TA&#39;s little world&quot;. The left navigation has
-          three groups and nine entries:
+          three groups and ten entries:
         </p>
         <table>
           <thead>
@@ -409,6 +426,14 @@ npm start
               <td>System</td>
               <td>Connect QQ, model library, run switches</td>
             </tr>
+            <tr>
+              <td>Settings</td>
+              <td>Plugins</td>
+              <td>
+                Enable, install and remove the ways she touches the world. See
+                <a href="plugins.md">Plugins</a>
+              </td>
+            </tr>
           </tbody>
         </table>
         <p>
@@ -421,80 +446,17 @@ npm start
           mind. On a phone the navigation sits at the bottom and the other
           entries are under &quot;More&quot;.
         </p>
-        <h2 id="step-2">2. Local tokens</h2>
+        <h2 id="step-2">2. Set your management password</h2>
         <p>
-          Stop the service before connecting QQ, then generate the
-          configuration:
+          On the first visit, choose and confirm a password of at least 8
+          characters. Use it to sign in later; no environment-file token is
+          needed. Browser sessions are remembered, and updates or reinstalls
+          preserve the password.
         </p>
-        <pre><code class="language-powershell">npm run stop
-npm run setup
-</code></pre>
         <p>
-          When there is no <code>.env</code>, setup writes an admin token and an
-          OneBot connection token. An existing <code>.env</code> is kept as it
-          is.
-        </p>
-        <pre><code class="language-dotenv">HOST=127.0.0.1
-PORT=3210
-ADMIN_TOKEN=
-ONEBOT_TOKEN=
-LLM_API_KEY=
-</code></pre>
-        <table>
-          <thead>
-            <tr>
-              <th>Field</th>
-              <th>Purpose</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><code>ADMIN_TOKEN</code></td>
-              <td>
-                Opens LuckyTri and calls the HTTP API; the stop command uses it
-                too
-              </td>
-            </tr>
-            <tr>
-              <td><code>ONEBOT_TOKEN</code></td>
-              <td>
-                The OneBot 11 connector uses it for
-                <code>/onebot/v11/ws</code> (only needed for OneBot)
-              </td>
-            </tr>
-            <tr>
-              <td><code>LLM_API_KEY</code></td>
-              <td>
-                Optional; when set it takes precedence over the model key saved
-                in LuckyTri
-              </td>
-            </tr>
-            <tr>
-              <td><code>LUCKYTRI_CHANNEL</code></td>
-              <td>
-                Optional; <code>onebot</code> or <code>qqbot</code>. When set,
-                the connection method cannot be changed in the interface
-              </td>
-            </tr>
-            <tr>
-              <td><code>QQBOT_APP_ID</code> / <code>QQBOT_APP_SECRET</code></td>
-              <td>
-                Optional; credentials of the QQ official bot, they take
-                precedence over what is saved in the interface
-              </td>
-            </tr>
-            <tr>
-              <td><code>HOST</code> / <code>PORT</code></td>
-              <td>Listen address and port; keep the defaults for local use</td>
-            </tr>
-          </tbody>
-        </table>
-        <p>
-          The first time the page loads data it asks for
-          <code>ADMIN_TOKEN</code>. The token stays in the current tab only.
-          Restart after changing <code>.env</code>. Never give
-          <code>ADMIN_TOKEN</code> to the QQ connector, and do not treat
-          <code>ONEBOT_TOKEN</code> as the studio password.
+          Change the password or sign out under System → Run switches. Only a
+          salted verification digest is stored. Existing environment
+          configuration and model keys remain intact.
         </p>
         <h2 id="step-3">3. Try it in simulation mode first</h2>
         <p>Simulation mode is on by default, so nothing is sent to QQ.</p>
@@ -556,6 +518,36 @@ LLM_API_KEY=
           &quot;Nature&quot; to see how she speaks before letting her join real
           QQ.
         </p>
+        <h3>Reading images</h3>
+        <p>
+          Enable &quot;Image understanding&quot; in the model profile and use a
+          model whose provider supports vision. Images can be read from QQ URLs,
+          local cache files or the image-cache API. Originals up to 32 MiB and
+          80 million pixels are accepted by default, so ordinary photos and
+          screenshots larger than 4 MiB are no longer rejected outright. Small
+          images retain their bytes after decoding validation. Large screenshots
+          first try lossless compression, then encoding compression or
+          proportional resizing as needed. Photos are oriented correctly without
+          cropping. Each image sent to the model defaults to at most 4 MiB, 8192
+          pixels on its longest side and 16 million output pixels. Originals
+          stay unchanged and duplicate detection uses their original contents.
+        </p>
+        <p>
+          Downloads have a 30-second timeout by default. An interrupted or
+          damaged image fails independently of other images in the batch. AVIF
+          is converted to a common format; animated images contribute their
+          first frame, which does not establish the full animation. Large Base64
+          images returned by QQ&#39;s image-cache API no longer fall under the
+          ordinary 1 MiB message limit; ordinary messages keep that limit.
+        </p>
+        <p>
+          To adjust this, set <code>VISION_SOURCE_MAX_MB</code> (4–64, default
+          32), <code>VISION_MODEL_MAX_MB</code> (1–4, default 4) or
+          <code>VISION_DOWNLOAD_TIMEOUT_SECONDS</code> (5–120, default 30) in
+          <code>.env</code>, then restart. Interpretation still depends on the
+          selected model&#39;s visual abilities and an available provider
+          endpoint.
+        </p>
         <h2 id="step-5">5. Connect QQ</h2>
         <p>
           Open &quot;System → Connect QQ&quot;. There are two options at the
@@ -572,8 +564,8 @@ LLM_API_KEY=
         </p>
         <ol>
           <li>
-            Set <code>ONEBOT_TOKEN</code> in the local <code>.env</code> and
-            restart LuckyTri.
+            Local clients need no separate token. Keep an existing client
+            address and QQ sign-in.
           </li>
           <li>
             In the connector&#39;s own network settings add an OneBot 11 reverse
@@ -598,7 +590,10 @@ LLM_API_KEY=
             </tr>
             <tr>
               <td>Token</td>
-              <td><code>ONEBOT_TOKEN</code> from <code>.env</code></td>
+              <td>
+                Not needed locally; remote clients can use the management
+                password or an existing token
+              </td>
             </tr>
             <tr>
               <td>Message format</td>
@@ -617,11 +612,9 @@ LLM_API_KEY=
           </li>
         </ol>
         <p>
-          <code>3210</code> is LuckyTri&#39;s port. When the connector and
-          LuckyTri are on different machines or in containers,
-          <code>127.0.0.1</code> points at each own environment: replace it with
-          LuckyTri&#39;s real address and configure
-          <code>ADMIN_TOKEN</code> first.
+          In a container or another computer, localhost refers to that
+          environment. Use the reachable LuckyTri address for remote access, set
+          the password locally first, and use HTTPS for remote studio access.
         </p>
         <h3>Option two: QQ official bot</h3>
         <p>
@@ -826,6 +819,37 @@ npm start
           failure; copy important backups elsewhere yourself.
         </p>
         <p>
+          When <code>DB_PATH</code> points to a different database and
+          <code>BACKUP_DIR</code> is unset, backups go into a
+          <code>backups</code> folder beside that database, keeping separate
+          instances apart.
+        </p>
+        <p>
+          Under System → Data and backups, inspect each historical copy, set a
+          daily cleanup time, maximum age and maximum count for full backups, or
+          select individual copies for removal. By default, a daily check at
+          04:30 server local time selects full backups older than 14 days or
+          beyond the newest two. Set the count to 0 to retain no full backups.
+          Full and migration snapshots are no longer permanently locked and can
+          all be selected manually. Automatic backups rotate only identifiable
+          copies belonging to this instance, with the newest two reserved as
+          restore points. Unidentifiable older copies, migration, older-version
+          and pre-upgrade snapshots are removed only through manual selection.
+        </p>
+        <p>
+          Cleanup verifies a retained automatic backup of this instance from the
+          last 72 hours. If the newest copy is damaged, another one is tried.
+          New manifests include a database identity so a different instance
+          cannot provide the recovery guarantee. Older manifests can still be
+          verified and restored, but a refreshed automatic backup is needed
+          before they can guarantee cleanup. Backup and cleanup share a folder
+          lock; the live database, hard links to it and copies with runtime
+          sidecars cannot be removed. Partial failures list the remaining files
+          and accurately report the space already freed. Copy historical restore
+          points worth keeping to another disk together with their
+          <code>.db.json</code> manifests first.
+        </p>
+        <p>
           To restore, stop the service, move the current
           <code>data/friend.db</code> and its <code>-wal</code> and
           <code>-shm</code> files away, then copy the chosen backup to
@@ -858,17 +882,17 @@ npm start
               </td>
             </tr>
             <tr>
-              <td>Wrong token</td>
+              <td>Incorrect password</td>
               <td>
-                Use <code>ADMIN_TOKEN</code>; restart after editing
-                <code>.env</code>
+                Sign in with your management password; change it under System →
+                Run switches
               </td>
             </tr>
             <tr>
               <td>OneBot not connected</td>
               <td>
-                Is the connector logged in; do the URL, port, path and
-                <code>ONEBOT_TOKEN</code> all match
+                Check sign-in, enabled reverse client, address, port and path;
+                local clients need no token
               </td>
             </tr>
             <tr>
@@ -956,7 +980,7 @@ npm start
     </div>
     <footer>
       LuckyTri · so that experience and choice stay coherent. This guide matches
-      the v0.9.9 interface.
+      the v1.0.1 interface.
     </footer>
   </body>
 </html>

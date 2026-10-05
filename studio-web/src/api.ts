@@ -1,5 +1,5 @@
 import { locale, t } from "./i18n";
-import { askText } from "./dialog";
+import { access, requireLogin, waitForAccess } from "./access";
 import { reads } from "./read-cache";
 
 const cachedPaths = new Set([
@@ -14,9 +14,9 @@ const cachedPaths = new Set([
 ]);
 let cacheToken = "";
 function checkToken() {
-  if (cacheToken !== (sessionStorage.token || "")) {
+  if (cacheToken !== String(access.revision)) {
     reads.clear();
-    cacheToken = sessionStorage.token || "";
+    cacheToken = String(access.revision);
   }
 }
 export function readSnapshot(path: string) {
@@ -37,21 +37,6 @@ export function readVersion() {
 export function freshRead(path: string): Promise<any> {
   checkToken();
   return request(path, "GET");
-}
-
-let asking: Promise<string | null> | null = null;
-
-// Several requests can hit 401 at once; they all wait on the same question.
-function askToken() {
-  asking ??= askText(t("这个 LuckyTri 设置了管理令牌，输入后才能继续。"), {
-    title: t("需要管理令牌"),
-    confirmText: t("进入"),
-    placeholder: t("管理令牌"),
-    secret: true,
-  }).finally(() => {
-    asking = null;
-  });
-  return asking;
 }
 
 export function api(
@@ -85,23 +70,22 @@ async function request(
   method: string,
   body?: unknown,
 ): Promise<any> {
+  await waitForAccess();
   const r = await fetch("/api" + path, {
     method,
+    credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
-      Authorization: "Bearer " + (sessionStorage.token || ""),
       // The server words its own labels and errors in the page's language.
       "X-LuckyTri-Locale": locale.value,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (r.status === 401) {
-    const token = await askToken();
-    if (token) {
-      sessionStorage.token = token;
-      clearReads();
-      return api(path, method, body);
-    }
+    requireLogin();
+    await waitForAccess();
+    clearReads();
+    return request(path, method, body);
   }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw Error(data.error || t("请求失败"));

@@ -6,6 +6,12 @@ import { CommitmentReview } from "./time/commitment-review.js";
 import { chosenSlot } from "./day-planner.js";
 import { activityEstimate } from "./time/activity-clock.js";
 import { gameTopic } from "./time/intent.js";
+import {
+  isExecutable,
+  isPluginActivity,
+  pluginAvailable,
+  withActivities,
+} from "./time/kinds.js";
 
 export class OwnDay {
   constructor(life) {
@@ -141,6 +147,7 @@ export class OwnDay {
                 write: true,
                 think: true,
                 game: !time.search.ready(now),
+                ...pluginAvailable(),
               },
               busy: time.tasks
                 .slots(now)
@@ -170,7 +177,7 @@ export class OwnDay {
           "reflection",
           replyPrompt(
             life.mind.nature.current(now),
-            { ...prompts(life.repo), activity: instruction },
+            { ...prompts(life.repo), activity: withActivities(instruction) },
             "activity",
           ),
           input,
@@ -209,7 +216,7 @@ export class OwnDay {
         const plan = answer?.plan;
         if (
           !plan ||
-          !["read", "write", "think", "game"].includes(plan.activity) ||
+          !isExecutable(plan.activity) ||
           !text(plan.title, 160) ||
           !text(plan.why, 200) ||
           hasCredential(plan.title + plan.why)
@@ -217,7 +224,8 @@ export class OwnDay {
           throw Error("自己的安排格式无效");
         if (
           (plan.activity === "read" && !input.available.read) ||
-          (plan.activity === "game" && !input.available.game)
+          (plan.activity === "game" && !input.available.game) ||
+          (isPluginActivity(plan.activity) && !input.available[plan.activity])
         ) {
           status = "waiting";
           reason = "想做的事情还缺少条件";

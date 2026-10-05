@@ -1,6 +1,6 @@
 {
   "name": "luckytri",
-  "version": "0.9.9",
+  "version": "1.0.1",
   "description": "让由技术诞生的她，在时间、记忆、相遇与选择中逐渐形成自己的方向",
   "license": "MIT",
   "repository": {
@@ -12,28 +12,89 @@
   },
   "homepage": "https://github.com/TodayYueC/LuckyTri",
   "type": "module",
+  "bin": {
+    "luckytri": "bin/luckytri.js"
+  },
+  "files": [
+    "bin/luckytri.js",
+    "server/**/*.js",
+    "server/plugins/runner/*.mjs",
+    "scripts/launch.js",
+    "scripts/start-server.js",
+    "scripts/stop.js",
+    "scripts/reset-password.js",
+    "scripts/setup.js",
+    "scripts/runtime.js",
+    "scripts/service.js",
+    "scripts/browser.js",
+    "scripts/proxy-config.js",
+    "scripts/backup.js",
+    "scripts/recover.js",
+    "scripts/plugin.js",
+    "public/app/index.html",
+    "public/app/assets/*.js",
+    "public/app/assets/*.css",
+    "public/app/assets/*.png",
+    "public/plugin-kit/v1/bridge.js",
+    "public/plugin-kit/v1/kit.css",
+    "public/guide.html",
+    "public/guide.en.html",
+    "public/tutorial.md",
+    "public/tutorial.en.md",
+    "plugins/weather/index.js",
+    "plugins/weather/luckytri-plugin.json",
+    "plugins/sdk/index.d.ts",
+    "plugins/sdk/testing.js",
+    "docs/zh/*.md",
+    "docs/en/*.md",
+    "docs/brand/*.png",
+    ".github/SECURITY.md",
+    "README.en.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "keywords": [
+    "qq",
+    "onebot",
+    "chatbot",
+    "ai",
+    "memory",
+    "webui"
+  ],
   "engines": {
     "node": ">=24.5"
   },
   "scripts": {
     "launch": "node scripts/launch.js",
-    "start": "node --env-file-if-exists=.env scripts/start-server.js",
+    "start": "node scripts/start-server.js",
     "dev:ui": "vite --config studio-web/vite.config.ts",
     "build:ui": "vite build --config studio-web/vite.config.ts",
+    "build": "npm run build:ui && npm run docs:build",
     "test": "node --import ./tests/helpers/awake.mjs --test tests/*.test.js",
     "test:clock": "node scripts/dev/test-clock.js",
     "audit:sent": "node --env-file-if-exists=.env scripts/dev/audit-sent.js",
-    "test:ui": "node tests/ui/smoke.js && node tests/ui/ta.mjs && node tests/ui/navigation.mjs && node tests/ui/time.mjs && node tests/ui/time-arrangement.mjs && node tests/ui/performance.mjs && node tests/ui/search.mjs && node tests/ui/i18n.mjs",
+    "test:ui": "node tests/ui/access.mjs && node tests/ui/smoke.js && node tests/ui/ta.mjs && node tests/ui/navigation.mjs && node tests/ui/time.mjs && node tests/ui/time-arrangement.mjs && node tests/ui/performance.mjs && node tests/ui/search.mjs && node tests/ui/storage.mjs && node tests/ui/i18n.mjs",
     "setup": "node scripts/setup.js",
-    "stop": "node --env-file-if-exists=.env scripts/stop.js",
-    "backup": "node --env-file-if-exists=.env scripts/backup.js",
+    "stop": "node scripts/stop.js",
+    "backup": "node scripts/backup.js",
     "recovery": "node scripts/recover.js",
     "docs:build": "node scripts/build-guide.js",
-    "format": "prettier --write server studio-web scripts tests package.json",
-    "format:check": "prettier --check server studio-web scripts tests package.json"
+    "plugin": "node scripts/plugin.js",
+    "pack:check": "node scripts/pack-check.js",
+    "test:package": "node scripts/test-package.js",
+    "test:registry": "node scripts/test-package.js --registry",
+    "prepack": "npm run build && npm run pack:check",
+    "prepublishOnly": "npm run build && npm test && npm run test:package",
+    "release:check": "npm run build && npm test && npm run test:ui && npm run test:package",
+    "format": "prettier --write bin server studio-web scripts tests plugins package.json",
+    "format:check": "prettier --check bin server studio-web scripts tests plugins package.json"
   },
   "dependencies": {
     "express": "^5.1.0",
+    "sharp": "^0.35.5",
     "ws": "^8.18.3"
   },
   "devDependencies": {

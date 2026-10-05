@@ -94,21 +94,12 @@ function connectionChecks({ channel, online, tokenConfigured, qqbot }) {
   }
   return [
     {
-      id: "token",
-      name: "QQ 接入令牌",
-      done: tokenConfigured,
-      detail: tokenConfigured
-        ? "已配置"
-        : "在本机 .env 中填写 ONEBOT_TOKEN，然后重启 LuckyTri",
-      tab: "setup",
-    },
-    {
       id: "qq",
       name: "QQ 连接",
       done: online,
       detail: online
         ? "OneBot 11 反向 WebSocket 已连接"
-        : "在接入端配置 OneBot 11 反向 WebSocket 客户端",
+        : "本机接入无需单独令牌，请确认接入端已登录并启用反向 WebSocket 客户端",
       tab: "settings",
     },
   ];

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createApp } from "../server/app.js";
+import { createApp } from "./helpers/app.js";
 import { readiness } from "../server/studio/readiness.js";
 import { parseNewSession } from "../server/core/sessions.js";
 import { applySpeakerNames } from "../server/core/speaker-names.js";
@@ -106,8 +106,8 @@ test("the channel and its credentials are validated", async (t) => {
 test("readiness lists the steps of the channel in use", () => {
   const w = world();
   const ids = (options) => readiness(w.store, options).checks.map((c) => c.id);
-  assert.deepEqual(ids({}).slice(0, 2), ["token", "qq"]);
-  assert.deepEqual(ids({ channel: "onebot" }).slice(0, 2), ["token", "qq"]);
+  assert.deepEqual(ids({}).slice(0, 2), ["qq", "model"]);
+  assert.deepEqual(ids({ channel: "onebot" }).slice(0, 2), ["qq", "model"]);
   assert.deepEqual(ids({ channel: "qqbot", qqbot: {} }).slice(0, 2), [
     "credentials",
     "qq",

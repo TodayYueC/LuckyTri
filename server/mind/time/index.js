@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Attention } from "./attention.js";
 import { Tasks, ACTIVITY_LABELS } from "./tasks.js";
+import { activityLabel, holdsClock } from "./kinds.js";
 import { dayKey, evidence, parse, text, zonedTime } from "../util.js";
 import { Works } from "./works.js";
 import { Sharing } from "./sharing.js";
@@ -225,7 +226,9 @@ export class TimeSystem {
     if (
       !this.fixtureImmediate &&
       !refreshed.checkpoint.pendingStep &&
-      !(refreshed.activity === "game" && refreshed.checkpoint.sourceIds?.length)
+      !(
+        holdsClock(refreshed.activity) && refreshed.checkpoint.sourceIds?.length
+      )
     ) {
       this.db.prepare("UPDATE mind_time_tasks SET checkpoint=? WHERE id=?").run(
         JSON.stringify({
@@ -260,7 +263,8 @@ export class TimeSystem {
           "INSERT INTO mind_time_spans(id,task_id,started,updated) VALUES (?,?,?,?)",
         )
         .run(randomUUID(), task.id, now, now);
-    this.event(task.id, "doing", "开始接着做", {}, now);
+    if (refreshed.state !== "doing")
+      this.event(task.id, "doing", "开始接着做", {}, now);
     return this.tasks.get(task.id);
   }
   valid(task) {
@@ -426,7 +430,10 @@ export class TimeSystem {
         ? {
             id: task.id,
             activity: task.activity,
-            label: ACTIVITY_LABELS[task.activity],
+            label: activityLabel(
+              task.activity,
+              ACTIVITY_LABELS[task.activity] || "在做自己的事",
+            ),
             title: activityPresentation(task).title,
             why: activityPresentation(task).why,
             state: task.state,
@@ -538,6 +545,24 @@ export class TimeSystem {
           plannedFor: this.planView(row),
         })),
       works: this.works.fragments({ session, now, cue }),
+      ...(() => {
+        const actions = this.db
+          .prepare(
+            "SELECT id,label,state,result,session_id,created FROM mind_actions WHERE created>? AND created<=? AND state IN ('done','failed','awaiting','uncertain') ORDER BY created DESC LIMIT 8",
+          )
+          .all(now - 86400000, now)
+          .filter(
+            (row) => !session || !row.session_id || row.session_id === session,
+          )
+          .slice(0, 3)
+          .map((row) => ({
+            ref: `e:${row.id}`,
+            label: row.label,
+            state: row.state,
+            result: text(row.result, 160),
+          }));
+        return actions.length ? { actions } : {};
+      })(),
     };
   }
   interaction(session, sources, now = this.now()) {

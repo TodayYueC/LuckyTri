@@ -226,7 +226,7 @@ export function mountMind(app, chat, life) {
         });
       for (const r of db
         .prepare(
-          "SELECT * FROM mind_runs WHERE started>=? AND started<=? ORDER BY started DESC LIMIT 30",
+          "SELECT * FROM mind_runs WHERE started>=? AND started<=? AND NOT (kind='activity' AND status IN ('reading','engaged')) ORDER BY started DESC LIMIT 30",
         )
         .all(start, now))
         items.push({

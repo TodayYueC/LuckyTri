@@ -7,9 +7,11 @@ import ConnectQQ from "./ConnectQQ.vue";
 import ModelLibrary from "./ModelLibrary.vue";
 import Runtime from "./Runtime.vue";
 import SearchProfile from "./SearchProfile.vue";
+import BackupManager from "./BackupManager.vue";
 import { ask } from "../../dialog";
+import PasswordSettings from "../../components/PasswordSettings.vue";
 
-const VIEWS = ["connect", "models", "search", "runtime"];
+const VIEWS = ["connect", "models", "search", "runtime", "storage"];
 const view = ref(VIEWS.includes(studio.sub) ? studio.sub : "connect");
 async function switchView(next: string) {
   if (next === view.value) return;
@@ -65,12 +67,16 @@ watch(
         { key: 'models', label: t('模型库') },
         { key: 'search', label: t('独立搜索') },
         { key: 'runtime', label: t('运行开关') },
+        { key: 'storage', label: t('数据与备份') },
       ]"
     />
     <ConnectQQ v-if="view === 'connect'" @open="switchView" />
     <ModelLibrary v-else-if="view === 'models'" />
     <SearchProfile v-else-if="view === 'search'" />
-    <Runtime v-else />
+    <template v-else-if="view === 'runtime'"
+      ><Runtime /><PasswordSettings
+    /></template>
+    <BackupManager v-else />
   </div>
 </template>
 

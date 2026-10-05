@@ -140,6 +140,14 @@ export class OwnVoice {
           conversationOrigin(this.mind.db, [`t:${t.id}`], t.created),
         ),
       })),
+      ...(() => {
+        const world = this.mind.observations.recent({
+          since: now - 86400000,
+          before: now,
+          limit: 4,
+        });
+        return world.length ? { world } : {};
+      })(),
       recentExpressions: recent.map((t) => ({
         ref: `t:${t.id}`,
         created: t.created,
@@ -182,7 +190,12 @@ export class OwnVoice {
           .map((s) => text(s, 180));
         const sources = evidence(result.sources);
         const valid = new Set(
-          [...input.self, ...input.notes, ...input.actions].map((s) => s.ref),
+          [
+            ...input.self,
+            ...input.notes,
+            ...input.actions,
+            ...(input.world || []),
+          ].map((s) => s.ref),
         );
         if (
           !content ||

@@ -1,34 +1,56 @@
 import { DatabaseSync } from "node:sqlite";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
 } from "node:fs";
-import { resolve, join, basename } from "node:path";
+import { resolve, join, basename, dirname } from "node:path";
 import {
   copyDatabaseFile,
+  archiveIdentity,
   writeArchiveManifest,
+  ensureArchiveIdentity,
 } from "../server/storage/archive.js";
+import { withBackupLock } from "../server/storage/backup-lock.js";
 import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
+import { runtimePaths } from "../server/paths.js";
 
 const HOUR = 3600000;
 const DAY = 24 * HOUR;
 export const AUTO_PREFIX = "luckytri-auto-";
 const MISSING = "数据库不存在，请先启动一次 LuckyTri";
 
+export function backupDirectory(
+  source = runtimePaths().database,
+  env = process.env,
+) {
+  return env.BACKUP_DIR
+    ? resolve(runtimePaths(env).home, env.BACKUP_DIR)
+    : join(dirname(resolve(source)), "backups");
+}
+
 function copyDatabase(source, target) {
   copyDatabaseFile(source, target);
 }
 
 export function backupDatabase(
-  source = process.env.DB_PATH || "data/friend.db",
-  directory = process.env.BACKUP_DIR || "data/backups",
+  source = runtimePaths().database,
+  directory = backupDirectory(source),
 ) {
   if (!existsSync(source)) throw new Error(MISSING);
+  return withBackupLock(directory, () => fullBackup(source, directory));
+}
+
+function fullBackup(source, directory) {
+  if (!existsSync(source)) throw new Error(MISSING);
+  ensureArchiveIdentity(source);
   mkdirSync(directory, { recursive: true });
   const target = resolve(
     join(
@@ -66,20 +88,65 @@ function stampTime(name, file) {
   return Number.isFinite(parsed) ? parsed : statSync(file).mtimeMs;
 }
 
-function autoBackups(directory) {
+function autoBackups(directory, { source, databaseId } = {}) {
   if (!existsSync(directory)) return [];
-  return readdirSync(directory)
-    .filter((name) => name.startsWith(AUTO_PREFIX) && name.endsWith(".db"))
-    .map((name) => {
-      const file = join(directory, name);
-      return { name, file, time: stampTime(name, file) };
-    })
-    .sort((a, b) => b.time - a.time || b.name.localeCompare(a.name));
+  const scoped = !!source || databaseId !== undefined;
+  const sourceStat = source && existsSync(source) ? statSync(source) : null;
+  const sourcePath = source
+    ? sourceStat
+      ? realpathSync(source)
+      : resolve(source)
+    : null;
+  const identity = databaseId ?? (sourceStat ? archiveIdentity(source) : null);
+  const normalize = (file) =>
+    process.platform === "win32" ? file.toLowerCase() : file;
+  const entries = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (
+      !entry.isFile() ||
+      !entry.name.startsWith(AUTO_PREFIX) ||
+      !entry.name.endsWith(".db")
+    )
+      continue;
+    const file = join(directory, entry.name);
+    const stat = lstatSync(file);
+    if (
+      !stat.isFile() ||
+      (sourcePath && normalize(realpathSync(file)) === normalize(sourcePath)) ||
+      (sourceStat?.ino &&
+        stat.ino === sourceStat.ino &&
+        stat.dev === sourceStat.dev)
+    )
+      continue;
+    if (scoped) {
+      if (!identity) continue;
+      try {
+        const manifestPath = `${file}.json`;
+        if (!lstatSync(manifestPath).isFile()) continue;
+        const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+        if (
+          manifest.format !== 1 ||
+          manifest.app !== "luckytri" ||
+          manifest.kind !== "auto" ||
+          manifest.databaseId !== identity ||
+          archiveIdentity(file) !== identity
+        )
+          continue;
+      } catch {
+        // Legacy, damaged and unidentifiable copies require a manual decision.
+        continue;
+      }
+    }
+    entries.push({ name: entry.name, file, time: stampTime(entry.name, file) });
+  }
+  return entries.sort(
+    (a, b) => b.time - a.time || b.name.localeCompare(a.name),
+  );
 }
 
 // Newest first, with the size the management page shows.
-export function listAutoBackups(directory) {
-  return autoBackups(directory).map(({ name, file, time }) => ({
+export function listAutoBackups(directory, options = {}) {
+  return autoBackups(directory, options).map(({ name, file, time }) => ({
     name,
     time,
     bytes: statSync(file).size,
@@ -88,9 +155,9 @@ export function listAutoBackups(directory) {
 
 export function autoBackupDue(
   directory,
-  { now = Date.now(), intervalMs = DAY } = {},
+  { now = Date.now(), intervalMs = DAY, source, databaseId } = {},
 ) {
-  const latest = autoBackups(directory)[0];
+  const latest = autoBackups(directory, { source, databaseId })[0];
   return !latest || now - latest.time >= intervalMs;
 }
 
@@ -121,9 +188,18 @@ function slimAndVerify(file, traceCutoff) {
   }
 }
 
-export function autoBackup({
-  source = process.env.DB_PATH || "data/friend.db",
-  directory = process.env.BACKUP_DIR || "data/backups",
+export function autoBackup(options = {}) {
+  const source = options.source || runtimePaths().database;
+  const directory = options.directory || backupDirectory(source);
+  if (!existsSync(source)) throw new Error(MISSING);
+  return withBackupLock(directory, () =>
+    runAutoBackup({ ...options, source, directory }),
+  );
+}
+
+function runAutoBackup({
+  source = runtimePaths().database,
+  directory = backupDirectory(source),
   now = Date.now(),
   intervalMs = DAY,
   keep = 7,
@@ -131,19 +207,37 @@ export function autoBackup({
   force = false,
 } = {}) {
   if (!existsSync(source)) throw new Error(MISSING);
-  if (!force && !autoBackupDue(directory, { now, intervalMs }))
+  if (!force && !autoBackupDue(directory, { now, intervalMs, source }))
     return { status: "skipped" };
+  const databaseId = ensureArchiveIdentity(source);
   mkdirSync(directory, { recursive: true });
+  const sourceStat = statSync(source);
+  const sourcePath = realpathSync(source);
+  const normalize = (file) =>
+    process.platform === "win32" ? file.toLowerCase() : file;
   // A run that was cut off leaves a partial file; it is never a backup.
-  for (const name of readdirSync(directory))
+  for (const name of readdirSync(directory)) {
+    if (!name.startsWith(AUTO_PREFIX) || !name.endsWith(".partial")) continue;
+    const file = join(directory, name);
+    const stat = lstatSync(file);
     if (
-      name.startsWith(AUTO_PREFIX) &&
-      name.endsWith(".partial") &&
-      now - statSync(join(directory, name)).mtimeMs > 6 * HOUR
+      stat.isFile() &&
+      now - stat.mtimeMs > 6 * HOUR &&
+      normalize(realpathSync(file)) !== normalize(sourcePath) &&
+      !(
+        sourceStat.ino &&
+        stat.ino === sourceStat.ino &&
+        stat.dev === sourceStat.dev
+      )
     )
-      rmSync(join(directory, name), { force: true });
-  const stamp = new Date(now).toISOString().replace(/[:.]/g, "-");
-  const final = resolve(join(directory, `${AUTO_PREFIX}${stamp}.db`));
+      rmSync(file, { force: true });
+  }
+  let stampTimeMs = now;
+  let final;
+  do {
+    const stamp = new Date(stampTimeMs++).toISOString().replace(/[:.]/g, "-");
+    final = resolve(join(directory, `${AUTO_PREFIX}${stamp}.db`));
+  } while (existsSync(final) || existsSync(`${final}.json`));
   const partial = `${final}.${randomUUID().slice(0, 8)}.partial`;
   let info;
   try {
@@ -158,7 +252,11 @@ export function autoBackup({
     throw error;
   }
   const removed = [];
-  for (const old of autoBackups(directory).slice(Math.max(1, keep))) {
+  for (const old of autoBackups(directory, { source, databaseId }).slice(
+    Math.max(1, keep),
+  )) {
+    if (existsSync(`${old.file}-wal`) || existsSync(`${old.file}-shm`))
+      continue;
     rmSync(old.file, { force: true });
     rmSync(`${old.file}.json`, { force: true });
     removed.push(old.name);
@@ -190,6 +288,8 @@ if (
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
   try {
+    const { prepareRuntime } = await import("./runtime.js");
+    prepareRuntime({ initialize: false });
     if (process.argv.includes("--auto")) {
       const options = autoBackupOptions();
       const result = autoBackup({

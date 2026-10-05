@@ -14,9 +14,46 @@ import {
 } from "node:fs";
 import { dirname, basename, resolve, join } from "node:path";
 import { VERSION } from "../version.js";
+import { withBackupLock } from "./backup-lock.js";
 
-export const DATABASE_VERSION = 3;
+export const DATABASE_VERSION = 4;
 const appVersion = VERSION;
+const IDENTITY = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
+
+export function archiveIdentity(file) {
+  const db = new DatabaseSync(file, { readOnly: true });
+  try {
+    const row = db.prepare("SELECT value FROM settings WHERE id=1").get();
+    const value = row && JSON.parse(row.value).backupIdentity;
+    return typeof value === "string" && IDENTITY.test(value) ? value : null;
+  } finally {
+    db.close();
+  }
+}
+
+export function ensureArchiveIdentity(file) {
+  const db = new DatabaseSync(file);
+  try {
+    db.exec("PRAGMA busy_timeout=5000; BEGIN IMMEDIATE");
+    const row = db.prepare("SELECT value FROM settings WHERE id=1").get();
+    if (!row) throw Error("这不是 LuckyTri 数据库");
+    const settings = JSON.parse(row.value);
+    let value = settings.backupIdentity;
+    if (typeof value !== "string" || !IDENTITY.test(value)) {
+      value = randomUUID();
+      db.prepare("UPDATE settings SET value=? WHERE id=1").run(
+        JSON.stringify({ ...settings, backupIdentity: value }),
+      );
+    }
+    db.exec("COMMIT");
+    return value;
+  } catch (error) {
+    if (db.isTransaction) db.exec("ROLLBACK");
+    throw error;
+  } finally {
+    db.close();
+  }
+}
 
 function fileHash(file) {
   const fd = openSync(file, "r"),
@@ -54,7 +91,7 @@ export function inspectDatabase(file) {
     for (const row of schema.filter(
       (row) =>
         row.type === "table" &&
-        /^(mind_|core_events$|core_memories$|core_chunks$|settings$)/.test(
+        /^(mind_|core_events$|core_memories$|core_chunks$|settings$|plugin_installs$)/.test(
           row.name,
         ),
     ))
@@ -86,6 +123,7 @@ export function writeArchiveManifest(
     appVersion,
     created: Date.now(),
     kind,
+    databaseId: archiveIdentity(file),
     file: filename,
     sha256: fileHash(file),
     ...inspected,
@@ -113,10 +151,16 @@ export function verifyArchive(file) {
     manifest.app !== "luckytri" ||
     manifest.sha256 !== fileHash(file) ||
     manifest.schemaHash !== inspected.schemaHash ||
+    (manifest.databaseId && manifest.databaseId !== archiveIdentity(file)) ||
     JSON.stringify(manifest.tables) !== JSON.stringify(inspected.tables)
   )
     throw Error("备份校验清单不匹配");
-  return { ...inspected, manifest: true, kind: manifest.kind };
+  return {
+    ...inspected,
+    manifest: true,
+    kind: manifest.kind,
+    databaseId: manifest.databaseId || null,
+  };
 }
 
 export function copyDatabaseFile(source, target) {
@@ -167,25 +211,31 @@ export function prepareDatabaseMigration(file) {
     db.close();
   }
   if (version === DATABASE_VERSION || !hasData) return null;
+  console.log(
+    `正在把数据库从 v${version} 升级到 v${DATABASE_VERSION}。会先复制整份数据，记录越多越久，请不要关闭窗口。`,
+  );
   const directory = join(dirname(resolve(file)), "backups");
   mkdirSync(directory, { recursive: true });
   const target = join(
     directory,
     `luckytri-migration-v${version}-to-v${DATABASE_VERSION}-${Date.now()}-${randomUUID().slice(0, 8)}.db`,
   );
-  const partial = `${target}.partial`;
-  try {
-    copyDatabaseFile(file, partial);
-    writeArchiveManifest(partial, {
-      kind: "migration",
-      filename: basename(target),
-    });
-    renameSync(partial, target);
-    renameSync(`${partial}.json`, `${target}.json`);
-    return target;
-  } catch (error) {
-    rmSync(partial, { force: true });
-    rmSync(`${partial}.json`, { force: true });
-    throw error;
-  }
+  return withBackupLock(directory, () => {
+    const partial = `${target}.partial`;
+    try {
+      ensureArchiveIdentity(file);
+      copyDatabaseFile(file, partial);
+      writeArchiveManifest(partial, {
+        kind: "migration",
+        filename: basename(target),
+      });
+      renameSync(partial, target);
+      renameSync(`${partial}.json`, `${target}.json`);
+      return target;
+    } catch (error) {
+      rmSync(partial, { force: true });
+      rmSync(`${partial}.json`, { force: true });
+      throw error;
+    }
+  });
 }

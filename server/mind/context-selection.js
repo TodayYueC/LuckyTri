@@ -35,6 +35,7 @@ export function relevantContext(
 // the prompt. Identity, current people, and exact continuity evidence survive.
 export function boundMindContext(view, cap = MIND_CONTEXT_TOKEN_CAP) {
   const optional = [
+    [view.inner, "senses"],
     [view.self, "readLately"],
     [view.self, "lastDiary"],
     [view.inner, "reminded"],

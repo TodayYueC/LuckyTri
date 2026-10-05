@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createApp } from "../server/app.js";
+import { createApp } from "./helpers/app.js";
 import { world, HOUR, MINUTE } from "./helpers/world.js";
 test("内心的天气和想法读取不触发整个人生、未读与人格统计", async (t) => {
   const w = world();

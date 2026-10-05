@@ -1,9 +1,11 @@
 import { spawn } from "node:child_process";
 import { constants, setPriority } from "node:os";
 import { fileURLToPath } from "node:url";
+import { runtimePaths } from "../paths.js";
 import {
   autoBackupDue,
   autoBackupOptions,
+  backupDirectory,
   listAutoBackups,
 } from "../../scripts/backup.js";
 
@@ -18,7 +20,7 @@ const HOUR = 60 * MINUTE;
 // newest few are kept. `BACKUP_INTERVAL_HOURS=0` turns it off.
 export function createBackupScheduler({
   env = process.env,
-  directory = env.BACKUP_DIR || "data/backups",
+  directory = backupDirectory(runtimePaths(env).database, env),
   now = () => Date.now(),
   start = spawn,
   log = console,
@@ -26,6 +28,7 @@ export function createBackupScheduler({
   checkEveryMs = 10 * MINUTE,
 } = {}) {
   const options = autoBackupOptions(env);
+  const source = runtimePaths(env).database;
   let running = null;
   let failures = 0;
   let lastError = null;
@@ -39,7 +42,7 @@ export function createBackupScheduler({
     status() {
       let backups = [];
       try {
-        backups = listAutoBackups(directory);
+        backups = listAutoBackups(directory, { source });
       } catch (error) {
         lastError ||= { at: now(), message: error.message };
       }
@@ -64,6 +67,7 @@ export function createBackupScheduler({
         due = autoBackupDue(directory, {
           now: now(),
           intervalMs: options.intervalMs,
+          source,
         });
       } catch (error) {
         log.error(`检查自动备份失败：${error.message}`);
@@ -71,7 +75,12 @@ export function createBackupScheduler({
       }
       if (!due) return false;
       const child = start(process.execPath, [SCRIPT, "--auto"], {
-        env,
+        env: {
+          ...env,
+          LUCKYTRI_HOME: runtimePaths(env).home,
+          DB_PATH: source,
+          BACKUP_DIR: directory,
+        },
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
       });

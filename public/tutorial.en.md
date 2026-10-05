@@ -6,19 +6,23 @@ The top-right corner of the interface switches between "中文" and "English". C
 
 ## 1. Start
 
-You need Node.js 24.5 or newer. In the project folder:
+You need Node.js 24.5 or newer. Install globally:
 
 ```powershell
 node --version
-npm install
-npm start
+npm install -g luckytri
+luckytri
 ```
 
-Open <http://127.0.0.1:3210>. The experimental-SQLite notice in the terminal does not mean the start failed; what matters is whether LuckyTri opens.
+LuckyTri starts in the background and opens <http://127.0.0.1:3210>, creating local configuration on the first run. The package includes the built WebUI. The experimental-SQLite notice does not mean the start failed.
+
+Set a password in the studio on your first visit. Use `luckytri --no-browser`, `luckytri start` and `luckytri stop` for background, foreground and stop. Update with stop, `npm install -g luckytri@latest`, then launch; password, configuration and data stay intact.
+
+For source development, run `npm install`, `npm run setup`, `npm run build` and `npm start` in the checkout. Later examples using `npm run setup/stop/backup/recovery/plugin` apply to source checkouts; global users use the corresponding `luckytri setup/stop/backup/recovery/plugin` commands.
 
 On Windows you can double-click `启动LuckyTri.cmd` for daily use. If the service is already running, it only opens LuckyTri. Closing the browser does not stop the service; to stop it double-click `停止LuckyTri.cmd` or run `npm run stop` in the project folder. That command stops this project only and leaves other Node processes alone. When running in the foreground you can also press `Ctrl+C` in that terminal.
 
-LuckyTri is "TA's little world". The left navigation has three groups and nine entries:
+LuckyTri is "TA's little world". The left navigation has three groups and ten entries:
 
 | Group      | Entry      | What is inside                                                                                                                                                  |
 | ---------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -31,38 +35,15 @@ LuckyTri is "TA's little world". The left navigation has three groups and nine e
 | Daily life | Memory     | What TA remembers, the bookshelf                                                                                                                                |
 | Settings   | Nature     | Name and character (the glow beside it previews live), daily rhythm, TA's days, daily tokens, advanced prompts, trial chat                                      |
 | Settings   | System     | Connect QQ, model library, run switches                                                                                                                         |
+| Settings   | Plugins    | Enable, install and remove the ways she touches the world. See [Plugins](plugins.md)                                                                            |
 
 The colors, sky and motion follow TA's mood and rhythm: warm when she is happy, grey-blue when she is low, night once she is asleep. At the bottom left you can pin one theme or turn on "Reduce motion". The small TA at the bottom right answers a poke, a long press is a head-pat, and a double click or "Chat" opens the trial chat. These are interface animations only and never change her mind. On a phone the navigation sits at the bottom and the other entries are under "More".
 
-## 2. Local tokens
+## 2. Set your management password
 
-Stop the service before connecting QQ, then generate the configuration:
+On the first visit, choose and confirm a password of at least 8 characters. Use it to sign in later; no environment-file token is needed. Browser sessions are remembered, and updates or reinstalls preserve the password.
 
-```powershell
-npm run stop
-npm run setup
-```
-
-When there is no `.env`, setup writes an admin token and an OneBot connection token. An existing `.env` is kept as it is.
-
-```dotenv
-HOST=127.0.0.1
-PORT=3210
-ADMIN_TOKEN=
-ONEBOT_TOKEN=
-LLM_API_KEY=
-```
-
-| Field                               | Purpose                                                                                                |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `ADMIN_TOKEN`                       | Opens LuckyTri and calls the HTTP API; the stop command uses it too                                    |
-| `ONEBOT_TOKEN`                      | The OneBot 11 connector uses it for `/onebot/v11/ws` (only needed for OneBot)                          |
-| `LLM_API_KEY`                       | Optional; when set it takes precedence over the model key saved in LuckyTri                            |
-| `LUCKYTRI_CHANNEL`                  | Optional; `onebot` or `qqbot`. When set, the connection method cannot be changed in the interface      |
-| `QQBOT_APP_ID` / `QQBOT_APP_SECRET` | Optional; credentials of the QQ official bot, they take precedence over what is saved in the interface |
-| `HOST` / `PORT`                     | Listen address and port; keep the defaults for local use                                               |
-
-The first time the page loads data it asks for `ADMIN_TOKEN`. The token stays in the current tab only. Restart after changing `.env`. Never give `ADMIN_TOKEN` to the QQ connector, and do not treat `ONEBOT_TOKEN` as the studio password.
+Change the password or sign out under System → Run switches. Only a salted verification digest is stored. Existing environment configuration and model keys remain intact.
 
 ## 3. Try it in simulation mode first
 
@@ -90,6 +71,14 @@ After saving, click "Test this model's connection". The test carries no group ch
 
 You can also stay in simulation mode and trial-chat with TA under "Nature" to see how she speaks before letting her join real QQ.
 
+### Reading images
+
+Enable "Image understanding" in the model profile and use a model whose provider supports vision. Images can be read from QQ URLs, local cache files or the image-cache API. Originals up to 32 MiB and 80 million pixels are accepted by default, so ordinary photos and screenshots larger than 4 MiB are no longer rejected outright. Small images retain their bytes after decoding validation. Large screenshots first try lossless compression, then encoding compression or proportional resizing as needed. Photos are oriented correctly without cropping. Each image sent to the model defaults to at most 4 MiB, 8192 pixels on its longest side and 16 million output pixels. Originals stay unchanged and duplicate detection uses their original contents.
+
+Downloads have a 30-second timeout by default. An interrupted or damaged image fails independently of other images in the batch. AVIF is converted to a common format; animated images contribute their first frame, which does not establish the full animation. Large Base64 images returned by QQ's image-cache API no longer fall under the ordinary 1 MiB message limit; ordinary messages keep that limit.
+
+To adjust this, set `VISION_SOURCE_MAX_MB` (4–64, default 32), `VISION_MODEL_MAX_MB` (1–4, default 4) or `VISION_DOWNLOAD_TIMEOUT_SECONDS` (5–120, default 30) in `.env`, then restart. Interpretation still depends on the selected model's visual abilities and an available provider endpoint.
+
 ## 5. Connect QQ
 
 Open "System → Connect QQ". There are two options at the top: **OneBot 11** and **QQ official bot**, and only one is used at a time. Switching drops the current connection; sessions from the previous method stay readable but can no longer be sent to. See `docs/en/connect.md` for how the two compare; the steps are below.
@@ -98,20 +87,20 @@ Open "System → Connect QQ". There are two options at the top: **OneBot 11** an
 
 LuckyTri only implements the reverse-WebSocket side of OneBot 11. You prepare and manage the connector yourself.
 
-1. Set `ONEBOT_TOKEN` in the local `.env` and restart LuckyTri.
+1. Local clients need no separate token. Keep an existing client address and QQ sign-in.
 2. In the connector's own network settings add an OneBot 11 reverse WebSocket client:
 
-| Item           | Value on this machine               |
-| -------------- | ----------------------------------- |
-| Protocol       | OneBot 11                           |
-| WebSocket URL  | `ws://127.0.0.1:3210/onebot/v11/ws` |
-| Token          | `ONEBOT_TOKEN` from `.env`          |
-| Message format | array                               |
-| Enabled        | on, then save                       |
+| Item           | Value on this machine                                                                   |
+| -------------- | --------------------------------------------------------------------------------------- |
+| Protocol       | OneBot 11                                                                               |
+| WebSocket URL  | `ws://127.0.0.1:3210/onebot/v11/ws`                                                     |
+| Token          | Not needed locally; remote clients can use the management password or an existing token |
+| Message format | array                                                                                   |
+| Enabled        | on, then save                                                                           |
 
 3. Log in to QQ in the connector. The account must already be in the target group; LuckyTri does not store QQ passwords.
 
-`3210` is LuckyTri's port. When the connector and LuckyTri are on different machines or in containers, `127.0.0.1` points at each own environment: replace it with LuckyTri's real address and configure `ADMIN_TOKEN` first.
+In a container or another computer, localhost refers to that environment. Use the reachable LuckyTri address for remote access, set the password locally first, and use HTTPS for remote studio access.
 
 ### Option two: QQ official bot
 
@@ -171,6 +160,12 @@ Everything of TA lives in this one database, so the service backs it up automati
 
 To take an automatic backup right now: `node scripts/backup.js --auto --force`. A failed automatic backup is noted in the launcher window or `data/launcher.log` and retried after longer and longer pauses. A backup on the same disk as the database cannot survive disk failure; copy important backups elsewhere yourself.
 
+When `DB_PATH` points to a different database and `BACKUP_DIR` is unset, backups go into a `backups` folder beside that database, keeping separate instances apart.
+
+Under System → Data and backups, inspect each historical copy, set a daily cleanup time, maximum age and maximum count for full backups, or select individual copies for removal. By default, a daily check at 04:30 server local time selects full backups older than 14 days or beyond the newest two. Set the count to 0 to retain no full backups. Full and migration snapshots are no longer permanently locked and can all be selected manually. Automatic backups rotate only identifiable copies belonging to this instance, with the newest two reserved as restore points. Unidentifiable older copies, migration, older-version and pre-upgrade snapshots are removed only through manual selection.
+
+Cleanup verifies a retained automatic backup of this instance from the last 72 hours. If the newest copy is damaged, another one is tried. New manifests include a database identity so a different instance cannot provide the recovery guarantee. Older manifests can still be verified and restored, but a refreshed automatic backup is needed before they can guarantee cleanup. Backup and cleanup share a folder lock; the live database, hard links to it and copies with runtime sidecars cannot be removed. Partial failures list the remaining files and accurately report the space already freed. Copy historical restore points worth keeping to another disk together with their `.db.json` manifests first.
+
 To restore, stop the service, move the current `data/friend.db` and its `-wal` and `-shm` files away, then copy the chosen backup to `data/friend.db`. When `DB_PATH` is set, work on that path. Never keep an old WAL file next to a restored database. The safer way is `npm run recovery`, which verifies a backup and restores it into a brand new file; see `docs/en/recovery.md`.
 
 ## 9. Troubleshooting
@@ -179,8 +174,8 @@ To restore, stop the service, move the current `data/friend.db` and its `-wal` a
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | The page does not open            | Is Node running, and is the address `127.0.0.1:3210`                                                                                     |
 | Port already in use               | Run `npm run stop` first; do not kill every node process                                                                                 |
-| Wrong token                       | Use `ADMIN_TOKEN`; restart after editing `.env`                                                                                          |
-| OneBot not connected              | Is the connector logged in; do the URL, port, path and `ONEBOT_TOKEN` all match                                                          |
+| Incorrect password                | Sign in with your management password; change it under System → Run switches                                                             |
+| OneBot not connected              | Check sign-in, enabled reverse client, address, port and path; local clients need no token                                               |
 | Official bot not connected        | Are the AppID and AppSecret right, are group and one-to-one messages enabled for the bot, can the network reach the QQ Open Platform     |
 | Official bot only gets @ messages | Enable "receive all messages" on the Open Platform; this is a platform permission, not a LuckyTri limit                                  |
 | Connected but no sessions         | Send one more new message in QQ; with OneBot also check the message format is array                                                      |

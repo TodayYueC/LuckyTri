@@ -14,6 +14,30 @@ export function maxBubbles(choice) {
   return choice === "speak" ? 3 : 1;
 }
 
+const ACTION_NAME = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]{0,40}$/;
+
+// One thing she chose to do. A malformed choice is dropped, never thrown:
+// a plugin's shape must not sink the whole turn.
+export function normalizeAct(raw, trace) {
+  if (raw == null) return null;
+  const action = String(raw.action || "").trim();
+  if (!ACTION_NAME.test(action)) {
+    trace?.steps?.push("行动选择无效，已放下");
+    return null;
+  }
+  const input =
+    raw.input && typeof raw.input === "object" && !Array.isArray(raw.input)
+      ? raw.input
+      : {};
+  return {
+    action,
+    input,
+    reason: String(raw.reason || "")
+      .trim()
+      .slice(0, 200),
+  };
+}
+
 export function recallWording(snapshot) {
   if (snapshot.initiative) return null;
   const continuity = snapshot.inner?.continuity;
@@ -192,6 +216,7 @@ export function normalizeTurn(raw, snapshot, trace) {
       .map((b) => ({ ...b, evidence: ids(b.evidence) }))
       .slice(0, 4),
     crisis: crisis ? { clear: true, messageIds: crisisIds } : { clear: false },
+    act: normalizeAct(raw.act, trace),
     bubbles: bubbles.slice(0, maxBubbles(choice)),
     maxBubbles: maxBubbles(choice),
   };

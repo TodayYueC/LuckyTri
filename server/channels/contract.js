@@ -14,6 +14,7 @@
 //   send(message, text)  deliver one bubble; resolves { message_id }
 //   fetchQuoted(message) the message that `message.replyId` points to, or null
 //   fetchImage(file)     a fresh URL or bytes for an expired image, or null
+//   fetchMedia(file, type)  optional: a voice or file the same way, or null
 //   refreshDirectory()   learn real group and friend names; resolves a count
 //   canReach(sessionId)  whether she may start a conversation there now
 //   status()             { online, ... } for the connection panel

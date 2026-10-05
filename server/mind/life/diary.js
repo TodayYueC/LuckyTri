@@ -256,6 +256,11 @@ export class LifeDiary {
             before: end,
             limit: 6,
           }),
+          world: this.owner.mind.observations.recent({
+            since: start,
+            before: end,
+            limit: 6,
+          }),
         },
         yesterday: yesterday
           ? {
@@ -305,6 +310,7 @@ export class LifeDiary {
         ...(anniversaries.length ? { anniversaries } : {}),
       };
       if (!input.today.meetings.length) delete input.today.meetings;
+      if (!input.today.world.length) delete input.today.world;
       while (
         estimateTokens(input) > SOLITUDE_INPUT_CAP &&
         input.today.experiences.some((e) => e.messages.length > 3)
@@ -333,6 +339,7 @@ export class LifeDiary {
         ...open.map((a) => a.ref),
         ...(input.livingFor ? [`s:${input.livingFor.thread}`] : []),
         ...(input.today.meetings || []).map((m) => m.ref),
+        ...(input.today.world || []).map((item) => item.ref),
       ]);
       this.owner.db
         .prepare(

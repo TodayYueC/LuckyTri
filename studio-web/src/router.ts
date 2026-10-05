@@ -41,6 +41,11 @@ export const AREAS = localized({
     en: "SYSTEM",
     tagline: N_("连接、模型和运行开关。"),
   },
+  plugins: {
+    label: N_("插件"),
+    en: "PLUGINS",
+    tagline: N_("她能接触的世界，由这里接上。"),
+  },
 } as const);
 
 export type Page = keyof typeof AREAS;
@@ -48,7 +53,7 @@ export type Page = keyof typeof AREAS;
 export const NAV: { label: string; pages: Page[] }[] = localized([
   { label: "TA", pages: ["now", "heart", "people", "life"] },
   { label: N_("日常"), pages: ["time", "chats", "memory"] },
-  { label: N_("设置"), pages: ["nature", "system"] },
+  { label: N_("设置"), pages: ["nature", "system", "plugins"] },
 ]);
 
 export const MOBILE_TABS: Page[] = ["now", "chats", "heart", "life"];
@@ -58,6 +63,7 @@ export const MOBILE_MORE: Page[] = [
   "memory",
   "nature",
   "system",
+  "plugins",
 ];
 
 // Links from the old studio keep working.

@@ -1,0 +1,3 @@
+# POSIX npm executables require an LF shebang even from a Windows checkout.
+bin/luckytri.js text eol=lf
+*.cmd text eol=crlf

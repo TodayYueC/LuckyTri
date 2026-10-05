@@ -1,0 +1,25 @@
+# The files allowlist in package.json is the primary boundary. These rules
+# also protect files accidentally added under a published directory.
+**/.env*
+**/.npmrc
+**/node_modules/**
+**/data/**
+**/logs/**
+**/backups/**
+**/reports/**
+**/evaluations/**
+**/workspace/**
+**/.git/**
+**/.codex*/**
+**/.cursor/**
+**/*.db*
+**/*.sqlite*
+**/*.log
+**/*.pem
+**/*.key
+**/*.p12
+**/*.bak
+**/*.tgz
+**/*.zip
+**/*.map
+**/*~

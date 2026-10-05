@@ -3,6 +3,8 @@
 // key, exactly as the code writes it. Only a whole string that equals a key is
 // translated, so what she writes herself is never touched.
 export const LABELS = {
+  存在运行伴随文件: "Runtime sidecar files exist",
+  近期自动恢复点: "Recent automatic restore point",
   // feedback.js
   挺自然: "Feels natural",
   太长了: "Too long",
@@ -19,13 +21,9 @@ export const LABELS = {
   "已连接 QQ 开放平台": "Connected to the QQ Open Platform",
   "正在连接 QQ 开放平台": "Connecting to the QQ Open Platform",
   填写凭据后自动连接: "Connects automatically once credentials are entered",
-  "QQ 接入令牌": "QQ access token",
-  已配置: "Configured",
-  "在本机 .env 中填写 ONEBOT_TOKEN，然后重启 LuckyTri":
-    "Set ONEBOT_TOKEN in the local .env file, then restart LuckyTri",
+  "本机接入无需单独令牌，请确认接入端已登录并启用反向 WebSocket 客户端":
+    "Local clients need no separate token. Check that the client is signed in and its reverse WebSocket client is enabled.",
   "OneBot 11 反向 WebSocket 已连接": "OneBot 11 reverse WebSocket connected",
-  "在接入端配置 OneBot 11 反向 WebSocket 客户端":
-    "Configure a OneBot 11 reverse WebSocket client in your OneBot client",
   当前模型已测试: "Current model tested",
   "模型配置已变更，请重新测试": "The model settings changed. Test again.",
   "保存模型配置后，点击测试模型连接":
@@ -348,8 +346,9 @@ export const LABELS = {
   相关的人: "People involved",
 
   // mind/time/availability.js
-  "目前没有下单或实拍的执行能力，需要调整这条约定；仍未兑现":
-    "She cannot place orders or take real photos right now; this promise needs adjusting and is still unfulfilled",
+  "除了她此刻真正能做的事，没有下单或实拍的执行能力，需要调整这条约定；仍未兑现":
+    "Apart from what she can actually do right now, she cannot place orders or take real photos; this promise needs adjusting and is still unfulfilled",
+  所需插件已停用: "The plugin this needs is switched off",
   来源已经撤销: "The source was undone",
   等待前一件事完成: "Waiting for the previous item to finish",
   书架这段内容已不可用: "This bookshelf passage is no longer available",
@@ -567,6 +566,9 @@ export const LABELS = {
 // Wording that carries a value. `{0}`, `{1}` are filled with what the code put
 // in, and each value goes through the dictionaries again.
 export const LABEL_PATTERNS = [
+  ["定时备份整理调度失败：{0}", "Scheduling backup cleanup failed: {0}"],
+  ["定时备份整理完成：{0} 份", "Scheduled backup cleanup finished: {0} copies"],
+  ["定时备份整理失败：{0}", "Scheduled backup cleanup failed: {0}"],
   ["检查自动备份失败：{0}", "Checking the automatic backup failed: {0}"],
   ["退出码 {0}", "Exit code {0}"],
   ["自动备份失败：{0}", "The automatic backup failed: {0}"],

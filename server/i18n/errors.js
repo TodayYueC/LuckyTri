@@ -2,18 +2,60 @@
 // key, exactly as the code writes it. `{0}` stands for a value the code puts
 // into the message; patterns are used when a message carries one.
 export const ERRORS = {
+  请使用本机命令重置管理密码:
+    "Use the local CLI to reset the management password",
+  "LUCKYTRI_HOME / --home 必须是绝对路径 (must be an absolute path)":
+    "LUCKYTRI_HOME / --home must be an absolute path",
+  "用户数据不能存放在 npm 安装目录内 (user data cannot live inside the npm package)":
+    "User data cannot live inside the npm package",
   // app.js
   不允许跨站访问: "Cross-site access is not allowed",
-  请输入管理令牌: "Enter the admin token",
+  请先登录管理台: "Sign in to the studio first",
+  "密码长度应为 8–256 个字符": "The password must contain 8–256 characters",
+  "尝试次数过多，请稍后再试": "Too many attempts. Please try again later.",
+  首次设置密码请在本机打开管理台:
+    "Open the studio on this computer to set the first password",
+  "管理密码已设置，请登录":
+    "A management password is already set. Please sign in.",
+  密码不正确: "Incorrect password",
+  当前密码不正确: "The current password is incorrect",
+  "密码已变化，请重新登录": "The password changed. Please sign in again.",
+  本机服务凭据必须是普通文件:
+    "The local service credential must be a regular file",
+  "本机服务凭据无效，请检查实例目录":
+    "The local service credential is invalid. Check the instance directory.",
   "请提交 JSON 对象": "Submit a JSON object",
   请求内容过大: "The request is too large",
   "JSON 格式无效": "The JSON is invalid",
   "请求失败，请检查输入或服务日志":
     "The request failed. Check the input or the service log.",
+  备份整理不可用: "Backup cleanup is unavailable",
+  "清理规则无效：保留天数为 1–3650，完整备份数量为 0–100":
+    "Invalid cleanup rules: retain full backups for 1–3650 days and up to 0–100 copies",
+  选择的备份信息无效: "The selected backup details are invalid",
+  "备份已变化或属于必须保留的恢复点，请刷新列表":
+    "A backup changed or is a protected restore point. Refresh the list.",
+  清理方式无效: "Invalid cleanup mode",
+  不能重复选择同一份备份: "The same backup cannot be selected twice",
+  "缺少同一实例近 72 小时内可校验的自动备份，已停止清理":
+    "No verifiable automatic backup of this instance from the last 72 hours is available. Cleanup stopped.",
+  "备份目录正在被使用，请稍后再试":
+    "The backup folder is in use. Try again later.",
+  备份文件已变化或不可删除: "The backup changed or cannot be removed",
+  "部分备份未清理，请刷新列表后重试":
+    "Some backups were not removed. Refresh the list and try again.",
+  "备份在清理期间发生变化，已停止后续清理":
+    "A backup changed during cleanup. The remaining cleanup stopped.",
+  "备份或清理正在进行，请稍后再试":
+    "A backup or cleanup is running. Try again later.",
+  "请先选择要清理的备份，单次最多 100 份":
+    "Select backups to remove, up to 100 at a time",
 
   // channels
   "这个会话属于另一种 QQ 接入方式，当前不能向它发送":
     "This session belongs to the other QQ connection method and cannot be sent to right now",
+  这个会话的通道没有接上: "The channel for this session is not connected",
+  这个通道不能接上: "This channel cannot be connected",
   "QQ 尚未连接": "QQ is not connected yet",
   "QQ 连接已断开": "The QQ connection was lost",
   "无法连接 QQ 开放平台": "Could not reach the QQ Open Platform",
@@ -113,6 +155,9 @@ export const ERRORS = {
   图片地址不可访问: "The image address cannot be reached",
   图片下载失败: "The image download failed",
   图片超过大小限制: "The image is over the size limit",
+  图片像素超过处理限制: "The image has too many pixels to process",
+  图片处理超时: "Image processing timed out",
+  "QQ 图片读取超时": "QQ image retrieval timed out",
   图片下载超时: "The image download timed out",
   图片跳转无效: "The image redirect is invalid",
   图片跳转过多: "Too many image redirects",
@@ -133,8 +178,8 @@ export const ERRORS = {
   恢复目标已被其他进程创建: "The restore target was created by another process",
   "数据库版本较新，请升级 LuckyTri；未修改数据":
     "The database version is newer. Upgrade LuckyTri; nothing was changed.",
-  "绑定外网地址前必须设置 ADMIN_TOKEN":
-    "ADMIN_TOKEN must be set before binding to a public address",
+  绑定外网地址前请先在本机设置管理密码:
+    "Set a management password on this computer before binding to a public address",
 
   // knowledge
   知识向量未启用: "Knowledge vectors are not enabled",
@@ -167,6 +212,57 @@ export const ERRORS = {
   "文档已变化，请重新建立向量": "The document changed. Rebuild its vectors.",
   文档不存在: "The document does not exist",
 
+  // plugins
+  插件不存在: "The plugin does not exist",
+  还有权限没有同意: "Some permissions have not been accepted",
+  插件权限无效: "A plugin permission is invalid",
+  插件设置项无效: "A plugin setting is invalid",
+  插件入口无效: "The plugin entry is invalid",
+  插件没有在运行: "The plugin is not running",
+  插件消息过大: "The plugin message is too large",
+  插件请求超时: "The plugin request timed out",
+  未知的插件调用: "Unknown plugin call",
+  插件没有这个权限: "The plugin does not have this permission",
+  插件保存的内容过大: "What the plugin stored is too large",
+  这个地址不能访问: "This address cannot be reached",
+  这个网站不在插件的允许范围内: "This site is outside the plugin's allowlist",
+  跳转过多: "Too many redirects",
+  今天放到书架上的资料已经够多了: "Enough material was put on the shelf today",
+  资料内容过大或是空的: "The material is empty or too large",
+  插件没有声明这个活动: "The plugin did not declare this activity",
+  插件没有声明这个行动: "The plugin did not declare this action",
+  插件没有声明这种感知: "The plugin did not declare this perception",
+  插件没有声明这个通道: "The plugin did not declare this channel",
+  消息不完整: "The message is incomplete",
+  插件预算已经用完: "The plugin budget is used up",
+  插件接口无效: "The plugin route is invalid",
+  插件接口不存在: "The plugin route does not exist",
+  插件贡献的名字无效: "A name the plugin contributes is invalid",
+  插件清单无法读取: "The plugin manifest could not be read",
+  插件清单无效: "The plugin manifest is invalid",
+  插件标识无效: "The plugin id is invalid",
+  插件版本号无效: "The plugin version is invalid",
+  "插件 API 版本不兼容": "The plugin API version is not compatible",
+  "插件不支持这个 LuckyTri 版本":
+    "The plugin does not support this version of LuckyTri",
+  插件网络主机无效: "A plugin network host is invalid",
+  压缩包无法读取: "The archive could not be read",
+  压缩包文件过多: "The archive has too many files",
+  压缩包不能加密: "The archive must not be encrypted",
+  压缩包格式不受支持: "This archive format is not supported",
+  压缩包不能包含链接: "The archive must not contain links",
+  压缩包路径无效: "An archive path is invalid",
+  压缩包内容不完整: "The archive contents are incomplete",
+  压缩包解压后过大: "The archive is too large when unpacked",
+  插件包下载失败: "The plugin package could not be downloaded",
+  插件包过大: "The plugin package is too large",
+  插件包校验不符: "The plugin package checksum does not match",
+  插件包和索引不一致: "The plugin package does not match the index",
+  这次导入已经过期: "This import has expired",
+  插件索引无效: "The plugin index is invalid",
+  插件仓库地址无效: "The plugin repository address is invalid",
+  没有可以退回的版本: "There is no earlier version to return to",
+
   // mind
   类型无效: "The type is invalid",
   内容无效: "The content is invalid",
@@ -192,6 +288,15 @@ export const ERRORS = {
     "The chosen start time falls in her sleep schedule; choose again",
   安排包含无效内容: "The plan contains invalid content",
   需要把行动内容想具体: "The action needs to be thought through",
+  行动无效: "The action is invalid",
+  没有等待同意的行动: "There is no action waiting for approval",
+  这件事已经过期: "This action has expired",
+  行动超时: "The action timed out",
+  感知类型无效: "The perception type is invalid",
+  感知超时: "Perception timed out",
+  这段经历不存在: "This experience does not exist",
+  活动类型无效: "The activity type is invalid",
+  不能覆盖内置的活动: "A built-in activity cannot be replaced",
   需要自己选定要玩的游戏: "She needs to choose the game to play herself",
   没有得到明确的时间安排: "No clear time plan was given",
   空内容: "Empty content",
@@ -357,6 +462,8 @@ export const ERRORS = {
 // Messages that carry a value. `{0}`, `{1}` are filled with what the code put
 // in; the values are passed through the dictionaries again.
 export const ERROR_PATTERNS = [
+  ["删除失败（{0}）", "Removal failed ({0})"],
+  ["清理工作异常结束：{0}", "Cleanup ended unexpectedly: {0}"],
   ["{0} Prompt 无效", "{0} prompt is invalid"],
   ["模型请求失败 HTTP {0}：{1}", "The model request failed with HTTP {0}: {1}"],
   ["模型请求失败 HTTP {0}", "The model request failed with HTTP {0}"],

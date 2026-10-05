@@ -416,6 +416,14 @@ export class TurnProcessor {
         }
       }
       if (snapshot.vision) trace.snapshot.vision = snapshot.vision;
+      if (!ownInitiative) {
+        await this.owner.perceivers.apply(snapshot, { replay, now });
+        const offered = this.owner.capabilities.offered({
+          kind: privateChat ? "private" : "group",
+          now,
+        });
+        if (offered.length) snapshot.canDo = offered;
+      }
       const generationImages = model.vision ? show : [];
       if (!replay && !preview) {
         const rounds = this.owner.repo.db
@@ -554,6 +562,16 @@ export class TurnProcessor {
       }
       if (!replay && !preview)
         this.owner.topics.record(session, trace.id, watermark, turn);
+      if (live && !ownInitiative && turn.act) {
+        snapshot.actionResult = await this.owner.capabilities.accept(turn.act, {
+          session,
+          kind: roomKind,
+          traceId: trace.id,
+        });
+        trace.action = snapshot.actionResult;
+        if (["done", "failed"].includes(snapshot.actionResult?.state))
+          turn.bubbles = [];
+      }
       if (turn.choice === "silent") {
         land(false);
         return finish("silent", turn.reason);

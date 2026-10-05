@@ -1,4 +1,4 @@
-export function mountEvents(app, system) {
+export function mountEvents(app, system, authorized = () => true) {
   app.get("/api/core/stream", (req, res) => {
     const session = String(req.query.session || "");
     res.set({
@@ -9,6 +9,10 @@ export function mountEvents(app, system) {
     res.flushHeaders();
     let previous = "";
     const tick = () => {
+      if (!authorized(req)) {
+        res.end();
+        return;
+      }
       const db = system.repo.db;
       const value = session
         ? {

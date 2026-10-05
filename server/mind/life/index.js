@@ -44,6 +44,7 @@ import { LifePresence } from "./presence.js";
 import { LifeActivities } from "./activities.js";
 import { OwnDay } from "../own-day.js";
 import { DayPlanner } from "../day-planner.js";
+import { withActivities } from "../time/kinds.js";
 
 export class Life {
   constructor(
@@ -182,7 +183,9 @@ export class Life {
   }
   runs(limit = 60) {
     return this.db
-      .prepare("SELECT * FROM mind_runs ORDER BY started DESC LIMIT ?")
+      .prepare(
+        "SELECT * FROM mind_runs WHERE NOT (kind='activity' AND status IN ('reading','engaged')) ORDER BY started DESC LIMIT ?",
+      )
       .all(limit)
       .map((r) => ({ ...r, summary: parse(r.summary, null) }));
   }
@@ -549,6 +552,9 @@ export class Life {
         ...(chunk ? { reading: this.mind.reading.passage(chunk) } : {}),
         clock: localClock(now, this.mind.timeZone()),
         currentLife: this.mind.time.view({ now }),
+        ...((this.mind.body?.({ now }) || []).length
+          ? { body: this.mind.body({ now }) }
+          : {}),
         actions: this.mind.time.lived({
           since: last?.started || now - DAY,
           before: now,
@@ -586,6 +592,11 @@ export class Life {
           before: now,
           limit: 6,
         }),
+        world: this.mind.observations.recent({
+          since: last?.started || now - 36 * HOUR,
+          before: now,
+          limit: 6,
+        }),
       };
       if (!input.missing.length) delete input.missing;
       if (input.fromWish?.length && input.missing)
@@ -597,6 +608,7 @@ export class Life {
       if (!input.fading.length) delete input.fading;
       if (!input.ahead.length) delete input.ahead;
       if (!input.meetings.length) delete input.meetings;
+      if (!input.world.length) delete input.world;
       while (
         estimateTokens(input) > SOLITUDE_INPUT_CAP &&
         input.experiences.some((e) => e.messages.length > 4)
@@ -612,7 +624,10 @@ export class Life {
         this.profile(),
         "reflection",
         replyPrompt(nature, prompts(this.repo), "reflection") +
-          '\nplans 可以是留给自己做的事；确实想在资料书架阅读、写短文、独处思考或接触游戏资料时，可加 activity:"read"|"write"|"think"|"game"，并写清content中的游戏名、why动机。game通过剧情、场景与人物互动推进游玩，直接记录自己的进度和感受。不为增加任务而列计划。',
+          "\n" +
+          withActivities(
+            'plans 可以是留给自己做的事；确实想在资料书架阅读、写短文、独处思考或接触游戏资料时，可加 activity:"read"|"write"|"think"|"game"，并写清content中的游戏名、why动机。game通过剧情、场景与人物互动推进游玩，直接记录自己的进度和感受。不为增加任务而列计划。',
+          ),
         input,
         trace,
       );
@@ -662,6 +677,7 @@ export class Life {
           ...(input.quiet || []).map((p) => p.ref).filter(Boolean),
           ...missing.map((p) => p.ref).filter(Boolean),
           ...ahead.map((a) => a.ref),
+          ...(input.world || []).map((item) => item.ref),
         ]);
         if (chunk)
           this.mind.reading.record(chunk, result?.readingNote || "", id, now);

@@ -1,6 +1,7 @@
 import { parse, text, hasCredential } from "../util.js";
 import { intentRecipient, intentMessageSources } from "./intent.js";
 import { spokenDate } from "./schedule.js";
+import { isExecutable } from "./kinds.js";
 const ACTION =
   /写|读|玩|看|整理|想一想|解释|分析|发|给你|做|聊|陪|提醒|联系|分享|检查/;
 const FUTURE =
@@ -137,10 +138,7 @@ export class CommitmentReview {
         );
         continue;
       }
-      if (
-        !["write", "read", "think", "game", "unknown"].includes(item.activity)
-      )
-        continue;
+      if (item.activity !== "unknown" && !isExecutable(item.activity)) continue;
       const kind = item.kind === "plan" ? "plan" : "promise",
         subject =
           kind === "promise"

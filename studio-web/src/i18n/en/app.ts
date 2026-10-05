@@ -1,12 +1,30 @@
 // English for the app shell, shared wording, and the small components.
 // Keys are the Chinese text exactly as it appears in the source.
 export default {
+  "请稍候…": "Please wait…",
   // api.ts
-  "这个 LuckyTri 设置了管理令牌，输入后才能继续。":
-    "This LuckyTri has an admin token. Enter it to continue.",
-  需要管理令牌: "Admin token required",
-  进入: "Enter",
-  管理令牌: "Admin token",
+  为这个小世界设置密码: "Set a password for this little world",
+  欢迎回来: "Welcome back",
+  "正在连接小世界…": "Connecting to your little world…",
+  "只需设置一个管理密码，以后用它登录。":
+    "Set one management password and use it to sign in from now on.",
+  "输入管理密码，继续陪伴 TA。":
+    "Enter your management password to return to TA.",
+  管理密码: "Management password",
+  确认密码: "Confirm password",
+  "至少 8 个字符。密码只保存在本机的加密校验记录中。":
+    "At least 8 characters. Only a password verification record is stored locally.",
+  设置密码并进入: "Set password and enter",
+  登录: "Sign in",
+  "暂时无法连接，请重试": "Cannot connect right now. Please try again.",
+  两次输入的密码不一致: "The passwords do not match",
+  管理密码已更新: "Management password updated",
+  "一个密码管理这个小世界。修改后，其他浏览器需要重新登录。":
+    "One password manages this little world. Other browsers must sign in again after a change.",
+  当前密码: "Current password",
+  新密码: "New password",
+  修改密码: "Change password",
+  退出登录: "Sign out",
   请求失败: "Request failed",
 
   // App.vue

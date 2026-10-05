@@ -92,11 +92,18 @@ test(
       child.once("exit", (c) => reject(Error("child exit " + c)));
     });
     const base = `http://127.0.0.1:${port}`;
+    const login = await fetch(base + "/api/auth/setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: "integration-test-password" }),
+    });
+    assert.equal(login.status, 200);
+    const cookie = login.headers.get("set-cookie").split(";")[0];
     const request = async (path, method = "GET", body) => {
       const r = await fetch(base + "/api" + path, {
         method,
         headers: {
-          Authorization: "Bearer admin-test",
+          Cookie: cookie,
           "Content-Type": "application/json",
         },
         body: body === undefined ? undefined : JSON.stringify(body),
@@ -124,7 +131,7 @@ test(
       (
         await fetch(base + "/api/state", {
           headers: {
-            Authorization: "Bearer admin-test",
+            Cookie: cookie,
             Origin: "https://evil.example",
           },
         })

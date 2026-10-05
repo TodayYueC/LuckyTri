@@ -1,11 +1,12 @@
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import { prepareRuntime } from "./runtime.js";
 import {
   resolveProxyEnvironment,
   supportsNodeEnvironmentProxy,
 } from "./proxy-config.js";
 
-process.chdir(fileURLToPath(new URL("../", import.meta.url)));
+const paths = prepareRuntime();
 const proxy = await resolveProxyEnvironment(process.env);
 if (proxy.enabled && !supportsNodeEnvironmentProxy())
   throw new Error(
@@ -14,8 +15,7 @@ if (proxy.enabled && !supportsNodeEnvironmentProxy())
 
 const args = [
   ...(proxy.enabled ? ["--use-env-proxy"] : []),
-  "--env-file-if-exists=.env",
-  "server/index.js",
+  join(paths.package, "server", "index.js"),
 ];
 const env = { ...process.env, ...proxy.env };
 if (proxy.enabled) console.log("已启用系统代理，外部 API 请求将经代理转发。");
@@ -26,7 +26,7 @@ else if (proxy.source === "windows-pac-unsupported")
 else console.log("未检测到系统代理，外部 API 请求将直连。");
 
 const child = spawn(process.execPath, args, {
-  cwd: process.cwd(),
+  cwd: paths.home,
   env,
   stdio: "inherit",
 });

@@ -4,6 +4,8 @@ import { withFallback } from "../../core/model-manager.js";
 import { prompts, replyPrompt } from "../../core/persona-manager.js";
 import { evidence, hasCredential, text } from "../util.js";
 import { ACTIVITY_LABELS } from "./tasks.js";
+import { activityLabel, isPluginActivity, needsEnergy } from "./kinds.js";
+import { stepPlugin } from "./plugin-activity.js";
 import { executionBlock } from "./availability.js";
 
 const ACTIVITY_PROMPT =
@@ -126,7 +128,7 @@ export class TimeExecutor {
         continue;
       }
       if (
-        ["write", "game"].includes(candidate.activity) &&
+        needsEnergy(candidate.activity) &&
         mind.affect.state(now).energy < 0.18
       ) {
         time.tasks.wait(
@@ -168,7 +170,7 @@ export class TimeExecutor {
     if (!task) return null;
     const runId = life.run(
         "activity",
-        `${ACTIVITY_LABELS[task.activity]}：${task.title}`,
+        `${activityLabel(task.activity, ACTIVITY_LABELS[task.activity] || "活动")}：${task.title}`,
       ),
       trace = life.repo.trace("__mind__", "activity"),
       version = mind.nature.version();
@@ -178,6 +180,12 @@ export class TimeExecutor {
     try {
       if (task.activity === "game") {
         const outcome = await time.games.step(task, life, trace, runId);
+        status = outcome.status;
+        reason = outcome.reason;
+        return { ...outcome, runId };
+      }
+      if (isPluginActivity(task.activity)) {
+        const outcome = await stepPlugin(task, life, trace, runId);
         status = outcome.status;
         reason = outcome.reason;
         return { ...outcome, runId };
@@ -437,7 +445,7 @@ export class TimeExecutor {
             mind.affect.feel({
               ...result.feeling,
               intensity: 0.2,
-              cause: `做自己的${ACTIVITY_LABELS[task.activity]}时的感受`,
+              cause: `做自己的${activityLabel(task.activity, ACTIVITY_LABELS[task.activity] || "事")}时的感受`,
               sources: [`x:${task.id}`],
               session: task.session_id,
               origin: "activity",
@@ -464,7 +472,7 @@ export class TimeExecutor {
           throw error;
         }
         status = result.done ? "written" : "draft";
-        reason = `${ACTIVITY_LABELS[task.activity]}，保存了《${title}》${result.done ? "完成稿" : "草稿"}`;
+        reason = `${activityLabel(task.activity, ACTIVITY_LABELS[task.activity] || "活动")}，保存了《${title}》${result.done ? "完成稿" : "草稿"}`;
       }
     } catch (error) {
       status = "error";

@@ -2,6 +2,24 @@
 
 # Changelog
 
+## 1.0.1 — 2026-10-05
+
+- Global npm installation runs with `luckytri`, including the server, built WebUI, guides and bundled plugin. User data remains outside the package across updates and reinstalls.
+- Set one password on the first studio visit. Remembered sessions, password changes, sign-out and a local reset command replace manual random-token setup. Only a salted password digest is stored.
+- Local OneBot reverse clients need no separate token and retain existing addresses and sign-ins. Remote clients use the management password or a legacy token; cross-site browser upgrades are rejected.
+- Launching restarts a running older version while retaining configuration, databases, backups and migrations.
+- Added packaged-install, update, reinstall, password and connection checks, three-platform CI, and ignore rules for credentials and temporary database files.
+
+## 1.0.0 — 2026-10-04
+
+Plugins. The core still defines who she is; a plugin decides what of the world she can touch.
+
+- **Plugin API v1.** A plugin can offer a channel, a sense, a sourced experience, material for an activity, an action she may choose, shelf reading and a sandboxed page. It cannot speak for her, and it cannot write her nature, self, bonds or memory.
+- **Permissions are enforced.** Each plugin is a restricted process. Without the matching permission it cannot read her state, use the network, register a channel or call a model. Accepted once when enabled, and again if an upgrade asks for more.
+- **Market and import.** The studio can browse an index, import a zip link, a GitHub repository, an uploaded package or a local folder, check sha256, roll back and remove. What she already lived through does not leave with the plugin.
+- **A built-in plugin, off by default.** Weather.
+- **Database version 4.** A snapshot is kept before the upgrade. With no plugin enabled, she behaves as in 0.9.9.
+
 ## 0.9.9 — 2026-10-02
 
 The last tidy-up before 1.0: two ways to connect, a bilingual interface, rewritten documentation, and a cleaner, easier-to-extend repository.

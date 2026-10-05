@@ -3,6 +3,15 @@ node_modules/
 /vendor/
 test-results/
 npm-debug.log*
+*.tgz
+*.zip
+*.bak
+*.pem
+*.key
+*.p12
+.npmrc
+logs/
+backups/
 *.log
 
 # Everything the running instance owns: databases, backups, reports, chats
@@ -10,8 +19,13 @@ data/
 *.db
 *.db-shm
 *.db-wal
+*.db.*
 *.sqlite
 *.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3-shm
+*.sqlite3-wal
 *.bundle
 reports/
 evaluations/

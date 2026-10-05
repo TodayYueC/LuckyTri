@@ -22,9 +22,13 @@ LuckyTri 默认只监听本机。页面、聊天记录、记忆和模型密钥�
 
 删除当前文件不会清除已经推送过的历史。
 
+## 插件
+
+插件跑在单独的进程里，默认读不到数据库、密钥和仓库，也不能自己联网。启用前会列出它要的权限。`net.raw` 和公开地址是高风险的，只交给你信任的插件。插件页面在沙箱里打开，无法读取 HttpOnly 登录 Cookie。不要把不受信任的插件包放进仓库。
+
 ## 对外访问
 
-监听 `127.0.0.1`、`localhost` 或 `::1` 以外的地址时，必须设置 `ADMIN_TOKEN`，否则进程拒绝启动。OneBot WebSocket 使用单独的 `ONEBOT_TOKEN`；QQ 官方机器人的 AppSecret 只会被保存，不会再回显给页面。不要在公开 Issue 里粘贴密钥、令牌、聊天记录或数据库文件。
+监听外网地址前必须先在本机设置管理密码；远程管理台应使用 HTTPS。管理密码以加盐 scrypt 摘要保存，登录会话通过 HttpOnly、SameSite=Strict Cookie 管理，登录失败限流。OneBot 本机连接无需单独令牌，并拒绝浏览器跨站连接；远程连接可用同一管理密码，旧令牌仍兼容。不要公开密钥、登录状态、聊天或数据库。
 
 ## 报告问题
 
@@ -54,9 +58,13 @@ These are excluded by `.gitignore` and should only live on your machine:
 
 Deleting the current file does not clear history that was already pushed.
 
+## Plugins
+
+A plugin runs in its own process. By default it cannot read the database, keys or the repository, and it cannot open the network by itself. The permissions it wants are listed before it is enabled. `net.raw` and a public address are high risk; give them only to a plugin you trust. A plugin page opens in a sandbox and cannot read the HttpOnly sign-in cookie. Do not commit an untrusted plugin package.
+
 ## Reaching it from outside
 
-When listening on anything other than `127.0.0.1`, `localhost` or `::1`, `ADMIN_TOKEN` must be set, or the process refuses to start. The OneBot WebSocket uses its own `ONEBOT_TOKEN`; the QQ official bot's AppSecret is only stored and never shown back to the page. Do not paste keys, tokens, chat records or database files into public issues.
+Set the management password locally before listening on a public address, and use HTTPS for remote studio access. Passwords use salted scrypt digests; sessions use HttpOnly, SameSite=Strict cookies with login rate limiting. Local OneBot clients need no separate token and browser cross-site upgrades are rejected. Remote clients can use the management password or an existing token. Never publish credentials, sessions, chats or databases.
 
 ## Reporting a problem
 

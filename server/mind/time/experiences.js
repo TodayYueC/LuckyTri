@@ -1,5 +1,6 @@
 import { parse, text } from "../util.js";
 import { gameText } from "./presentation.js";
+import { activityLabel } from "./kinds.js";
 
 const labels = {
   game: "游玩",
@@ -97,7 +98,7 @@ export function experiences(db, { limit = 40, offset = 0, q = "" } = {}) {
       title,
       summary,
       activity,
-      label: labels[activity] || "活动",
+      label: labels[activity] || activityLabel(activity),
       project: row.project_id
         ? { id: row.project_id, title: clean(row.project_title) }
         : null,

@@ -1,0 +1,9 @@
+{
+  "endOfLine": "auto",
+  "overrides": [
+    {
+      "files": "bin/luckytri.js",
+      "options": { "endOfLine": "lf" }
+    }
+  ]
+}
