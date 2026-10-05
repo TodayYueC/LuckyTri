@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { world } from "./helpers/world.js";
@@ -193,7 +199,7 @@ test("a low-risk action runs now and a high-risk one waits", async () => {
 });
 
 test("a plugin process cannot read the repository, start a process, or fetch", async () => {
-  const root = mkdtempSync(join(tmpdir(), "luckytri-plugin-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "luckytri-plugin-")));
   const dir = join(root, "probe");
   const { mkdirSync } = await import("node:fs");
   mkdirSync(dir);

@@ -11,6 +11,7 @@ import {
   openSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -52,7 +53,9 @@ if (fromRegistry) {
     "published tarball is exactly the reviewed artifact",
   );
 }
-const sandbox = mkdtempSync(join(tmpdir(), "luckytri-npm-"));
+// macOS exposes /var through a symlink to /private/var. Match the canonical
+// paths used by the runtime and the plugin permission model in every fixture.
+const sandbox = realpathSync(mkdtempSync(join(tmpdir(), "luckytri-npm-")));
 const prefix = join(sandbox, "global prefix");
 const caller = join(sandbox, "调用目录 caller");
 const profile = join(sandbox, "用户数据 user profile");

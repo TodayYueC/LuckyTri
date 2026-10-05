@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  realpathSync,
   readFileSync,
   rmSync,
   utimesSync,
@@ -43,7 +44,9 @@ const HOUR = 3600000;
 const NOW = Date.parse("2026-09-29T10:00:00+08:00");
 
 function workspace() {
-  const dir = mkdtempSync(join(tmpdir(), "luckytri-auto-backup-"));
+  const dir = realpathSync(
+    mkdtempSync(join(tmpdir(), "luckytri-auto-backup-")),
+  );
   const source = join(dir, "life.db");
   const store = createStore(source);
   const repo = new Repository(store);
@@ -620,7 +623,7 @@ function fakeChild(pid = 4242) {
 
 function harness(
   env = {},
-  dir = mkdtempSync(join(tmpdir(), "luckytri-scheduler-")),
+  dir = realpathSync(mkdtempSync(join(tmpdir(), "luckytri-scheduler-"))),
 ) {
   let clock = NOW;
   const started = [];

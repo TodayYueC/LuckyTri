@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { defaultHome, PACKAGE_ROOT, runtimePaths } from "../server/paths.js";
@@ -10,7 +16,7 @@ import { browserCommand } from "../scripts/browser.js";
 import { serviceUrl } from "../scripts/service.js";
 
 test("runtime paths ignore the caller directory and resolve relative settings under the instance", () => {
-  const home = mkdtempSync(join(tmpdir(), "luckytri-paths-"));
+  const home = realpathSync(mkdtempSync(join(tmpdir(), "luckytri-paths-")));
   const paths = runtimePaths({
     LUCKYTRI_HOME: home,
     DB_PATH: "custom/life.db",
