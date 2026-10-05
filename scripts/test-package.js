@@ -257,13 +257,27 @@ try {
   console.log(
     "Checking real global installation from the reviewed npm tarball…",
   );
-  console.log("Checking migration from the published 1.0.0 CLI and a still-running legacy service…");
+  console.log(
+    "Checking migration from the published 1.0.0 CLI and a still-running legacy service…",
+  );
   install("luckytri@1.0.0");
   cli(["--no-browser"]);
-  const legacyHeaders = { Authorization: `Bearer ${env.ADMIN_TOKEN}`, "Content-Type": "application/json", Connection: "close" };
-  const legacySaved = await fetch(base + "/api/settings", { method: "PATCH", headers: legacyHeaders, body: JSON.stringify({ aliases: "legacy-user-alias" }) });
+  const legacyHeaders = {
+    Authorization: `Bearer ${env.ADMIN_TOKEN}`,
+    "Content-Type": "application/json",
+    Connection: "close",
+  };
+  const legacySaved = await fetch(base + "/api/settings", {
+    method: "PATCH",
+    headers: legacyHeaders,
+    body: JSON.stringify({ aliases: "legacy-user-alias" }),
+  });
   assert.equal(legacySaved.status, 200);
-  const legacyPid = (await (await fetch(base + "/api/service/status", { headers: legacyHeaders })).json()).pid;
+  const legacyPid = (
+    await (
+      await fetch(base + "/api/service/status", { headers: legacyHeaders })
+    ).json()
+  ).pid;
   const legacyConfigStamp = fileStamp(join(home, ".env"));
   install(installSource);
   assert(existsSync(shim));
@@ -305,10 +319,22 @@ try {
     .join("; ");
   await browser.close();
   browser = null;
-  assert.deepEqual(configStamp, legacyConfigStamp, "legacy configuration is preserved without replacing tokens or keys");
-  assert((await request("/api/state")).settings.aliases.includes("legacy-user-alias"));
+  assert.deepEqual(
+    configStamp,
+    legacyConfigStamp,
+    "legacy configuration is preserved without replacing tokens or keys",
+  );
+  assert(
+    (await request("/api/state")).settings.aliases.includes(
+      "legacy-user-alias",
+    ),
+  );
   const status = await request("/api/service/status");
-  assert.notEqual(status.pid, legacyPid, "new CLI replaces the old running server without manual token entry");
+  assert.notEqual(
+    status.pid,
+    legacyPid,
+    "new CLI replaces the old running server without manual token entry",
+  );
   pid = status.pid;
   assert.equal(status.home, home);
   cli(["--no-browser"]);
@@ -523,8 +549,8 @@ try {
         })),
         checks: [
           "pack allowlist and secret scan",
-      "production global install",
-      "upgrade from published 1.0.0 and automatic restart",
+          "production global install",
+          "upgrade from published 1.0.0 and automatic restart",
           "arbitrary cwd",
           "CLI",
           "WebUI in browser",
