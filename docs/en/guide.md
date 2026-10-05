@@ -200,3 +200,9 @@ The server removes the export copy after download. Cancelled, expired and interr
 | Too much motion                   | "Reduce motion" at the bottom left; when the system asks for reduced motion, particles and morphing switch off automatically             |
 
 Never post API keys, `.env` or private chat text anywhere public.
+
+### Thoughts about places and update checks
+
+People → Thoughts about this place keeps her own impressions, wishes and questions, selectively updated from real encounters. Details show reasons, sources and history; copied group personas remain history only.
+
+System → Runtime → Version and updates checks the latest npm version manually and links release notes, without installing or restarting. The Nature page uses the server's remaining edit allowance; locally granted extra opportunities are recorded without clearing version history.

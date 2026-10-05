@@ -13,6 +13,7 @@ import { mountPlugins } from "./plugins/api.js";
 import { Life } from "./mind/life/index.js";
 import { runtimePaths } from "./paths.js";
 import { mountDataTransfer } from "./storage/data-transfer-api.js";
+import { UpdateChecker, mountUpdates } from "./studio/updates.js";
 
 export function createApp({
   store,
@@ -21,6 +22,7 @@ export function createApp({
   life,
   plugins,
   auth = createManagementAuth(store),
+  updates = new UpdateChecker(),
 }) {
   const app = express();
   app.use("/api", localizeApi);
@@ -57,6 +59,7 @@ export function createApp({
     res.status(401).json({ error: "请先登录管理台" });
   });
   app.use("/api", objectBody);
+  mountUpdates(app, updates);
   mountDataTransfer(app, runtime.transfer);
   if (plugins) {
     app.post(

@@ -605,23 +605,24 @@ test("引用私下相遇写成的自我线索不进别的房间", () => {
   try {
     w.open("group:1", "一群");
     w.open("private:10001", "阿明");
+    const privateMessage = w.say("private:10001", "10001", "我住在南区");
     w.mind.experience(
       {
         choice: "silent",
         appraisal: "他告诉我住址",
         reason: "私下",
         topic: "",
-        targetMessageIds: [1],
+        targetMessageIds: [privateMessage.seq],
         feelings: [],
         bonds: [],
       },
       {
         session: "private:10001",
         snapshot: {
-          batchIds: [1],
+          batchIds: [privateMessage.seq],
           messages: [
             {
-              id: 1,
+              id: privateMessage.seq,
               role: "user",
               speaker: "10001",
               name: "阿明",
@@ -5914,7 +5915,12 @@ test("从旧版本升级：迁移天性、群面貌、手记、状态、记忆�
   assert.deepEqual(nature.interests, ["天文"]);
   assert.equal(nature.warmth, 80);
   assert.equal(nature.mood, undefined, "静态心情不再属于天性");
-  assert.match(system.mind.faces.current("group:1").content, /更活泼/);
+  assert.equal(
+    system.mind.faces.current("group:1"),
+    null,
+    "旧群人格仅保留历史，不复制到当前想法",
+  );
+  assert.match(system.mind.faces.history("group:1")[0].content, /更活泼/);
   const policy = system.policy("group:1");
   assert.equal(policy.maxReply, 120);
   assert.equal(policy.comfortOnDistress, undefined);

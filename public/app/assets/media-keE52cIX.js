@@ -1,0 +1,1 @@
+import{ot as e,xt as t}from"./Empty-ddEfu0w8.js";function n(n){let r=matchMedia(n),i=t(r.matches),a=e=>i.value=e.matches;return r.addEventListener(`change`,a),e(()=>r.removeEventListener(`change`,a)),i}export{n as t};

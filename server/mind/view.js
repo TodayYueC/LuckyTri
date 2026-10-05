@@ -136,6 +136,9 @@ export function innerView(
       ? {
           here: describeFace({
             ...face,
+            notes: face.notes.filter((note) =>
+              spoken(`${note.content} ${note.why}`),
+            ),
             role: spoken(face.role),
             tone: spoken(face.tone),
             aspiration: spoken(face.aspiration),

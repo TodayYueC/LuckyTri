@@ -187,3 +187,5 @@ Later upgrades only add tables and columns: existing chapters are kept and the f
 - Something she heard in one group may come up in another related group; the only barriers are "known privately" discretion, secrecy requests and credentials.
 - Promises are only extracted during memory tidying: sessions with fewer than 40 piled-up messages are tidied that night, so an afternoon "tomorrow" is usually caught, while something about to happen in a few minutes may not be.
 - What engineering can guarantee is structure: continuous, sourced, correctable, decided by her. Whether she "truly has a heart" cannot be accepted by tests; the tests check whether these behaviors actually happen.
+
+Thoughts about each place are independent entries: impressions, wishes, preferences, questions or boundaries. During solitude, diaries or identity reviews she chooses whether to add, revise or let them go, retaining reasons and sources. Revising one leaves other entries intact. Copied legacy group personas remain history and no longer enter conversation; place thoughts do not increase overall personality scores.

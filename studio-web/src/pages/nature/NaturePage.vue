@@ -62,6 +62,7 @@ const PROMPT_NAMES: Record<string, string> = localized({
 const draft = ref<any>(null);
 const aliases = ref(String(studio.health.settings.aliases || ""));
 const versions = ref<any[]>([]);
+const editAllowance = ref<any>(null);
 const livedTraits = ref<Record<string, number>>({});
 const traitHistory = ref<any[]>([]);
 const livedPersona = ref("");
@@ -77,6 +78,7 @@ function saved(section: keyof typeof pending) {
 }
 const useDraft = ref(true);
 const natureEdits = computed(() => {
+  if (editAllowance.value) return editAllowance.value;
   const latest = versions.value.reduce(
     (max, item) => Math.max(max, Number(item.version) || 0),
     0,
@@ -132,6 +134,7 @@ async function load() {
     bottomLines: nature.nature.bottomLines.join("\n"),
   };
   versions.value = nature.versions;
+  editAllowance.value = nature.edits;
   livedTraits.value = nature.livedTraits || {};
   traitHistory.value = nature.traitHistory || [];
   livedPersona.value = nature.livedPersona || "";
@@ -156,6 +159,7 @@ async function saveNature() {
     await reload();
     const current = await mind.nature();
     versions.value = current.versions;
+    editAllowance.value = current.edits;
     livedTraits.value = current.livedTraits || {};
     traitHistory.value = current.traitHistory || [];
     livedPersona.value = current.livedPersona || "";
@@ -205,6 +209,7 @@ onMounted(() => {
     if (document.hidden) return;
     try {
       const current = await mind.nature();
+      editAllowance.value = current.edits;
       livedTraits.value = current.livedTraits || {};
       traitHistory.value = current.traitHistory || [];
       livedPersona.value = current.livedPersona || "";
@@ -329,7 +334,7 @@ onUnmounted(() => {
             {{
               natureEdits.locked
                 ? t(
-                    "两次更改已经用完。之后的性格、兴趣和样子，由 TA 自己从经历里生长。",
+                    "可用更改次数已用完。之后的性格、兴趣和想法，由 TA 自己从经历里生长。",
                   )
                 : t(
                     "天性还可以改 {left} 次，包括性格刻度。用完后由她自己生长。",

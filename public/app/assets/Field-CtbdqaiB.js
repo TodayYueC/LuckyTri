@@ -1,1 +1,0 @@
-import{Et as e,J as t,X as n,Z as r,ft as i,nt as a,ut as o,wt as s}from"./Empty-DP6WMGHi.js";var c={key:0},l=a({__name:`Field`,props:{label:{},hint:{},wide:{type:Boolean}},setup(a){return(l,u)=>(o(),r(`label`,{class:s({wide:a.wide})},[t(`span`,null,e(a.label),1),i(l.$slots,`default`),a.hint?(o(),r(`small`,c,e(a.hint),1)):n(``,!0)],2))}});export{l as t};

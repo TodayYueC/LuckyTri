@@ -2,6 +2,19 @@
 
 # Changelog
 
+
+## 1.0.3 — 2026-10-06
+
+- Group personas become thoughts about each place. She selectively adds, revises or lets go of impressions, wishes, preferences, questions and boundaries from local encounters, retaining reasons, sources and versions. Her overall personality remains shared; copied legacy personas stay only in history.
+- Manual update checks in system runtime settings show the installed and latest npm versions and release notes. Checks cache and coalesce requests and recover from failures; they do not install or restart.
+- Nature edit allowances come from the server. Audited, idempotent local extra opportunities preserve personality history and other instances' default limits.
+- Added source isolation, selective updates, restart persistence, failed update recovery and responsive interface checks.
+
+## 1.0.2 — 2026-10-06
+
+- Streamed full SQLite data packages with validated import previews, retained recovery points and rollback on failure.
+- Destination management sign-ins and connection settings are retained. Imported auto replies and plugin grants await review; cancelled, expired and interrupted temporary packages are reclaimed.
+
 ## 1.0.1 — 2026-10-05
 
 - Global npm installation runs with `luckytri`, including the server, built WebUI, guides and bundled plugin. User data remains outside the package across updates and reinstalls.

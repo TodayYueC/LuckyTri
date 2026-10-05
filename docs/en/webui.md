@@ -71,3 +71,5 @@ Live messages follow new arrivals while you are at the bottom and keep their pla
 - `npm run test:ui`: a separate temporary database and a simulated channel, nothing is sent to real groups; it covers the smoke flow (sessions, simulated messages, memory, models, both ways of connecting QQ, the guide page), the little world (mood themes and night, pinned theme, reduced motion, star-map undo, person details, diary and promises), navigation caching, the time page, performance, and the English interface (Chinese may only appear inside her own content), at widths 1440 / 820 / 390.
 - `node tests/ui/ta.mjs --serve`: opens an example world that has lived three days, handy for looking at the interface directly.
 - Screenshots go only into the ignored `workspace/` folder; real chat screenshots and configuration must never be committed.
+
+System → Runtime includes a manual version check against npm, with the current version, last successful check and release notes. Results are cached for five minutes; failures retain the last known information. Checking does not install or restart.

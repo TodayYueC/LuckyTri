@@ -50,7 +50,7 @@ flowchart TD
   Exp --> Bonds["关系：人与群"]
   Exp --> Memory["记忆（全局，带分寸）"]
   Exp --> Ahead["约定与期待"]
-  Self --> Faces["面貌：每个群的样子"]
+  Self --> Faces["群想法：对各处的体会"]
   Days["她过过的日子"] -.-> Salience["显著度：读时计算"]
   Salience -.-> Self
   Salience -.-> Memory
@@ -162,7 +162,7 @@ flowchart TD
 
 ## 数据
 
-心智表都在同一个 SQLite 里：`mind_nature`（天性版本）、`mind_affect`（心境事件）、`mind_bond_events` 与 `mind_people`（关系与人员目录）、`mind_self`（自我线索的所有版本）、`mind_faces`（面貌版本）、`mind_thoughts`（手记）、`mind_diary`、`mind_snapshots`（每天一份「那天的她」）、`mind_chapters`（自传的所有版本）、`mind_periods`（回顾与「我的来路」）、`mind_days`（每个生活日）、`mind_anticipations`（约定与期待）、`mind_choices`（她的选择与理由）、`mind_meetings`（相遇的意义）、`mind_revocations`（墓碑）、`mind_readings`（读过的段落与读后想法）、`mind_runs`（独处、日记、夜里整理与回顾的运行）、`mind_usage`（Token 账本）、`mind_attention`（每个会话看到哪儿了）。记忆仍在 `core_memories`，带 `discretion` 分寸标签和 `superseded_by`。时间模块另有 `mind_time_*` 表。
+心智表都在同一个 SQLite 里：`mind_nature`（天性版本）、`mind_affect`（心境事件）、`mind_bond_events` 与 `mind_people`（关系与人员目录）、`mind_self`（自我线索的所有版本）、`mind_faces`（各处想法的版本）、`mind_thoughts`（手记）、`mind_diary`、`mind_snapshots`（每天一份「那天的她」）、`mind_chapters`（自传的所有版本）、`mind_periods`（回顾与「我的来路」）、`mind_days`（每个生活日）、`mind_anticipations`（约定与期待）、`mind_choices`（她的选择与理由）、`mind_meetings`（相遇的意义）、`mind_revocations`（墓碑）、`mind_readings`（读过的段落与读后想法）、`mind_runs`（独处、日记、夜里整理与回顾的运行）、`mind_usage`（Token 账本）、`mind_attention`（每个会话看到哪儿了）。记忆仍在 `core_memories`，带 `discretion` 分寸标签和 `superseded_by`。时间模块另有 `mind_time_*` 表。
 
 ## 界面
 
@@ -187,3 +187,5 @@ flowchart TD
 - 她在一个群听到的事，可能在另一个相关的群里提起；拦着的只有「私下知道」的分寸、保密请求和凭据。
 - 约定只在整理记忆时提取：积压不到 40 条的会话会在当晚整理，所以当天下午说的「明天」通常能赶上，几分钟后就要发生的事可能来不及。
 - 工程能保证的是结构：连续、有来源、可修正、由她自己决定。她是否「真的有心」无法用测试验收；这些测试检验的是这些行为有没有真的发生。
+
+各处的想法以独立条目保存，可以是印象、愿望、偏好、疑问或相处分寸。她在独处、日记或身份回看时自己选择是否更新；新增、修改和放下都保留理由及来源，修改一条不替换其他条。复制的旧群人格只保留历史，不再进入交流；各处想法不单独增加整体人格刻度。

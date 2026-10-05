@@ -62,8 +62,11 @@ const groupFace = w.mind.faces.propose(
 );
 assert.ok(groupFace.id, "群聊面貌引用同一群的公开消息");
 w.store.db
-  .prepare("UPDATE mind_faces SET content=? WHERE session_id='group:12345'")
+  .prepare(
+    "INSERT INTO mind_faces(id,session_id,created,content,sources,origin) VALUES ('fixture-legacy-face','group:12345',?,?,'[]','migration')",
+  )
   .run(
+    w.now() - 1,
     "这是一段很长的旧版人格，要保留完整内容，但不能把卡片拉成细长的一列。".repeat(
       100,
     ),
@@ -351,11 +354,13 @@ async function run() {
     await page
       .locator(".face-card")
       .first()
-      .getByRole("button", { name: /查看完整面貌/ })
+      .getByRole("button", { name: /查看想法与变化/ })
       .click();
+    await page.locator(".legacy-face summary").first().click();
     assert.ok(
-      (await page.locator(".face-full").innerText()).length > 2000,
-      "详情保留完整长文本",
+      (await page.locator(".legacy-face .face-full").first().innerText())
+        .length > 2000,
+      "历史保留完整长文本，当前想法不复制人格",
     );
     await page.locator(".sheet-close").click();
 

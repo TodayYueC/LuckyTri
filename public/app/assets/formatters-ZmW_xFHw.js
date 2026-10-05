@@ -1,1 +1,0 @@
-var e=new Map;function t(t,n){let r=JSON.stringify([t,n]),i=e.get(r);return i||(i=new Intl.DateTimeFormat(t,n),e.set(r,i),e.size>64&&e.delete(e.keys().next().value)),i}export{t};

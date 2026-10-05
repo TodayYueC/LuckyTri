@@ -129,14 +129,19 @@ export class LifeContext {
   }
   faceView(experiences, now) {
     const seen = new Map();
+    const notes = (face) =>
+      (face?.notes || []).slice(-6).map((note) => ({
+        id: note.id,
+        kind: note.kind,
+        content: text(note.content, 160),
+        why: text(note.why, 80),
+      }));
     for (const experience of experiences) {
       const face = this.owner.mind.faces.current(experience.session, now);
       seen.set(experience.session, {
         session: experience.session,
         name: experience.name,
-        role: face?.role || "",
-        tone: face?.tone || "",
-        aspiration: face?.aspiration || "",
+        notes: notes(face),
         freshSources: experience.messages.slice(-4).map((m) => m.seq),
       });
       if (seen.size >= 6) break;
@@ -145,9 +150,7 @@ export class LifeContext {
       if (seen.has(face.session_id)) continue;
       seen.set(face.session_id, {
         session: face.session_id,
-        role: face.role,
-        tone: face.tone,
-        aspiration: face.aspiration,
+        notes: notes(face),
       });
       if (seen.size >= 6) break;
     }

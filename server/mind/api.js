@@ -558,6 +558,7 @@ export function mountMind(app, chat, life) {
     wrap((req, res) =>
       res.json({
         nature: mind.nature.current(),
+        edits: mind.nature.editAllowance(),
         versions: mind.nature.versions(),
         livedTraits: mind.traits.current(),
         traitHistory: mind.traits.history(30),

@@ -2,6 +2,19 @@
 // key, exactly as the code writes it. `{0}` stands for a value the code puts
 // into the message; patterns are used when a message carries one.
 export const ERRORS = {
+  修改机会需要明确的记录与原因:
+    "An edit opportunity needs an explicit record and reason",
+  修改机会记录无效: "Invalid edit opportunity record",
+  版本信息无效: "Invalid version metadata",
+  版本信息过大: "Version metadata exceeds the size limit",
+  "天性的可用修改次数已用完。之后，由 TA 自己从经历里生长。":
+    "No nature edits remain. TA will continue growing from experience.",
+  "暂时无法连接 npm 或读取版本信息，请稍后重试。":
+    "Unable to reach npm or read version information. Please try again later.",
+  群里的想法不能复制整体人格:
+    "Thoughts about a group cannot copy the overall personality",
+  需要这个会话的相处或自己的打算:
+    "Requires encounters in this conversation or her own intention",
   数据清单过大: "The data manifest is too large",
   数据文件包含不支持的数据库结构:
     "The file contains unsupported database structures",
@@ -374,8 +387,6 @@ export const ERRORS = {
   "性格刻度应在 0–100": "Character scales must be 0–100",
   表达字段无效: "The expression field is invalid",
   作息时间无效: "The daily rhythm time is invalid",
-  "天性只能改两次。用完之后，由 TA 自己从经历里生长。":
-    "Nature can be changed only twice. After that, TA grows from her own experience.",
   自己的安排格式无效: "Her own plan format is invalid",
   愿望未保存: "The wish was not saved",
   "自己的念头含有无效来源或敏感内容，未保存":

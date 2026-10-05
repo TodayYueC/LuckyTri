@@ -65,6 +65,9 @@ export function migrateMind(db, store) {
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   };
   addColumn("core_memories", "discretion", "TEXT NOT NULL DEFAULT 'open'");
+  // NULL distinguishes legacy faces from a deliberately emptied note set.
+  addColumn("mind_faces", "notes", "TEXT");
+  addColumn("mind_faces", "changes", "TEXT NOT NULL DEFAULT '[]'");
   addColumn("core_memories", "superseded_by", "TEXT");
   addColumn("mind_attention", "deferred", "INTEGER NOT NULL DEFAULT 0");
   addColumn("mind_thoughts", "resolved_at", "INTEGER");

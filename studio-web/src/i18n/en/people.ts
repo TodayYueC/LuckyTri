@@ -1,5 +1,25 @@
 // English for the People section.
 export default {
+  新增: "Added",
+  在这里的想法: "Thoughts about this place",
+  "同一个她，在不同的地方留下自己的想法。":
+    "The same person, with her own thoughts about different places.",
+  "她根据相处留下印象、愿望或疑问，选择什么时候新增、修改或放下。每次更新保留理由和来源。":
+    "She leaves impressions, wishes or questions from her encounters, choosing when to add, revise or let them go. Each update retains its reasons and sources.",
+  "还没有特别想留在这里的想法，之后由她自己选择。":
+    "No particular thoughts to keep here yet. She will choose in her own time.",
+  "查看想法与变化 ↗": "See thoughts and changes ↗",
+  "PLACE NOTES / 在这里的想法": "PLACE NOTES / thoughts about this place",
+  "旧人格记录，仅保留历史": "Previous persona record, kept only as history",
+  "撤销这次想法更新？会恢复上一次保留的想法。":
+    "Undo this update? The previous set of thoughts will be restored.",
+  撤销想法更新: "Undo a thought update",
+  印象: "Impression",
+  偏好: "Preference",
+  想法: "Thought",
+  还在想的问题: "An open question",
+  相处的分寸: "Boundaries here",
+  "{n} 处来源": "{n} sources",
   // Galaxy.vue
   "相遇之间：TA 认识的人": "Between encounters: the people TA knows",
   "PEOPLE / 相遇之间": "PEOPLE / between encounters",
@@ -14,21 +34,6 @@ export default {
   "在名单里看看另外 {hidden} 个人": "See {hidden} more people on the list",
 
   // GroupFaces.vue
-  "撤销这一版面貌？TA 在这里会回到上一版的样子。":
-    "Undo this version of her face here? TA will go back to how she was in the previous version.",
-  撤销面貌: "Undo this face",
-  群像: "Faces",
-  "在不同的地方，她有不同的相处方式。":
-    "In different places, she has different ways of being with people.",
-  "面貌由 TA 在独处和写日记时自己修正；每一版都有来源。这个地方的说话节奏不会写成 TA 的样子。":
-    "TA revises her faces herself while alone and while writing her diary; every version has a source. The speaking rhythm of a place is not written into who TA is.",
-  角色: "Role",
-  说话: "Speech",
-  想成为: "Wants to be",
-  自己的话: "In her own words",
-  "查看完整面貌与变化 ↗": "See the full face and its changes ↗",
-  面貌: "Face",
-  "FACES / 在这里的样子": "FACES / how she is here",
   变化历史: "History of changes",
   "已撤销 ·": "Undone ·",
   "旧版 ·": "Older ·",

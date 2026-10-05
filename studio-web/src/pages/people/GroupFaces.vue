@@ -1,28 +1,56 @@
 <script setup lang="ts">
-import { t } from "../../i18n";
+import { t, N_, localized } from "../../i18n";
 import Sheet from "../../components/ui/Sheet.vue";
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { toast } from "../../api";
 import { ask } from "../../dialog";
 import { mind, when } from "../../plates/mind";
 import { hueOf, placeName } from "../../format";
 
-defineProps<{ groups: any[] }>();
+const props = defineProps<{ groups: any[] }>();
 const emit = defineEmits<{ changed: [] }>();
 const selected = ref<any>(null);
 const history = ref<Record<string, any[]>>({});
+const kinds: Record<string, string> = localized({
+  impression: N_("印象"),
+  wish: N_("想做的事"),
+  preference: N_("偏好"),
+  question: N_("还在想的问题"),
+  boundary: N_("相处的分寸"),
+});
+const actions: Record<string, string> = localized({
+  add: N_("新增"),
+  revise: N_("修改"),
+  remove: N_("放下"),
+});
+watch(
+  () => props.groups,
+  (groups) => {
+    if (selected.value)
+      selected.value =
+        groups.find((g) => g.session === selected.value.session) || null;
+  },
+);
 
 async function toggle(session: string) {
-  if (history.value[session]) {
+  if (
+    history.value[session] &&
+    history.value[session]?.[0]?.id ===
+      props.groups.find((g) => g.session === session)?.face?.id
+  ) {
     return;
   }
-  history.value = { ...history.value, [session]: await mind.faces(session) };
+  try {
+    history.value = { ...history.value, [session]: await mind.faces(session) };
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
 }
 
 async function revoke(session: string, id: string) {
   if (
-    !(await ask(t("撤销这一版面貌？TA 在这里会回到上一版的样子。"), {
-      title: t("撤销面貌"),
+    !(await ask(t("撤销这次想法更新？会恢复上一次保留的想法。"), {
+      title: t("撤销想法更新"),
       confirmText: t("撤销"),
       danger: true,
     }))
@@ -42,12 +70,12 @@ async function revoke(session: string, id: string) {
 <template>
   <section class="faces">
     <div class="faces-head">
-      <span class="eyebrow">{{ t("群像") }}</span>
-      <h2>{{ t("在不同的地方，她有不同的相处方式。") }}</h2>
+      <span class="eyebrow">{{ t("在这里的想法") }}</span>
+      <h2>{{ t("同一个她，在不同的地方留下自己的想法。") }}</h2>
       <p class="muted">
         {{
           t(
-            "面貌由 TA 在独处和写日记时自己修正；每一版都有来源。这个地方的说话节奏不会写成 TA 的样子。",
+            "她根据相处留下印象、愿望或疑问，选择什么时候新增、修改或放下。每次更新保留理由和来源。",
           )
         }}
       </p>
@@ -81,20 +109,14 @@ async function revoke(session: string, id: string) {
             >
           </div>
         </header>
-        <dl v-if="g.face" class="kv">
-          <dt>{{ t("角色") }}</dt>
-          <dd>{{ g.face.role || "—" }}</dd>
-          <dt>{{ t("说话") }}</dt>
-          <dd>{{ g.face.tone || "—" }}</dd>
-          <dt>{{ t("想成为") }}</dt>
-          <dd>{{ g.face.aspiration || "—" }}</dd>
-          <template v-if="g.face.content">
-            <dt>{{ t("自己的话") }}</dt>
-            <dd class="face-excerpt">{{ g.face.content }}</dd>
-          </template>
-        </dl>
+        <ul v-if="g.face?.notes?.length" class="place-notes compact">
+          <li v-for="note in g.face.notes.slice(0, 3)" :key="note.id">
+            <small>{{ kinds[note.kind] || t("想法") }}</small>
+            <p class="face-excerpt">{{ note.content }}</p>
+          </li>
+        </ul>
         <p v-else class="muted small-text">
-          {{ t("还没有形成在这里的样子。") }}
+          {{ t("还没有特别想留在这里的想法，之后由她自己选择。") }}
         </p>
         <button
           class="text-button"
@@ -103,19 +125,33 @@ async function revoke(session: string, id: string) {
             toggle(g.session);
           "
         >
-          {{ t("查看完整面貌与变化 ↗") }}
+          {{ t("查看想法与变化 ↗") }}
         </button>
       </article>
     </div>
     <Sheet
       :open="!!selected"
-      :title="selected?.name || t('面貌')"
-      :eyebrow="t('FACES / 在这里的样子')"
+      :title="selected?.name || t('在这里的想法')"
+      :eyebrow="t('PLACE NOTES / 在这里的想法')"
       width="680px"
       @close="selected = null"
       ><div v-if="selected" class="stack">
-        <p class="face-full">
-          {{ selected.face?.content || t("还没有形成在这里的样子。") }}
+        <ul v-if="selected.face?.notes?.length" class="place-notes">
+          <li
+            v-for="note in selected.face.notes"
+            :key="note.id"
+            class="face-full"
+          >
+            <small>{{ kinds[note.kind] || t("想法") }}</small>
+            <p>{{ note.content }}</p>
+            <p v-if="note.why" class="muted small-text">{{ note.why }}</p>
+            <small class="faint">{{
+              t("{n} 处来源", { n: note.sources?.length || 0 })
+            }}</small>
+          </li>
+        </ul>
+        <p v-else class="muted">
+          {{ t("还没有特别想留在这里的想法，之后由她自己选择。") }}
         </p>
         <h3>{{ t("变化历史") }}</h3>
         <ol v-if="history[selected.session]" class="versions">
@@ -127,11 +163,27 @@ async function revoke(session: string, id: string) {
             <time>{{ when(f.created) }}</time>
             <span>
               <b v-if="f.revoked">{{ t("已撤销 ·") }} </b
-              ><b v-else-if="f.origin === 'migration'">{{ t("旧版 ·") }} </b
-              >{{
-                [f.role, f.tone, f.aspiration].filter(Boolean).join(" · ") ||
-                f.content
-              }}
+              ><b v-else-if="f.origin === 'migration'">{{ t("旧版 ·") }} </b>
+              <template v-if="f.changes?.length">
+                <p v-for="(change, i) in f.changes" :key="i">
+                  <b>{{ actions[change.action] }} · </b>{{ change.content }}
+                  <small v-if="change.why" class="change-why">{{
+                    change.why
+                  }}</small>
+                </p>
+              </template>
+              <template v-else-if="f.notes?.length">{{
+                f.notes.map((n: any) => n.content).join("；")
+              }}</template>
+              <details v-else class="legacy-face">
+                <summary>{{ t("旧人格记录，仅保留历史") }}</summary>
+                <p class="face-full">
+                  {{
+                    f.content ||
+                    [f.role, f.tone, f.aspiration].filter(Boolean).join("；")
+                  }}
+                </p>
+              </details>
             </span>
             <button
               v-if="!f.revoked"
@@ -154,6 +206,31 @@ async function revoke(session: string, id: string) {
 .faces {
   display: grid;
   gap: 14px;
+}
+.place-notes {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.place-notes small {
+  color: var(--ink-soft);
+}
+.place-notes p {
+  margin: 3px 0;
+  overflow-wrap: anywhere;
+}
+.compact {
+  gap: 9px;
+}
+.change-why {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-soft);
+}
+.legacy-face {
+  overflow-wrap: anywhere;
 }
 .faces-head h2 {
   font-size: 19px;

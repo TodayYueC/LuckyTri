@@ -1,5 +1,7 @@
 // English for the Nature section (the seed: character, rhythm, attention, prompts).
 export default {
+  "可用更改次数已用完。之后的性格、兴趣和想法，由 TA 自己从经历里生长。":
+    "No edits remain. TA's personality, interests and thoughts will continue growing from experience.",
   // NaturePage.vue: character scales
   温柔: "Gentle",
   "颜色偏冷，表情淡淡的": "Cooler colours, a faint expression",
@@ -54,8 +56,6 @@ export default {
   "看看她为何改变 · {length} 次": "See why she changed · {length} times",
   "她还没有从经历里改变这些刻度。独处或日记里形成了有来源的新选择后，会留在这里。":
     "She has not changed these scales through experience yet. Once a new choice with a source forms during time alone or in the diary, it will be kept here.",
-  "两次更改已经用完。之后的性格、兴趣和样子，由 TA 自己从经历里生长。":
-    "Both changes are used up. From here on, her character, interests and manner grow from her own experience.",
   "天性还可以改 {left} 次，包括性格刻度。用完后由她自己生长。":
     "Nature can still be changed {left} more times, character scales included. After that she grows by herself.",
 

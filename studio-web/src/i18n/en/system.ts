@@ -1,5 +1,25 @@
 // English for the System section (models, embedding, search, runtime, page shell).
 export default {
+  版本与更新: "Version and updates",
+  检查更新: "Check for updates",
+  "正在检查…": "Checking…",
+  尚未检查更新: "Not checked yet",
+  有新版本可用: "An update is available",
+  已是最新发布版本: "Up to date with the latest release",
+  "当前版本领先于 npm 发布版本": "This version is ahead of the npm release",
+  暂时无法检查更新: "Unable to check for updates right now",
+  当前版本: "Current version",
+  "npm 最新版本": "Latest on npm",
+  上次成功检查: "Last successful check",
+  "暂时无法连接 npm 或读取版本信息，请稍后重试。":
+    "Unable to reach npm or read version information. Please try again later.",
+  "点击时才检查，五分钟内复用结果。检查更新不会自动安装或重启。":
+    "Checks only when clicked and reuses results for five minutes. Checking does not install updates or restart the instance.",
+  "源码安装：更新 main、安装依赖并构建后重启，保留现有数据与配置。":
+    "Source installation: update main, install dependencies, rebuild and restart, keeping existing data and configuration.",
+  "停止实例后执行升级命令，再启动 LuckyTri。":
+    "Stop the instance, run the update command, then start LuckyTri again.",
+  发布说明: "Release notes",
   "DATA · 导入与导出": "DATA · Import and export",
   "带上记忆，继续生活。": "Carry her memories forward.",
   "导出数据库内的聊天、记忆、待办、作品、知识与设置。插件文件、知识库原始文件和本机 .env 不在数据包中。":

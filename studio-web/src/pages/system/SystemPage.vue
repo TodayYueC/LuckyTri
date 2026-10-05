@@ -10,6 +10,7 @@ import SearchProfile from "./SearchProfile.vue";
 import BackupManager from "./BackupManager.vue";
 import { ask } from "../../dialog";
 import PasswordSettings from "../../components/PasswordSettings.vue";
+import UpdateSettings from "./UpdateSettings.vue";
 
 const VIEWS = ["connect", "models", "search", "runtime", "storage"];
 const view = ref(VIEWS.includes(studio.sub) ? studio.sub : "connect");
@@ -74,7 +75,7 @@ watch(
     <ModelLibrary v-else-if="view === 'models'" />
     <SearchProfile v-else-if="view === 'search'" />
     <template v-else-if="view === 'runtime'"
-      ><Runtime /><PasswordSettings
+      ><Runtime /><UpdateSettings /><PasswordSettings
     /></template>
     <BackupManager v-else />
   </div>

@@ -174,9 +174,84 @@ export class Nature {
     const version = this.version();
     return version <= 1 ? 0 : version - 1;
   }
+  editAllowance() {
+    let grants = [];
+    try {
+      grants = JSON.parse(
+        this.db
+          .prepare(
+            "SELECT value FROM core_config WHERE id='nature-edit-grants'",
+          )
+          .get()?.value || "[]",
+      );
+    } catch {
+      /* A damaged grant cannot unlock editing. */
+    }
+    const extra = Array.isArray(grants)
+      ? new Set(
+          grants
+            .filter(
+              (g) =>
+                typeof g?.id === "string" &&
+                /^[\w.-]{1,100}$/.test(g.id) &&
+                g.count === 1 &&
+                typeof g.reason === "string" &&
+                g.reason.trim() &&
+                Number.isSafeInteger(g.created),
+            )
+            .map((g) => g.id),
+        ).size
+      : 0;
+    const used = this.editsUsed(),
+      limit = 2 + extra;
+    return {
+      used,
+      limit,
+      left: Math.max(0, limit - used),
+      locked: used >= limit,
+    };
+  }
+  // Local maintenance only: no HTTP endpoint or shipped universal reset.
+  grantEdit(id, reason) {
+    if (
+      typeof id !== "string" ||
+      !/^[\w.-]{1,100}$/.test(id) ||
+      !String(reason || "").trim()
+    )
+      throw Error("修改机会需要明确的记录与原因");
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const grants = JSON.parse(
+        this.db
+          .prepare(
+            "SELECT value FROM core_config WHERE id='nature-edit-grants'",
+          )
+          .get()?.value || "[]",
+      );
+      if (!Array.isArray(grants)) throw Error("修改机会记录无效");
+      if (!grants.some((g) => g.id === id)) {
+        grants.push({
+          id,
+          count: 1,
+          reason: String(reason).slice(0, 200),
+          created: Date.now(),
+        });
+        this.db
+          .prepare(
+            "INSERT INTO core_config(id,value) VALUES ('nature-edit-grants',?) ON CONFLICT(id) DO UPDATE SET value=excluded.value",
+          )
+          .run(JSON.stringify(grants));
+      }
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+    return this.editAllowance();
+  }
   save(input, note = "") {
-    if (this.editsUsed() >= 2)
-      throw Error("天性只能改两次。用完之后，由 TA 自己从经历里生长。");
+    if (this.editAllowance().locked)
+      throw Error("天性的可用修改次数已用完。之后，由 TA 自己从经历里生长。");
     const value = validateNature(input);
     const version = this.version() + 1;
     this.db
