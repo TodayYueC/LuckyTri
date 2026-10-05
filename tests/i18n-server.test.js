@@ -141,7 +141,7 @@ test("every error message the server raises can be shown in English", () => {
 // ── how a sentence is translated ───────────────────────────────────────────
 
 test("exact sentences, filled patterns and lists", () => {
-  assert.equal(translate("请输入管理令牌"), "Enter the admin token");
+  assert.equal(translate("请先登录管理台"), "Sign in to the studio first");
   assert.equal(translate("3 天前"), "3 days ago");
   assert.equal(translate("1 天前"), "1 day ago");
   assert.equal(translate("退出码 2"), "Exit code 2");
@@ -155,8 +155,8 @@ test("exact sentences, filled patterns and lists", () => {
     "Glanced over it (Someone was calling me, Some messages piled up); did not look closely",
   );
   assert.equal(
-    translate("已配置。"),
-    "Configured.",
+    translate("密码不正确。"),
+    "Incorrect password.",
     "a closing full stop is carried over",
   );
 });
@@ -223,11 +223,18 @@ async function serve(w) {
   }).listen(0, "127.0.0.1");
   await new Promise((resolve) => server.on("listening", resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
+  const login = await fetch(base + "/api/auth/setup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password: "i18n-test-password" }),
+  });
+  let cookie = login.headers.get("set-cookie").split(";")[0];
   const call = async (method, path, { body, locale, headers } = {}) => {
     const response = await fetch(base + path, {
       method,
       headers: {
         "Content-Type": "application/json",
+        Cookie: cookie,
         ...(locale ? { "X-LuckyTri-Locale": locale } : {}),
         ...headers,
       },
@@ -235,7 +242,13 @@ async function serve(w) {
     });
     return { status: response.status, body: await response.json() };
   };
-  return { call, close: () => new Promise((resolve) => server.close(resolve)) };
+  return {
+    call,
+    signOut: () => {
+      cookie = "";
+    },
+    close: () => new Promise((resolve) => server.close(resolve)),
+  };
 }
 
 function strings(value, out = []) {
@@ -280,7 +293,8 @@ test("the API answers in the language the page asks for", async (t) => {
   assert.equal(badZh.body.error, "请提交 JSON 对象");
 
   process.env.ADMIN_TOKEN = "t0ken";
+  api.signOut();
   const denied = await api.call("GET", "/api/state", { locale: "en" });
   assert.equal(denied.status, 401);
-  assert.equal(denied.body.error, "Enter the admin token");
+  assert.equal(denied.body.error, "Sign in to the studio first");
 });

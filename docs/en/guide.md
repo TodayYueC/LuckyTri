@@ -8,64 +8,44 @@ The top-right corner of the interface switches between "中文" and "English". C
 
 ## 1. Start
 
-You need Node.js 24.5 or newer. In the project folder:
+You need Node.js 24.5 or newer. Install globally:
 
 ```powershell
 node --version
-npm install
-npm start
+npm install -g luckytri
+luckytri
 ```
 
-Open <http://127.0.0.1:3210>. The experimental-SQLite notice in the terminal does not mean the start failed; what matters is whether LuckyTri opens.
+LuckyTri starts in the background and opens <http://127.0.0.1:3210>, creating local configuration on the first run. The package includes the built WebUI. The experimental-SQLite notice does not mean the start failed.
+
+Set a password in the studio on your first visit. Use `luckytri --no-browser`, `luckytri start` and `luckytri stop` for background, foreground and stop. Update with stop, `npm install -g luckytri@latest`, then launch; password, configuration and data stay intact.
+
+For source development, run `npm install`, `npm run setup`, `npm run build` and `npm start` in the checkout. Later examples using `npm run setup/stop/backup/recovery/plugin` apply to source checkouts; global users use the corresponding `luckytri setup/stop/backup/recovery/plugin` commands.
 
 On Windows you can double-click `启动LuckyTri.cmd` for daily use. If the service is already running, it only opens LuckyTri. Closing the browser does not stop the service; to stop it double-click `停止LuckyTri.cmd` or run `npm run stop` in the project folder. That command stops this project only and leaves other Node processes alone. When running in the foreground you can also press `Ctrl+C` in that terminal.
 
 LuckyTri is "TA's little world". The left navigation has three groups and ten entries:
 
-| Group | Entry | What is inside |
-| --- | --- | --- |
-| TA | Now | TA's mood right now, what she is doing, what she said lately, what is on her mind and what she is waiting for; today's timeline, token usage and the status bar |
-| TA | Inner life | The star map (TA's threads of self), notes she keeps in mind, the mood ribbon |
-| TA | People | The people galaxy, each person's detail page, how TA is in each group |
-| TA | Lifetime | The diary and TA on that day, reviews, "my road so far" and chapters, promises and anticipation, the bookshelf |
-| Daily life | Time | The record of TA's actual life: today's activity, to-dos, works library, ongoing projects, experiences |
-| Daily life | Chat | Session list, live chat and "why she said this", feedback, session settings, simulated messages, back to that moment (replay) |
-| Daily life | Memory | What TA remembers, the bookshelf |
-| Settings | Nature | Name and character (the glow beside it previews live), daily rhythm, TA's days, daily tokens, advanced prompts, trial chat |
-| Settings | System | Connect QQ, model library, run switches |
-| Settings | Plugins | Enable, install and remove the ways she touches the world. See [Plugins](plugins.md) |
+| Group      | Entry      | What is inside                                                                                                                                                  |
+| ---------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TA         | Now        | TA's mood right now, what she is doing, what she said lately, what is on her mind and what she is waiting for; today's timeline, token usage and the status bar |
+| TA         | Inner life | The star map (TA's threads of self), notes she keeps in mind, the mood ribbon                                                                                   |
+| TA         | People     | The people galaxy, each person's detail page, how TA is in each group                                                                                           |
+| TA         | Lifetime   | The diary and TA on that day, reviews, "my road so far" and chapters, promises and anticipation, the bookshelf                                                  |
+| Daily life | Time       | The record of TA's actual life: today's activity, to-dos, works library, ongoing projects, experiences                                                          |
+| Daily life | Chat       | Session list, live chat and "why she said this", feedback, session settings, simulated messages, back to that moment (replay)                                   |
+| Daily life | Memory     | What TA remembers, the bookshelf                                                                                                                                |
+| Settings   | Nature     | Name and character (the glow beside it previews live), daily rhythm, TA's days, daily tokens, advanced prompts, trial chat                                      |
+| Settings   | System     | Connect QQ, model library, run switches                                                                                                                         |
+| Settings   | Plugins    | Enable, install and remove the ways she touches the world. See [Plugins](plugins.md)                                                                            |
 
 The colors, sky and motion follow TA's mood and rhythm: warm when she is happy, grey-blue when she is low, night once she is asleep. At the bottom left you can pin one theme or turn on "Reduce motion". The small TA at the bottom right answers a poke, a long press is a head-pat, and a double click or "Chat" opens the trial chat. These are interface animations only and never change her mind. On a phone the navigation sits at the bottom and the other entries are under "More".
 
-## 2. Local tokens
+## 2. Set your management password
 
-Stop the service before connecting QQ, then generate the configuration:
+On the first visit, choose and confirm a password of at least 8 characters. Use it to sign in later; no environment-file token is needed. Browser sessions are remembered, and updates or reinstalls preserve the password.
 
-```powershell
-npm run stop
-npm run setup
-```
-
-When there is no `.env`, setup writes an admin token and an OneBot connection token. An existing `.env` is kept as it is.
-
-```dotenv
-HOST=127.0.0.1
-PORT=3210
-ADMIN_TOKEN=
-ONEBOT_TOKEN=
-LLM_API_KEY=
-```
-
-| Field | Purpose |
-| --- | --- |
-| `ADMIN_TOKEN` | Opens LuckyTri and calls the HTTP API; the stop command uses it too |
-| `ONEBOT_TOKEN` | The OneBot 11 connector uses it for `/onebot/v11/ws` (only needed for OneBot) |
-| `LLM_API_KEY` | Optional; when set it takes precedence over the model key saved in LuckyTri |
-| `LUCKYTRI_CHANNEL` | Optional; `onebot` or `qqbot`. When set, the connection method cannot be changed in the interface |
-| `QQBOT_APP_ID` / `QQBOT_APP_SECRET` | Optional; credentials of the QQ official bot, they take precedence over what is saved in the interface |
-| `HOST` / `PORT` | Listen address and port; keep the defaults for local use |
-
-The first time the page loads data it asks for `ADMIN_TOKEN`. The token stays in the current tab only. Restart after changing `.env`. Never give `ADMIN_TOKEN` to the QQ connector, and do not treat `ONEBOT_TOKEN` as the studio password.
+Change the password or sign out under System → Run switches. Only a salted verification digest is stored. Existing environment configuration and model keys remain intact.
 
 ## 3. Try it in simulation mode first
 
@@ -109,20 +89,20 @@ Open "System → Connect QQ". There are two options at the top: **OneBot 11** an
 
 LuckyTri only implements the reverse-WebSocket side of OneBot 11. You prepare and manage the connector yourself.
 
-1. Set `ONEBOT_TOKEN` in the local `.env` and restart LuckyTri.
+1. Local clients need no separate token. Keep an existing client address and QQ sign-in.
 2. In the connector's own network settings add an OneBot 11 reverse WebSocket client:
 
-| Item | Value on this machine |
-| --- | --- |
-| Protocol | OneBot 11 |
-| WebSocket URL | `ws://127.0.0.1:3210/onebot/v11/ws` |
-| Token | `ONEBOT_TOKEN` from `.env` |
-| Message format | array |
-| Enabled | on, then save |
+| Item           | Value on this machine                                                                   |
+| -------------- | --------------------------------------------------------------------------------------- |
+| Protocol       | OneBot 11                                                                               |
+| WebSocket URL  | `ws://127.0.0.1:3210/onebot/v11/ws`                                                     |
+| Token          | Not needed locally; remote clients can use the management password or an existing token |
+| Message format | array                                                                                   |
+| Enabled        | on, then save                                                                           |
 
 3. Log in to QQ in the connector. The account must already be in the target group; LuckyTri does not store QQ passwords.
 
-`3210` is LuckyTri's port. When the connector and LuckyTri are on different machines or in containers, `127.0.0.1` points at each own environment: replace it with LuckyTri's real address and configure `ADMIN_TOKEN` first.
+In a container or another computer, localhost refers to that environment. Use the reachable LuckyTri address for remote access, set the password locally first, and use HTTPS for remote studio access.
 
 ### Option two: QQ official bot
 
@@ -173,12 +153,12 @@ Backups go to `data/backups/`. The database holds chats, memories and any keys s
 
 Everything of TA lives in this one database, so the service backs it up automatically while running: by default every 24 hours, in another process, it writes a `luckytri-auto-*.db`, keeps only the latest 7 and checks integrity afterwards. An automatic backup holds chats, memories, self, diary and relationships, but not model call records older than a day (each can be hundreds of KB and would make the backup more than ten times bigger), so "Why she said that" can only be looked back on for the last day. `npm run backup` is still the full backup. Adjust in `.env`:
 
-| Variable | Meaning | Default |
-| --- | --- | --- |
-| `BACKUP_INTERVAL_HOURS` | Interval between automatic backups, `0` turns them off | `24` |
-| `BACKUP_KEEP` | How many automatic backups to keep | `7` |
-| `BACKUP_TRACE_DAYS` | Days of call records kept inside a backup | `1` |
-| `BACKUP_DIR` | Backup folder | `data/backups` |
+| Variable                | Meaning                                                | Default        |
+| ----------------------- | ------------------------------------------------------ | -------------- |
+| `BACKUP_INTERVAL_HOURS` | Interval between automatic backups, `0` turns them off | `24`           |
+| `BACKUP_KEEP`           | How many automatic backups to keep                     | `7`            |
+| `BACKUP_TRACE_DAYS`     | Days of call records kept inside a backup              | `1`            |
+| `BACKUP_DIR`            | Backup folder                                          | `data/backups` |
 
 To take an automatic backup right now: `node scripts/backup.js --auto --force`. A failed automatic backup is noted in the launcher window or `data/launcher.log` and retried after longer and longer pauses. A backup on the same disk as the database cannot survive disk failure; copy important backups elsewhere yourself.
 
@@ -192,21 +172,21 @@ To restore, stop the service, move the current `data/friend.db` and its `-wal` a
 
 ## 9. Troubleshooting
 
-| Symptom | Check first |
-| --- | --- |
-| The page does not open | Is Node running, and is the address `127.0.0.1:3210` |
-| Port already in use | Run `npm run stop` first; do not kill every node process |
-| Wrong token | Use `ADMIN_TOKEN`; restart after editing `.env` |
-| OneBot not connected | Is the connector logged in; do the URL, port, path and `ONEBOT_TOKEN` all match |
-| Official bot not connected | Are the AppID and AppSecret right, are group and one-to-one messages enabled for the bot, can the network reach the QQ Open Platform |
-| Official bot only gets @ messages | Enable "receive all messages" on the Open Platform; this is a platform permission, not a LuckyTri limit |
-| Connected but no sessions | Send one more new message in QQ; with OneBot also check the message format is array |
-| No reply in a group | Global switch, session switch, simulation mode, key; under "Chat", was it "TA glanced over it" or did TA look closely and choose silence |
-| No reply even when @-ed | Is TA asleep (see "Now", the interface is night), the per-minute limit, today's tokens used up, a model error, or TA's own reason |
-| Model 401 / 403 | Key and permissions; an environment-variable key may override the one saved in LuckyTri |
-| Model 404 | Do not append `/chat/completions` twice to the API address; check the model ID |
-| Model returns no JSON | Use a model that supports JSON object output and run the connection test first |
-| Memory did not appear | Was it an explicit "remember, I…", was it undone, is its discretion "keep secret" and you are not in the original session |
-| Too much motion | "Reduce motion" at the bottom left; when the system asks for reduced motion, particles and morphing switch off automatically |
+| Symptom                           | Check first                                                                                                                              |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| The page does not open            | Is Node running, and is the address `127.0.0.1:3210`                                                                                     |
+| Port already in use               | Run `npm run stop` first; do not kill every node process                                                                                 |
+| Incorrect password                | Sign in with your management password; change it under System → Run switches                                                             |
+| OneBot not connected              | Check sign-in, enabled reverse client, address, port and path; local clients need no token                                               |
+| Official bot not connected        | Are the AppID and AppSecret right, are group and one-to-one messages enabled for the bot, can the network reach the QQ Open Platform     |
+| Official bot only gets @ messages | Enable "receive all messages" on the Open Platform; this is a platform permission, not a LuckyTri limit                                  |
+| Connected but no sessions         | Send one more new message in QQ; with OneBot also check the message format is array                                                      |
+| No reply in a group               | Global switch, session switch, simulation mode, key; under "Chat", was it "TA glanced over it" or did TA look closely and choose silence |
+| No reply even when @-ed           | Is TA asleep (see "Now", the interface is night), the per-minute limit, today's tokens used up, a model error, or TA's own reason        |
+| Model 401 / 403                   | Key and permissions; an environment-variable key may override the one saved in LuckyTri                                                  |
+| Model 404                         | Do not append `/chat/completions` twice to the API address; check the model ID                                                           |
+| Model returns no JSON             | Use a model that supports JSON object output and run the connection test first                                                           |
+| Memory did not appear             | Was it an explicit "remember, I…", was it undone, is its discretion "keep secret" and you are not in the original session                |
+| Too much motion                   | "Reduce motion" at the bottom left; when the system asks for reduced motion, particles and morphing switch off automatically             |
 
 Never post API keys, `.env` or private chat text anywhere public.

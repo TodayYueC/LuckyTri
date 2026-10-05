@@ -7,7 +7,7 @@
 <p align="center"><strong>Let the days she lives count.</strong></p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-1.0.0-ff8fb1">
+  <img alt="version" src="https://img.shields.io/badge/version-1.0.1-ff8fb1">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-7fd6c2">
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A5%2024.5-8fb8ff">
   <img alt="channels" src="https://img.shields.io/badge/QQ-OneBot%2011%20%7C%20official%20bot-ffd37f">
@@ -69,15 +69,15 @@ flowchart LR
   Studio["Studio<br/>studio-web/ · studio/"] --> Mind
 ```
 
-| Layer | Directory | What it does |
-| --- | --- | --- |
-| Channels | `server/channels/` | Only how messages arrive and leave. OneBot 11 or the QQ official bot (pick one); both hand the core the same neutral message |
-| Core | `server/core/` | Her senses and mouth: batching, perceiving who is speaking to whom, one turn, checks before sending, sending |
-| Mind | `server/mind/` | Her: nature, mood, relationships, self, character, memory, attention, boundaries |
-| A life | `server/mind/life/`, `server/mind/time/` | Time when nobody is talking: waking, solitude, reading, diary, night, review, reaching out, plus her own activities and works |
-| Knowledge | `server/knowledge/` | A shared library she can read |
-| Storage | `server/storage/` | One SQLite file, migrations, backups |
-| Studio | `studio-web/`, `server/studio/` | "TA's little world": see her, write her nature, undo changes that feel wrong |
+| Layer     | Directory                                | What it does                                                                                                                  |
+| --------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Channels  | `server/channels/`                       | Only how messages arrive and leave. OneBot 11 or the QQ official bot (pick one); both hand the core the same neutral message  |
+| Core      | `server/core/`                           | Her senses and mouth: batching, perceiving who is speaking to whom, one turn, checks before sending, sending                  |
+| Mind      | `server/mind/`                           | Her: nature, mood, relationships, self, character, memory, attention, boundaries                                              |
+| A life    | `server/mind/life/`, `server/mind/time/` | Time when nobody is talking: waking, solitude, reading, diary, night, review, reaching out, plus her own activities and works |
+| Knowledge | `server/knowledge/`                      | A shared library she can read                                                                                                 |
+| Storage   | `server/storage/`                        | One SQLite file, migrations, backups                                                                                          |
+| Studio    | `studio-web/`, `server/studio/`          | "TA's little world": see her, write her nature, undo changes that feel wrong                                                  |
 
 Six principles run through every module:
 
@@ -92,29 +92,61 @@ The full design is in [Her life](docs/en/her-life.md) and [Architecture and exte
 
 ## What she can do
 
-| Area | What it does today |
-| --- | --- |
-| Time and solitude | Lives a day on her own rhythm; in quiet hours sorts her thoughts, reads, writes a diary; reviews every so often, rewrites her story and turns to a new chapter |
-| Doing her own things | Carries out the reading, writing, thinking and play plans she left herself; works are saved even offline and can be viewed under Lifetime and Time |
-| Self and mood | Forms opinions, tastes, concerns and wishes from sourced experiences; changes can be looked back on and undone |
-| Relationships and memory | One memory across groups and private chats; tells "public / private / confidential" apart; private things never surface in another room |
-| Attention and choice | Understands multi-person talk, @-mentions and quotes, and decides to read closely, to speak or to stay silent; can also reach out from her own thoughts |
-| Plans and anticipation | Remembers what others said they would do and what she promised; asks naturally when the time comes, and knows when it has been missed |
-| Two ways to connect | OneBot 11 or the QQ official bot, pick one; behavior is identical, and you can switch while running |
-| Two languages | One click at the top right of the studio, Chinese by default; every document exists in both languages |
-| Management and checks | See her records, decision reasons and model usage; test models one by one; simulation and replay never touch real QQ |
-| Data safety | Automatic backups with an integrity and SHA-256 manifest; a snapshot before migrations; verify and restore into a new file |
-| Plugins | Channels, senses, activities, actions, reading and pages. Each plugin is a restricted process, and its permissions are accepted when it is enabled. See [Plugins](docs/en/plugins.md) |
+| Area                     | What it does today                                                                                                                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Time and solitude        | Lives a day on her own rhythm; in quiet hours sorts her thoughts, reads, writes a diary; reviews every so often, rewrites her story and turns to a new chapter                        |
+| Doing her own things     | Carries out the reading, writing, thinking and play plans she left herself; works are saved even offline and can be viewed under Lifetime and Time                                    |
+| Self and mood            | Forms opinions, tastes, concerns and wishes from sourced experiences; changes can be looked back on and undone                                                                        |
+| Relationships and memory | One memory across groups and private chats; tells "public / private / confidential" apart; private things never surface in another room                                               |
+| Attention and choice     | Understands multi-person talk, @-mentions and quotes, and decides to read closely, to speak or to stay silent; can also reach out from her own thoughts                               |
+| Plans and anticipation   | Remembers what others said they would do and what she promised; asks naturally when the time comes, and knows when it has been missed                                                 |
+| Two ways to connect      | OneBot 11 or the QQ official bot, pick one; behavior is identical, and you can switch while running                                                                                   |
+| Two languages            | One click at the top right of the studio, Chinese by default; every document exists in both languages                                                                                 |
+| Management and checks    | See her records, decision reasons and model usage; test models one by one; simulation and replay never touch real QQ                                                                  |
+| Data safety              | Automatic backups with an integrity and SHA-256 manifest; a snapshot before migrations; verify and restore into a new file                                                            |
+| Plugins                  | Channels, senses, activities, actions, reading and pages. Each plugin is a restricted process, and its permissions are accepted when it is enabled. See [Plugins](docs/en/plugins.md) |
 
 ## Quick start
 
-Requires Node.js 24.5+ and npm. Real replies also need a model service and API key of your own.
+Requires Node.js 24.5+ and npm on Windows, macOS or Linux. Real replies also need a model service and API key of your own.
+
+```bash
+npm install -g luckytri
+luckytri
+```
+
+LuckyTri starts in the background and opens <http://127.0.0.1:3210>. The package includes the server, built WebUI, guides and bundled plugins. Set one management password on your first visit and use it to sign in later. Configure a model under System → Model library, then try simulated messages under Chat.
+
+```bash
+luckytri --no-browser   # launch without opening a browser
+luckytri start          # foreground server, Ctrl+C to stop
+luckytri stop           # stop this instance and wait for it to exit
+luckytri paths          # configuration, data, logs, backups and package paths
+luckytri setup          # initialize once, preserving existing configuration
+luckytri backup         # integrity-checked database backup
+luckytri --help
+```
+
+Stop the server before updating, then launch with the same user data:
+
+```bash
+luckytri stop
+npm install -g luckytri@latest
+luckytri
+```
+
+`npm uninstall -g luckytri` removes the program. Reinstalling uses the existing data. Installation and uninstallation run no application scripts.
+
+Change your password or sign out under System → Run switches. If you forget it, run `luckytri reset-password` for the same instance and refresh the studio to set another. Database, memory and configuration stay intact. Launching after an update switches a running older service to the installed version.
+
+### Developing from source
 
 ```bash
 git clone https://github.com/TodayYueC/LuckyTri.git
 cd LuckyTri
 npm install
 npm run setup
+npm run build
 npm start
 ```
 
@@ -124,16 +156,16 @@ Open <http://127.0.0.1:3210>. On Windows you can also double-click `启动LuckyT
 
 With either way, her memory, mood and behavior are exactly the same; only how messages arrive differs. Only one is active at a time. Switch under System → Connect QQ, no restart needed.
 
-| | OneBot 11 | QQ official bot |
-| --- | --- | --- |
-| You need | An OneBot 11 endpoint of your own (reverse WebSocket) and a QQ account | A bot on the QQ open platform: AppID and AppSecret |
-| Logging in to QQ | In the endpoint | Not needed |
-| Group messages | All of them | All when "receive all messages" is on; otherwise only those that @-mention her |
-| Names | Group names and nicknames available | The official API gives no group names; rename a session under Chat |
-| Knowing people across groups | By QQ number | The same person has a different openid in each group; only recognized when the platform gives a unified identity |
-| Replies and reaching out | No extra limits | Replies inside the passive-reply window, active messages outside it; if the other side turned active messages off she waits for them to come to her |
+|                              | OneBot 11                                                              | QQ official bot                                                                                                                                     |
+| ---------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| You need                     | An OneBot 11 endpoint of your own (reverse WebSocket) and a QQ account | A bot on the QQ open platform: AppID and AppSecret                                                                                                  |
+| Logging in to QQ             | In the endpoint                                                        | Not needed                                                                                                                                          |
+| Group messages               | All of them                                                            | All when "receive all messages" is on; otherwise only those that @-mention her                                                                      |
+| Names                        | Group names and nicknames available                                    | The official API gives no group names; rename a session under Chat                                                                                  |
+| Knowing people across groups | By QQ number                                                           | The same person has a different openid in each group; only recognized when the platform gives a unified identity                                    |
+| Replies and reaching out     | No extra limits                                                        | Replies inside the passive-reply window, active messages outside it; if the other side turned active messages off she waits for them to come to her |
 
-**OneBot 11**: set `ONEBOT_TOKEN` in `.env` (`npm run setup` generates one) and add a reverse WebSocket client in your endpoint: address `ws://127.0.0.1:3210/onebot/v11/ws`, the same token, message format "array".
+**OneBot 11**: enable a reverse WebSocket client using `ws://127.0.0.1:3210/onebot/v11/ws` and array messages. Local clients need no separate token; existing addresses and sign-ins can stay. Remote clients can use the management password, and legacy remote tokens remain supported.
 
 **QQ official bot**: create a bot on the QQ open platform and get its AppID and AppSecret. Under System → Connect QQ choose "QQ official bot", enter them and save (or set `QQBOT_APP_ID` and `QQBOT_APP_SECRET`).
 
@@ -141,14 +173,28 @@ Details and differences are in [Connect QQ](docs/en/connect.md).
 
 ## Configuration, data and privacy
 
-`npm run setup` creates a local `.env` and never overwrites an existing one. Common settings:
+The global CLI initializes on first launch or through `luckytri setup`; source checkouts use `npm run setup`. Existing `.env` files are never overwritten. Default global user directories:
 
-| Variable | Purpose |
-| --- | --- |
-| `HOST` / `PORT` | HTTP address and port, `127.0.0.1:3210` by default |
-| `ADMIN_TOKEN` | Access token for the studio and the HTTP API; required when listening on a non-local address |
+| Platform | User directory                              |
+| -------- | ------------------------------------------- |
+| Windows  | `%LOCALAPPDATA%\LuckyTri`                   |
+| macOS    | `~/Library/Application Support/LuckyTri`    |
+| Linux    | `${XDG_DATA_HOME:-~/.local/share}/luckytri` |
+
+This directory contains `.env`, `data/friend.db` (memory, relationships, chat history and studio settings), `data/knowledge/`, `data/plugins/`, `data/launcher.log` and `data/backups/`. `luckytri paths` shows the actual paths. npm updates, uninstallation and reinstallation leave these files intact. Launching does not depend on your current directory.
+
+Set `LUCKYTRI_HOME` or use `luckytri --home ABSOLUTE_PATH` for a different instance; use the same value for launch, stop and backup. Relative `DB_PATH` and `BACKUP_DIR` values resolve under this directory. Global installs reject data paths inside the npm package.
+
+To continue an existing source instance, stop it first, then use `luckytri --home ABSOLUTE_PATH_TO_OLD_CHECKOUT` with all commands. This reuses its `.env` and `data/` without copying the database. Database migrations and their snapshots still apply. To move to the default directory, stop the service and copy the complete `.env` and `data/` while retaining the old copy. Source checkouts continue to use their repository's configuration and data by default. Common settings:
+
+| Variable                 | Purpose                                                                                  |
+| ------------------------ | ---------------------------------------------------------------------------------------- |
+| `HOST` / `PORT`          | HTTP address and port, `127.0.0.1:3210` by default                                       |
+| `LUCKYTRI_HOME`          | Optional absolute instance directory containing `.env` and `data/`                       |
+| `DB_PATH` / `BACKUP_DIR` | Optional database and backup paths; relative values resolve under the instance directory |
+
 | `LUCKYTRI_CHANNEL` | Optional; `onebot` or `qqbot`. When set, the studio cannot change the connection |
-| `ONEBOT_TOKEN` | Connection token for the OneBot reverse WebSocket |
+| `ONEBOT_TOKEN` | Optional compatibility for an existing remote token; local clients need none |
 | `QQBOT_APP_ID` / `QQBOT_APP_SECRET` | QQ official bot credentials; take precedence over those saved in the studio |
 | `LLM_API_KEY` | Optional; when set, takes precedence over the model key saved in the studio |
 | `EMBEDDING_API_KEY` | Optional; a separate key for the knowledge embedding service |
@@ -158,17 +204,17 @@ Everything about her stays on your machine: the database, chat records, model ke
 
 ## Documentation
 
-| Document | Contents |
-| --- | --- |
-| [Getting started](docs/en/guide.md) | From launching to letting her join her first conversation |
-| [Connect QQ](docs/en/connect.md) | The two connection ways: comparison, steps and differences |
-| [Her life](docs/en/her-life.md) | The unified mind: rhythm, solitude, diary, review, tact and boundaries |
+| Document                                                     | Contents                                                                      |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| [Getting started](docs/en/guide.md)                          | From launching to letting her join her first conversation                     |
+| [Connect QQ](docs/en/connect.md)                             | The two connection ways: comparison, steps and differences                    |
+| [Her life](docs/en/her-life.md)                              | The unified mind: rhythm, solitude, diary, review, tact and boundaries        |
 | [Architecture and extension points](docs/en/architecture.md) | Code layers, and how to add a channel, a mind module, a page or a translation |
-| [Time, activities and works](docs/en/time.md) | Her own activities, plans, works and sharing |
-| [Chat style](docs/en/chat-style.md) | How she speaks and the checks before sending |
-| [Studio design](docs/en/webui.md) | Design and upkeep of "TA's little world" |
-| [Backup and recovery](docs/en/recovery.md) | Backups, migrations, verification and restore |
-| [Changelog](docs/en/CHANGELOG.md) | What changed in each version |
+| [Time, activities and works](docs/en/time.md)                | Her own activities, plans, works and sharing                                  |
+| [Chat style](docs/en/chat-style.md)                          | How she speaks and the checks before sending                                  |
+| [Studio design](docs/en/webui.md)                            | Design and upkeep of "TA's little world"                                      |
+| [Backup and recovery](docs/en/recovery.md)                   | Backups, migrations, verification and restore                                 |
+| [Changelog](docs/en/CHANGELOG.md)                            | What changed in each version                                                  |
 
 ## Development and tests
 
@@ -176,13 +222,19 @@ Everything about her stays on your machine: the database, chat records, model ke
 npm run dev:ui        # studio dev server
 npm run build:ui      # build the studio into public/app
 npm run docs:build    # generate the Chinese and English guide pages
+npm run build        # build all release resources
 npm test              # backend tests
 npm run test:clock    # run the backend tests with the real clock moved into the past and the future
 npm run test:ui       # browser tests (including the English UI)
+npm run test:package  # real global install, upgrade, reinstall and data retention
+npm run pack:check    # inspect the final npm file list and runtime resources
+npm run release:check # complete release checks
 npm run format:check  # code format check
 ```
 
 The repository is layered by responsibility: `server/` (channels, core, mind, knowledge, storage, studio API, UI dictionaries), `studio-web/` (Vue 3 + Vite + TypeScript), `scripts/`, `tests/`, and `docs/zh` with `docs/en`. To add a channel or a mind module, start with [Architecture and extension points](docs/en/architecture.md).
+
+See [npm release maintenance](docs/en/npm-release.md) for the release process and package boundaries. Maintainers can run `npm publish`; its hooks build, test and inspect the package automatically.
 
 ## 1.0
 

@@ -1,4 +1,4 @@
-import { createApp } from "../../server/app.js";
+import { createApp } from "./app.js";
 import { world, HOUR, MINUTE } from "./world.js";
 
 const NAMES = { 10001: "阿明", 10002: "小红", 10003: "老周" };

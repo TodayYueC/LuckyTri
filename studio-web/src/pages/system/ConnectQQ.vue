@@ -202,21 +202,15 @@ function fix(id: string) {
             <span>{{ t("反向 WebSocket 地址") }}</span>
             <code>{{ wsUrl }}</code>
           </div>
-          <div class="detail">
-            <span>{{ t("连接令牌") }}</span>
-            <strong>{{
-              onebot.tokenConfigured ? t("已配置") : t("尚未配置")
-            }}</strong>
-          </div>
         </div>
         <ol class="instructions">
           <li>
-            {{ t("在本机 .env 中设置 ONEBOT_TOKEN，修改后重启 LuckyTri。") }}
+            {{ t("同一台电脑上的接入端无需单独配置连接令牌。") }}
           </li>
           <li>
             {{
               t(
-                "在你使用的 OneBot 11 接入端里启用反向 WebSocket 客户端，填写上方地址和相同令牌，消息格式选择数组。",
+                "在接入端启用反向 WebSocket 客户端，填写上方地址，消息格式选择数组。已有的地址配置可以继续使用。",
               )
             }}
           </li>
@@ -228,6 +222,11 @@ function fix(id: string) {
             }}
           </li>
         </ol>
+        <p class="muted">
+          {{
+            t("远程接入时，连接密码使用管理密码；已有的远程连接令牌仍兼容。")
+          }}
+        </p>
         <p class="muted note">
           {{ t("LuckyTri 只负责接收，不提供、不安装也不管理接入端。") }}
         </p>

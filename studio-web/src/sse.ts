@@ -1,3 +1,4 @@
+import { requireLogin, waitForAccess } from "./access";
 export async function subscribe(
   onChange: (value: unknown) => Promise<void> | void,
   options: {
@@ -21,12 +22,14 @@ export async function subscribe(
 
   while (!signal?.aborted) {
     try {
+      await waitForAccess();
       const url = new URL("/api/core/stream", location.origin);
       if (session) url.searchParams.set("session", session);
       const r = await fetch(url, {
-        headers: { Authorization: "Bearer " + (sessionStorage.token || "") },
+        credentials: "same-origin",
         signal,
       });
+      if (r.status === 401) requireLogin();
       if (!r.ok) throw Error("stream unavailable");
       const reader = r.body!.getReader();
       const decoder = new TextDecoder();

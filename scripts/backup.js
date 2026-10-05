@@ -20,6 +20,7 @@ import {
 import { withBackupLock } from "../server/storage/backup-lock.js";
 import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
+import { runtimePaths } from "../server/paths.js";
 
 const HOUR = 3600000;
 const DAY = 24 * HOUR;
@@ -27,10 +28,12 @@ export const AUTO_PREFIX = "luckytri-auto-";
 const MISSING = "数据库不存在，请先启动一次 LuckyTri";
 
 export function backupDirectory(
-  source = process.env.DB_PATH || "data/friend.db",
+  source = runtimePaths().database,
   env = process.env,
 ) {
-  return env.BACKUP_DIR || join(dirname(resolve(source)), "backups");
+  return env.BACKUP_DIR
+    ? resolve(runtimePaths(env).home, env.BACKUP_DIR)
+    : join(dirname(resolve(source)), "backups");
 }
 
 function copyDatabase(source, target) {
@@ -38,7 +41,7 @@ function copyDatabase(source, target) {
 }
 
 export function backupDatabase(
-  source = process.env.DB_PATH || "data/friend.db",
+  source = runtimePaths().database,
   directory = backupDirectory(source),
 ) {
   if (!existsSync(source)) throw new Error(MISSING);
@@ -186,7 +189,7 @@ function slimAndVerify(file, traceCutoff) {
 }
 
 export function autoBackup(options = {}) {
-  const source = options.source || process.env.DB_PATH || "data/friend.db";
+  const source = options.source || runtimePaths().database;
   const directory = options.directory || backupDirectory(source);
   if (!existsSync(source)) throw new Error(MISSING);
   return withBackupLock(directory, () =>
@@ -195,7 +198,7 @@ export function autoBackup(options = {}) {
 }
 
 function runAutoBackup({
-  source = process.env.DB_PATH || "data/friend.db",
+  source = runtimePaths().database,
   directory = backupDirectory(source),
   now = Date.now(),
   intervalMs = DAY,
@@ -285,6 +288,8 @@ if (
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
   try {
+    const { prepareRuntime } = await import("./runtime.js");
+    prepareRuntime({ initialize: false });
     if (process.argv.includes("--auto")) {
       const options = autoBackupOptions();
       const result = autoBackup({

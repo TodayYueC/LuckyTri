@@ -29,7 +29,7 @@ import {
   createBackupCleanup,
   executeCleanup,
 } from "../server/storage/backup-cleanup.js";
-import { createApp } from "../server/app.js";
+import { createApp } from "./helpers/app.js";
 import { world } from "./helpers/world.js";
 
 const NOW = new Date(2026, 9, 4, 5, 0).getTime();

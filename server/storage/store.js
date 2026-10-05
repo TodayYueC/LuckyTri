@@ -1,11 +1,12 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
+import { runtimePaths } from "../paths.js";
 import { dirname } from "node:path";
 import { summarizeGroupStyle } from "../core/group-style.js";
 import { isGroupSession } from "../channels/session-key.js";
 import { NATURE_DEFAULTS } from "../mind/nature.js";
 import { prepareDatabaseMigration } from "./archive.js";
-export function createStore(path = process.env.DB_PATH || "data/friend.db") {
+export function createStore(path = runtimePaths().database) {
   prepareDatabaseMigration(path);
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);

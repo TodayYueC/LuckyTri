@@ -7,12 +7,20 @@ import { createChannelHub, createChannels } from "./channels/index.js";
 import { createBackupScheduler } from "./storage/backup-scheduler.js";
 import { createBackupCleanup } from "./storage/backup-cleanup.js";
 import { PluginHost } from "./plugins/host.js";
+import { createManagementAuth } from "./auth.js";
 
 claimServer();
+process.on("exit", clearStarting);
 const store = createStore();
+const auth = createManagementAuth(store);
 // One channel at a time connects her to QQ; the rest of the system only ever
 // talks to the hub.
-const channel = createChannelHub(store, createChannels(store));
+const channel = createChannelHub(
+  store,
+  createChannels(store, {
+    onebot: { verifyPassword: auth.verifyConnectionPassword },
+  }),
+);
 const chatSystem = new ChatSystem(store, channel.send, {
   fetchQuoted: (message) => channel.fetchQuoted(message),
   fetchImage: (file, sessionId) => channel.fetchImage(file, sessionId),
@@ -23,23 +31,20 @@ const life = new Life(chatSystem, {
 });
 life.start();
 const plugins = new PluginHost({ store, chat: chatSystem, channel, life });
+chatSystem.mind.embody(() => plugins.aware());
 plugins
   .start()
   .catch((error) => console.error(`插件没有启动：${error.message}`));
 const backups = createBackupScheduler();
 const cleanup = createBackupCleanup({ store, backup: backups });
 const host = process.env.HOST || "127.0.0.1";
-if (
-  !["127.0.0.1", "localhost", "::1"].includes(host) &&
-  !process.env.ADMIN_TOKEN
-)
-  throw new Error("绑定外网地址前必须设置 ADMIN_TOKEN");
+if (!["127.0.0.1", "localhost", "::1"].includes(host) && !auth.configured())
+  throw new Error("绑定外网地址前请先在本机设置管理密码");
 
 let stopping = false;
 function shutdown() {
   if (stopping) return;
   stopping = true;
-  clearStarting();
   backups.stop();
   plugins.close();
   life.close();
@@ -59,6 +64,7 @@ function shutdown() {
 }
 
 const app = createApp({
+  auth,
   store,
   chatSystem,
   life,
@@ -72,10 +78,8 @@ const app = createApp({
   },
 });
 const server = app.listen(Number(process.env.PORT || 3210), host, () => {
-  clearStarting();
   console.log(`LuckyTri 管理台 http://${host}:${process.env.PORT || 3210}`);
 });
-process.on("exit", clearStarting);
 channel.attach(server, chatSystem);
 function runMaintenance() {
   store.maintenance();

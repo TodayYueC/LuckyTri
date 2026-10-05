@@ -4,6 +4,8 @@
 
 The core defines who she is. A plugin decides what of the world she can touch.
 
+The system is one. She can perceive her own state, including whether a plugin is connected and whether it is on. The studio and what she knows are the same state.
+
 A plugin may give her a door, a sense, something she can spend time on, an action she may choose, something to read, or a page in the studio. It cannot speak for her, rewrite her words, write her nature, self, bonds or memory, or read the database and keys.
 
 ## How she uses what a plugin gives

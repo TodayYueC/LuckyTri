@@ -1,6 +1,10 @@
-import { openSync, closeSync, mkdirSync, realpathSync } from "node:fs";
+import { openSync, closeSync, mkdirSync } from "node:fs";
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import { prepareRuntime } from "./runtime.js";
+import { running, serviceUrl } from "./service.js";
+import { openBrowser } from "./browser.js";
+import { VERSION } from "../server/version.js";
 import {
   claimLaunch,
   clearStarting,
@@ -11,59 +15,21 @@ import {
   supportsNodeEnvironmentProxy,
 } from "./proxy-config.js";
 
-process.chdir(fileURLToPath(new URL("../", import.meta.url)));
-process.loadEnvFile &&
-  (() => {
-    try {
-      process.loadEnvFile(".env");
-    } catch (error) {
-      if (error.code !== "ENOENT") throw error;
-    }
-  })();
-const port = Number(process.env.PORT || 3210);
-const raw = process.env.HOST || "127.0.0.1";
-const host = raw === "0.0.0.0" ? "127.0.0.1" : raw === "::" ? "::1" : raw;
-const proxy = await resolveProxyEnvironment(process.env);
-const base = new URL(
-  `http://${host.includes(":") ? `[${host}]` : host}:${port}`,
-).origin;
-const normalize = (value) =>
-  process.platform === "win32" ? value.toLowerCase() : value;
-async function running(lenient = false) {
-  let response;
-  try {
-    response = await fetch(base + "/api/service/status", {
-      headers: { Authorization: `Bearer ${process.env.ADMIN_TOKEN || ""}` },
-      signal: AbortSignal.timeout(1500),
-    });
-  } catch (error) {
-    if (lenient || error.cause?.code === "ECONNREFUSED") return false;
-    throw new Error("无法确认端口状态，请检查服务或网络；未重复启动。");
-  }
-  if (!response.ok)
-    throw new Error("端口已被占用或管理令牌不匹配，请检查 .env。");
-  let info;
-  try {
-    info = await response.json();
-  } catch {
-    throw new Error("此端口运行的不是 LuckyTri。");
-  }
-  if (
-    !["luckytri", "luckybot", "lucky", "xiaoman"].includes(info.app) ||
-    typeof info.workspace !== "string" ||
-    normalize(info.workspace) !== normalize(realpathSync(process.cwd()))
-  )
-    throw new Error("此端口已被其他项目占用，未重复启动。");
-  return true;
-}
 try {
-  if (Number(process.versions.node.split(".")[0]) < 24)
-    throw new Error("请先安装 Node.js 24 或更高版本。");
+  const paths = prepareRuntime();
+  const proxy = await resolveProxyEnvironment(process.env);
+  const base = serviceUrl();
+  const existing = await running({ base });
+  if (existing && existing.version && existing.version !== VERSION) {
+    console.log(`正在将运行中的 LuckyTri 更新到 ${VERSION}…`);
+    await import("./stop.js");
+    if (process.exitCode) throw Error("旧服务未停止，请稍后重试");
+  }
   if (proxy.enabled && !supportsNodeEnvironmentProxy())
     throw new Error(
       "系统代理转发需要 Node.js 24.5 或更高版本。请升级 Node.js 后重试。",
     );
-  if (!(await running())) {
+  if (!(await running({ base }))) {
     let childExited = false;
     const fresh = claimLaunch();
     if (!fresh) console.log("上一次启动还在进行，正在等它就绪，不会再开一份。");
@@ -74,18 +40,21 @@ try {
         await import("express").catch(() => {
           throw new Error("缺少依赖，请先在项目目录执行 npm install。");
         });
-        mkdirSync("data", { recursive: true });
-        const log = openSync("data/launcher.log", "a");
+        mkdirSync(paths.data, { recursive: true, mode: 0o700 });
+        const log = openSync(paths.log, "a", 0o600);
         const args = [
           ...(proxy.enabled ? ["--use-env-proxy"] : []),
-          "--env-file-if-exists=.env",
-          "server/index.js",
+          join(paths.package, "server", "index.js"),
         ];
         const child = spawn(process.execPath, args, {
-          cwd: process.cwd(),
+          cwd: paths.home,
           detached: true,
           windowsHide: true,
-          env: { ...process.env, ...proxy.env },
+          env: {
+            ...process.env,
+            ...proxy.env,
+            LUCKYTRI_LAUNCH_PID: String(process.pid),
+          },
           stdio: ["ignore", log, log],
         });
         closeSync(log);
@@ -106,16 +75,16 @@ try {
     for (let attempt = 0; attempt < 2000; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 300));
       if (attempt > 0 && attempt % 16 === 0) console.log("仍在启动…");
-      if (await running(true)) {
+      if (await running({ base, lenient: true })) {
         ready = true;
         break;
       }
       if (fresh && childExited)
-        throw new Error("启动进程已退出，请查看 data/launcher.log。");
+        throw new Error(`启动进程已退出，请查看 ${paths.log}`);
       if (!fresh && !starting())
         throw new Error("上一次启动已中断，请再试一次。");
     }
-    if (!ready) throw new Error("启动未完成，请查看 data/launcher.log。");
+    if (!ready) throw new Error(`启动未完成，请查看 ${paths.log}`);
     console.log(
       proxy.enabled
         ? "LuckyTri 已在后台启动，外部 API 走系统代理。"
@@ -124,28 +93,7 @@ try {
   } else console.log("LuckyTri 已经运行，直接打开管理台。");
   console.log(base);
   if (!process.argv.includes("--no-browser")) {
-    const browser = spawn(
-      "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        "Start-Process $env:LUCKY_LAUNCH_URL",
-      ],
-      {
-        windowsHide: true,
-        stdio: "ignore",
-        env: { ...process.env, LUCKY_LAUNCH_URL: base },
-      },
-    );
-    await new Promise((resolve, reject) => {
-      browser.once("error", reject);
-      browser.once("exit", (code) =>
-        code === 0
-          ? resolve()
-          : reject(new Error("浏览器未打开，请手动打开上方地址。")),
-      );
-    });
+    await openBrowser(base).catch((error) => console.warn(error.message));
   }
 } catch (error) {
   console.error(error.message);

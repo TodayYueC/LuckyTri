@@ -21,13 +21,9 @@ export const LABELS = {
   "已连接 QQ 开放平台": "Connected to the QQ Open Platform",
   "正在连接 QQ 开放平台": "Connecting to the QQ Open Platform",
   填写凭据后自动连接: "Connects automatically once credentials are entered",
-  "QQ 接入令牌": "QQ access token",
-  已配置: "Configured",
-  "在本机 .env 中填写 ONEBOT_TOKEN，然后重启 LuckyTri":
-    "Set ONEBOT_TOKEN in the local .env file, then restart LuckyTri",
+  "本机接入无需单独令牌，请确认接入端已登录并启用反向 WebSocket 客户端":
+    "Local clients need no separate token. Check that the client is signed in and its reverse WebSocket client is enabled.",
   "OneBot 11 反向 WebSocket 已连接": "OneBot 11 reverse WebSocket connected",
-  "在接入端配置 OneBot 11 反向 WebSocket 客户端":
-    "Configure a OneBot 11 reverse WebSocket client in your OneBot client",
   当前模型已测试: "Current model tested",
   "模型配置已变更，请重新测试": "The model settings changed. Test again.",
   "保存模型配置后，点击测试模型连接":

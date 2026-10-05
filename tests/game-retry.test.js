@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { world, MINUTE } from "./helpers/world.js";
-import { createApp } from "../server/app.js";
+import { createApp } from "./helpers/app.js";
 
 // A committed window from the live failure: 5,125 whole milliseconds were
 // credited, while the old floating-point requirement was 5,125.000000000002.

@@ -111,6 +111,7 @@ export class Mind {
     this.time = new TimeSystem(this);
     this.senses = new Senses();
     this.observations = new Observations(this);
+    this.body = () => [];
     this.days.reconcile();
   }
   timeZone() {
@@ -118,6 +119,11 @@ export class Mind {
   }
   view(options) {
     return innerView(this, options);
+  }
+  // The whole system is one body she can read: what is connected, and
+  // whether each plugin is on. The studio shows the same state.
+  embody(read) {
+    this.body = typeof read === "function" ? read : () => [];
   }
   attention(session) {
     return (

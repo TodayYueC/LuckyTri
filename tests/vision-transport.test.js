@@ -43,10 +43,15 @@ async function fixture(t, { maxMb } = {}) {
     store.db.close();
   });
 
-  async function connect(token = effectiveOneBotToken(store)) {
+  async function connect(token = effectiveOneBotToken(store), origin) {
     const ws = new WebSocket(
       `ws://127.0.0.1:${server.address().port}/onebot/v11/ws`,
-      { headers: { Authorization: `Bearer ${token}` } },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(origin ? { Origin: origin } : {}),
+        },
+      },
     );
     clients.push(ws);
     ws.on("error", () => {});
@@ -147,9 +152,12 @@ test("large ordinary events and unrelated RPC replies cannot enter chat or consu
   assert.equal(channel.status().online, true);
 });
 
-test("the larger image frame allowance is unavailable without authentication", async (t) => {
+test("the larger image frame allowance is unavailable to a cross-site browser", async (t) => {
   const { channel, received, connect } = await fixture(t);
-  await assert.rejects(connect("wrong-image-token"), /HTTP 401/);
+  await assert.rejects(
+    connect("wrong-image-token", "https://untrusted.example"),
+    /HTTP 401/,
+  );
   assert.equal(channel.status().online, false);
   assert.deepEqual(received, []);
   const ws = await connect();

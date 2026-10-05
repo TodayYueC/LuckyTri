@@ -1,7 +1,6 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
-import { tokenEqual } from "../../http.js";
-import { effectiveOneBotToken } from "./token.js";
+import { effectiveOneBotToken, authorizeOneBot } from "./token.js";
 import { onebot, normalize } from "./adapter.js";
 import { defineChannel } from "../contract.js";
 import { parseSessionKey } from "../session-key.js";
@@ -14,7 +13,10 @@ const IMAGE_TIMEOUT_MS = 30000;
 
 // OneBot 11 over a reverse WebSocket: a client she does not manage (any
 // OneBot 11 implementation) connects to /onebot/v11/ws with the shared token.
-export function createOneBotChannel(store) {
+export function createOneBotChannel(
+  store,
+  { verifyPassword = async () => false } = {},
+) {
   const pending = new Map();
   const botMessageIds = new Set();
   let running = false;
@@ -171,17 +173,14 @@ export function createOneBotChannel(store) {
       noServer: true,
       maxPayload: Math.ceil(imageBytes / 3) * 4 + EVENT_MAX_BYTES,
     });
-    httpServer.on("upgrade", (req, sock, head) => {
-      if (
-        !running ||
-        req.url !== "/onebot/v11/ws" ||
-        !effectiveOneBotToken(store) ||
-        !tokenEqual(
-          req.headers.authorization,
-          `Bearer ${effectiveOneBotToken(store)}`,
-        ) ||
-        socket
-      ) {
+    httpServer.on("upgrade", async (req, sock, head) => {
+      let authorized = false;
+      try {
+        authorized = await authorizeOneBot(req, store, verifyPassword);
+      } catch {
+        /* Never expose credentials or verifier errors. */
+      }
+      if (!running || req.url !== "/onebot/v11/ws" || !authorized || socket) {
         sock.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
         sock.destroy();
         return;
@@ -312,7 +311,7 @@ export function createOneBotChannel(store) {
       lastEventAt,
       lastDisconnectAt,
       tokenConfigured: !!effectiveOneBotToken(store),
-      adminProtected: !!process.env.ADMIN_TOKEN,
+      localConnectionAllowed: true,
       wsPath: "/onebot/v11/ws",
       port: Number(process.env.PORT || 3210),
     };

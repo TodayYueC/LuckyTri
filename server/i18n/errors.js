@@ -2,9 +2,28 @@
 // key, exactly as the code writes it. `{0}` stands for a value the code puts
 // into the message; patterns are used when a message carries one.
 export const ERRORS = {
+  请使用本机命令重置管理密码:
+    "Use the local CLI to reset the management password",
+  "LUCKYTRI_HOME / --home 必须是绝对路径 (must be an absolute path)":
+    "LUCKYTRI_HOME / --home must be an absolute path",
+  "用户数据不能存放在 npm 安装目录内 (user data cannot live inside the npm package)":
+    "User data cannot live inside the npm package",
   // app.js
   不允许跨站访问: "Cross-site access is not allowed",
-  请输入管理令牌: "Enter the admin token",
+  请先登录管理台: "Sign in to the studio first",
+  "密码长度应为 8–256 个字符": "The password must contain 8–256 characters",
+  "尝试次数过多，请稍后再试": "Too many attempts. Please try again later.",
+  首次设置密码请在本机打开管理台:
+    "Open the studio on this computer to set the first password",
+  "管理密码已设置，请登录":
+    "A management password is already set. Please sign in.",
+  密码不正确: "Incorrect password",
+  当前密码不正确: "The current password is incorrect",
+  "密码已变化，请重新登录": "The password changed. Please sign in again.",
+  本机服务凭据必须是普通文件:
+    "The local service credential must be a regular file",
+  "本机服务凭据无效，请检查实例目录":
+    "The local service credential is invalid. Check the instance directory.",
   "请提交 JSON 对象": "Submit a JSON object",
   请求内容过大: "The request is too large",
   "JSON 格式无效": "The JSON is invalid",
@@ -159,8 +178,8 @@ export const ERRORS = {
   恢复目标已被其他进程创建: "The restore target was created by another process",
   "数据库版本较新，请升级 LuckyTri；未修改数据":
     "The database version is newer. Upgrade LuckyTri; nothing was changed.",
-  "绑定外网地址前必须设置 ADMIN_TOKEN":
-    "ADMIN_TOKEN must be set before binding to a public address",
+  绑定外网地址前请先在本机设置管理密码:
+    "Set a management password on this computer before binding to a public address",
 
   // knowledge
   知识向量未启用: "Knowledge vectors are not enabled",

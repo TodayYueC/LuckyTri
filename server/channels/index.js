@@ -6,7 +6,10 @@ import { createQqBotChannel } from "./qqbot/index.js";
 // look like) and its factory a line in createChannels. Nothing above the hub
 // changes.
 export function createChannels(store, options = {}) {
-  return [createOneBotChannel(store), createQqBotChannel(store, options.qqbot)];
+  return [
+    createOneBotChannel(store, options.onebot),
+    createQqBotChannel(store, options.qqbot),
+  ];
 }
 
 export { createChannelHub, selectedChannel, CHANNEL_TYPES } from "./hub.js";

@@ -20,13 +20,12 @@ export default {
   "自备接入端，通过反向 WebSocket 连接。能看到全部群消息。":
     "Bring your own client and connect over a reverse WebSocket. Sees every group message.",
   "反向 WebSocket 地址": "Reverse WebSocket address",
-  连接令牌: "Access token",
-  已配置: "Configured",
-  尚未配置: "Not configured",
-  "在本机 .env 中设置 ONEBOT_TOKEN，修改后重启 LuckyTri。":
-    "Set ONEBOT_TOKEN in the local .env file, then restart LuckyTri.",
-  "在你使用的 OneBot 11 接入端里启用反向 WebSocket 客户端，填写上方地址和相同令牌，消息格式选择数组。":
-    "In the OneBot 11 client you use, enable a reverse WebSocket client with the address above and the same token. Choose the array message format.",
+  "同一台电脑上的接入端无需单独配置连接令牌。":
+    "Clients on the same computer need no separate connection token.",
+  "在接入端启用反向 WebSocket 客户端，填写上方地址，消息格式选择数组。已有的地址配置可以继续使用。":
+    "Enable a reverse WebSocket client, use the address above, and choose array messages. Existing address settings can stay as they are.",
+  "远程接入时，连接密码使用管理密码；已有的远程连接令牌仍兼容。":
+    "Remote clients can use the management password. Existing remote access tokens remain supported.",
   "在接入端完成 QQ 登录。连接成功后，本页状态会更新；新会话仍需在「对话」中开启参与。":
     "Sign in to QQ in that client. This page updates once it connects; new chats still need to be switched on under Chats.",
   "LuckyTri 只负责接收，不提供、不安装也不管理接入端。":

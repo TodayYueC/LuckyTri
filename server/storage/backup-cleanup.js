@@ -1,4 +1,6 @@
 import { Worker } from "node:worker_threads";
+import { runtimePaths } from "../paths.js";
+import { backupDirectory } from "../../scripts/backup.js";
 import { dirname, join, resolve } from "node:path";
 import {
   existsSync,
@@ -292,9 +294,8 @@ function workerRun(payload) {
 export function createBackupCleanup({
   store,
   backup,
-  source = process.env.DB_PATH || "data/friend.db",
-  directory = process.env.BACKUP_DIR ||
-    join(dirname(resolve(source)), "backups"),
+  source = runtimePaths().database,
+  directory = backupDirectory(source),
   now = () => Date.now(),
   run = workerRun,
   log = console,

@@ -89,6 +89,7 @@ Replay runs the same pipeline but only reads the mind as it was before that mome
 These are the promises the code and the tests guard together; make sure they still hold when you change something.
 
 - **One her**: a session only marks where something happened, it does not wall off her self.
+- **The system is one**: she can perceive her own state, including what is connected and whether a plugin is on. The studio and what she knows are the same state.
 - **Sourced, gradual, undoable**: mind tables are append-only; each change cites a specific experience; an undo leaves a tombstone and is never written back.
 - **Fading is computed at read time**: no "faded" flag is stored, so replay only reads the past; fading counts the days she lived through, not calendar days.
 - **Discretion follows the source**: what was learned privately or told in confidence never appears in another room.

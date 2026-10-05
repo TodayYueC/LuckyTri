@@ -1,4 +1,5 @@
-import { realpathSync } from "node:fs";
+import { runtimePaths } from "../paths.js";
+import { VERSION } from "../version.js";
 import { publicSession } from "../channels/session-key.js";
 import { CHANNEL_TYPES } from "../channels/hub.js";
 import { readiness } from "./readiness.js";
@@ -39,7 +40,9 @@ export function mountStudio(app, store, runtime, chat) {
   app.get("/api/service/status", (req, res) =>
     res.json({
       app: "luckybot",
-      workspace: realpathSync(process.cwd()),
+      workspace: runtimePaths().package,
+      home: runtimePaths().home,
+      version: VERSION,
       pid: process.pid,
       schemaVersion: store.db.prepare("PRAGMA user_version").get().user_version,
     }),

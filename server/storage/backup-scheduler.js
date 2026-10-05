@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { constants, setPriority } from "node:os";
 import { fileURLToPath } from "node:url";
+import { runtimePaths } from "../paths.js";
 import {
   autoBackupDue,
   autoBackupOptions,
@@ -19,7 +20,7 @@ const HOUR = 60 * MINUTE;
 // newest few are kept. `BACKUP_INTERVAL_HOURS=0` turns it off.
 export function createBackupScheduler({
   env = process.env,
-  directory = backupDirectory(env.DB_PATH || "data/friend.db", env),
+  directory = backupDirectory(runtimePaths(env).database, env),
   now = () => Date.now(),
   start = spawn,
   log = console,
@@ -27,7 +28,7 @@ export function createBackupScheduler({
   checkEveryMs = 10 * MINUTE,
 } = {}) {
   const options = autoBackupOptions(env);
-  const source = env.DB_PATH || "data/friend.db";
+  const source = runtimePaths(env).database;
   let running = null;
   let failures = 0;
   let lastError = null;
@@ -74,7 +75,12 @@ export function createBackupScheduler({
       }
       if (!due) return false;
       const child = start(process.execPath, [SCRIPT, "--auto"], {
-        env: { ...env, BACKUP_DIR: directory },
+        env: {
+          ...env,
+          LUCKYTRI_HOME: runtimePaths(env).home,
+          DB_PATH: source,
+          BACKUP_DIR: directory,
+        },
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
       });

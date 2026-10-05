@@ -9,11 +9,18 @@ import { WebSocket } from "ws";
 // Keep the default convenient for local runs, but allow CI/desktop sessions
 // with an already reserved port to choose an isolated listener.
 const port = Number(process.env.UI_TEST_PORT || 3211);
+const instance = mkdtempSync(join(tmpdir(), "lucky-test-"));
 const server = spawn(process.execPath, ["server/index.js"], {
   env: {
     ...process.env,
     PORT: String(port),
-    DB_PATH: join(mkdtempSync(join(tmpdir(), "lucky-test-")), "test.db"),
+    LUCKYTRI_HOME: instance,
+    HOST: "127.0.0.1",
+    QQBOT_APP_ID: "",
+    QQBOT_APP_SECRET: "",
+    EMBEDDING_API_KEY: "",
+    LUCKYTRI_CHANNEL: "onebot",
+    DB_PATH: join(instance, "test.db"),
     ADMIN_TOKEN: "admin-test",
     ONEBOT_TOKEN: "qq-test",
     LLM_API_KEY: "",
@@ -116,7 +123,11 @@ try {
   mkdirSync("workspace/ui-review", { recursive: true });
   p.on("pageerror", (e) => errors.push(e.message));
   p.on("dialog", (dialog) => dialog.accept());
-  await p.addInitScript(() => (sessionStorage.token = "admin-test"));
+  const login = await p.request.post(base + "/api/auth/setup", {
+    data: { password: "ui-smoke-password" },
+  });
+  assert.equal(login.status(), 200);
+  const studioCookie = login.headers()["set-cookie"].split(";")[0];
   // Names from the old studio map onto the new areas and their sub-views.
   const AREA = {
     overview: ["now"],
@@ -426,7 +437,7 @@ try {
   await p.waitForTimeout(200);
   const data = await (
     await fetch(base + "/api/state", {
-      headers: { Authorization: "Bearer admin-test" },
+      headers: { Cookie: studioCookie },
     })
   ).json();
   assert(
@@ -627,7 +638,7 @@ try {
     .getByText("无需刷新收到第二条", { exact: true })
     .waitFor({ timeout: 10000 });
   live.close();
-  const headers = { Authorization: "Bearer admin-test" };
+  const headers = { Cookie: studioCookie };
   await p.request.post(base + "/api/core/sessions", {
     headers,
     data: { id: "54321", kind: "group", name: "第二个测试群" },

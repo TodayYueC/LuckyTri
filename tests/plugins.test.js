@@ -87,6 +87,29 @@ test("built-in activities are classified as before", () => {
   assert.equal(classifyActivity("随便看看"), "unknown");
 });
 
+test("she can tell whether a part of her is connected", () => {
+  const w = world();
+  try {
+    const host = new PluginHost({
+      store: w.store,
+      chat: w.system,
+      channel: { status: () => ({ online: true }) },
+      life: w.life,
+      dataRoot: mkdtempSync(join(tmpdir(), "lt-plugins-")),
+    });
+    host.scan();
+    w.mind.embody(() => host.aware());
+    const view = w.mind.view({
+      session: "onebot:1:private:1",
+      kind: "private",
+      now: w.now(),
+    });
+    assert.deepEqual(view.inner.body, ["QQ 接上了", "天气还没有接上"]);
+  } finally {
+    w.close();
+  }
+});
+
 test("a private sense stays out of a group, and an observation can be undone", () => {
   const w = world();
   try {

@@ -541,7 +541,8 @@ function stateLabel(plugin: any) {
 .grid {
   display: grid;
   gap: var(--gap);
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 420px));
+  justify-content: start;
 }
 .muted {
   color: var(--ink-soft);

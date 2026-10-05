@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { runtimePaths } from "../paths.js";
 import {
   asPlainDocument,
   chunkText,
@@ -116,8 +117,8 @@ export class KnowledgeManager {
     const id = randomUUID(),
       now = Date.now(),
       hash = createHash("sha256").update(text).digest("hex");
-    mkdirSync("data/knowledge", { recursive: true });
-    const path = join("data/knowledge", id + ".md");
+    mkdirSync(runtimePaths().knowledge, { recursive: true, mode: 0o700 });
+    const path = join(runtimePaths().knowledge, id + ".md");
     writeFileSync(path, text);
     this.repo.db
       .prepare(

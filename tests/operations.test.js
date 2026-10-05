@@ -13,15 +13,14 @@ import {
 } from "../server/studio/readiness.js";
 import { ChatSystem } from "../server/core/orchestrator.js";
 
-test("生成两枚不同随机令牌且不覆盖已有配置", () => {
+test("生成无需手动令牌的配置且不覆盖已有文件", () => {
   const dir = mkdtempSync(join(tmpdir(), "lucky-setup-"));
   assert.equal(initializeEnvironment(dir), true);
   const env = readFileSync(join(dir, ".env"), "utf8");
   const tokens = [
     ...env.matchAll(/(?:ADMIN|ONEBOT)_TOKEN=([a-f0-9]{64})/g),
   ].map((m) => m[1]);
-  assert.equal(tokens.length, 2);
-  assert.notEqual(tokens[0], tokens[1]);
+  assert.equal(tokens.length, 0);
   writeFileSync(join(dir, ".env"), "MY_EXISTING_CONFIG=yes");
   assert.equal(initializeEnvironment(dir), false);
   assert.equal(

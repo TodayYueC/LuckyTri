@@ -8,17 +8,17 @@ Only one channel is active at a time. Switch under "System → Connect QQ"; swit
 
 ## How to choose
 
-| | OneBot 11 | QQ official bot |
-| --- | --- | --- |
-| What you need | An OneBot 11 connector of your own (with reverse WebSocket client support) and a QQ account | A bot on the QQ Open Platform: AppID and AppSecret |
-| Direction | The connector connects to LuckyTri's `/onebot/v11/ws` | LuckyTri connects to the Open Platform's WebSocket gateway |
-| Logging in to QQ | Done in the connector | Not needed |
-| Group message scope | All group messages | All of them when "receive all messages" is enabled on the Open Platform; otherwise only messages that @ her |
-| Names | Group names and nicknames are available | The official interface gives no group names and one-to-one nicknames are often empty; you can rename a session under "Chat" |
-| Recognizing people across groups | By QQ number: the same person in every group and private chat | The same person has a different openid in each group; she can only tell it is one person when the platform provides a unified identity (`union_openid`) |
-| Replying | Any time | Inside the passive-reply window (5 minutes in groups, 60 minutes in one-to-one) as a reply to the original message, each bubble with a rising sequence number; beyond it a proactive message is sent |
-| Reaching out | No extra limits | Sent as proactive messages; when a person or group has turned the bot's proactive messages off, she waits for them to come to her |
-| Images | Fetched through the connector | Attachment URLs go through the same vision path; only official media domains are allowed |
+|                                  | OneBot 11                                                                                   | QQ official bot                                                                                                                                                                                      |
+| -------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What you need                    | An OneBot 11 connector of your own (with reverse WebSocket client support) and a QQ account | A bot on the QQ Open Platform: AppID and AppSecret                                                                                                                                                   |
+| Direction                        | The connector connects to LuckyTri's `/onebot/v11/ws`                                       | LuckyTri connects to the Open Platform's WebSocket gateway                                                                                                                                           |
+| Logging in to QQ                 | Done in the connector                                                                       | Not needed                                                                                                                                                                                           |
+| Group message scope              | All group messages                                                                          | All of them when "receive all messages" is enabled on the Open Platform; otherwise only messages that @ her                                                                                          |
+| Names                            | Group names and nicknames are available                                                     | The official interface gives no group names and one-to-one nicknames are often empty; you can rename a session under "Chat"                                                                          |
+| Recognizing people across groups | By QQ number: the same person in every group and private chat                               | The same person has a different openid in each group; she can only tell it is one person when the platform provides a unified identity (`union_openid`)                                              |
+| Replying                         | Any time                                                                                    | Inside the passive-reply window (5 minutes in groups, 60 minutes in one-to-one) as a reply to the original message, each bubble with a rising sequence number; beyond it a proactive message is sent |
+| Reaching out                     | No extra limits                                                                             | Sent as proactive messages; when a person or group has turned the bot's proactive messages off, she waits for them to come to her                                                                    |
+| Images                           | Fetched through the connector                                                               | Attachment URLs go through the same vision path; only official media domains are allowed                                                                                                             |
 
 Neither is "more right". If you want every group message and don't mind running a connector, pick OneBot 11. If you would rather not log in to QQ or maintain a connector, pick the official bot and enable "receive all messages" on the Open Platform.
 
@@ -26,14 +26,14 @@ Neither is "more right". If you want every group message and don't mind running 
 
 LuckyTri only implements the reverse-WebSocket side of OneBot 11 and ships no connector.
 
-| Item | Value |
-| --- | --- |
-| Protocol | OneBot 11 |
-| Reverse WebSocket URL | `ws://127.0.0.1:3210/onebot/v11/ws` (the port is your `PORT`) |
-| Token | `ONEBOT_TOKEN` from `.env` |
-| Message format | array |
+| Item                  | Value                                                                                   |
+| --------------------- | --------------------------------------------------------------------------------------- |
+| Protocol              | OneBot 11                                                                               |
+| Reverse WebSocket URL | `ws://127.0.0.1:3210/onebot/v11/ws` (the port is your `PORT`)                           |
+| Token                 | Not needed locally; remote clients can use the management password or an existing token |
+| Message format        | array                                                                                   |
 
-When the connector is on another machine, replace `127.0.0.1` with an address that reaches LuckyTri and set `ADMIN_TOKEN` first. Session keys look like `onebot:<account>:group:<group id>` and `onebot:<account>:private:<QQ number>`; the early `group:<group id>` form is still recognized.
+For remote or container access, use the reachable LuckyTri address and set a management password locally first. Local clients can keep their existing address and QQ sign-in.
 
 ## QQ official bot
 

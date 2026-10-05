@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, relative } from "node:path";
-import { pathToFileURL } from "node:url";
+import { validateManifest } from "../server/plugins/manifest.js";
 
 const command = process.argv[2];
 const arg = process.argv[3];
@@ -137,9 +137,6 @@ if (command === "new") {
   console.log(`ok ${index.plugins.length}`);
 } else if (command === "check") {
   const dir = resolveDir(arg);
-  const { validateManifest } = await import(
-    pathToFileURL(join(process.cwd(), "server/plugins/manifest.js")).href
-  );
   const manifest = validateManifest(
     JSON.parse(readFileSync(join(dir, "luckytri-plugin.json"), "utf8")),
   );
@@ -151,6 +148,3 @@ if (command === "new") {
 function resolveDir(value) {
   return value || ".";
 }
-
-void randomBytes;
-void spawn;

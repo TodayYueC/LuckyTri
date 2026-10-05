@@ -24,6 +24,7 @@ import {
 import { API_FEATURES, PERMISSIONS } from "./permissions.js";
 import { readManifest } from "./manifest.js";
 import { createInstaller } from "./install.js";
+import { runtimePaths } from "../paths.js";
 
 const RUNNER = fileURLToPath(new URL("./runner/worker.mjs", import.meta.url));
 const ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
@@ -52,7 +53,7 @@ export class PluginHost {
     channel,
     life,
     root = ROOT,
-    dataRoot = join(process.cwd(), "data", "plugins"),
+    dataRoot = runtimePaths().plugins,
     now = () => Date.now(),
   }) {
     this.store = store;
@@ -68,6 +69,25 @@ export class PluginHost {
     this.closed = false;
     this.seen = { phase: "", mood: "", activity: "" };
     this.install = createInstaller(this);
+  }
+  // What she herself can tell about this system. The studio reads the same rows.
+  aware() {
+    const lines = [];
+    try {
+      const link = this.channel?.status?.();
+      if (link && "online" in link)
+        lines.push(link.online ? "QQ 接上了" : "QQ 还没接上");
+    } catch {
+      /* A channel that cannot answer still leaves the plugins visible. */
+    }
+    for (const item of this.list()) {
+      const name = item.manifest?.name || item.id;
+      if (item.state === "error") lines.push(`${name}接上时出错了`);
+      else if (!item.enabled) lines.push(`${name}还没有接上`);
+      else if (item.running) lines.push(`${name}开着`);
+      else lines.push(`${name}正在接上`);
+    }
+    return lines.slice(0, 8);
   }
   allows(id, permission) {
     const row = decode(rowOf(this.db, id));

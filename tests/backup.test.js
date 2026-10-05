@@ -35,7 +35,7 @@ import {
 } from "../server/storage/archive.js";
 import { withBackupLock } from "../server/storage/backup-lock.js";
 import { createBackupScheduler } from "../server/storage/backup-scheduler.js";
-import { createApp } from "../server/app.js";
+import { createApp } from "./helpers/app.js";
 import { world } from "./helpers/world.js";
 
 const DAY = 86400000;
@@ -593,7 +593,10 @@ test("自定义数据库的备份留在该数据库旁，子进程沿用相同�
   const w = workspace();
   try {
     assert.equal(backupDirectory(w.source, {}), w.backups);
-    assert.equal(backupDirectory(w.source, { BACKUP_DIR: "chosen" }), "chosen");
+    assert.equal(
+      backupDirectory(w.source, { LUCKYTRI_HOME: w.dir, BACKUP_DIR: "chosen" }),
+      join(w.dir, "chosen"),
+    );
     const h = harness({ DB_PATH: w.source }, w.dir);
     h.advance(3 * 60000);
     assert.equal(h.scheduler.tick(), true);

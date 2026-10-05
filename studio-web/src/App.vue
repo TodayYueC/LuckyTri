@@ -20,6 +20,7 @@ import Confirm from "./components/ui/Confirm.vue";
 import Icon from "./components/ui/Icon.vue";
 import Sheet from "./components/ui/Sheet.vue";
 import { views, preloadPage, warmPages } from "./pages";
+import AccessGate from "./components/AccessGate.vue";
 
 applyTheme();
 
@@ -140,208 +141,211 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <MoodSky />
-  <div v-if="studio.error" class="startup">
-    <TaOrb mood="blue" :size="128" />
-    <span class="eyebrow">{{ t("暂未连接") }}</span>
-    <h1>{{ t("TA 在等你回来") }}</h1>
-    <p>{{ studio.error }}</p>
-    <button class="primary" @click="reloadPage">{{ t("重新连接") }}</button>
-  </div>
-  <div
-    v-else-if="studio.core && studio.health"
-    class="shell"
-    :class="'at-' + studio.page"
-  >
-    <a class="skip-link" href="#main" @click.prevent="focusMain">{{
-      t("跳到主要内容")
-    }}</a>
-    <nav class="dock primary-nav" :aria-label="t('主要功能')">
-      <button
-        class="dock-ta"
-        data-page="now"
-        :class="{ active: studio.page === 'now' }"
-        :aria-current="studio.page === 'now' ? 'page' : undefined"
-        :aria-label="t('{name}：回到此刻', { name })"
-        @click="go('now')"
-      >
-        <TaOrb :mood="liveMood" :activity="activity" :size="50" />
-        <span class="dock-ta-text rail-label">
-          <b>LuckyTri</b>
-          <small
-            >{{ name !== "LuckyTri" ? name + " · " : ""
-            }}{{ MOODS[liveMood].label }} ·
-            {{ ACTIVITY_LABELS[activity] || t("闲着") }}</small
-          >
-        </span>
-      </button>
-      <div class="dock-groups">
-        <section v-for="group in NAV" :key="group.label" class="dock-group">
-          <h2 class="rail-label">{{ group.label }}</h2>
-          <button
-            v-for="key in group.pages"
-            :key="key"
-            class="dock-link"
-            :data-page="key"
-            :class="{ active: studio.page === key }"
-            :aria-current="studio.page === key ? 'page' : undefined"
-            :title="AREAS[key].label"
-            @click="go(key)"
-            @pointerenter="preloadPage(key).catch(() => {})"
-            @focus="preloadPage(key).catch(() => {})"
-          >
-            <Icon :name="key" />
-            <span class="rail-label">{{ AREAS[key].label }}</span>
-          </button>
-        </section>
-      </div>
-      <div class="dock-foot">
-        <ThemePicker />
-        <button
-          class="dock-tool"
-          :aria-pressed="theme.quiet"
-          :title="theme.quiet ? t('开启灵动效果') : t('减少动画')"
-          @click="setQuiet(!theme.quiet)"
-        >
-          <Icon name="motion" />
-          <span class="rail-label">{{
-            theme.quiet ? t("开启灵动效果") : t("减少动画")
-          }}</span>
-        </button>
-        <a
-          class="dock-tool"
-          :href="guideHref"
-          target="_blank"
-          rel="noopener"
-          :title="t('使用教程')"
-        >
-          <Icon name="guide" />
-          <span class="rail-label">{{ t("使用教程 ↗") }}</span>
-        </a>
-      </div>
-    </nav>
-
-    <div class="workspace">
-      <NowStatusDock />
-
-      <main id="main" tabindex="-1">
-        <header class="topbar">
-          <div class="topbar-title">
-            <span v-if="locale === 'zh'" class="eyebrow">{{ area.en }}</span>
-            <h1>{{ area.label }}</h1>
-            <p>{{ area.tagline }}</p>
-          </div>
-          <div class="topbar-actions">
-            <LocaleSwitch />
-            <button
-              id="connection"
-              class="pill"
-              :class="{ offline: !online }"
-              :title="online ? t('QQ 已连接') : t('去连接 QQ')"
-              @click="online || go('system', 'connect')"
-            >
-              <span class="dot" :class="{ off: !online }"></span
-              >{{ online ? t("QQ 已连接") : t("QQ 未连接") }}
-            </button>
-            <button
-              id="refresh"
-              class="icon-button"
-              :aria-label="t('刷新当前数据')"
-              :title="t('刷新')"
-              :disabled="refreshing"
-              :class="{ spinning: refreshing }"
-              @click="refresh"
-            >
-              <Icon name="refresh" />
-            </button>
-          </div>
-        </header>
-        <div v-if="studio.dirty" class="draft-banner" role="status">
-          <span class="dot warn"></span>{{ t("草稿还没保存，保存后才会生效") }}
-        </div>
-        <div class="view" :class="'page-' + studio.page">
-          <KeepAlive
-            :max="5"
-            :include="[
-              'NowPage',
-              'HeartPage',
-              'PeoplePage',
-              'LifePage',
-              'TimePage',
-            ]"
-          >
-            <component
-              :is="views[studio.page]"
-              :key="studio.page"
-              class="route-page"
-            />
-          </KeepAlive>
-        </div>
-      </main>
+  <AccessGate>
+    <MoodSky />
+    <div v-if="studio.error" class="startup">
+      <TaOrb mood="blue" :size="128" />
+      <span class="eyebrow">{{ t("暂未连接") }}</span>
+      <h1>{{ t("TA 在等你回来") }}</h1>
+      <p>{{ studio.error }}</p>
+      <button class="primary" @click="reloadPage">{{ t("重新连接") }}</button>
     </div>
-
-    <nav class="tabbar" :aria-label="t('主要功能')">
-      <button
-        v-for="key in MOBILE_TABS"
-        :key="key"
-        :data-page="key"
-        :class="{ active: studio.page === key }"
-        :aria-current="studio.page === key ? 'page' : undefined"
-        @click="go(key)"
-      >
-        <Icon :name="key" />
-        <span>{{ AREAS[key].label }}</span>
-      </button>
-      <button
-        class="tabbar-more"
-        :class="{ active: moreActive }"
-        :aria-expanded="studio.moreOpen"
-        @click="studio.moreOpen = !studio.moreOpen"
-      >
-        <Icon name="more" />
-        <span>{{ t("更多") }}</span>
-      </button>
-    </nav>
-    <Sheet
-      :open="studio.moreOpen"
-      :title="t('更多')"
-      :eyebrow="t('更多')"
-      width="420px"
-      @close="studio.moreOpen = false"
+    <div
+      v-else-if="studio.core && studio.health"
+      class="shell"
+      :class="'at-' + studio.page"
     >
-      <div class="more-grid">
+      <a class="skip-link" href="#main" @click.prevent="focusMain">{{
+        t("跳到主要内容")
+      }}</a>
+      <nav class="dock primary-nav" :aria-label="t('主要功能')">
         <button
-          v-for="key in MOBILE_MORE"
+          class="dock-ta"
+          data-page="now"
+          :class="{ active: studio.page === 'now' }"
+          :aria-current="studio.page === 'now' ? 'page' : undefined"
+          :aria-label="t('{name}：回到此刻', { name })"
+          @click="go('now')"
+        >
+          <TaOrb :mood="liveMood" :activity="activity" :size="50" />
+          <span class="dock-ta-text rail-label">
+            <b>LuckyTri</b>
+            <small
+              >{{ name !== "LuckyTri" ? name + " · " : ""
+              }}{{ MOODS[liveMood].label }} ·
+              {{ ACTIVITY_LABELS[activity] || t("闲着") }}</small
+            >
+          </span>
+        </button>
+        <div class="dock-groups">
+          <section v-for="group in NAV" :key="group.label" class="dock-group">
+            <h2 class="rail-label">{{ group.label }}</h2>
+            <button
+              v-for="key in group.pages"
+              :key="key"
+              class="dock-link"
+              :data-page="key"
+              :class="{ active: studio.page === key }"
+              :aria-current="studio.page === key ? 'page' : undefined"
+              :title="AREAS[key].label"
+              @click="go(key)"
+              @pointerenter="preloadPage(key).catch(() => {})"
+              @focus="preloadPage(key).catch(() => {})"
+            >
+              <Icon :name="key" />
+              <span class="rail-label">{{ AREAS[key].label }}</span>
+            </button>
+          </section>
+        </div>
+        <div class="dock-foot">
+          <ThemePicker />
+          <button
+            class="dock-tool"
+            :aria-pressed="theme.quiet"
+            :title="theme.quiet ? t('开启灵动效果') : t('减少动画')"
+            @click="setQuiet(!theme.quiet)"
+          >
+            <Icon name="motion" />
+            <span class="rail-label">{{
+              theme.quiet ? t("开启灵动效果") : t("减少动画")
+            }}</span>
+          </button>
+          <a
+            class="dock-tool"
+            :href="guideHref"
+            target="_blank"
+            rel="noopener"
+            :title="t('使用教程')"
+          >
+            <Icon name="guide" />
+            <span class="rail-label">{{ t("使用教程 ↗") }}</span>
+          </a>
+        </div>
+      </nav>
+
+      <div class="workspace">
+        <NowStatusDock />
+
+        <main id="main" tabindex="-1">
+          <header class="topbar">
+            <div class="topbar-title">
+              <span v-if="locale === 'zh'" class="eyebrow">{{ area.en }}</span>
+              <h1>{{ area.label }}</h1>
+              <p>{{ area.tagline }}</p>
+            </div>
+            <div class="topbar-actions">
+              <LocaleSwitch />
+              <button
+                id="connection"
+                class="pill"
+                :class="{ offline: !online }"
+                :title="online ? t('QQ 已连接') : t('去连接 QQ')"
+                @click="online || go('system', 'connect')"
+              >
+                <span class="dot" :class="{ off: !online }"></span
+                >{{ online ? t("QQ 已连接") : t("QQ 未连接") }}
+              </button>
+              <button
+                id="refresh"
+                class="icon-button"
+                :aria-label="t('刷新当前数据')"
+                :title="t('刷新')"
+                :disabled="refreshing"
+                :class="{ spinning: refreshing }"
+                @click="refresh"
+              >
+                <Icon name="refresh" />
+              </button>
+            </div>
+          </header>
+          <div v-if="studio.dirty" class="draft-banner" role="status">
+            <span class="dot warn"></span
+            >{{ t("草稿还没保存，保存后才会生效") }}
+          </div>
+          <div class="view" :class="'page-' + studio.page">
+            <KeepAlive
+              :max="5"
+              :include="[
+                'NowPage',
+                'HeartPage',
+                'PeoplePage',
+                'LifePage',
+                'TimePage',
+              ]"
+            >
+              <component
+                :is="views[studio.page]"
+                :key="studio.page"
+                class="route-page"
+              />
+            </KeepAlive>
+          </div>
+        </main>
+      </div>
+
+      <nav class="tabbar" :aria-label="t('主要功能')">
+        <button
+          v-for="key in MOBILE_TABS"
           :key="key"
           :data-page="key"
           :class="{ active: studio.page === key }"
+          :aria-current="studio.page === key ? 'page' : undefined"
           @click="go(key)"
         >
           <Icon :name="key" />
-          <b>{{ AREAS[key].label }}</b>
-          <small>{{ AREAS[key].tagline }}</small>
+          <span>{{ AREAS[key].label }}</span>
         </button>
-      </div>
-      <h3 class="more-title">{{ t("界面主题") }}</h3>
-      <ThemePicker inline />
-      <div class="row more-tools">
-        <button :aria-pressed="theme.quiet" @click="setQuiet(!theme.quiet)">
-          {{ theme.quiet ? t("开启灵动效果") : t("减少动画") }}
+        <button
+          class="tabbar-more"
+          :class="{ active: moreActive }"
+          :aria-expanded="studio.moreOpen"
+          @click="studio.moreOpen = !studio.moreOpen"
+        >
+          <Icon name="more" />
+          <span>{{ t("更多") }}</span>
         </button>
-        <a :href="guideHref" target="_blank" rel="noopener">{{
-          t("使用教程 ↗")
-        }}</a>
-      </div>
-    </Sheet>
+      </nav>
+      <Sheet
+        :open="studio.moreOpen"
+        :title="t('更多')"
+        :eyebrow="t('更多')"
+        width="420px"
+        @close="studio.moreOpen = false"
+      >
+        <div class="more-grid">
+          <button
+            v-for="key in MOBILE_MORE"
+            :key="key"
+            :data-page="key"
+            :class="{ active: studio.page === key }"
+            @click="go(key)"
+          >
+            <Icon :name="key" />
+            <b>{{ AREAS[key].label }}</b>
+            <small>{{ AREAS[key].tagline }}</small>
+          </button>
+        </div>
+        <h3 class="more-title">{{ t("界面主题") }}</h3>
+        <ThemePicker inline />
+        <div class="row more-tools">
+          <button :aria-pressed="theme.quiet" @click="setQuiet(!theme.quiet)">
+            {{ theme.quiet ? t("开启灵动效果") : t("减少动画") }}
+          </button>
+          <a :href="guideHref" target="_blank" rel="noopener">{{
+            t("使用教程 ↗")
+          }}</a>
+        </div>
+      </Sheet>
 
-    <TaCompanion :hide-orb="studio.page === 'now'" />
-  </div>
-  <div v-else class="startup" role="status">
-    <TaOrb :mood="liveMood" activity="idle" :size="128" />
-    <h1>{{ t("正在进入 TA 的小世界") }}</h1>
-    <p>{{ t("连接会话与记忆…") }}</p>
-  </div>
-  <Confirm />
+      <TaCompanion :hide-orb="studio.page === 'now'" />
+    </div>
+    <div v-else class="startup" role="status">
+      <TaOrb :mood="liveMood" activity="idle" :size="128" />
+      <h1>{{ t("正在进入 TA 的小世界") }}</h1>
+      <p>{{ t("连接会话与记忆…") }}</p>
+    </div>
+    <Confirm />
+  </AccessGate>
 </template>
 
 <style scoped>

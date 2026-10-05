@@ -552,6 +552,9 @@ export class Life {
         ...(chunk ? { reading: this.mind.reading.passage(chunk) } : {}),
         clock: localClock(now, this.mind.timeZone()),
         currentLife: this.mind.time.view({ now }),
+        ...((this.mind.body?.({ now }) || []).length
+          ? { body: this.mind.body({ now }) }
+          : {}),
         actions: this.mind.time.lived({
           since: last?.started || now - DAY,
           before: now,

@@ -2,6 +2,14 @@
 
 # Changelog
 
+## 1.0.1 — 2026-10-05
+
+- Global npm installation runs with `luckytri`, including the server, built WebUI, guides and bundled plugin. User data remains outside the package across updates and reinstalls.
+- Set one password on the first studio visit. Remembered sessions, password changes, sign-out and a local reset command replace manual random-token setup. Only a salted password digest is stored.
+- Local OneBot reverse clients need no separate token and retain existing addresses and sign-ins. Remote clients use the management password or a legacy token; cross-site browser upgrades are rejected.
+- Launching restarts a running older version while retaining configuration, databases, backups and migrations.
+- Added packaged-install, update, reinstall, password and connection checks, three-platform CI, and ignore rules for credentials and temporary database files.
+
 ## 1.0.0 — 2026-10-04
 
 Plugins. The core still defines who she is; a plugin decides what of the world she can touch.
