@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 1.0.5 — 2026-10-07
+
+- Fixed bound relationships being forgotten when the person was absent from the current conversation. Chat, initiative, solitude, diaries and reviews recall the same account-based ledger by name and role.
+- Distinguished current relationship facts from past opinions and personal feelings. Historical denials and jokes remain in history; relationship-related replies are checked against current knowledge while preserving her choices about interaction and address.
+- Relationship recall includes actual encounters and addressed replies, rather than treating capped emotional changes as conversation counts. Retrieval stays bounded and private relationships and impressions retain their disclosure boundaries.
+- Obsolete reflections, diaries and reviews are not committed when relationships change during generation. The repair preserves history and personality edit allowances.
+
 ## 1.0.4 — 2026-10-06
 
 - Account-based relationships for people and other robots, with reciprocal family/friend/custom roles, name, reason, visibility and history. Integrated into recognition, conversation, solitude, diaries, initiative and task choices without inventing trust or shared experiences.
