@@ -135,6 +135,8 @@ npm install -g luckytri@latest
 luckytri
 ```
 
+You can also check for and install updates under System → Updates in the WebUI. LuckyTri restarts after the update, and user data stays in the instance directory.
+
 `npm uninstall -g luckytri` removes the program. Reinstalling uses the existing data. Installation and uninstallation run no application scripts.
 
 Change your password or sign out under System → Run switches. If you forget it, run `luckytri reset-password` for the same instance and refresh the studio to set another. Database, memory and configuration stay intact. Launching after an update switches a running older service to the installed version.

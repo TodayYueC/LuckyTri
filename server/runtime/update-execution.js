@@ -62,7 +62,7 @@ export async function performUpdate(
     writeActive(paths.home, { id, version: job.version });
     changed = true;
     child = await start(candidate);
-    save("verifying");
+    save("verifying", { childPid: child });
     await health(child, job.version);
     save("done", { finished: Date.now() });
     try {
@@ -115,6 +115,7 @@ export async function performUpdate(
       save("error", {
         error: UPDATE_FAILED,
         restored: true,
+        childPid: restored,
         finished: Date.now(),
       });
     } catch {

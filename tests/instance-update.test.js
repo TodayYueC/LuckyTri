@@ -103,6 +103,7 @@ test("update stages before stopping, keeps a verified snapshot and launches the 
   const f = fixture(t),
     result = await performUpdate(f.paths, f.id, f.deps);
   assert.equal(result.status, "done");
+  assert.equal(result.childPid, 456);
   assert.deepEqual(f.events, [
     "install",
     "check",
@@ -165,6 +166,7 @@ test("failed new startup rolls back mutated data and restores old code, preservi
   const result = await performUpdate(f.paths, f.id, f.deps);
   assert.equal(result.status, "error");
   assert.equal(result.restored, true);
+  assert.equal(result.childPid, 789);
   assert.equal(readActive(f.paths.home), null);
   const db = new DatabaseSync(f.paths.database);
   assert.equal(
@@ -188,6 +190,7 @@ test("backup failure restarts the old instance without switching or replacing da
     },
   });
   assert.equal(result.restored, true);
+  assert.equal(result.childPid, 789);
   assert.deepEqual(readFileSync(f.paths.database), bytes);
   assert.equal(readActive(f.paths.home), null);
   assert.ok(f.events.includes("start:old"));
