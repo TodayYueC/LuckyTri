@@ -3,6 +3,7 @@ import { parseSessionKey } from "../channels/session-key.js";
 import { hasCredential, text } from "./util.js";
 import { normalized } from "./util.js";
 import { leaks } from "./guard.js";
+import { mentionsRelationship } from "./relationship-context.js";
 
 export const RELATIONSHIP_ROLES = [
   "妹妹",
@@ -132,6 +133,116 @@ export class Relationships {
         seen.add(key);
         return r.status === "active";
       });
+  }
+  // Knowing someone does not require them to be speaking in this room.
+  // Select from the same current ledger used by the management UI, while
+  // keeping account identity and disclosure boundaries at the read boundary.
+  context({
+    room = "",
+    people = [],
+    cue = [],
+    now = Date.now(),
+    open = false,
+    limit = 6,
+  } = {}) {
+    const place = scope(room);
+    const present = new Set(people.map(String));
+    const words = (cue || [])
+      .filter((c) => typeof c !== "object" || c?.role !== "assistant")
+      .map((c) => (typeof c === "object" ? c?.text || "" : String(c)));
+    const rows = this.list(now)
+      .filter(
+        (r) => this.visible(r, room) && (!open || r.discretion === "open"),
+      )
+      .filter(
+        (r) =>
+          !place ||
+          (r.channel === place.channel &&
+            (r.account_id === "_" || r.account_id === place.accountId)),
+      )
+      .map((r) => {
+        const view = this.view(r, room);
+        const accountName = this.mind.bonds.name(r.subject_id);
+        view.name ||= accountName;
+        if (
+          accountName &&
+          accountName !== view.name &&
+          accountName !== r.subject_id
+        )
+          view.knownAs = [accountName];
+        const mentioned = words.some((word) =>
+          mentionsRelationship(word, view),
+        );
+        const speaker = present.has(r.subject_id);
+        return {
+          view,
+          mentioned,
+          score: Number(mentioned) * 2 + Number(speaker),
+        };
+      })
+      .sort((a, b) => b.score - a.score || b.view.created - a.view.created);
+    const selected = rows.slice(0, limit);
+    // Bond changes are intentionally capped; that counter is not the number
+    // of conversations. Count actual addressed replies without scanning the
+    // much larger model traces or assuming adjacent messages were exchanges.
+    const replies = selected.length
+      ? this.db
+          .prepare(
+            `
+      SELECT json_extract(t.payload,'$.userId') subject,
+        COALESCE(json_extract(t.payload,'$.channel'),'onebot') channel,
+        t.account_id account,COUNT(DISTINCT a.seq) replies,MAX(a.time) last
+      FROM core_events a JOIN json_each(a.payload,'$.replyTargetIds') refs
+      JOIN core_events t ON t.seq=refs.value
+      WHERE a.role='assistant' AND t.role='user' AND a.time<=? AND t.time<=?
+        AND COALESCE(json_extract(a.payload,'$.simulated'),0)=0
+        AND COALESCE(json_extract(t.payload,'$.simulated'),0)=0
+        AND t.seq NOT IN (SELECT seq FROM mind_unlived)
+        AND json_extract(t.payload,'$.userId') IN (${selected.map(() => "?").join(",")})
+      GROUP BY subject,channel,account
+    `,
+          )
+          .all(now, now, ...selected.map(({ view }) => view.subjectId))
+      : [];
+    return {
+      known: selected.map(({ view }) => {
+        const person = this.mind.bonds.person(view.subjectId, now, {
+          room: open ? "group:__open__" : room,
+        });
+        const history = replies.filter(
+          (r) =>
+            String(r.subject) === view.subjectId &&
+            r.channel === view.channel &&
+            (view.accountId === "_" || r.account === view.accountId),
+        );
+        return {
+          ...view,
+          ...(person
+            ? {
+                withMe: {
+                  feel: person.feel,
+                  spokenReplies: history.reduce((n, r) => n + r.replies, 0),
+                  firstMetAt: person.firstMetAt,
+                  lastTalkedAt:
+                    Math.max(
+                      person.lastTalkedAt || 0,
+                      ...history.map((r) => r.last),
+                    ) || null,
+                  ...(person.impression
+                    ? { impression: text(person.impression, 120) }
+                    : {}),
+                },
+              }
+            : {}),
+        };
+      }),
+      requested:
+        rows.some((r) => r.mentioned) ||
+        (rows.some((r) => r.score) &&
+          words.some((w) =>
+            /(?:我|你).*(?:是谁|谁|关系|认识|认得)|who|relationship/i.test(w),
+          )),
+    };
   }
   history(subject, limit = 30) {
     return this.db

@@ -127,7 +127,10 @@ export const DECISIONS = {
   回看自己在不同地方怎样长成:
     "Looking back at how she has grown in different places",
   还没有想改变的地方: "Nothing she wants to change yet",
-  天性或服务状态已经变化: "Her nature or the service state has changed",
+  "天性、关系或服务状态已经变化":
+    "Her nature, relationships or the service state have changed",
+  "关系记录变了，按新认识重新整理，不提交旧想法":
+    "Relationships changed; reconsider with the new knowledge instead of saving the old thought",
   把先前的自述整理成长期适用的自己:
     "Turning the earlier self-description into a lasting one",
   留下了有来源的新变化: "Left a new change that has a source",

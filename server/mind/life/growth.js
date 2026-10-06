@@ -1,6 +1,7 @@
 import { localClock } from "../../core/conversation-cues.js";
 import { personaNeedsRephrase } from "../traits.js";
 import { PLACE_THOUGHT_RULES } from "../faces.js";
+import { RELATIONSHIP_KNOWLEDGE_RULE } from "../relationship-context.js";
 import { HOUR, evidence, hasCredential, parse, text } from "../util.js";
 const LIVE = "COALESCE(json_extract(payload,'$.simulated'),0)=0";
 const IDENTITY_PROMPT =
@@ -131,6 +132,7 @@ export class LifeGrowth {
     try {
       const nature = this.owner.mind.nature.current(now);
       const version = nature.version;
+      const relationshipVersion = this.owner.mind.relationships.version();
       const input = {
         clock: localClock(now, this.owner.mind.timeZone()),
         nature: {
@@ -144,6 +146,7 @@ export class LifeGrowth {
           this.owner.mind.traits.persona(nature, now)?.content || "",
         self: this.owner.selfView(now).slice(0, 10),
         people: this.owner.peopleIn(experiences, now),
+        relationships: this.owner.mind.relationships.context({ now, limit: 8 }),
         faces: this.owner.faceView(experiences, now),
         verifiedMeetings: this.owner.identityMeetings(
           now,
@@ -154,7 +157,7 @@ export class LifeGrowth {
       let result = await this.owner.chat.models.call(
         this.owner.profile(),
         "reflection",
-        `${IDENTITY_PROMPT}\n${IDENTITY_BOOTSTRAP}\n${PLACE_THOUGHT_RULES}`,
+        `${IDENTITY_PROMPT}\n${IDENTITY_BOOTSTRAP}\n${PLACE_THOUGHT_RULES}\n${RELATIONSHIP_KNOWLEDGE_RULE}`,
         input,
         trace,
       );
@@ -162,15 +165,19 @@ export class LifeGrowth {
         result = await this.owner.chat.models.call(
           this.owner.profile(),
           "reflection",
-          `${IDENTITY_PROMPT}\n${IDENTITY_BOOTSTRAP}\n${PLACE_THOUGHT_RULES}\n上一次给出了不符合格式的聊天回复。这次只能给指定四个字段的 JSON。`,
+          `${IDENTITY_PROMPT}\n${IDENTITY_BOOTSTRAP}\n${PLACE_THOUGHT_RULES}\n${RELATIONSHIP_KNOWLEDGE_RULE}\n上一次给出了不符合格式的聊天回复。这次只能给指定四个字段的 JSON。`,
           input,
           trace,
         );
       if (typeof result?.skip !== "boolean")
         throw SyntaxError("身份回看输出格式无效");
-      if (this.owner.closed || this.owner.mind.nature.version() !== version) {
+      if (
+        this.owner.closed ||
+        this.owner.mind.nature.version() !== version ||
+        this.owner.mind.relationships.version() !== relationshipVersion
+      ) {
         status = "cancelled";
-        reason = "天性或服务状态已经变化";
+        reason = "天性、关系或服务状态已经变化";
       } else if (result?.skip) {
         const previous = this.owner.mind.traits.persona(nature, now);
         if (

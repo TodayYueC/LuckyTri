@@ -6,13 +6,19 @@ import {
 import { gentlePersona } from "./persona-manager.js";
 import { initiativeContext } from "./initiative-context.js";
 import { interestTerms } from "../mind/attention.js";
+import { relationshipClaimIssues } from "../mind/relationship-context.js";
 const norm = (s) => s.toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
 export function wrongIdentityClaim(text, snapshot) {
   const name = snapshot.persona?.name;
   if (!name) return false;
   const peers = (snapshot.inner?.people || [])
     .filter((p) => p.relationship?.kind === "bot")
-    .map((p) => p.relationship.name || p.name);
+    .map((p) => p.relationship.name || p.name)
+    .concat(
+      (snapshot.inner?.relationships?.known || [])
+        .filter((r) => r.kind === "bot")
+        .map((r) => r.name),
+    );
   return ["LuckyTri", "LuckyBot", ...peers]
     .filter((p) => p && p !== name)
     .some((peer) => {
@@ -123,6 +129,9 @@ export function reviewContext(snapshot, decision = {}) {
     ...(snapshot.inner?.continuity
       ? { continuity: snapshot.inner.continuity }
       : {}),
+    ...(snapshot.inner?.relationships
+      ? { relationships: snapshot.inner.relationships }
+      : {}),
     messages: messages.filter((m) => focus.has(m.id) || recent.has(m.id)),
   };
 }
@@ -155,7 +164,10 @@ export function normalizeResponse(result, decision, fallback = "嗯") {
   };
 }
 export function validateResponse(result, snapshot, decision, maxChars = 180) {
-  const issues = [];
+  const issues = relationshipClaimIssues(
+    result.bubbles,
+    snapshot.inner?.relationships,
+  );
   if (result.bubbles?.some((line) => wrongIdentityClaim(line, snapshot)))
     issues.push(
       "自称与当前实例名字不一致，使用本轮天性中的名字，不把另一位机器人或软件名称当成自己",

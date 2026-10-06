@@ -1,6 +1,7 @@
 import { localClock } from "../../core/conversation-cues.js";
 import { agoLabel, elapsedLabel } from "../clock.js";
 import { isPrivateSession } from "../memory.js";
+import { relationshipHistory } from "../relationship-context.js";
 import {
   DAY,
   evidence,
@@ -83,6 +84,12 @@ export class LifeContext {
       }));
   }
   selfView(now, { open = false, room } = {}) {
+    const relationships = this.owner.mind.relationships.context({
+      now,
+      open,
+      room,
+      limit: 8,
+    });
     return this.owner.mind.self
       .active({ before: now, now, limit: 16 })
       .filter((t) =>
@@ -93,7 +100,7 @@ export class LifeContext {
       .map((t) => ({
         thread: t.thread,
         kind: t.kind,
-        content: t.content,
+        content: relationshipHistory(t.content, t.created, relationships),
         strength: t.strength,
         ...(t.status === "emerging" ? { emerging: true } : {}),
       }));

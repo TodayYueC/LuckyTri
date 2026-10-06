@@ -166,6 +166,7 @@ export class ReplyDelivery {
       );
     const needsDeepCheck = (response) =>
       !!snapshot.initiative ||
+      !!snapshot.inner?.relationships?.requested ||
       !!snapshot.inner?.continuity?.requested ||
       focus === "clarify_claim" ||
       focus === "basis_check" ||

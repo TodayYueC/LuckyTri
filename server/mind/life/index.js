@@ -542,6 +542,7 @@ export class Life {
     try {
       const nature = this.mind.nature.current(now);
       const version = nature.version;
+      const relationshipVersion = this.mind.relationships.version();
       const experiences = this.experiences(since, now);
       freshMessages = experiences.reduce((n, e) => n + e.messages.length, 0);
       const thoughts = this.mind.thoughts.open({ now, limit: 10 });
@@ -574,6 +575,7 @@ export class Life {
         fading: this.fadingView(now),
         faces: this.faceView(experiences, now),
         people: this.peopleIn(experiences, now),
+        relationships: this.mind.relationships.context({ now, limit: 8 }),
         missing: this.missingView(now),
         fromWish: this.mind.meetings.wishAway({ now }),
         quiet: this.quietView(now),
@@ -641,13 +643,19 @@ export class Life {
             .some((m) => m.role === "user"),
         ),
       );
-      if (this.closed || this.mind.nature.version() !== version) {
+      if (
+        this.closed ||
+        this.mind.nature.version() !== version ||
+        this.mind.relationships.version() !== relationshipVersion
+      ) {
         if (chunk && !this.closed)
           this.mind.reading.record(chunk, result?.readingNote || "", id, now);
         status = "cancelled";
         reason = this.closed
           ? "服务停止了，这次想法不作数"
-          : "天性改了，这次想法不作数";
+          : this.mind.relationships.version() !== relationshipVersion
+            ? "关系记录变了，按新认识重新整理，不提交旧想法"
+            : "天性改了，这次想法不作数";
       } else if (
         result?.skip === true &&
         !result.mood &&

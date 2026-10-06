@@ -2,6 +2,10 @@
 // key, exactly as the code writes it. `{0}` stands for a value the code puts
 // into the message; patterns are used when a message carries one.
 export const ERRORS = {
+  "写日记期间关系记录已变化，本次旧稿未保存，下次按新认识整理":
+    "Relationships changed while writing the diary; the old draft was not saved and the next attempt will use the new knowledge",
+  "写回顾期间关系记录已变化，本次旧稿未保存，下次按新认识整理":
+    "Relationships changed while writing the review; the old draft was not saved and the next attempt will use the new knowledge",
   关系对象账号无效: "Invalid relationship account",
   官方机器人关系需要指定应用账号:
     "Official bot relationships require an application account",

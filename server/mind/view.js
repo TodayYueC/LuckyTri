@@ -5,6 +5,7 @@ import { agoLabel, elapsedLabel } from "./clock.js";
 import { describeFace } from "./faces.js";
 import { SELF_KINDS } from "./self.js";
 import { DAY, text } from "./util.js";
+import { relationshipHistory } from "./relationship-context.js";
 
 const FORGOTTEN = "（很久没想起了）";
 
@@ -89,6 +90,12 @@ export function innerView(
   const face = mind.faces.current(session, now);
   const living = mind.self.living({ before: now, now, room: session });
   const cues = speakerCues(cue);
+  const relationships = mind.relationships.context({
+    room: session,
+    people,
+    cue,
+    now,
+  });
   const carries = (thread) => mind.meetings.stays(thread, session, now);
   const visibleThreads = relevantContext(
     mind.self
@@ -150,7 +157,7 @@ export function innerView(
       ? {
           threads: visibleThreads.map(
             (t) =>
-              `${SELF_KINDS[t.kind]}：${text(t.content, 80)}${t.status === "emerging" ? "（刚开始有这种感觉）" : ""}`,
+              `${SELF_KINDS[t.kind]}：${relationshipHistory(text(t.content, 80), t.created, relationships)}${t.status === "emerging" ? "（刚开始有这种感觉）" : ""}`,
           ),
         }
       : {}),
@@ -254,6 +261,7 @@ export function innerView(
       currentLife: mind.time.view({ session, now, cue }),
       state: `${affect.phaseLabel}，精力${affect.energyLabel}，心情${affect.mood}${cause ? `（${cause}）` : ""}${affect.lately ? `，${affect.lately}` : ""}`,
       ...(persons.length ? { people: persons } : {}),
+      ...(relationships.known.length ? { relationships } : {}),
       ...(continuity ? { continuity } : {}),
       ...(group ? { thisGroup: group.feel } : {}),
       ...(thoughts.length

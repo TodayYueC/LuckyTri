@@ -172,6 +172,7 @@ export class LifeDiary {
     let summary = { day };
     try {
       const nature = this.owner.mind.nature.current(now);
+      const relationshipVersion = this.owner.mind.relationships.version();
       const since =
         this.owner.db
           .prepare(
@@ -298,6 +299,11 @@ export class LifeDiary {
             }
           : {}),
         people: this.owner.peopleIn(experiences, now, { open: true }),
+        relationships: this.owner.mind.relationships.context({
+          now,
+          open: true,
+          limit: 8,
+        }),
         ...(storyWords ? { story: storyWords } : {}),
         ...(chapter
           ? {
@@ -330,6 +336,10 @@ export class LifeDiary {
         trace,
       );
       const diary = text(result?.diary, 1200);
+      if (this.owner.mind.relationships.version() !== relationshipVersion)
+        throw Error(
+          "写日记期间关系记录已变化，本次旧稿未保存，下次按新认识整理",
+        );
       if (!diary || hasCredential(diary)) throw SyntaxError("日记格式无效");
       const valid = new Set([
         ...input.today.actions.map((a) => a.ref),
@@ -509,6 +519,7 @@ export class LifeDiary {
     let summary = null;
     try {
       const nature = this.owner.mind.nature.current(now);
+      const relationshipVersion = this.owner.mind.relationships.version();
       const periods = this.owner.mind.periods;
       const last = periods.lastReview(now);
       const start =
@@ -643,6 +654,11 @@ export class LifeDiary {
         ...(storyWords ? { story: storyWords } : {}),
         ...(anniversaries.length ? { anniversaries } : {}),
         self: this.owner.selfView(now, { open: true }).slice(0, 10),
+        relationships: this.owner.mind.relationships.context({
+          now,
+          open: true,
+          limit: 8,
+        }),
         ...(this.owner.livingForView(now, { since: start, open: true })
           ? {
               livingFor: this.owner.livingForView(now, {
@@ -660,6 +676,10 @@ export class LifeDiary {
         trace,
       );
       const week = text(result?.week, 1500);
+      if (this.owner.mind.relationships.version() !== relationshipVersion)
+        throw Error(
+          "写回顾期间关系记录已变化，本次旧稿未保存，下次按新认识整理",
+        );
       if (!week || hasCredential(week)) throw SyntaxError("回顾格式无效");
       const valid = new Set([
         ...diaries.map((d) => `d:${d.day}`),
