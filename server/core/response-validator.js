@@ -7,6 +7,22 @@ import { gentlePersona } from "./persona-manager.js";
 import { initiativeContext } from "./initiative-context.js";
 import { interestTerms } from "../mind/attention.js";
 const norm = (s) => s.toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
+export function wrongIdentityClaim(text, snapshot) {
+  const name = snapshot.persona?.name;
+  if (!name) return false;
+  const peers = (snapshot.inner?.people || [])
+    .filter((p) => p.relationship?.kind === "bot")
+    .map((p) => p.relationship.name || p.name);
+  return ["LuckyTri", "LuckyBot", ...peers]
+    .filter((p) => p && p !== name)
+    .some((peer) => {
+      const escaped = peer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(
+        `(?:^|[。！？!?\\n])\\s*我(?:叫|是|的名字是)\\s*${escaped}\\s*(?:[，,。！？!?；;]|$)`,
+        "i",
+      ).test(text);
+    });
+}
 export function contradictoryOwnWords(snapshot, decision = {}) {
   const targets = (snapshot.messages || []).filter((message) =>
     decision.targetMessageIds?.includes(message.id),
@@ -140,6 +156,10 @@ export function normalizeResponse(result, decision, fallback = "嗯") {
 }
 export function validateResponse(result, snapshot, decision, maxChars = 180) {
   const issues = [];
+  if (result.bubbles?.some((line) => wrongIdentityClaim(line, snapshot)))
+    issues.push(
+      "自称与当前实例名字不一致，使用本轮天性中的名字，不把另一位机器人或软件名称当成自己",
+    );
   const maxBubbles = bubbleLimit(decision);
   if (
     !Array.isArray(result.bubbles) ||

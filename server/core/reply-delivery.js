@@ -145,6 +145,16 @@ export class ReplyDelivery {
         issues.push("这句话说出了别人要求保密的事，不能在这里说");
       if (leaks(response.bubbles, privateFacts).length)
         issues.push("这句话把私下知道的事说出来了，不能在这里说");
+      if (
+        this.owner.mind.relationships.discloses(
+          response.bubbles,
+          session,
+          this.owner.now(),
+        )
+      )
+        issues.push(
+          "这句话说出了私下绑定的关系或备注，不能在这里说；把它放进自己的想法也不会扩大公开范围",
+        );
       return issues;
     };
     const recentPrivateContinuity =

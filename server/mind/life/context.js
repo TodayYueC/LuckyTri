@@ -213,6 +213,10 @@ export class LifeContext {
       "SELECT seq,session_id,payload FROM core_events WHERE seq=?",
     );
     return list.map((p) => {
+      p =
+        this.owner.mind.bonds.person(p.userId, now, {
+          room: "group:__open__",
+        }) || p;
       const seq = evidence(parse(lastSaid.get(p.userId, now)?.sources, []))
         .filter((s) => s.startsWith("m:"))
         .map((s) => Number(s.slice(2)))
@@ -223,6 +227,7 @@ export class LifeContext {
         userId: p.userId,
         name: p.name,
         feel: p.feel,
+        ...(p.relationship ? { relationship: p.relationship } : {}),
         lastSeen: agoLabel(now - p.seenAt),
         ...(talk && p.lastTalkedAt
           ? { lastTalked: agoLabel(now - p.lastTalkedAt) }
@@ -286,9 +291,14 @@ export class LifeContext {
   peopleIn(experiences, now, { open = false } = {}) {
     const ids = [
       ...new Set(
-        experiences.flatMap((e) =>
-          e.messages.map((m) => m.userId).filter(Boolean),
-        ),
+        experiences
+          .flatMap((e) => e.messages.map((m) => m.userId).filter(Boolean))
+          .concat(
+            this.owner.mind.relationships
+              .list(now)
+              .filter((r) => !open || r.discretion === "open")
+              .map((r) => r.subject_id),
+          ),
       ),
     ].slice(0, 8);
     // A diary page can be quoted in other rooms, so it only receives notes
@@ -307,6 +317,7 @@ export class LifeContext {
         name: p.name,
         feel: p.feel,
         ...(p.impression ? { impression: p.impression } : {}),
+        ...(p.relationship ? { relationship: p.relationship } : {}),
       }));
   }
 }

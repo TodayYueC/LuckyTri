@@ -13,6 +13,8 @@ import { runtimePaths } from "./paths.js";
 import { spawn } from "node:child_process";
 import { openSync, closeSync } from "node:fs";
 import { join } from "node:path";
+import { UpdateChecker } from "./studio/updates.js";
+import { InstanceUpdater } from "./runtime/update-manager.js";
 
 claimServer();
 process.on("exit", clearStarting);
@@ -42,9 +44,48 @@ plugins
   .catch((error) => console.error(`插件没有启动：${error.message}`));
 const backups = createBackupScheduler();
 const cleanup = createBackupCleanup({ store, backup: backups });
+const updates = new UpdateChecker();
+const updater = new InstanceUpdater({
+  paths: runtimePaths(),
+  checker: updates,
+  occupied: () => backups.running || cleanup.running || transfer.busy,
+  async launch(id) {
+    const paths = runtimePaths(),
+      log = openSync(paths.log, "a", 0o600);
+    try {
+      const child = spawn(
+        process.execPath,
+        [
+          ...(process.execArgv.includes("--use-env-proxy")
+            ? ["--use-env-proxy"]
+            : []),
+          join(paths.package, "scripts", "update-instance.js"),
+          id,
+          String(process.pid),
+        ],
+        {
+          cwd: paths.home,
+          env: process.env,
+          detached: true,
+          windowsHide: true,
+          stdio: ["ignore", log, log],
+        },
+      );
+      await new Promise((resolve, reject) => {
+        child.once("spawn", resolve);
+        child.once("error", reject);
+      });
+      child.unref();
+      return child.pid;
+    } finally {
+      closeSync(log);
+    }
+  },
+});
 const transfer = createDataTransfer({
   backup: backups,
   cleanup,
+  occupied: () => updater.busy,
   async onApply(id) {
     const paths = runtimePaths();
     const log = openSync(paths.log, "a", 0o600);
@@ -111,12 +152,14 @@ const app = createApp({
   chatSystem,
   life,
   plugins,
+  updates,
   runtime: {
     connection: () => channel.status(),
     syncChannel: () => channel.sync(),
     backup: () => backups.status(),
     cleanup,
     transfer,
+    updater,
     shutdown,
   },
 });
@@ -132,12 +175,12 @@ function runMaintenance() {
     console.error(`后台维护失败：${error.message}`);
   }
   try {
-    if (!cleanup.running && !transfer.busy) backups.tick();
+    if (!cleanup.running && !transfer.busy && !updater.busy) backups.tick();
   } catch (error) {
     console.error(`自动备份调度失败：${error.message}`);
   }
   try {
-    if (!transfer.busy) cleanup.tick();
+    if (!transfer.busy && !updater.busy) cleanup.tick();
     transfer.info();
   } catch (error) {
     console.error(`定时备份整理调度失败：${error.message}`);

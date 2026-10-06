@@ -72,4 +72,6 @@ Live messages follow new arrivals while you are at the bottom and keep their pla
 - `node tests/ui/ta.mjs --serve`: opens an example world that has lived three days, handy for looking at the interface directly.
 - Screenshots go only into the ignored `workspace/` folder; real chat screenshots and configuration must never be committed.
 
-System → Runtime includes a manual version check against npm, with the current version, last successful check and release notes. Results are cached for five minutes; failures retain the last known information. Checking does not install or restart.
+System → Runtime checks npm manually, with the current version, last successful check and release notes. Results are cached for five minutes; failures retain the last known information. Update and restart explicitly downloads and checks the program, saves a backup and switches instances. Progress survives restart, the page waits for reconnection, and repeated clicks do not launch a second install.
+
+People → Relationships binds people or other robots by account, using themed choices for type, reciprocal roles, name and visibility. Person details show change history; ending a relationship does not delete encounters. Summaries load on demand alongside existing chat caching.

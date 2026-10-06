@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { runtimePaths } from "../server/paths.js";
 import { VERSION } from "../server/version.js";
+import { resolveInstallation } from "../server/runtime/installation.js";
 
 const help = `LuckyTri ${VERSION}
 
@@ -44,7 +45,10 @@ try {
   if (args.includes("--help") || args.includes("-h") || args[0] === "help") {
     console.log(help);
   } else if (args.includes("--version") || args.includes("-v")) {
-    console.log(VERSION);
+    console.log(
+      resolveInstallation(runtimePaths().home, runtimePaths().package, VERSION)
+        .version,
+    );
   } else {
     const command =
       !args.length || args[0] === "--no-browser" ? "launch" : args.shift();

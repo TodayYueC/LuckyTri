@@ -2,7 +2,8 @@ import {
   mkdirSync,
   readFileSync,
   rmdirSync,
-  rmSync,
+  unlinkSync,
+  existsSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -11,6 +12,14 @@ import { runtimePaths } from "./paths.js";
 
 const file = () => join(runtimePaths().data, "startup.json");
 const lock = () => join(runtimePaths().data, "startup.lock");
+function alive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function read() {
   try {
@@ -19,15 +28,6 @@ function read() {
     return info;
   } catch {
     return null;
-  }
-}
-
-function alive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
   }
 }
 
@@ -61,7 +61,7 @@ function claim(role) {
     if (busy()) return false;
     // Reclaim a dead owner's claim; the normal concurrent-launch path above
     // never removes a directory just acquired by another process.
-    rmSync(file(), { force: true });
+    if (existsSync(file())) unlinkSync(file());
     try {
       rmdirSync(lock());
     } catch (error) {
@@ -108,7 +108,7 @@ export function starting() {
 export function clearStarting() {
   const info = read();
   if (info?.pid === process.pid) {
-    rmSync(file(), { force: true });
+    if (existsSync(file())) unlinkSync(file());
     try {
       rmdirSync(lock());
     } catch (error) {

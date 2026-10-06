@@ -5,6 +5,27 @@ import { createApp } from "../server/app.js";
 import { world } from "./helpers/world.js";
 import http from "node:http";
 
+test("relationship and install endpoints require management login, including local service credentials", async (t) => {
+  const f = await fixture(t);
+  for (const path of ["/mind/relationships", "/system/update/install"]) {
+    assert.equal(
+      (
+        await f.call(path, {
+          version: "1.0.4",
+          subjectId: "12345",
+          peerRole: "妹妹",
+        })
+      ).status,
+      401,
+    );
+    assert.equal(
+      (await f.call(path, {}, "", { Authorization: `Bearer ${f.key}` })).status,
+      401,
+    );
+  }
+  assert.equal((await f.call("/mind/relationships")).status, 401);
+});
+
 async function fixture(t) {
   const w = world();
   let clock = Date.now();

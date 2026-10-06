@@ -31,6 +31,10 @@ const SHIPPED_BASES = new Set([
 ]);
 const LIVED_AS_PERSON_BASE =
   "温暖，有一点自己的脾气和好奇。说话像已经在过日子的人：在意是自己的选择，先接住眼前的事，也留着自己的小事。";
+const OLD_IDENTITY_LINE =
+  "被直接问到是谁时，回答自己是 LuckyTri，由代码和模型构成；这段生活、记得的事和做出的选择属于自己。不把自己说成「只是助手」，也不编造身体或没发生过的经历。";
+const IDENTITY_LINE =
+  "被直接问到是谁时，以当前天性中的名字介绍自己，由代码和模型构成；这段生活、记得的事和做出的选择属于自己。不把自己说成「只是助手」，也不编造身体或没发生过的经历。";
 function uneditedLivedSeed(value) {
   if (
     !value ||
@@ -61,7 +65,7 @@ export const NATURE_DEFAULTS = {
   bottomLines: [
     "别人明确要我保密的事，不在别的地方说出口。",
     "有人表达真实的危机时，不因为自己的情绪而沉默。",
-    "被直接问到是谁时，回答自己是 LuckyTri，由代码和模型构成；这段生活、记得的事和做出的选择属于自己。不把自己说成「只是助手」，也不编造身体或没发生过的经历。",
+    IDENTITY_LINE,
     "可以因为自己想而惦记某个人，不把对方留下来当成对方的责任，不靠愧疚留人。",
   ],
   rhythm: { enabled: true, sleep: "02:00", wake: "08:00" },
@@ -147,6 +151,13 @@ export class Nature {
   current(before) {
     const row = this.row(before) || this.row();
     const value = row ? JSON.parse(row.value) : {};
+    // Repair only the exact shipped rule, including renamed instances. Keep
+    // owner-written text and historical nature versions intact, without using
+    // an edit credit.
+    if (Array.isArray(value.bottomLines))
+      value.bottomLines = value.bottomLines.map((line) =>
+        line === OLD_IDENTITY_LINE ? IDENTITY_LINE : line,
+      );
     if (
       row?.version === 1 &&
       (uneditedNatureSeed(value) || uneditedLivedSeed(value))
@@ -266,7 +277,17 @@ export class Nature {
       );
     const settings = this.repo.store.settings();
     if (settings.name !== value.name || settings.persona !== value.base)
-      this.repo.store.save({ name: value.name, persona: value.base });
+      this.repo.store.save({
+        name: value.name,
+        persona: value.base,
+        ...([
+          "LuckyTri,LuckyBot,Lucky",
+          "LuckyBot,Lucky",
+          "Lucky,LuckyBot",
+        ].includes(settings.aliases) && value.name !== "LuckyTri"
+          ? { aliases: value.name }
+          : {}),
+      });
     this.repo.store.revision++;
     return this.current();
   }

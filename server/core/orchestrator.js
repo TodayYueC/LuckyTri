@@ -113,6 +113,7 @@ export class ChatSystem {
     return JSON.stringify([
       this.repo.config("session:" + session, null),
       this.mind.nature.version(),
+      this.mind.relationships.version(),
       this.repo.config("prompts", null),
       storedModels(this.repo).map(({ apiKey: _apiKey, ...model }) => model),
       [settings.name, settings.aliases, settings.enabled, settings.demo],

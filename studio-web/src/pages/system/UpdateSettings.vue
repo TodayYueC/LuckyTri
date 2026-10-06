@@ -1,11 +1,50 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, onUnmounted } from "vue";
 import { t, N_, localized } from "../../i18n";
 import { api, toast } from "../../api";
 import { when } from "../../plates/mind";
+import { ask } from "../../dialog";
 
 const state = ref<any>(null);
 const busy = ref(false);
+const installing = ref(false);
+let poll: ReturnType<typeof setTimeout> | undefined,
+  disposed = false;
+const progress: Record<string, string> = localized({
+  queued: N_("更新已开始"),
+  downloading: N_("正在下载新版本…"),
+  checking: N_("正在检查新程序…"),
+  stopping: N_("正在保存当下并停止实例…"),
+  backup: N_("正在保留更新前的校验备份…"),
+  restarting: N_("正在切换版本并重启…"),
+  verifying: N_("正在确认新实例就绪…"),
+  restoring: N_("正在恢复原版本和数据…"),
+  done: N_("更新与重启已完成"),
+  error: N_("更新未完成"),
+});
+function active(operation: any) {
+  return operation && !["done", "error"].includes(operation.status);
+}
+async function watchUpdate() {
+  if (disposed) return;
+  try {
+    const next = await api("/system/update");
+    state.value = next;
+    if (next.operation?.status === "done") {
+      installing.value = false;
+      location.reload();
+      return;
+    }
+    installing.value = !!active(next.operation);
+  } catch {
+    /* A planned restart makes the API temporarily unavailable. */
+  }
+  if (installing.value && !disposed) poll = setTimeout(watchUpdate, 1800);
+}
+onUnmounted(() => {
+  disposed = true;
+  clearTimeout(poll);
+});
 const labels: Record<string, string> = localized({
   unchecked: N_("尚未检查更新"),
   available: N_("有新版本可用"),
@@ -16,6 +55,8 @@ const labels: Record<string, string> = localized({
 onMounted(async () => {
   try {
     state.value = await api("/system/update");
+    installing.value = !!active(state.value.operation);
+    if (installing.value) poll = setTimeout(watchUpdate, 1800);
   } catch (error) {
     toast((error as Error).message, true);
   }
@@ -31,6 +72,30 @@ async function check() {
     busy.value = false;
   }
 }
+async function install() {
+  if (installing.value || busy.value || state.value?.status !== "available")
+    return;
+  if (
+    !(await ask(
+      t(
+        "更新到 {version} 并重启当前实例？先下载校验，再保留数据恢复点；启动失败时尝试恢复原版本。",
+        { version: state.value.latest },
+      ),
+      { title: t("更新并重启"), confirmText: t("开始更新") },
+    ))
+  )
+    return;
+  installing.value = true;
+  try {
+    state.value.operation = await api("/system/update/install", "POST", {
+      version: state.value.latest,
+    });
+    poll = setTimeout(watchUpdate, 800);
+  } catch (e) {
+    installing.value = false;
+    toast((e as Error).message, true);
+  }
+}
 </script>
 
 <template>
@@ -40,7 +105,7 @@ async function check() {
         <span class="eyebrow">LUCKYTRI / VERSION</span>
         <h2 id="update-title">{{ t("版本与更新") }}</h2>
       </div>
-      <button :disabled="busy || !state" @click="check">
+      <button :disabled="busy || installing || !state" @click="check">
         {{ busy ? t("正在检查…") : t("检查更新") }}
       </button>
     </header>
@@ -66,16 +131,34 @@ async function check() {
       <p class="muted small-text">
         {{ t("点击时才检查，五分钟内复用结果。检查更新不会自动安装或重启。") }}
       </p>
-      <div v-if="state.status === 'available'" class="update-how">
-        <p v-if="state.installation === 'source'">
+      <div
+        v-if="state.status === 'available' || state.operation"
+        class="update-how stack tight"
+      >
+        <p>
           {{
-            t("源码安装：更新 main、安装依赖并构建后重启，保留现有数据与配置。")
+            t(
+              "下载期间继续运行，切换前保留数据恢复点。更新完成后此页面会自动重新连接。",
+            )
           }}
         </p>
-        <template v-else
-          ><p>{{ t("停止实例后执行升级命令，再启动 LuckyTri。") }}</p>
-          <code>npm install -g luckytri@latest</code></template
+        <button
+          v-if="state.status === 'available'"
+          class="primary"
+          :disabled="installing || busy"
+          @click="install"
         >
+          {{ installing ? t("正在更新…") : t("更新并重启") }}
+        </button>
+        <p v-if="state.operation" role="status">
+          {{ progress[state.operation.status] }} · {{ state.operation.version }}
+        </p>
+        <p v-if="state.operation?.error" class="error-text" role="alert">
+          {{ state.operation.error }}
+        </p>
+        <p v-if="state.operation?.restored" class="muted">
+          {{ t("已恢复原版本和更新前的数据。") }}
+        </p>
       </div>
       <nav class="update-links">
         <a :href="state.npmUrl" target="_blank" rel="noopener noreferrer">npm</a

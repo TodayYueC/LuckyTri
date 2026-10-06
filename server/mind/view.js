@@ -179,6 +179,7 @@ export function innerView(
       (!bond.interactions &&
         !bond.impression &&
         !bond.lastChange &&
+        !bond.relationship &&
         bond.tension < 0.15)
     )
       continue;
@@ -186,6 +187,7 @@ export function innerView(
       id,
       name: bond.name,
       feel: bond.feel,
+      ...(bond.relationship ? { relationship: bond.relationship } : {}),
       ...(bond.impression && mind.meetings.sayable(bond.impression, session)
         ? { impression: bond.impression }
         : {}),

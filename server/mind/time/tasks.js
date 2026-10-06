@@ -367,7 +367,8 @@ export class Tasks {
         ? 2
         : task.priority) *
         100 +
-      Math.min(8, Number(person?.closeness || 0) * 8)
+      Math.min(8, Number(person?.closeness || 0) * 8) +
+      Math.min(2, Number(person?.relationalWeight || 0) * 8)
     );
   }
   arrange(

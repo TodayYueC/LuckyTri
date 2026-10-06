@@ -1,10 +1,11 @@
 import { openSync, closeSync, mkdirSync } from "node:fs";
 import { spawn } from "node:child_process";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { prepareRuntime } from "./runtime.js";
 import { running, serviceUrl } from "./service.js";
 import { openBrowser } from "./browser.js";
 import { VERSION } from "../server/version.js";
+import { resolveInstallation } from "../server/runtime/installation.js";
 import {
   claimLaunch,
   clearStarting,
@@ -17,11 +18,17 @@ import {
 
 try {
   const paths = prepareRuntime();
+  const selected = resolveInstallation(paths.home, paths.package, VERSION);
   const proxy = await resolveProxyEnvironment(process.env);
   const base = serviceUrl();
   const existing = await running({ base });
-  if (existing && existing.version && existing.version !== VERSION) {
-    console.log(`正在将运行中的 LuckyTri 更新到 ${VERSION}…`);
+  if (
+    existing &&
+    existing.version &&
+    (existing.version !== selected.version ||
+      resolve(existing.workspace || "") !== resolve(selected.package))
+  ) {
+    console.log(`正在将运行中的 LuckyTri 更新到 ${selected.version}…`);
     await import("./stop.js");
     if (process.exitCode) throw Error("旧服务未停止，请稍后重试");
   }
@@ -44,7 +51,7 @@ try {
         const log = openSync(paths.log, "a", 0o600);
         const args = [
           ...(proxy.enabled ? ["--use-env-proxy"] : []),
-          join(paths.package, "server", "index.js"),
+          join(selected.package, "server", "index.js"),
         ];
         const child = spawn(process.execPath, args, {
           cwd: paths.home,

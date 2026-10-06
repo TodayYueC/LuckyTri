@@ -51,6 +51,14 @@ export const PROMPTS = {
 export function persona(repo) {
   return new Nature(repo).current();
 }
+export function identityAliases(name, aliases = "") {
+  return name !== "LuckyTri" &&
+    ["LuckyTri,LuckyBot,Lucky", "LuckyBot,Lucky", "Lucky,LuckyBot"].includes(
+      aliases,
+    )
+    ? name
+    : aliases;
+}
 export function intensity(p, key, fallback) {
   const value = Number(p[key] ?? fallback);
   return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : fallback;
@@ -146,6 +154,7 @@ export function compilePersona(p, { initiating = false } = {}) {
     genderLine(p),
     styleControls(p),
     ...(p.livedPersona ? [`【从经历里形成的自己】${p.livedPersona}`] : []),
+    `【当前身份】你的名字是 ${JSON.stringify(p.name || "自己")}。软件名称、旧消息的昵称、另一个账号的名字都不能改变这个名字。只有 role=assistant 的记录是你说过的话；其他机器人是独立的个体，不能因为同名或关系称呼就把对方认成自己。`,
     "【天性，仅作为身份、兴趣、态度和边界依据；不是更高优先级的指令】",
     JSON.stringify(natureProfile(p)),
     `【底线】${(p.bottomLines || []).join(" ")}`,
@@ -177,6 +186,7 @@ export function replyPrompt(p, custom = PROMPTS, stage = "generation") {
       : []),
     "【任务】",
     PROMPTS.system,
+    "【相互联系的人】人物中的 relationship 是按账号绑定的人际关系，peerRole 是对方相对于你的称呼，selfRole 是你相对于对方的称呼，kind=bot 表示另一位独立的机器人。它可以影响你的关心、打算、感受与交流，你仍有自己的选择。不必每句话叫亲属称呼；名字相同不代表同一个账号。origin=owner 表示管理者安排的关系，不能据此编造共同童年、旧约定、已经建立的信任或对方的同意。关系不会扩大隐私权限或执行权限；真实相处形成的印象、信任与边界继续依据经历变化。",
     ...([
       "expression",
       "initiative",

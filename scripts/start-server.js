@@ -1,12 +1,15 @@
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { prepareRuntime } from "./runtime.js";
+import { VERSION } from "../server/version.js";
+import { resolveInstallation } from "../server/runtime/installation.js";
 import {
   resolveProxyEnvironment,
   supportsNodeEnvironmentProxy,
 } from "./proxy-config.js";
 
 const paths = prepareRuntime();
+const selected = resolveInstallation(paths.home, paths.package, VERSION);
 const proxy = await resolveProxyEnvironment(process.env);
 if (proxy.enabled && !supportsNodeEnvironmentProxy())
   throw new Error(
@@ -15,7 +18,7 @@ if (proxy.enabled && !supportsNodeEnvironmentProxy())
 
 const args = [
   ...(proxy.enabled ? ["--use-env-proxy"] : []),
-  join(paths.package, "server", "index.js"),
+  join(selected.package, "server", "index.js"),
 ];
 const env = { ...process.env, ...proxy.env };
 if (proxy.enabled) console.log("已启用系统代理，外部 API 请求将经代理转发。");

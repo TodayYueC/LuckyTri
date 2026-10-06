@@ -32,6 +32,7 @@ export function mountStudio(app, store, runtime, chat) {
     if (!runtime.cleanup)
       return res.status(501).json({ error: "备份整理不可用" });
     try {
+      if (runtime.updater?.busy) throw Error("版本更新正在进行，请稍后再试");
       res.json(await runtime.cleanup.manual(req.body.items));
     } catch (error) {
       res.status(409).json({ error: error.message });

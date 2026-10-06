@@ -1,4 +1,5 @@
 import { HOUR, parse, text } from "./util.js";
+import { identityAliases } from "../core/persona-manager.js";
 import { isPrivateSession } from "./memory.js";
 import { parseSessionKey, isGroupSession } from "../channels/session-key.js";
 import { sameRecentTheme } from "./novelty.js";
@@ -81,7 +82,10 @@ export class Initiative {
     const tried = this.life.repo.config("presence", {});
     const names = [
       this.life.mind.nature.current(now).name,
-      ...String(this.life.repo.store.settings().aliases || "").split(/[,，]/),
+      ...identityAliases(
+        this.life.mind.nature.current(now).name,
+        String(this.life.repo.store.settings().aliases || ""),
+      ).split(/[,，]/),
     ];
     const rooms = this.life
       .living({ memory: false })
@@ -154,6 +158,7 @@ export class Initiative {
         rooted +
         fit +
         closeness * 2 +
+        Number(bond?.relationalWeight || 0) * 2 +
         familiarity +
         Math.min(5, talked) * 0.08 -
         tension * 2 -

@@ -9,6 +9,7 @@ import {
   CHANGE_LABELS,
   COOLING,
   DIMENSIONS,
+  RELATIONSHIP_LABELS,
   DISCRETION,
   MEMORY_STATUS,
   ORIGIN_LABELS,
@@ -22,7 +23,11 @@ import Select from "../../components/ui/Select.vue";
 import Ring from "../../components/ui/Ring.vue";
 
 const props = defineProps<{ id: string | null; now?: number }>();
-const emit = defineEmits<{ close: []; changed: [] }>();
+const emit = defineEmits<{
+  close: [];
+  changed: [];
+  relationship: [row: any, id: string];
+}>();
 const data = ref<any>(null);
 const error = ref("");
 
@@ -210,6 +215,43 @@ watch(
           :label="label"
         />
       </div>
+      <section class="stack tight">
+        <div class="row">
+          <h3 class="sheet-title">{{ t("彼此的关系") }}</h3>
+          <button
+            class="small"
+            @click="emit('relationship', person.relationship, person.userId)"
+          >
+            {{ person.relationship ? t("修改关系") : t("绑定关系") }}
+          </button>
+        </div>
+        <p v-if="person.relationship">
+          {{
+            t("对方是我的 {peer}，我是对方的 {self}", {
+              peer:
+                RELATIONSHIP_LABELS[person.relationship.peerRole] ||
+                person.relationship.peerRole,
+              self:
+                RELATIONSHIP_LABELS[person.relationship.selfRole] ||
+                person.relationship.selfRole,
+            })
+          }}
+        </p>
+        <details v-if="data.relationshipHistory?.length">
+          <summary>{{ t("关系变化记录") }}</summary>
+          <ul class="list">
+            <li v-for="r in data.relationshipHistory" :key="r.id">
+              <small class="faint"
+                >{{ when(r.created) }} ·
+                {{
+                  r.status === "active" ? t("设置关系") : t("解除关系")
+                }}</small
+              >
+              <p>{{ r.peer_role }} · {{ r.note }}</p>
+            </li>
+          </ul>
+        </details>
+      </section>
       <p v-if="person.impression" class="impression">
         {{ t("印象：{impression}", { impression: person.impression }) }}
       </p>

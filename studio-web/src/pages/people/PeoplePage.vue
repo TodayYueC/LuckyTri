@@ -13,6 +13,8 @@ import Empty from "../../components/ui/Empty.vue";
 import Galaxy from "./Galaxy.vue";
 import PersonSheet from "./PersonSheet.vue";
 import GroupFaces from "./GroupFaces.vue";
+import RelationshipsPanel from "./RelationshipsPanel.vue";
+const relations = ref<InstanceType<typeof RelationshipsPanel> | null>(null);
 
 const bonds = shallowRef<any>(readSnapshot("/mind/bonds") || null);
 const view = ref("galaxy");
@@ -90,6 +92,7 @@ usePageActivity("people", load);
     </div>
 
     <template v-if="bonds">
+      <RelationshipsPanel ref="relations" @changed="load" @open="open" />
       <template v-if="people.length">
         <Galaxy
           v-if="view === 'galaxy'"
@@ -156,6 +159,12 @@ usePageActivity("people", load);
       :now="presence.data?.now"
       @close="close"
       @changed="load"
+      @relationship="
+        (row, id) => {
+          close();
+          relations?.edit(row, id);
+        }
+      "
     />
   </div>
 </template>

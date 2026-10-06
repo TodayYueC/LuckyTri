@@ -12,6 +12,11 @@ export const mind = {
   self: () => api("/mind/self"),
   thread: (id: string) => api("/mind/self/" + encodeURIComponent(id)),
   bonds: () => api("/mind/bonds"),
+  relationships: () => api("/mind/relationships"),
+  saveRelationship: (value: unknown) =>
+    api("/mind/relationships", "PUT", value),
+  endRelationship: (id: string, value: unknown) =>
+    api("/mind/relationships/" + encodeURIComponent(id), "DELETE", value),
   bondChanges: (kind: "person" | "group", id: string) =>
     api(`/mind/bonds/${kind}/` + encodeURIComponent(id)),
   faces: (session: string) => api("/mind/faces/" + encodeURIComponent(session)),
@@ -127,6 +132,16 @@ export const DISCRETION: Record<string, string> = localized({
   open: N_("公开"),
   private: N_("私下知道"),
   secret: N_("要 TA 保密"),
+});
+export const RELATIONSHIP_LABELS: Record<string, string> = localized({
+  妹妹: N_("妹妹"),
+  姐姐: N_("姐姐"),
+  弟弟: N_("弟弟"),
+  哥哥: N_("哥哥"),
+  朋友: N_("朋友"),
+  伙伴: N_("伙伴"),
+  年长手足: N_("年长手足"),
+  年幼手足: N_("年幼手足"),
 });
 
 export const MEMORY_STATUS: Record<string, string> = localized({

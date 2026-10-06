@@ -120,6 +120,7 @@ export function displayPerson(person, names) {
   return {
     ...person,
     name:
+      person.relationship?.name ||
       names.get(person.userId) ||
       personLabel(person.name, person.userId) ||
       "未命名的人",

@@ -77,6 +77,7 @@ export function createDataTransfer({
   run = work,
   now = Date.now,
   maxUploadBytes,
+  occupied = () => false,
 } = {}) {
   const root = resolve(directory);
   mkdirSync(root, { recursive: true, mode: 0o700 });
@@ -105,7 +106,7 @@ export function createDataTransfer({
     return rest;
   };
   const check = () => {
-    if (active || backup?.running || cleanup?.running)
+    if (active || backup?.running || cleanup?.running || occupied())
       throw Error("数据处理或备份正在进行，请稍后再试");
     if (source === ":memory:") throw Error("当前实例不支持文件导入导出");
   };

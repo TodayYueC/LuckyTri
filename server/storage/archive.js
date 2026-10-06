@@ -142,10 +142,18 @@ export function writeArchiveManifest(
 }
 
 export function verifyArchive(file) {
-  const inspected = inspectDatabase(file);
   const sidecar = `${file}.json`;
-  if (!existsSync(sidecar)) return { ...inspected, manifest: false }; // Readable legacy backups remain usable.
+  if (!existsSync(sidecar))
+    return { ...inspectDatabase(file), manifest: false }; // Readable legacy backups remain usable.
   const manifest = JSON.parse(readFileSync(sidecar, "utf8"));
+  // Reject changed bytes before SQLite attempts to parse a corrupted schema.
+  if (
+    manifest.format !== 1 ||
+    manifest.app !== "luckytri" ||
+    manifest.sha256 !== fileHash(file)
+  )
+    throw Error("备份校验清单不匹配");
+  const inspected = inspectDatabase(file);
   if (
     manifest.format !== 1 ||
     manifest.app !== "luckytri" ||

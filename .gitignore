@@ -37,6 +37,7 @@ evaluations/
 
 # Local previews and isolated checkouts
 workspace/
+/runtime/
 
 # Editor, OS and agent tooling
 .DS_Store

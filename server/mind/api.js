@@ -1,5 +1,6 @@
 import { wrap } from "../http.js";
 import { mountTime } from "./time/api.js";
+import { RELATIONSHIP_ROLES } from "./relationships.js";
 import { localClock } from "../core/conversation-cues.js";
 import { agoLabel, elapsedLabel, JUST_NOW } from "./clock.js";
 import { diffSnapshots } from "./index.js";
@@ -77,6 +78,29 @@ function activityOf({ db, life, now, affect, words, names }) {
 export function mountMind(app, chat, life) {
   const { mind } = chat;
   mountTime(app, life);
+  app.get(
+    "/api/mind/relationships",
+    wrap((_req, res) =>
+      res.json({
+        roles: RELATIONSHIP_ROLES,
+        items: mind.relationships
+          .list(life.now())
+          .map((r) => mind.relationships.view(r)),
+      }),
+    ),
+  );
+  app.put(
+    "/api/mind/relationships",
+    wrap((req, res) => res.json(mind.relationships.save(req.body, life.now()))),
+  );
+  app.delete(
+    "/api/mind/relationships/:id",
+    wrap((req, res) =>
+      res.json(
+        mind.relationships.end(String(req.params.id), req.body, life.now()),
+      ),
+    ),
+  );
   // A small, cheap picture of TA for the studio: asked for on every change.
   app.get(
     "/api/mind/presence",
@@ -287,6 +311,7 @@ export function mountMind(app, chat, life) {
           })),
         },
         changes: mind.bonds.changes("person", id, 60),
+        relationshipHistory: mind.relationships.history(id),
         memories: db
           .prepare(
             "SELECT id,session_id,content,type,confidence,importance,status,discretion,locked,created,superseded_by FROM core_memories WHERE subject=? AND status IN ('confirmed','superseded') ORDER BY CASE status WHEN 'confirmed' THEN 0 ELSE 1 END, created DESC LIMIT 80",

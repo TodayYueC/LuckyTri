@@ -14,11 +14,13 @@ import {
   realpathSync,
   statSync,
   writeFileSync,
+  unlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
+import { pathToFileURL } from "node:url";
 import { PACKAGE_ROOT } from "../server/paths.js";
 import { VERSION } from "../server/version.js";
 import { checkPackage } from "./pack-check.js";
@@ -482,9 +484,57 @@ try {
   // Leave the previous service running: the upgraded CLI must switch it to
   // the installed version automatically, with the same password and data.
   cli(["--no-browser"]);
+  console.log(
+    "Checking the real staged updater, verified snapshot and automatic restart…",
+  );
+  const beforeUpdate = (await request("/api/service/status")).pid;
+  const updateRunner = join(sandbox, "update-runner.mjs");
+  writeFileSync(
+    updateRunner,
+    `
+import {mkdirSync} from 'node:fs';
+import {randomUUID} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+import {prepareRuntime} from ${JSON.stringify(pathToFileURL(join(installed, "scripts/runtime.js")).href)};
+import {updateExecution,findNpmCli,installEnvironment} from ${JSON.stringify(pathToFileURL(join(installed, "scripts/update-instance.js")).href)};
+import {performUpdate} from ${JSON.stringify(pathToFileURL(join(installed, "server/runtime/update-execution.js")).href)};
+import {writeUpdateJob} from ${JSON.stringify(pathToFileURL(join(installed, "server/runtime/update-manager.js")).href)};
+import {updateRoot} from ${JSON.stringify(pathToFileURL(join(installed, "server/runtime/installation.js")).href)};
+const paths=prepareRuntime({initialize:false}),id=randomUUID();mkdirSync(updateRoot(paths.home),{recursive:true});
+writeUpdateJob(paths.home,{id,parent:${beforeUpdate},previous:${JSON.stringify(VERSION)},version:${JSON.stringify(upgradeVersion)},status:'queued',started:Date.now(),workerPid:process.pid});
+const deps=updateExecution(paths);
+// Install only the isolated candidate tarball here. Production always selects
+// an exact checked version from the official public registry.
+deps.install=async(slot)=>execFileSync(process.execPath,[findNpmCli(),'install','--prefix',slot,'--no-audit','--no-fund','--omit=dev',${JSON.stringify(join(sandbox, upgrade.filename))}],{env:installEnvironment(process.env),stdio:'ignore'});
+const result=await performUpdate(paths,id,deps);if(result.status!=='done')throw Error(JSON.stringify(result));
+console.log('PASS: staged install, stopped old instance, verified snapshot, healthy new instance');
+`,
+  );
+  console.log(
+    execFileSync(process.execPath, [updateRunner], {
+      cwd: caller,
+      env: { ...env, LUCKYTRI_HOME: home },
+      encoding: "utf8",
+      timeout: 180000,
+    }).trim(),
+  );
+  const afterUpdate = await request("/api/service/status");
+  assert.equal(afterUpdate.version, upgradeVersion);
+  assert.notEqual(afterUpdate.pid, beforeUpdate);
+  assert.equal(cli(["--version"]).trim(), upgradeVersion);
+  cli(["--no-browser"]);
+  assert.equal(
+    (await request("/api/service/status")).pid,
+    afterUpdate.pid,
+    "active release is reused without repeated restarts",
+  );
+  await verifyRetention(upgradeVersion);
   install(join(sandbox, upgrade.filename));
   assert.equal(cli(["--version"]).trim(), upgradeVersion);
   await verifyRetention(upgradeVersion);
+  // This fixture now deliberately tests reinstalling the reviewed lower
+  // version. Clear only its managed selection so the downgrade is explicit.
+  unlinkSync(join(home, "runtime", "active.json"));
   console.log(
     "Checking npm uninstall and reinstall with the same external user data…",
   );

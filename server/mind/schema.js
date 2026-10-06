@@ -26,6 +26,8 @@ export function migrateMind(db, store) {
     CREATE INDEX IF NOT EXISTS mind_self_thread ON mind_self(thread,created);
     CREATE TABLE IF NOT EXISTS mind_faces (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, created INTEGER NOT NULL, role TEXT NOT NULL DEFAULT '', tone TEXT NOT NULL DEFAULT '', aspiration TEXT NOT NULL DEFAULT '', content TEXT NOT NULL DEFAULT '', sources TEXT NOT NULL DEFAULT '[]', origin TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS mind_faces_session ON mind_faces(session_id,created);
+    CREATE TABLE IF NOT EXISTS mind_relationships(id TEXT PRIMARY KEY,created INTEGER NOT NULL,subject_id TEXT NOT NULL,channel TEXT NOT NULL,account_id TEXT NOT NULL,kind TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',peer_role TEXT NOT NULL,self_role TEXT NOT NULL,discretion TEXT NOT NULL DEFAULT 'open',note TEXT NOT NULL DEFAULT '',status TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS mind_relationships_subject ON mind_relationships(subject_id,channel,account_id,created);
     CREATE TABLE IF NOT EXISTS mind_thoughts (id TEXT PRIMARY KEY, created INTEGER NOT NULL, kind TEXT NOT NULL, content TEXT NOT NULL, sessions TEXT NOT NULL DEFAULT '[]', sources TEXT NOT NULL DEFAULT '[]', parent_id TEXT, importance REAL NOT NULL DEFAULT 0.5, revisit_at INTEGER, status TEXT NOT NULL DEFAULT 'open', hidden INTEGER NOT NULL DEFAULT 0, outreach TEXT NOT NULL DEFAULT '', outreach_session TEXT, outreach_status TEXT NOT NULL DEFAULT 'none', run_id TEXT);
     CREATE INDEX IF NOT EXISTS mind_thoughts_time ON mind_thoughts(created);
     CREATE TABLE IF NOT EXISTS mind_diary (id TEXT PRIMARY KEY, day TEXT NOT NULL, created INTEGER NOT NULL, content TEXT NOT NULL, mood TEXT, compare TEXT, sources TEXT NOT NULL DEFAULT '[]', run_id TEXT);

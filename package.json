@@ -1,6 +1,6 @@
 {
   "name": "luckytri",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "让由技术诞生的她，在时间、记忆、相遇与选择中逐渐形成自己的方向",
   "license": "MIT",
   "repository": {
@@ -51,7 +51,8 @@
     "docs/brand/*.png",
     ".github/SECURITY.md",
     "README.en.md",
-    "LICENSE"
+    "LICENSE",
+    "scripts/update-instance.js"
   ],
   "publishConfig": {
     "access": "public",
@@ -77,7 +78,7 @@
     "test": "node --import ./tests/helpers/awake.mjs --test tests/*.test.js",
     "test:clock": "node scripts/dev/test-clock.js",
     "audit:sent": "node --env-file-if-exists=.env scripts/dev/audit-sent.js",
-    "test:ui": "node tests/ui/access.mjs && node tests/ui/smoke.js && node tests/ui/ta.mjs && node tests/ui/navigation.mjs && node tests/ui/time.mjs && node tests/ui/time-arrangement.mjs && node tests/ui/performance.mjs && node tests/ui/search.mjs && node tests/ui/storage.mjs && node tests/ui/data-transfer.mjs && node tests/ui/place-notes-updates.mjs && node tests/ui/i18n.mjs",
+    "test:ui": "node tests/ui/access.mjs && node tests/ui/smoke.js && node tests/ui/ta.mjs && node tests/ui/navigation.mjs && node tests/ui/time.mjs && node tests/ui/time-arrangement.mjs && node tests/ui/performance.mjs && node tests/ui/search.mjs && node tests/ui/storage.mjs && node tests/ui/data-transfer.mjs && node tests/ui/place-notes-updates.mjs && node tests/ui/i18n.mjs && node tests/ui/relationships-update.mjs",
     "setup": "node scripts/setup.js",
     "stop": "node scripts/stop.js",
     "backup": "node scripts/backup.js",

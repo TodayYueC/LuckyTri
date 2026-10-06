@@ -235,7 +235,7 @@ export class Bonds {
       "SELECT sessions FROM mind_people WHERE user_id=?",
     );
     const write = this.db.prepare(
-      "INSERT INTO mind_people(user_id,name,first_seen,last_seen,sessions) VALUES (?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET name=COALESCE(excluded.name,name),last_seen=MAX(last_seen,excluded.last_seen),sessions=excluded.sessions",
+      "INSERT INTO mind_people(user_id,name,first_seen,last_seen,sessions) VALUES (?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET name=COALESCE(excluded.name,name),first_seen=COALESCE(first_seen,excluded.first_seen),last_seen=MAX(COALESCE(last_seen,excluded.last_seen),excluded.last_seen),sessions=excluded.sessions",
     );
     for (const { userId, name } of people) {
       if (!userId || userId === "bot") continue;
@@ -450,6 +450,9 @@ export class Bonds {
     );
     const merged = {
       ...(state || { ...START, interactions: 0 }),
+      firstMetAt:
+        state?.firstMetAt ??
+        (known?.first_seen <= now ? known.first_seen : null),
       seenAt: seen || null,
       awayDays: seen ? Math.max(0, Math.floor((now - seen) / DAY)) : null,
     };
@@ -462,10 +465,14 @@ export class Bonds {
         Math.floor((now - described.firstMetAt) / DAY),
       );
     const feel = describeBond(described);
+    const binding = this.mind.relationships.current(userId, { now, room });
+    const relationship = this.mind.relationships.view(binding, room);
     delete described.unspokenDays;
     return {
       userId: String(userId),
-      name: known?.name || String(userId),
+      name: relationship?.name || known?.name || String(userId),
+      relationship,
+      relationalWeight: this.mind.relationships.weight(binding),
       sessions: parse(known?.sessions, []),
       lastSeen: known?.last_seen || null,
       ...described,

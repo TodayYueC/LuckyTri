@@ -59,7 +59,7 @@ export function createApp({
     res.status(401).json({ error: "请先登录管理台" });
   });
   app.use("/api", objectBody);
-  mountUpdates(app, updates);
+  mountUpdates(app, updates, runtime.updater);
   mountDataTransfer(app, runtime.transfer);
   if (plugins) {
     app.post(

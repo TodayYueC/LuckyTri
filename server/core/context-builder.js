@@ -1,4 +1,4 @@
-import { effectivePersona } from "./persona-manager.js";
+import { effectivePersona, identityAliases } from "./persona-manager.js";
 import { localClock, conversationCues } from "./conversation-cues.js";
 import { estimateTokens } from "./model-manager.js";
 import { resolveTargets } from "./reply-target-resolver.js";
@@ -31,7 +31,7 @@ export function perceive(repo, session, watermark, simulated, name) {
       ...repo.events(session, watermark, { simulated }),
     ],
     name,
-    repo.store.settings().aliases || "",
+    identityAliases(name, repo.store.settings().aliases || ""),
   );
 }
 

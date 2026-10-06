@@ -1,5 +1,51 @@
 // English for the People section.
 export default {
+  年长手足: "Older sibling",
+  年幼手足: "Younger sibling",
+  妹妹: "Younger sister",
+  姐姐: "Older sister",
+  弟弟: "Younger brother",
+  哥哥: "Older brother",
+  朋友: "Friend",
+  伙伴: "Companion",
+  其他关系: "Other relationship",
+  关系已保存: "Relationship saved",
+  "解除这份关系？相处留下的记忆和感受仍会保留。":
+    "End this relationship? Memories and feelings from encounters will remain.",
+  解除关系: "End relationship",
+  解除: "End",
+  彼此的关系: "Relationships",
+  绑定关系: "Bind a relationship",
+  "按账号认出人或另一位机器人；关系融入关心、打算与交流，感情仍随着相处生长。":
+    "Recognise people or other robots by account. Relationships inform care, plans and conversation, while feelings grow through encounters.",
+  另一位机器人: "Another robot",
+  人: "Person",
+  "还没有绑定关系，可以从一个准确的账号开始。":
+    "No relationships bound yet. Start with an exact account.",
+  平台: "Platform",
+  对方账号: "Their account",
+  "QQ 号或平台用户 ID": "QQ number or platform user ID",
+  对象类型: "Account type",
+  对方名字: "Their name",
+  "可选，未填写时使用已认识的名字": "Optional. Otherwise use their known name.",
+  对方是我的: "They are my",
+  我是对方的: "I am their",
+  留空时按当前身份生成对应称呼:
+    "Leave blank to infer the reciprocal role from the current identity",
+  关系称呼: "Relationship label",
+  应用账号: "Application account",
+  关系公开范围: "Relationship visibility",
+  这份关系的缘由: "Reason for this relationship",
+  "可选，写下真实的安排或缘由":
+    "Optional. Describe the actual arrangement or reason.",
+  "绑定称呼不会凭空增加相处经历、信任或对方的同意。私下关系只在与对方的私聊中使用。":
+    "A label does not invent shared experiences, trust or their consent. Private relationships are used only in private chats with that account.",
+  保存关系: "Save relationship",
+  修改关系: "Edit relationship",
+  "对方是我的 {peer}，我是对方的 {self}":
+    "They are my {peer}; I am their {self}",
+  关系变化记录: "Relationship history",
+  设置关系: "Set relationship",
   新增: "Added",
   在这里的想法: "Thoughts about this place",
   "同一个她，在不同的地方留下自己的想法。":

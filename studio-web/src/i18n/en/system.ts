@@ -1,5 +1,24 @@
 // English for the System section (models, embedding, search, runtime, page shell).
 export default {
+  更新已开始: "Update started",
+  "正在下载新版本…": "Downloading the new version...",
+  "正在检查新程序…": "Checking the new program...",
+  "正在保存当下并停止实例…": "Saving the current state and stopping...",
+  "正在保留更新前的校验备份…": "Saving a verified backup before updating...",
+  "正在切换版本并重启…": "Switching versions and restarting...",
+  "正在确认新实例就绪…": "Checking that the new instance is ready...",
+  "正在恢复原版本和数据…": "Restoring the previous version and data...",
+  更新与重启已完成: "Update and restart completed",
+  更新未完成: "Update did not complete",
+  "更新到 {version} 并重启当前实例？先下载校验，再保留数据恢复点；启动失败时尝试恢复原版本。":
+    "Update to {version} and restart this instance? The program is downloaded and checked first, then a data restore point is saved. If startup fails, recovery of the previous version is attempted.",
+  更新并重启: "Update and restart",
+  开始更新: "Start update",
+  "下载期间继续运行，切换前保留数据恢复点。更新完成后此页面会自动重新连接。":
+    "The instance keeps running during download. A data restore point is saved before switching. This page reconnects after the update.",
+  "正在更新…": "Updating...",
+  "已恢复原版本和更新前的数据。":
+    "The previous version and pre-update data were restored.",
   版本与更新: "Version and updates",
   检查更新: "Check for updates",
   "正在检查…": "Checking…",
@@ -15,10 +34,6 @@ export default {
     "Unable to reach npm or read version information. Please try again later.",
   "点击时才检查，五分钟内复用结果。检查更新不会自动安装或重启。":
     "Checks only when clicked and reuses results for five minutes. Checking does not install updates or restart the instance.",
-  "源码安装：更新 main、安装依赖并构建后重启，保留现有数据与配置。":
-    "Source installation: update main, install dependencies, rebuild and restart, keeping existing data and configuration.",
-  "停止实例后执行升级命令，再启动 LuckyTri。":
-    "Stop the instance, run the update command, then start LuckyTri again.",
   发布说明: "Release notes",
   "DATA · 导入与导出": "DATA · Import and export",
   "带上记忆，继续生活。": "Carry her memories forward.",

@@ -4,6 +4,7 @@ import { Nature } from "./nature.js";
 import { Traits } from "./traits.js";
 import { Affect } from "./affect.js";
 import { BOND_CHANGES, Bonds } from "./bonds.js";
+import { Relationships } from "./relationships.js";
 import { Self } from "./self.js";
 import { Faces } from "./faces.js";
 import { Thoughts } from "./thoughts.js";
@@ -94,6 +95,7 @@ export class Mind {
       "CREATE INDEX IF NOT EXISTS core_events_time ON core_events(time)",
     );
     this.nature = new Nature(repo);
+    this.relationships = new Relationships(this);
     this.traits = new Traits(this);
     this.affect = new Affect(this);
     this.bonds = new Bonds(this);

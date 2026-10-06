@@ -2,6 +2,31 @@
 // key, exactly as the code writes it. `{0}` stands for a value the code puts
 // into the message; patterns are used when a message carries one.
 export const ERRORS = {
+  关系对象账号无效: "Invalid relationship account",
+  官方机器人关系需要指定应用账号:
+    "Official bot relationships require an application account",
+  不能把当前实例绑定为自己的关系对象:
+    "This instance cannot be bound as its own peer",
+  关系设置无效: "Invalid relationship settings",
+  关系称呼或备注无效: "Invalid relationship label or note",
+  "关系已经变化，请刷新后再修改":
+    "The relationship has changed. Refresh before editing.",
+  关系不存在或已解除: "The relationship does not exist or has ended",
+  更新任务无效: "Invalid update operation",
+  更新目录无效: "Invalid update directory",
+  更新程序校验失败: "The update program did not pass validation",
+  更新任务已经处理: "The update operation has already been processed",
+  另一次启动正在进行: "Another launch is in progress",
+  启动锁尚未释放: "The startup lock has not been released",
+  当前实例不支持自动更新: "This instance does not support automatic updates",
+  请重新检查并选择可用的新版本:
+    "Check again and select an available new release",
+  "版本更新正在进行，请稍后再试":
+    "A version update is in progress. Try again later.",
+  "更新未完成，原程序和数据已保留，请查看运行日志后重试。":
+    "The update did not complete. The original program and data were retained. Check the runtime log before trying again.",
+  "自动恢复未完成，更新前的校验备份已保留，请查看运行日志并手动恢复。":
+    "Automatic recovery did not complete. The verified pre-update backup was retained. Check the runtime log and recover manually.",
   修改机会需要明确的记录与原因:
     "An edit opportunity needs an explicit record and reason",
   修改机会记录无效: "Invalid edit opportunity record",

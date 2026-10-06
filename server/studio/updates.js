@@ -125,9 +125,20 @@ export class UpdateChecker {
   }
 }
 
-export function mountUpdates(app, checker) {
-  app.get("/api/system/update", (_req, res) => res.json(checker.status()));
-  app.post("/api/system/update/check", async (_req, res) =>
-    res.json(await checker.check()),
+export function mountUpdates(app, checker, updater) {
+  const view = (info) => ({ ...info, operation: updater?.status() || null });
+  app.get("/api/system/update", (_req, res) =>
+    res.json(view(checker.status())),
   );
+  app.post("/api/system/update/check", async (_req, res) =>
+    res.json(view(await checker.check())),
+  );
+  app.post("/api/system/update/install", async (req, res) => {
+    try {
+      if (!updater) throw Error("当前实例不支持自动更新");
+      res.json(await updater.install(req.body.version));
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  });
 }

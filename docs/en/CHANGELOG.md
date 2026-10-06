@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 1.0.4 — 2026-10-06
+
+- Account-based relationships for people and other robots, with reciprocal family/friend/custom roles, name, reason, visibility and history. Integrated into recognition, conversation, solitude, diaries, initiative and task choices without inventing trust or shared experiences.
+- Removed the fixed LuckyTri identity from built-in nature and reflection prompts. Renamed instances use their configured identity; the exact old shipped rule is repaired without spending an edit. Other robots remain separate accounts.
+- Update and restart stages and validates the official release before stopping, saves a verified data restore point, and switches programs. Failed startup attempts restoration of the previous code and data. Source/npm installs and instance configuration remain intact; repeated clicks coalesce and CLI launches retain managed updates.
+- Added privacy, same-name identity, recovery, real installed-package switching and viewport regression checks. Archive checks verify bytes before parsing SQLite, so damaged files do not expose raw schema errors.
+
 
 ## 1.0.3 — 2026-10-06
 

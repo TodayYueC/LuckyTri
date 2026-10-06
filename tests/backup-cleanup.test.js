@@ -4,6 +4,7 @@ import {
   existsSync,
   linkSync,
   mkdtempSync,
+  mkdirSync,
   readFileSync,
   rmSync,
   utimesSync,
@@ -11,6 +12,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import { createStore } from "../server/storage/store.js";
 import { autoBackup } from "../scripts/backup.js";
