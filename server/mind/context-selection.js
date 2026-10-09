@@ -7,7 +7,7 @@ export const MIND_CONTEXT_TOKEN_CAP = 6000;
 // speakers is not invented by concatenating the room's words.
 export function relevantContext(
   rows,
-  { cues = [], limit, pinned = () => false } = {},
+  { cues = [], limit, pinned = () => false, requireOverlap = false } = {},
 ) {
   const score = (row) => {
     const terms = interestTerms([row.content]);
@@ -15,9 +15,16 @@ export function relevantContext(
       0,
       ...cues.map((cue) => [...terms].filter((term) => cue.has(term)).length),
     );
-    return (
-      overlap * 4 + Number(row.salience ?? row.importance ?? row.strength ?? 0)
+    const named = cues.some((cue) =>
+      [...terms].some((term) => /^[a-z0-9]{3,}$/.test(term) && cue.has(term)),
     );
+    return {
+      overlap,
+      named,
+      value:
+        overlap * 4 +
+        Number(row.salience ?? row.importance ?? row.strength ?? 0),
+    };
   };
   const fixed = rows.filter(pinned).slice(0, limit);
   return [
@@ -25,7 +32,11 @@ export function relevantContext(
     ...rows
       .filter((row) => !fixed.includes(row))
       .map((row, order) => ({ row, order, score: score(row) }))
-      .sort((a, b) => b.score - a.score || a.order - b.order)
+      .filter(
+        (item) =>
+          !requireOverlap || item.score.overlap >= 2 || item.score.named,
+      )
+      .sort((a, b) => b.score.value - a.score.value || a.order - b.order)
       .slice(0, limit - fixed.length)
       .map((item) => item.row),
   ];
@@ -40,6 +51,7 @@ export function boundMindContext(view, cap = MIND_CONTEXT_TOKEN_CAP) {
     [view.self, "lastDiary"],
     [view.inner, "reminded"],
     [view.inner, "onMind"],
+    [view.inner, "relatedSelf"],
     [view.inner, "with"],
     [view.inner, "stood"],
     [view.inner, "heard"],

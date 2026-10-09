@@ -2,6 +2,15 @@
 
 # Changelog
 
+## 1.0.7 — 2026-10-09
+
+- Ground understanding in the current messages, supplements, speakers and quote chains before choosing a response. Corrections address the actual question instead of substituting apologies or abstract monologues.
+- Keep single topical remarks out of the enduring self's core and prevent extracted replies from becoming fixed scripts. Related recollections, cross-conversation continuity and disclosure boundaries remain available.
+- Exclude known bots from human room-style statistics and end empty bot confirmation loops. An explicit addressed stop ends the current turn; a renewed question can still receive a reply.
+- Preserve provenance and uncertainty in game-content presentation. Current activities and work fragments distinguish reference reading and model-generated material from client operation or completion.
+- Rewrite the latest rejected draft, allow requested factual repetition, and keep contradiction repairs confined to relevant questions. Conversation endings no longer receive an unrelated confusion fallback.
+- Add full-corpus review, historical replay and sequential conversation evaluation tools. Paid model checks run explicitly; private transcripts and reports stay local and are excluded from release artifacts.
+
 ## 1.0.5 — 2026-10-07
 
 - Fixed bound relationships being forgotten when the person was absent from the current conversation. Chat, initiative, solitude, diaries and reviews recall the same account-based ledger by name and role.

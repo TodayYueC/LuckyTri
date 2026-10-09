@@ -466,12 +466,7 @@ export const LABELS = {
 
   // mind/time/model-material.js, presentation.js, search.js
   用模型整理资料主题: "Sorting the material topic with the model",
-  游玩体验: "Play experience",
   本段游玩记录: "This span's play record",
-  "留下第一印象，想好接下来要做什么":
-    "Leave first impressions and decide what to do next",
-  继续游玩: "Keep playing",
-  自己的游玩体验: "Her own play experience",
   "实例中断，查询结果未确认":
     "The instance was interrupted; the query result is unconfirmed",
   "资料查询条件已恢复，重新按优先级安排":

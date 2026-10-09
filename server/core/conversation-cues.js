@@ -12,6 +12,7 @@ export function localClock(time, timeZone = "Asia/Shanghai") {
       day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
+      weekday: "long",
       hourCycle: "h23",
     });
     clockFormats.set(timeZone, formatter);
@@ -26,6 +27,7 @@ export function localClock(time, timeZone = "Asia/Shanghai") {
     timeZone,
     local: `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`,
     hour,
+    weekday: parts.weekday,
     period:
       hour < 5
         ? "凌晨"
@@ -69,6 +71,16 @@ export function replyFocus(snapshot, decision) {
   );
   const latest = targets.at(-1)?.text || "";
   if (
+    /看不懂|没看懂|听不懂|太抽象|说人话|复读|别重复|好好说话|你在说什么|你在讲什么/.test(
+      latest,
+    )
+  )
+    return {
+      kind: "readability_repair",
+      instruction:
+        "对方指出你没说清楚或重复。回看你自己最后一句，直接说明它指哪件具体的事、你实际想表达什么；原本没有明确意思就承认没说清。不要再解释新比喻，不只说行/收到，不重复一遍整段聊天，也不用承诺以后永远不再犯。",
+    };
+  if (
     /^(?:\[表情\])+$/.test(latest) ||
     (targets.at(-1)?.attachments || []).some(
       (item) =>
@@ -109,7 +121,7 @@ export function replyFocus(snapshot, decision) {
     };
   }
   if (
-    /你.{0,10}(?:为什么|怎么|凭什么).{0,14}(?:说|认定|觉得|判断)|(?:为什么|怎么).{0,12}(?:这么说|那样说)/.test(
+    /你.{0,10}(?:为什么|怎么|凭什么).{0,14}(?:说|认定|觉得|判断|叫我|喊我)|(?:为什么|怎么).{0,12}(?:这么说|那样说|叫我|喊我)/.test(
       latest,
     )
   )
@@ -159,7 +171,7 @@ export function replyFocus(snapshot, decision) {
     return {
       kind: "feeling",
       instruction:
-        "对方在说自己的感受，不是在求解决方案。普通地回应，不复述症状，不预测他肯定撑不住，不劝慢慢熬、休息、别折腾。已有具体原因时说自己对这件事的态度；未知原因可以轻问一句。无需每次都共情总结。",
+        "对方在说自己的感受，先理解具体处境，不自动当作求解决方案。已有原因时回应这件事；原因不明可以轻问，但不必每次追问。避免把症状复述一遍、预测他肯定撑不住，或用整套建议打断倾诉；一句贴合处境的关心可以自然说。不要只宣布自己在听、允许对方吐槽或不出建议。",
     };
   return {
     kind: "respond",
@@ -212,6 +224,15 @@ export function conversationalIssues(result, snapshot, decision = {}) {
     .map((m) => m.text);
   const issues = [];
   if (
+    replyFocus(snapshot, decision).kind === "readability_repair" &&
+    texts.every((line) =>
+      /^(?:嗯|好|行|收到|知道了|我明白了|好的)[。！!\s]*$/.test(line),
+    )
+  )
+    issues.push(
+      "对方正在指出没说清楚或复读；只确认收到没有解释具体意思，核对上一句并说清楚",
+    );
+  if (
     batchRows.length &&
     !batchRows.some((m) => m.relation === "direct") &&
     !batchRows.some((m) => /陪你|跟你聊|和你聊/.test(m.text || "")) &&
@@ -257,6 +278,25 @@ export function conversationalIssues(result, snapshot, decision = {}) {
   if (texts.some((t) => /[啊呀呢吧](?:…+|\.{3,})$/.test(t)))
     issues.push("不要用句尾拖音代替内容；不用复述对方状态，直接简短回应");
   const hour = snapshot.conversation?.clock?.hour;
+  const weekday = snapshot.conversation?.clock?.weekday;
+  if (weekday) {
+    const shortDay = weekday.replace("星期", "周");
+    for (const day of [weekday, shortDay])
+      if (
+        texts.some((line) =>
+          String(line)
+            .split(/[，,。；;！？!?]/)
+            .some((clause) =>
+              new RegExp(
+                `^(?:现在|可|但)?(?:${day}还没到|还没到${day}|今天不是${day})$`,
+              ).test(clause.trim()),
+            ),
+        )
+      )
+        issues.push(
+          `当前本地时间已经是${weekday}，不能说今天还没到这一天；按当前日历理解`,
+        );
+  }
   if (
     hour >= 6 &&
     hour < 18 &&

@@ -1,6 +1,8 @@
 import { replyFocus } from "./conversation-cues.js";
 import { wordingNotes } from "./turn.js";
 import { initiativeContext } from "./initiative-context.js";
+import { conversationGrounding } from "./conversation-grounding.js";
+import { currentExchange } from "./dialogue-context.js";
 
 // Puts an already chosen answer into words again: used when the turn came
 // back without words or the first draft failed a check.
@@ -30,12 +32,17 @@ export async function generate(
     issues.length ? "rewrite" : "generation",
     prompt,
     {
-      context: snapshot.initiative ? initiativeContext(snapshot) : context,
+      context: snapshot.initiative
+        ? initiativeContext(snapshot)
+        : { ...context, grounding: conversationGrounding(snapshot) },
       decision: {
         choice: decision.choice || "speak",
         reason: decision.reason,
         appraisal: decision.appraisal,
         targetMessageIds: decision.targetMessageIds,
+        ...(decision.understanding
+          ? { understanding: decision.understanding }
+          : {}),
         ...(decision.bubbles?.length ? { draft: decision.bubbles } : {}),
       },
       issues,
@@ -43,6 +50,7 @@ export async function generate(
       replyFocus: replyFocus(snapshot, decision),
       guidance: wordingNotes(decision, snapshot),
       maxBubbles: decision.maxBubbles ?? 2,
+      ...(!snapshot.initiative ? { exchange: currentExchange(snapshot) } : {}),
     },
     trace,
     images,

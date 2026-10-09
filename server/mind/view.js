@@ -6,6 +6,7 @@ import { describeFace } from "./faces.js";
 import { SELF_KINDS } from "./self.js";
 import { DAY, text } from "./util.js";
 import { relationshipHistory } from "./relationship-context.js";
+import { fixedReplyHabit } from "../core/conversation-grounding.js";
 
 const FORGOTTEN = "（很久没想起了）";
 
@@ -46,6 +47,12 @@ function groupStyle(mind, session, now) {
       )
       .all(session, now + 60000);
     const ids = rows.map((row) => row.event_id).filter(Boolean);
+    const bots = new Set(
+      mind.relationships
+        .context({ room: session, now, limit: 100 })
+        .known.filter((p) => p.kind === "bot")
+        .map((p) => String(p.subjectId)),
+    );
     const away = ids.length
       ? new Set(
           mind.db
@@ -57,7 +64,9 @@ function groupStyle(mind, session, now) {
         )
       : new Set();
     const profile = summarizeGroupStyle(
-      away.size ? rows.filter((row) => !away.has(row.event_id)) : rows,
+      rows.filter(
+        (row) => !away.has(row.event_id) && !bots.has(String(row.user_id)),
+      ),
       now,
     );
     return profile.ready ? profile.summary : "";
@@ -97,11 +106,31 @@ export function innerView(
     now,
   });
   const carries = (thread) => mind.meetings.stays(thread, session, now);
+  const availableThreads = mind.self
+    .annotated({ before: now, now })
+    .filter(
+      (t) =>
+        !t.faded &&
+        carries(t) &&
+        !fixedReplyHabit(t.content) &&
+        !(
+          t.kind === "habit" &&
+          t.origin === "memory" &&
+          new Set(t.days).size < 3
+        ),
+    );
+  // Her cached self stays the same across cues. Topic-specific recollections
+  // belong in inner, so a new question does not swap her personality.
   const visibleThreads = relevantContext(
-    mind.self
-      .annotated({ before: now, now })
-      .filter((t) => !t.faded && carries(t)),
-    { cues, limit: 6, pinned: (t) => t.core || t.thread === living?.thread },
+    availableThreads.filter((t) => t.core || t.thread === living?.thread),
+    {
+      limit: 6,
+      pinned: (t) => t.core || t.thread === living?.thread,
+    },
+  );
+  const relatedSelf = relevantContext(
+    availableThreads.filter((t) => !visibleThreads.includes(t)),
+    { cues, limit: 2, requireOverlap: true },
   );
   const shownLiving = living && carries(living) ? living : null;
   const reminded = [
@@ -212,7 +241,7 @@ export function innerView(
     mind.thoughts
       .open({ now, limit: 400, session })
       .filter((t) => mind.meetings.sayable(t.content, session)),
-    { cues, limit: 3 },
+    { cues, limit: 3, requireOverlap: cue.length > 0 },
   );
   const heard = feedback(mind, session, now);
   const continuity = mind.continuity.recall({ session, people, cue, now });
@@ -269,6 +298,14 @@ export function innerView(
             onMind: thoughts.map(
               (t) =>
                 `${elapsedLabel(t.created, now, mind.timeZone())}想到：${text(t.content, 110)}`,
+            ),
+          }
+        : {}),
+      ...(relatedSelf.length
+        ? {
+            relatedSelf: relatedSelf.map(
+              (t) =>
+                `${SELF_KINDS[t.kind]}：${relationshipHistory(text(t.content, 80), t.created, relationships)}`,
             ),
           }
         : {}),

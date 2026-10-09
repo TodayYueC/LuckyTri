@@ -7,6 +7,7 @@ import { gentlePersona } from "./persona-manager.js";
 import { initiativeContext } from "./initiative-context.js";
 import { interestTerms } from "../mind/attention.js";
 import { relationshipClaimIssues } from "../mind/relationship-context.js";
+import { groundingIssues, requestedRepeat } from "./conversation-grounding.js";
 const norm = (s) => s.toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
 export function wrongIdentityClaim(text, snapshot) {
   const name = snapshot.persona?.name;
@@ -29,17 +30,32 @@ export function wrongIdentityClaim(text, snapshot) {
       ).test(text);
     });
 }
-export function contradictoryOwnWords(snapshot, decision = {}) {
+function relevantOwnWords(snapshot, decision = {}) {
+  if (
+    !["clarify_claim", "promise_check", "repair", "basis_check"].includes(
+      replyFocus(snapshot, decision).kind,
+    )
+  )
+    return [];
   const targets = (snapshot.messages || []).filter((message) =>
     decision.targetMessageIds?.includes(message.id),
   );
-  const words = (snapshot.inner?.continuity?.people || [])
+  const cue = interestTerms(targets.map((m) => m.text || ""));
+  for (const term of "我在 你在 他在 她在 群里 私聊 里说 说过 说的 说了 喊过 叫过 称呼 当时 刚才 之前 之后 原话 前面 那句 这句 不是 就是".split(
+    " ",
+  ))
+    cue.delete(term);
+  return (snapshot.inner?.continuity?.people || [])
     .filter((person) =>
       targets.some((message) => String(message.speaker) === String(person.id)),
     )
     .flatMap((person) =>
       (person.myElsewhereWords || []).map((line) => line.text || ""),
-    );
+    )
+    .filter((line) => [...interestTerms([line])].some((term) => cue.has(term)));
+}
+export function contradictoryOwnWords(snapshot, decision = {}) {
+  const words = relevantOwnWords(snapshot, decision);
   return (
     words.some((line) => /不是|没说|并非|不指/.test(line)) &&
     words.some((line) => /就是|确实|说的就是|指的就是/.test(line))
@@ -168,6 +184,7 @@ export function validateResponse(result, snapshot, decision, maxChars = 180) {
     result.bubbles,
     snapshot.inner?.relationships,
   );
+  issues.push(...groundingIssues(result.bubbles, snapshot));
   if (result.bubbles?.some((line) => wrongIdentityClaim(line, snapshot)))
     issues.push(
       "自称与当前实例名字不一致，使用本轮天性中的名字，不把另一位机器人或软件名称当成自己",
@@ -240,15 +257,6 @@ export function validateResponse(result, snapshot, decision, maxChars = 180) {
       ]),
   ]);
   const ownWordsConflict = contradictoryOwnWords(snapshot, decision);
-  if (
-    ownWordsConflict &&
-    !/前后|说乱|不一致|矛盾|改口|两种说法|先.{0,24}后/.test(
-      result.bubbles.join(" "),
-    )
-  )
-    issues.push(
-      "本人对同一件事留下相反说法，这次必须承认前后不一致，不能只挑一条旧话解释",
-    );
   const publicWords = norm(
     snapshot.messages
       .filter((message) => message.role === "user")
@@ -287,14 +295,11 @@ export function validateResponse(result, snapshot, decision, maxChars = 180) {
         "已有核实的本人承诺；不能否认、反问证据或把失约推给对方，简短承认并回应当下",
       );
     if (
-      targetMessages.some((m) =>
-        (continuity?.people || []).some(
-          (person) =>
-            String(person.id) === String(m.speaker) &&
-            person.myElsewhereWords?.length,
-        ),
+      ["clarify_claim", "promise_check", "repair", "basis_check"].includes(
+        replyFocus(snapshot, decision).kind,
       ) &&
-      /(?:我)?(?:没|没有|从未|从来没|不记得).{0,10}(?:说过|说|喊过|喊|叫过|叫)/.test(
+      relevantOwnWords(snapshot, decision).length > 0 &&
+      /(?:我)?(?:没|没有|从未|从来没|不记得)[^，。！？!?；;\n]{0,10}(?:(?:说过|说)(?!清|明白|完|全|对)|喊过|喊|叫过|叫)/.test(
         text,
       )
     )
@@ -350,7 +355,11 @@ export function validateResponse(result, snapshot, decision, maxChars = 180) {
       /^(?:h{2,6}|哈{1,6}|嗯{1,3}|好|行|哦{1,3}|啊|对|是的|晚安)$/i.test(
         norm(text),
       );
-    if (!briefReaction && recent.some((r) => norm(r) === norm(text)))
+    if (
+      !briefReaction &&
+      !requestedRepeat(snapshot) &&
+      recent.some((r) => norm(r) === norm(text))
+    )
       issues.push("重复近期回复");
     if (
       gentlePersona(snapshot.persona) &&
@@ -480,13 +489,7 @@ export function validateResponse(result, snapshot, decision, maxChars = 180) {
       );
   }
   if (
-    [
-      "repair",
-      "acknowledge",
-      "promise_check",
-      "clarify_claim",
-      "basis_check",
-    ].includes(focus.kind) &&
+    ["repair", "acknowledge"].includes(focus.kind) &&
     result.bubbles.length > 1
   )
     issues.push("这一轮只是纠正或确认，一句收住，不要追加原话题或解释");

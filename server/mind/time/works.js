@@ -426,6 +426,12 @@ export class Works {
         ordinal: w.ordinal,
         summary: text(w.summary, 180),
         fragment: text(this.get(w.id).content, 240),
+        ...(w.kind === "game"
+          ? {
+              experienceMode: "reference",
+              provenance: this.get(w.id).provenance,
+            }
+          : {}),
         characters: w.characters,
       }));
   }

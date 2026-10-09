@@ -38,22 +38,30 @@ export function claimedPlay(text) {
 
 // Secrets never enter another conversation's context, but a reply is still
 // checked against them before it leaves.
-export function leaks(bubbles, secrets) {
+export function leaks(bubbles, secrets, alreadySaid = []) {
   const said = normalized((bubbles || []).join(""));
   if (said.length < 4) return [];
   const pairs = (s) =>
     new Set(Array.from({ length: s.length - 1 }, (_, i) => s.slice(i, i + 2)));
   const spoken = pairs(said);
+  const known = alreadySaid.map(normalized);
+  const alreadyKnown = (phrase) => known.some((line) => line.includes(phrase));
   const found = [];
   for (const secret of secrets || []) {
     const key = normalized(secret.content);
     if (key.length < 4) continue;
     const grams = pairs(key);
     let hit =
-      said.includes(key) ||
-      [...grams].filter((g) => spoken.has(g)).length / grams.size >= 0.6;
+      (said.includes(key) && !alreadyKnown(key)) ||
+      [...grams].filter((g) => spoken.has(g) && !alreadyKnown(g)).length /
+        grams.size >=
+        0.6;
     for (let i = 0; !hit && i + 6 <= key.length; i += 2)
-      if (said.includes(key.slice(i, i + 6))) hit = true;
+      if (
+        said.includes(key.slice(i, i + 6)) &&
+        !alreadyKnown(key.slice(i, i + 6))
+      )
+        hit = true;
     if (hit) found.push(secret);
   }
   return found;

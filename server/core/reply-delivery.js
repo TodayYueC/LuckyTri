@@ -9,6 +9,7 @@ import {
 } from "./response-validator.js";
 import { deliver, sleep } from "./message-scheduler.js";
 import { leaks } from "../mind/guard.js";
+import { conversationGrounding } from "./conversation-grounding.js";
 import { initiativeAudience } from "../mind/conversation-origin.js";
 function isFormatError(error) {
   return (
@@ -87,13 +88,20 @@ export class ReplyDelivery {
     const outdated = () => !c.replay && !c.preview && !isCurrent();
     const focus = replyFocus(snapshot, turn).kind;
     const fallbackOptions = [
+      ...(focus === "acknowledge" ? ["嗯。", "好。"] : []),
+      ...(focus === "readability_repair"
+        ? ["刚才那句我没说清楚，先不继续绕了。"]
+        : []),
       ...(focus === "promise_check"
         ? ["你问的约定我得认真核对，刚才我没接住。", "我先认真核对一下。"]
         : []),
-      "嗯",
-      "好",
-      "行",
-      "收到",
+      ...(snapshot.batch.some((m) =>
+        /^(?:你)?(?:还)?在(?:吗|不在)[？?\s]*$/.test(m.text || ""),
+      )
+        ? ["在。"]
+        : []),
+      "这句我还没理清楚，先不乱说。",
+      "我还没想明白。",
     ];
     const fallbackText = turn.crisis?.clear
       ? "你现在还好吗？身边有人能陪着你吗？"
@@ -106,20 +114,20 @@ export class ReplyDelivery {
                 .filter((m) => m.role === "assistant")
                 .slice(-12)
                 .some((m) => m.text === text),
-          ) || "嗯";
+          ) || "我还没想明白。";
     const generationPrompt = replyPrompt(
       nature,
       prompt,
       snapshot.initiative ? "initiative" : "generation",
     );
-    const makeResponse = async (issues = []) => {
+    const makeResponse = async (issues = [], draft = null) => {
       try {
         const raw = await generate(
           models,
           model,
           generationPrompt,
           snapshot,
-          turn,
+          draft ? { ...turn, bubbles: draft.bubbles } : turn,
           trace,
           c.generationImages,
           issues,
@@ -134,6 +142,12 @@ export class ReplyDelivery {
     };
     const secrets = this.owner.mind.memory.secretsOutside(session);
     const privateFacts = this.owner.mind.meetings.privateSayings(session);
+    // A title or phrase the user has already said in this room is not a
+    // disclosure by itself. Explicit secrets retain the stricter check above.
+    const alreadySaid = snapshot.messages
+      .filter((m) => m.role === "user")
+      .slice(-12)
+      .map((m) => m.text || "");
     const check = (response) => {
       const issues = validateResponse(
         response,
@@ -143,7 +157,7 @@ export class ReplyDelivery {
       );
       if (leaks(response.bubbles, secrets).length)
         issues.push("这句话说出了别人要求保密的事，不能在这里说");
-      if (leaks(response.bubbles, privateFacts).length)
+      if (leaks(response.bubbles, privateFacts, alreadySaid).length)
         issues.push("这句话把私下知道的事说出来了，不能在这里说");
       if (
         this.owner.mind.relationships.discloses(
@@ -165,6 +179,39 @@ export class ReplyDelivery {
           person.recentShared?.length || person.myPrivateIntentions?.length,
       );
     const needsDeepCheck = (response) =>
+      response.bubbles.some((line) =>
+        /食堂|外卖|吃了|吃完|点好|点完|拍照|实拍|出门|上课/.test(line),
+      ) ||
+      (snapshot.inner?.relationships?.known || []).some(
+        (person) =>
+          person.name &&
+          !snapshot.batch.some(
+            (m) => String(m.speaker) === String(person.subjectId),
+          ) &&
+          response.bubbles.some((line) => line.includes(person.name)),
+      ) ||
+      response.bubbles.some((line) =>
+        /名下|落款|拎着|挂.{0,8}栏|这半|那半|落笔/.test(line),
+      ) ||
+      response.bubbles.some((line) =>
+        /从.{1,16}(?:学来|听来|知道|学的)|(?:教|告诉)我的/.test(line),
+      ) ||
+      conversationGrounding(snapshot).botOnlyTail >= 6 ||
+      snapshot.batch.some((m) =>
+        /看不懂|没看懂|听不懂|太抽象|人机|复读|说人话|好好说话|冷淡|冷漠|你觉得我|我的人格|性格怎么样/.test(
+          m.text || "",
+        ),
+      ) ||
+      response.bubbles.some((line) =>
+        /没重看|我.{0,8}(?:重看|重玩|通关|看完了|玩完了)/.test(line),
+      ) ||
+      (policy.deepCheck &&
+        c.pressure < 0.85 &&
+        snapshot.batch.some((m) =>
+          /想你|喜欢你|爱你|你知道|是谁|谁是|是不是|不太清|不敢说/.test(
+            m.text || "",
+          ),
+        )) ||
       !!snapshot.initiative ||
       !!snapshot.inner?.relationships?.requested ||
       !!snapshot.inner?.continuity?.requested ||
@@ -255,22 +302,43 @@ export class ReplyDelivery {
       if (outdated()) return staleExit();
       issues = await deepCheck(response);
     }
-    const rewriteLimit = snapshot.inner?.continuity?.people?.some(
-      (person) => person.myElsewhereWords?.length,
-    )
-      ? 2
-      : 1;
+    const rewriteLimit = snapshot.initiative || c.pressure >= 0.85 ? 1 : 2;
     for (let attempt = 0; issues.length && attempt < rewriteLimit; attempt++) {
       trace.validation = issues;
       if (outdated()) return staleExit();
-      response = await makeResponse(issues);
+      response = await makeResponse(issues, response);
       issues = check(response);
       if (!issues.length && needsDeepCheck(response)) {
         if (outdated()) return staleExit();
         issues = await deepCheck(response);
       }
     }
-    if (issues.length && contradictoryOwnWords(snapshot, turn)) {
+    // Removing a rejected suffix is a mechanical repair with no new factual
+    // claims. Preserve the answer, then run every check again.
+    if (issues.some((issue) => issue.startsWith("不要把hh反复当句尾装饰"))) {
+      const plain = {
+        ...response,
+        bubbles: response.bubbles.map((line) =>
+          line.replace(/[hH]{2,}[。！!～~]*$/, "").trim(),
+        ),
+      };
+      const remaining = check(plain);
+      if (!remaining.length) {
+        const reviewed = needsDeepCheck(plain) ? await deepCheck(plain) : [];
+        if (!reviewed.length) {
+          response = plain;
+          issues = [];
+          trace.steps.push("去掉被退回的hh句尾装饰，原有内容经完整校验后保留");
+        }
+      }
+    }
+    if (
+      issues.length &&
+      ["clarify_claim", "promise_check", "repair", "basis_check"].includes(
+        focus,
+      ) &&
+      contradictoryOwnWords(snapshot, turn)
+    ) {
       const honest = {
         bubbles: ["我前面确实说过，后来解释得前后不一致，是我说乱了。"],
         reason: "已发出的原话互相矛盾，先承认自己说乱了",

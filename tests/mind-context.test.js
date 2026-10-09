@@ -39,7 +39,10 @@ test("相关自我与手记从候选中检索，强度较低也不会被无关�
     now: w.now(),
     cue: [{ role: "user", userId: "10001", text: "土星光环" }],
   });
-  assert.match(view.self.threads.join(" "), /土星光环/);
+  assert.match(
+    [...(view.self.threads || []), ...(view.inner.relatedSelf || [])].join(" "),
+    /土星光环/,
+  );
   assert.match(view.inner.onMind.join(" "), /土星光环/);
 });
 

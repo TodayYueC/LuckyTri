@@ -193,7 +193,11 @@ test("汇报拆成短句，整篇粘贴或长段不能成为交付计划", () =>
     why: "想玩这一段。",
     checkpoint: { next: "实际游玩之后，再谈真正的游玩体验" },
   };
-  assert.ok(!activityPresentation(row).checkpoint.next.includes("真正"));
+  assert.equal(
+    activityPresentation(row).checkpoint.next,
+    row.checkpoint.next,
+    "展示不能把尚待实际游玩的计划改写成已经在玩",
+  );
   assert.ok(row.checkpoint.next.includes("实际游玩"), "显示转换保留原始历史");
   assert.deepEqual(
     naturalReport(["刚回看过一遍。最喜欢结尾。"], "一篇长正文"),

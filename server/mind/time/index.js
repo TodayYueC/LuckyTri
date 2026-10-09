@@ -457,6 +457,9 @@ export class TimeSystem {
                 (task.checkpoint.schedule?.baselineMs || 0),
             ),
             activityKind: task.activity === "game" ? "gaming" : task.activity,
+            ...(task.activity === "game"
+              ? { experienceMode: task.checkpoint.mode || "reference" }
+              : {}),
             timing: this.clock.view(task, now),
             schedule: task.checkpoint.schedule || null,
             plannedFor: this.planView(task),

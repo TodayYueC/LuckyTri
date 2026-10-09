@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { fixedReplyHabit } from "../core/conversation-grounding.js";
 import { evidenceRoots, externalEvidence } from "./evidence.js";
 import {
   CORE_THREADS,
@@ -156,6 +157,15 @@ export class Self {
     );
     const rest = rows
       .filter((row) => row.thread !== reserved?.thread)
+      // A single extracted remark belongs to its subject, not to every future
+      // conversation. It remains retrievable and can become enduring through
+      // independent encounters on later days.
+      .filter(
+        (row) =>
+          row.origin !== "memory" ||
+          ["interest", "curiosity", "intention"].includes(row.kind) ||
+          new Set(row.days).size >= 3,
+      )
       .sort((a, b) => b.strength - a.strength || b.created - a.created);
     const core = new Set(
       [reserved, ...rest.slice(0, CORE_THREADS - (reserved ? 1 : 0))]
@@ -338,6 +348,8 @@ export class Self {
         : "new";
     if (!content && action !== "close") return { rejected: "空内容" };
     if (hasCredential(content)) return { rejected: "疑似凭据" };
+    if (action !== "close" && fixedReplyHabit(content))
+      return { rejected: "临时回复台词不能固化成自我习惯" };
     // What she said to fit in is not a life she has lived.
     if (action !== "close" && claimedPlay(content))
       return { rejected: "没有玩过的经历，不能写成她的样子" };

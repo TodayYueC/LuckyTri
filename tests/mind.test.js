@@ -660,12 +660,21 @@ test("引用私下相遇写成的自我线索不进别的房间", () => {
       { kind: "intention", content: "想看流星雨", strength: 0.3 },
       { origin: "solitude", time: w.now() },
     );
-    const view = (session) =>
-      innerView(w.mind, {
+    const view = (session) => {
+      const value = innerView(w.mind, {
         session,
         kind: session.startsWith("private") ? "private" : "group",
+        cue: ["聊星星和南区住址、流星雨"],
         now: w.now() + 1,
-      }).self;
+      });
+      return {
+        ...value.self,
+        threads: [
+          ...(value.self.threads || []),
+          ...(value.inner.relatedSelf || []),
+        ],
+      };
+    };
     const group = view("group:1");
     assert.match(group.threads.join(" "), /聊星星/);
     assert.doesNotMatch(group.threads.join(" "), /住址|南区/);

@@ -325,7 +325,7 @@ test("模型返回非 JSON 回复时使用短句兜底，不暴露格式校验�
   event.seq = system.repo.append(event);
   const trace = await system.process(session, [event]);
   assert.equal(trace.status, "sent");
-  assert.deepEqual(sent, ["嗯"]);
+  assert.deepEqual(sent, ["在。"]);
   assert.deepEqual(stages, ["turn", "generation"]);
   assert.match(trace.steps.join(" "), /格式异常/);
   system.close();

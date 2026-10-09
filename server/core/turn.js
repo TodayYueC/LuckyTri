@@ -1,6 +1,8 @@
 import { replyFocus } from "./conversation-cues.js";
 import { INITIATIVE_PROMPT } from "../mind/initiative.js";
 import { initiativeContext } from "./initiative-context.js";
+import { conversationGrounding } from "./conversation-grounding.js";
+import { currentExchange, explicitStop } from "./dialogue-context.js";
 
 export const CHOICES = ["speak", "react", "decline", "silent"];
 const LEGACY = {
@@ -100,7 +102,7 @@ export async function takeTurn(
     {
       context: initiating
         ? initiativeContext(snapshot, extra.occasion)
-        : context,
+        : { ...context, grounding: conversationGrounding(snapshot) },
       ...(extra.occasion
         ? {
             occasion: initiating
@@ -115,6 +117,7 @@ export async function takeTurn(
       ...(imageGuide ? { imageGuide } : {}),
       ...(extra.pressure ? { pressure: extra.pressure } : {}),
       ...(recallWording(snapshot) ? { guidance: recallWording(snapshot) } : {}),
+      ...(!initiating ? { exchange: currentExchange(snapshot) } : {}),
     },
     trace,
     images,
@@ -174,6 +177,19 @@ export function normalizeTurn(raw, snapshot, trace) {
     bubbles = [];
     trace?.steps?.push("有人可能处在危机里，底线要求认真回应");
   }
+  const botLoop =
+    !crisis && !snapshot.initiative && conversationGrounding(snapshot).botLoop;
+  if (botLoop) {
+    choice = "silent";
+    bubbles = [];
+    trace?.steps?.push("机器人连续确认没有新内容，这段对话在此收住");
+  }
+  const stopped = !crisis && explicitStop(snapshot);
+  if (stopped) {
+    choice = "silent";
+    bubbles = [];
+    trace?.steps?.push("对方明确要求停止，这轮不再补建议或宣告退场");
+  }
   const text = (value, max) =>
     String(value ?? "")
       .trim()
@@ -181,7 +197,10 @@ export function normalizeTurn(raw, snapshot, trace) {
   return {
     choice,
     share:
-      raw.share && ["send", "later", "decline"].includes(raw.share.choice)
+      !botLoop &&
+      !stopped &&
+      raw.share &&
+      ["send", "later", "decline"].includes(raw.share.choice)
         ? {
             workId: text(raw.share.workId, 100),
             choice: raw.share.choice,
@@ -189,6 +208,7 @@ export function normalizeTurn(raw, snapshot, trace) {
           }
         : null,
     attention:
+      !botLoop &&
       raw.attention &&
       ["continue", "chat", "rest"].includes(raw.attention.action)
         ? {
@@ -196,9 +216,23 @@ export function normalizeTurn(raw, snapshot, trace) {
             reason: text(raw.attention.reason, 120),
           }
         : { action: "continue" },
-    appraisal: text(raw.appraisal, 200),
-    reason: text(raw.reason || raw.appraisal, 300) || "此刻的判断",
-    topic: text(raw.topic, 40),
+    appraisal: botLoop
+      ? "对方在确认先前的话，没有新的内容。"
+      : text(raw.appraisal, 200),
+    reason: botLoop
+      ? "这段交流已经结束，先收住。"
+      : text(raw.reason || raw.appraisal, 300) || "此刻的判断",
+    topic: botLoop ? "交流结束" : text(raw.topic, 40),
+    ...(raw.understanding && typeof raw.understanding === "object"
+      ? {
+          understanding: {
+            messageIds: ids(raw.understanding.messageIds).filter((id) =>
+              batchIds.has(id),
+            ),
+            point: text(raw.understanding.point, 180),
+          },
+        }
+      : {}),
     targetMessageIds: targets,
     targetUserIds: [
       ...new Set(
@@ -208,15 +242,15 @@ export function normalizeTurn(raw, snapshot, trace) {
       ),
     ],
     evidenceIds: ids(raw.evidenceIds).filter((id) => known.has(id)),
-    feelings: (Array.isArray(raw.feelings) ? raw.feelings : [])
+    feelings: (Array.isArray(raw.feelings) && !botLoop ? raw.feelings : [])
       .filter((f) => f && typeof f.feeling === "string")
       .slice(0, 3),
-    bonds: (Array.isArray(raw.bonds) ? raw.bonds : [])
+    bonds: (Array.isArray(raw.bonds) && !botLoop ? raw.bonds : [])
       .filter((b) => b && b.userId != null && typeof b.change === "string")
       .map((b) => ({ ...b, evidence: ids(b.evidence) }))
       .slice(0, 4),
     crisis: crisis ? { clear: true, messageIds: crisisIds } : { clear: false },
-    act: normalizeAct(raw.act, trace),
+    act: botLoop || stopped ? null : normalizeAct(raw.act, trace),
     bubbles: bubbles.slice(0, maxBubbles(choice)),
     maxBubbles: maxBubbles(choice),
   };

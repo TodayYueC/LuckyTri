@@ -58,7 +58,11 @@ test("old denials stay in history but do not override current recognition at del
   );
   const stored = w.store.db.prepare("SELECT * FROM mind_self").all();
   w.answers.turn = ({ context }) => {
-    assert.match(context.self.threads.join(" "), /关系记录更新前的看法/);
+    assert.doesNotMatch(
+      (context.self?.threads || []).join(" "),
+      /我本来也没有妹妹/,
+      "一次旧的否认不能成为每轮必带的人格立场",
+    );
     return {
       choice: "speak",
       reason: "沿用旧看法",
