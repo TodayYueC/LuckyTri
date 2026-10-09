@@ -11,6 +11,34 @@ test("合法的 JSON 原样通过，代码围栏也照旧", () => {
   assert.deepEqual(parseModelJson("[1,2]"), [1, 2]);
 });
 
+test("duplicate keys never silently replace an answer, including fences and syntax repairs", () => {
+  for (const raw of [
+    '{"bubbles":["我想谈谈这个问题"],"bubbles":["晚安"]}',
+    '```json\n{"choice":"speak","choice":"silent"}\n```',
+    '先给结果：{"decision":{"ok":true,"ok":false}} 后面一句',
+    '{"bubbles":["回答"],"bubb\\u006ces":["收尾"]}',
+    '{"bubbles":["回答"] "bubbles":["收尾"]}',
+    '[{"text":"a","text":"b"}]',
+  ])
+    assert.throws(() => parseModelJson(raw), /重复字段/);
+  assert.deepEqual(
+    parseModelJson(
+      '{"a":{"text":"一"},"b":{"text":"二"},"list":[{"text":"三"},{"text":"四"}]}',
+    ),
+    {
+      a: { text: "一" },
+      b: { text: "二" },
+      list: [{ text: "三" }, { text: "四" }],
+    },
+  );
+  assert.deepEqual(
+    parseModelJson(
+      '{"text":"字符串里的 \\"text\\": 不算键，{ } , : [ ]","other":1}',
+    ),
+    { text: '字符串里的 "text": 不算键，{ } , : [ ]', other: 1 },
+  );
+});
+
 test("对象后面多出的说明、前面先想了一段，都不会丢掉这次回复", () => {
   assert.deepEqual(
     parseModelJson(
@@ -153,4 +181,22 @@ test("能修好的回复不必再花一次调用", async () => {
   );
   assert.deepEqual(value, { choice: "speak" });
   assert.equal(calls.length, 1);
+});
+
+test("duplicate dialogue output is retried explicitly instead of losing the first answer", async (t) => {
+  const calls = [];
+  const models = manager(
+    [
+      '{"choice":"speak","bubbles":["具体答案"],"bubbles":["先睡了"]}',
+      '{"choice":"speak","bubbles":["具体答案","我想再聊两句"]}',
+    ],
+    calls,
+  );
+  t.after(models.closeStore);
+  const trace = { calls: [] };
+  const result = await models.call(profile(), "turn", "system json", {}, trace);
+  assert.deepEqual(result.bubbles, ["具体答案", "我想再聊两句"]);
+  assert.equal(calls.length, 2);
+  assert.match(trace.calls[0].error, /重复字段/);
+  assert.match(JSON.stringify(calls[1]), /每个字段只能写一次/);
 });

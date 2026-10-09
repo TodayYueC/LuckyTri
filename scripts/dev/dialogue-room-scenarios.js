@@ -1,18 +1,21 @@
 // Composite, anonymized conversations. Human questions interrupt bot exchanges;
 // later turns see the actual generated replies, not a restored ideal history.
 const bot = (text) => ({
+  role: "user",
   speaker: "20202",
   name: "凛",
   text,
   relation: "unknown",
 });
 const person = (text) => ({
+  role: "user",
   speaker: "10101",
   name: "小林",
   text,
   relation: "direct",
 });
 const friend = (text) => ({
+  role: "user",
   speaker: "30303",
   name: "阿宁",
   text,

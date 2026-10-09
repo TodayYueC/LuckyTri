@@ -138,7 +138,7 @@ test("语义核对发现主动稿又在补答旧题，只修改这一稿；仍�
   w.answers.rewrite = { bubbles: ["厨房公开也不能证明没有添加剂"] };
   assert.equal((await w.life.tick()).status, "presence-deferred");
   assert.equal(w.sent.length, 0);
-  assert.equal(w.calls.filter((c) => c.stage === "rewrite").length, 1);
+  assert.equal(w.calls.filter((c) => c.stage === "rewrite").length, 2);
 });
 
 test("核对模型不可用时不放行主动幻想，也不丢掉自己的念头", async (t) => {

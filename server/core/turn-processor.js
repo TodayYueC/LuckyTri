@@ -195,12 +195,13 @@ export class TurnProcessor {
         this.owner.models,
         this.owner.fallbackFor(policy, model, trace),
       );
-      resolved ||= perceive(
+      resolved = perceive(
         this.owner.repo,
         session,
         watermark,
         eventMode,
         nature.name,
+        { resolved, sentBefore: live ? now : 0 },
       );
       const batchIds = batch.map((m) => m.seq);
       const window = resolved.filter((m) => !m.referenceOnly).slice(-60);

@@ -10,7 +10,11 @@ import { takeTurn, normalizeTurn } from "../../server/core/turn.js";
 import { localClock } from "../../server/core/conversation-cues.js";
 import { scenarios } from "./dialogue-scenarios.js";
 import { roomScenarios } from "./dialogue-room-scenarios.js";
-import { CONVERSATION_REVIEW } from "../../server/core/dialogue-contract.js";
+import {
+  CONVERSATION_REVIEW,
+  SELF_CAPABILITY_RULE,
+} from "../../server/core/dialogue-contract.js";
+import { evaluationRevision } from "./replay-mind.js";
 const option = (key, fallback) =>
   process.argv.includes(key)
     ? process.argv[process.argv.indexOf(key) + 1]
@@ -40,7 +44,13 @@ const profile = {
     ? { reasoningEffort: option("--effort", "") }
     : {}),
 };
-const reviewer = system.models.profile(option("--review-model", "default"));
+const reviewer = {
+  ...system.models.profile(option("--review-model", "default")),
+  ...(option("--review-effort", "")
+    ? { reasoningEffort: option("--review-effort", "") }
+    : {}),
+};
+const sourceRevision = evaluationRevision();
 const prompt = prompts(system.repo);
 const results = [];
 const file = resolve(
@@ -99,17 +109,37 @@ async function run(scenario, index) {
       },
     };
     const trace = { id: `sequence-${index}-${seq}`, calls: [], steps: [] };
-    const turn = normalizeTurn(
-      await takeTurn(
-        system.models,
-        profile,
-        replyPrompt(nature, prompt, "turn"),
+    let turn;
+    try {
+      turn = normalizeTurn(
+        await takeTurn(
+          system.models,
+          profile,
+          replyPrompt(nature, prompt, "turn"),
+          snapshot,
+          trace,
+        ),
         snapshot,
         trace,
-      ),
-      snapshot,
-      trace,
-    );
+      );
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+      // Match the live pipeline: a malformed decision is allowed one
+      // contextual generation, rather than aborting unrelated scenarios.
+      trace.steps.push("回合输出格式异常，按直接对话兜底");
+      trace.turnFallback = true;
+      turn = normalizeTurn(
+        {
+          choice:
+            privateChat || currentBatch.some((m) => m.relation === "direct")
+              ? "speak"
+              : "silent",
+          reason: "没能整理好想法",
+        },
+        snapshot,
+        trace,
+      );
+    }
     if (turn.choice !== "silent")
       await system.speak({
         session: sessionId,
@@ -141,6 +171,7 @@ async function run(scenario, index) {
       response: bubbles,
       stages: trace.calls.map((c) => c.stage),
       validation: trace.validation || [],
+      turnFallback: !!trace.turnFallback,
       outputs: trace.calls.map((call) => ({
         stage: call.stage,
         raw: call.raw,
@@ -162,7 +193,7 @@ async function run(scenario, index) {
   const verdict = await system.models.call(
     reviewer,
     "evaluation",
-    `${judge}\n${CONVERSATION_REVIEW}`,
+    `${judge}\n${SELF_CAPABILITY_RULE}\n${CONVERSATION_REVIEW}`,
     {
       messages,
       currentLife: scenario.life || null,
@@ -188,7 +219,13 @@ async function run(scenario, index) {
   writeFileSync(
     file,
     JSON.stringify(
-      { model: profile.model, reviewer: reviewer.model, results },
+      {
+        model: profile.model,
+        reviewer: reviewer.model,
+        sourceRevision,
+        effort: profile.reasoningEffort,
+        results,
+      },
       null,
       2,
     ),
@@ -196,6 +233,7 @@ async function run(scenario, index) {
   console.log(JSON.stringify(result));
 }
 let cursor = 0;
+let haltReason = "";
 const selected = [
   ...(process.argv.includes("--rooms-only") ? [] : scenarios),
   ...roomScenarios,
@@ -206,9 +244,39 @@ const selected = [
 try {
   await Promise.all(
     Array.from({ length: 3 }, async () => {
-      while (cursor < selected.length) {
+      while (cursor < selected.length && !haltReason) {
         const index = cursor++;
-        await run(selected[index], index);
+        try {
+          await run(selected[index], index);
+        } catch (error) {
+          const result = {
+            name: selected[index].name,
+            pass: false,
+            error: error.message,
+          };
+          results.push(result);
+          writeFileSync(
+            file,
+            JSON.stringify(
+              {
+                model: profile.model,
+                reviewer: reviewer.model,
+                sourceRevision,
+                effort: profile.reasoningEffort,
+                results,
+              },
+              null,
+              2,
+            ),
+          );
+          console.log(JSON.stringify(result));
+          if (
+            /HTTP (?:402|429)|usage quota|余额|额度不足|连续失败/.test(
+              error.message,
+            )
+          )
+            haltReason = error.message;
+        }
       }
     }),
   );
@@ -219,8 +287,12 @@ try {
 console.log(
   JSON.stringify({
     total: results.length,
+    sourceRevision,
     passed: results.filter((r) => r.pass).length,
+    pending: selected.slice(cursor).map((scenario) => scenario.name),
+    ...(haltReason ? { halted: haltReason } : {}),
     report: file,
   }),
 );
-if (results.some((r) => !r.pass)) process.exitCode = 1;
+if (results.some((r) => !r.pass) || cursor < selected.length)
+  process.exitCode = 1;

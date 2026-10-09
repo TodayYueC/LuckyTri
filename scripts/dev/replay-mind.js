@@ -1,4 +1,45 @@
-// Copy only state needed to rebuild a historical inner view. The source
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+export function evaluationRevision() {
+  const cwd = fileURLToPath(new URL("../../", import.meta.url));
+  const options = { cwd, encoding: "utf8", windowsHide: true };
+  const files = execFileSync(
+    "git",
+    [
+      "ls-files",
+      "-z",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "--",
+      "server",
+      "scripts",
+    ],
+    options,
+  )
+    .split("\0")
+    .filter((name) => /\.m?js$/.test(name) && existsSync(join(cwd, name)))
+    .sort();
+  const hash = createHash("sha256");
+  files.push("package.json", "package-lock.json");
+  files.sort();
+  for (const name of files)
+    hash
+      .update(name)
+      .update("\0")
+      .update(readFileSync(join(cwd, name)))
+      .update("\0");
+  return {
+    commit: execFileSync("git", ["rev-parse", "HEAD"], options).trim(),
+    codeSHA256: hash.digest("hex"),
+  };
+}
+
+// Copy state used by isolated historical evaluations. The source
 // connection is read-only. Model call logs (the large majority of the live
 // database) and credentials are not copied by this helper.
 export function copyReplayMind(source, target) {
@@ -53,4 +94,28 @@ export function copyReplayMind(source, target) {
     source.exec("ROLLBACK");
     throw error;
   }
+}
+
+// Summaries, encounters and feelings can be updated after a reply while
+// retaining the encounter's starting timestamp. Rebuilding them from today's
+// database would leak the answer into its own test. Preserve the actual saved
+// mental frame; refresh only independently dated work and reading evidence.
+export function refreshReplayRecall(mind, saved, now) {
+  const snapshot = structuredClone(saved);
+  const batch = snapshot.messages.filter((m) =>
+    snapshot.batchIds.includes(m.id),
+  );
+  const scope = { session: snapshot.sessionId, now, cue: batch };
+  snapshot.inner = {
+    ...snapshot.inner,
+    currentLife: {
+      ...snapshot.inner?.currentLife,
+      works: mind.time.works.fragments(scope),
+      activityRecall: mind.time.works.activityEvidence(scope),
+    },
+  };
+  const current = snapshot.inner.currentLife.current;
+  if (current?.activity === "game" || current?.activityKind === "gaming")
+    current.experienceMode = "reference";
+  return snapshot;
 }

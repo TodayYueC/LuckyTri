@@ -5,17 +5,31 @@ import { dialogueContext } from "./dialogue-context.js";
 // a repeated question or a false claim, but it must never pose a new request.
 export function initiativeContext(snapshot, occasion = snapshot.initiative) {
   const background = dialogueContext(snapshot);
-  const situation = occasion?.initiative || {};
-  const history = (snapshot.messages || []).slice(-12).map((m) => ({
-    id: m.id,
-    speaker: m.speaker,
-    name: m.name,
-    role: m.role,
-    text: m.text,
-    time: m.time,
-    localTime: m.localTime,
-    referenceOnly: true,
-  }));
+  const situation = occasion?.initiative || occasion || {};
+  const history = (
+    snapshot.messages?.length
+      ? snapshot.messages
+      : snapshot.history?.messages || []
+  )
+    .slice(-12)
+    .map((m) => ({
+      id: m.id,
+      speaker: m.speaker,
+      name: m.name,
+      role: m.role,
+      text: m.text,
+      time: m.time,
+      localTime: m.localTime,
+      referenceOnly: true,
+    }));
+  const expression = occasion?.expression ||
+    snapshot.expression || {
+      origin: "earlier_wish",
+      thought: occasion?.thought,
+      words: occasion?.planned ? [occasion.planned] : [],
+      reason: occasion?.wantedBecause,
+    };
+  const timeZone = snapshot.conversation?.clock?.timeZone || "Asia/Shanghai";
   return {
     sessionId: snapshot.sessionId,
     conversation: snapshot.conversation,
@@ -31,11 +45,17 @@ export function initiativeContext(snapshot, occasion = snapshot.initiative) {
       lastInitiatedAt: situation.lastInitiatedAt,
       returned: occasion?.returned || [],
     },
-    expression: occasion?.expression || {
-      origin: "earlier_wish",
-      thought: occasion?.thought,
-      words: occasion?.planned ? [occasion.planned] : [],
-      reason: occasion?.wantedBecause,
+    expression: {
+      ...expression,
+      ...(Number.isFinite(expression.formedAt)
+        ? { formedLocal: localClock(expression.formedAt, timeZone).local }
+        : {}),
+      sourceMaterial: (expression.sourceMaterial || []).map((source) => ({
+        ...source,
+        ...(Number.isFinite(source.time)
+          ? { localTime: localClock(source.time, timeZone).local }
+          : {}),
+      })),
     },
     ...(snapshot.self ? { self: background.self } : {}),
     ...(snapshot.inner ? { inner: background.inner } : {}),

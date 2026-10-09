@@ -11,8 +11,16 @@ import { deliver, sleep } from "./message-scheduler.js";
 import { leaks } from "../mind/guard.js";
 import { conversationGrounding } from "./conversation-grounding.js";
 import { initiativeAudience } from "../mind/conversation-origin.js";
-import { readerQuestions, READER_CHECK, INTENT_CHECK } from "./reader-check.js";
+import {
+  readerQuestions,
+  readerCheckPrompt,
+  INTENT_CHECK,
+} from "./reader-check.js";
 import { currentExchange } from "./dialogue-context.js";
+import {
+  claimsLivedAction,
+  EXPRESSION_GROUNDING,
+} from "../mind/expression-grounding.js";
 function isFormatError(error) {
   return (
     error instanceof SyntaxError ||
@@ -183,7 +191,22 @@ export class ReplyDelivery {
       );
     const needsDeepCheck = (response) =>
       readerQuestions(snapshot, turn).length > 0 ||
+      (turn.contribution?.kind === "question" &&
+        snapshot.messages
+          .filter((m) => m.role === "assistant")
+          .slice(-3)
+          .some((m) => /[?？]/.test(m.text || ""))) ||
       currentExchange(snapshot).thirdPartyClaims.length > 0 ||
+      response.bubbles.some((line) =>
+        /你(?:的|在|给|付|掏).{0,12}(?:账单|费用|钱|token)|(?:烧|花|扣|付).{0,6}你.{0,6}(?:钱|token)|账单.{0,8}你/i.test(
+          line,
+        ),
+      ) ||
+      response.bubbles.some((line) =>
+        /我.{0,20}(?:只(?:能|有)|才(?:能|有)).{0,15}(?:回|输入|消息|开口)|(?:没人|没有人).{0,12}(?:递话|说话|叫我).{0,12}(?:我.{0,5})?(?:不会|不|才)/.test(
+          line,
+        ),
+      ) ||
       response.bubbles.some((line) =>
         /(?:我|刚才|刚刚|刚还|今天|昨天|之前).{0,25}(?:读过|读了|读完|翻开|在翻|写完|完成了|看完了)/.test(
           line,
@@ -250,6 +273,35 @@ export class ReplyDelivery {
               snapshot.batch.some((m) => m.relation === "unresolved")))));
     const deepCheck = async (response) => {
       try {
+        // An old expression can already contain a fictional action. Check
+        // the actual words again against activity records, without giving
+        // that draft or its own earlier explanations the role of evidence.
+        if (
+          snapshot.initiative &&
+          claimsLivedAction(response.bubbles.join("\n")) &&
+          !(
+            trace.experienceReview?.ok === true &&
+            trace.experienceReview.words.join("\n") ===
+              response.bubbles.join("\n")
+          )
+        ) {
+          const lived = await models.call(
+            model,
+            "validation",
+            EXPRESSION_GROUNDING,
+            {
+              candidate: { words: response.bubbles },
+              currentLife: snapshot.inner?.currentLife || {},
+              notes: [],
+              self: [],
+            },
+            trace,
+          );
+          if (lived.ok !== true)
+            return [
+              `主动消息声称的新行动尚无实际活动记录支持：${lived.reason || "没有核实该行动"}`,
+            ];
+        }
         const checked = await models.call(
           model,
           "validation",
@@ -263,7 +315,7 @@ export class ReplyDelivery {
             },
             response,
             experienceEvidence:
-              "自己的旧回复可能误报经历，不单独证明实际读过、做完或正在做。声称具体活动须核对currentLife的真实作品、阅读与动作证据；待办和愿望不能证明执行。自己此刻的想法与感受不需要外部动作证明。普通问候不用补答已经换了话题的旧任务。",
+              "自己的旧回复与expression草稿都可能误报经历，不单独证明实际读过、做完或正在做。sourceMaterial里的earlier_thought只证明当时想过。声称具体活动须核对currentLife的真实作品、阅读与动作证据；待办和愿望不能证明执行。自己此刻的想法与感受不需要外部动作证明。普通问候不用补答已经换了话题的旧任务。",
             replyFocus: replyFocus(snapshot, turn),
             thirdPartyClaims: currentExchange(snapshot).thirdPartyClaims,
             imageEvidence: c.generationImages.length
@@ -320,9 +372,10 @@ export class ReplyDelivery {
           const reader = await models.call(
             model,
             "validation",
-            READER_CHECK,
+            readerCheckPrompt(turn),
             {
               questions: readerQuestions(snapshot, turn),
+              choice: turn.choice,
               reply: response.bubbles,
             },
             trace,
@@ -359,16 +412,18 @@ export class ReplyDelivery {
       if (outdated()) return staleExit();
       issues = await deepCheck(response);
     }
-    const rewriteLimit = snapshot.initiative || c.pressure >= 0.85 ? 1 : 2;
+    const rewriteLimit = c.pressure >= 0.85 ? 1 : 2;
+    const repairConstraints = new Set();
     for (let attempt = 0; issues.length && attempt < rewriteLimit; attempt++) {
       (trace.revisions ||= []).push({
         draft: response.bubbles,
         issues: [...issues],
       });
       trace.validation = issues;
+      for (const issue of issues) repairConstraints.add(issue);
       if (outdated()) return staleExit();
       response = await makeResponse(
-        issues,
+        [...repairConstraints],
         response,
         !snapshot.initiative && attempt === rewriteLimit - 1,
       );
@@ -376,6 +431,28 @@ export class ReplyDelivery {
       if (!issues.length && needsDeepCheck(response)) {
         if (outdated()) return staleExit();
         issues = await deepCheck(response);
+      }
+    }
+    // Deleting an unnecessary final bubble can retain a valid answer. It
+    // never bypasses factual, privacy or comprehension checks, and crisis
+    // responses keep their complete support rather than being shortened.
+    if (issues.length && response.bubbles.length > 1 && !turn.crisis?.clear) {
+      for (let count = response.bubbles.length - 1; count > 0; count--) {
+        const prefix = {
+          ...response,
+          bubbles: response.bubbles.slice(0, count),
+        };
+        const remaining = check(prefix);
+        if (remaining.length) continue;
+        if (outdated()) return staleExit();
+        const reviewed = needsDeepCheck(prefix) ? await deepCheck(prefix) : [];
+        if (reviewed.length) continue;
+        response = prefix;
+        issues = [];
+        trace.steps.push(
+          "删去未通过检查的多余末尾气泡，保留已通过全部校验的原答复",
+        );
+        break;
       }
     }
     // Removing a rejected suffix is a mechanical repair with no new factual

@@ -42,6 +42,8 @@ export function currentExchange(snapshot) {
       )
       .map((m) => ({
         id: m.id,
+        speaker: m.speaker,
+        name: m.name,
         text: m.text,
         status:
           "这是当前说话人对别人的解释；须核对那个人自己的原话，不能视作本人确认",
@@ -132,10 +134,23 @@ export function dialogueContext(snapshot) {
           cues,
           limit: 2,
           requireOverlap: true,
-          pinned: (row) => row.summary === context[key].at(-1)?.summary,
+          pinned: (row) =>
+            recallAsked && row.summary === context[key].at(-1)?.summary,
         },
       ).map(({ content, ...row }) => row);
   }
+  context.addressConventions = (snapshot.summaries || [])
+    .flatMap((row) =>
+      String(row.summary || "")
+        .split(/[。；\n]/)
+        .filter((clause) =>
+          /称呼约定|互称|私(?:下|聊).{0,12}(?:称|叫|喊)|(?:称|叫|喊).{0,12}(?:仅限|只限|私下|私聊)|宝宝.{0,8}(?:仅限|只叫|只称|只喊)|(?:希望|要求|不喜欢|别用|不要用|少用).{0,25}(?:称呼|叫|喊|开头|口吻|单字|语气)/.test(
+            clause,
+          ),
+        )
+        .map((content) => ({ period: row.period, content: content.trim() })),
+    )
+    .slice(-4);
   if (socialOnlyBatch(snapshot)) {
     const currentTimes = messages
       .filter((m) => fresh.has(m.id))
@@ -153,18 +168,6 @@ export function dialogueContext(snapshot) {
     );
     context.summaries = [];
     context.stages = [];
-    context.addressConventions = (snapshot.summaries || [])
-      .flatMap((row) =>
-        String(row.summary || "")
-          .split(/[。；\n]/)
-          .filter((clause) =>
-            /称呼约定|互称|私(?:下|聊).{0,12}(?:称|叫|喊)|(?:称|叫|喊).{0,12}(?:仅限|只限|私下|私聊)|宝宝.{0,8}(?:仅限|只叫|只称|只喊)|(?:希望|要求|不喜欢|别用|不要用|少用).{0,25}(?:称呼|叫|喊|开头|口吻|单字|语气)/.test(
-              clause,
-            ),
-          )
-          .map((content) => ({ period: row.period, content: content.trim() })),
-      )
-      .slice(-4);
     context.memories = [];
     delete context.recalled;
     delete context.topics;

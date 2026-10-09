@@ -2,8 +2,9 @@
 // they wrap it in a fence, think out loud first, add a sentence afterwards,
 // leave out a comma, or put an unescaped quote inside a Chinese sentence. A
 // whole turn (or a whole stretch of solitude) used to be lost to each of these.
-// Everything here only runs after strict parsing has failed, so a valid reply
-// is never touched, and a fragment is never pulled out of a truncated one.
+// Repairs only run after strict parsing fails. Duplicate object keys are
+// ambiguous even when JSON.parse accepts them: silently keeping the final
+// value can discard an answer or replace a decision with its opposite.
 
 const THINK_BLOCK = /<(think|thinking|reasoning)>[\s\S]*?<\/\1>/gi;
 
@@ -154,10 +155,42 @@ export function repairJson(text) {
   return out;
 }
 
+class DuplicateKeyError extends SyntaxError {}
+
+// JSON.parse has already established valid syntax before this token walk.
+// Each object owns its own key set; escaped keys are compared after decoding.
+function assertUniqueKeys(text) {
+  const stack = [];
+  for (const token of text.matchAll(/"(?:\\[\s\S]|[^"\\])*"|[{}\[\]:,]/g)) {
+    const value = token[0];
+    if (value === "{") stack.push({ keys: new Set(), keyNext: true });
+    else if (value === "[") stack.push({ keys: null });
+    else if (value === "}" || value === "]") stack.pop();
+    else {
+      const frame = stack.at(-1);
+      if (!frame?.keys) continue;
+      if (value === ",") frame.keyNext = true;
+      else if (value === ":") frame.keyNext = false;
+      else if (value[0] === '"' && frame.keyNext) {
+        const key = JSON.parse(value);
+        if (frame.keys.has(key))
+          throw new DuplicateKeyError(
+            "JSON 同一对象含重复字段，不能确定哪份内容有效",
+          );
+        frame.keys.add(key);
+        frame.keyNext = false;
+      }
+    }
+  }
+}
+
 const tryParse = (text) => {
   try {
-    return { value: JSON.parse(text) };
+    const value = JSON.parse(text);
+    assertUniqueKeys(text);
+    return { value };
   } catch (error) {
+    if (error instanceof DuplicateKeyError) throw error;
     return { error };
   }
 };

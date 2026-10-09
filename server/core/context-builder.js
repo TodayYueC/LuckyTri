@@ -24,11 +24,30 @@ function recallTerms(text) {
 
 // Who said what to whom, up to the watermark: @, quotes, name calls and the
 // reply chains they form.
-export function perceive(repo, session, watermark, simulated, name) {
+export function perceive(
+  repo,
+  session,
+  watermark,
+  simulated,
+  name,
+  { resolved = null, sentBefore = 0 } = {},
+) {
+  // A queued message may predate the reply to the preceding batch. She has
+  // already said those words by the time this turn starts and must see them.
+  // Keep later user messages and replay futures outside the batch boundary.
+  const delivered = sentBefore
+    ? repo
+        .recentEvents(session, 8, { simulated, role: "assistant" })
+        .filter((m) => m.seq > watermark && m.time <= sentBefore)
+    : [];
+  if (resolved && !delivered.length) return resolved;
   return resolveTargets(
     [
-      ...repo.references(session, { simulated }),
-      ...repo.events(session, watermark, { simulated }),
+      ...(resolved || [
+        ...repo.references(session, { simulated }),
+        ...repo.events(session, watermark, { simulated }),
+      ]),
+      ...delivered,
     ],
     name,
     identityAliases(name, repo.store.settings().aliases || ""),

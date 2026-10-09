@@ -1134,7 +1134,7 @@ export class ModelManager {
           return await this.call(
             profile,
             stage,
-            system,
+            `${system}\n上一份输出未通过 JSON 解析，请重新组织同一任务的结果：只输出一个完整的 JSON 值。同一对象的每个字段只能写一次，多条 bubbles 合并到同一个数组，不用后一个字段覆盖前面的回答。`,
             data,
             trace,
             images,

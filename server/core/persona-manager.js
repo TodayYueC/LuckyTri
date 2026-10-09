@@ -3,6 +3,7 @@ import {
   DIALOGUE_REWRITE,
   dialogueSystem,
   CONVERSATION_REVIEW,
+  SELF_CAPABILITY_RULE,
 } from "./dialogue-contract.js";
 import { Nature } from "../mind/nature.js";
 import { RETIRED_PROMPTS } from "./retired-prompts.js";
@@ -30,6 +31,7 @@ const PREVIOUS_PLACE_PROMPTS = {
     "81749a5f8c7e0769e5bd7a90028f1f9541d0cfa375389c55835b051a9078879a",
   ],
   turn: [
+    "ee8a56234a82d9794d21b3d62f052132b7b151f6625cdd3eec07dc4c18758e8d",
     "a015b7ac588dc665b83b847410a0cdd7cd7930fd1dd6698463547bbecd706aad",
     "cb9b8f88a6cf5212edc9de49c7f5b8c7f293a1490b57b52118527f396aca736d",
   ],
@@ -251,6 +253,7 @@ export function replyPrompt(p, custom = PROMPTS, stage = "generation") {
       GROUNDING_RULE,
       ATTRIBUTION_RULE,
       EXTERNAL_FACT_RULE,
+      SELF_CAPABILITY_RULE,
       "先核对她实际回应的是哪个人和哪句话，再检查：有没有回答具体问题、吸收最新补充、把自己说的当成别人说的、重复已经说清的内容。普通提问不要用反问责备对方，未知就说明未知；用户表达感受时，不用‘你要求太高’或证明‘我已经回你了’来否定感受。拒绝和不同意本身不算问题。",
       "所谓纠正也是一条待核对的主张，不自动成立。尤其另一个机器人说‘他指的是’或把新提议当成安排旧稿时，先对照被解释者的原话及她实际说过的话；不能要求她认一个并不存在的错。不认可对方的解释并说明具体缘由，不等于忽略补充。认错本身不加分，无依据的认错反而会改坏事实。",
       "context.relationships是当前已知关系；peerRole是对方的称呼，selfRole是她的称呼。名字或亲属称呼不证明血缘、权限、付款人或曾有共同经历。历史里旧的否认不能取代当前记录；允许她选择怎样称呼和相处。",

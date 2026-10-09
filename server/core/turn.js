@@ -8,8 +8,23 @@ import {
   explicitStop,
 } from "./dialogue-context.js";
 import { readerQuestions } from "./reader-check.js";
+import { botExchange, CONTRIBUTION_CHECK } from "./contribution-check.js";
+import {
+  claimsLivedAction,
+  EXPRESSION_GROUNDING,
+} from "../mind/expression-grounding.js";
 
 export const CHOICES = ["speak", "react", "decline", "silent"];
+const INTENT_KINDS = [
+  "question",
+  "proposal",
+  "feeling",
+  "sharing",
+  "correction",
+  "greeting",
+  "closing",
+  "other",
+];
 const LEGACY = {
   REPLY: "speak",
   MULTI_MESSAGE: "speak",
@@ -92,7 +107,7 @@ export async function takeTurn(
       : snapshot.unavailableImages?.length
         ? "本轮图片没有读取成功，不要编造画面内容。"
         : undefined;
-  return models.call(
+  const raw = await models.call(
     profile,
     "turn",
     extra.occasion && ["presence", "outreach"].includes(extra.occasion.type)
@@ -121,6 +136,91 @@ export async function takeTurn(
     trace,
     images,
   );
+  const words = (
+    Array.isArray(raw?.bubbles) ? raw.bubbles : [raw?.bubbles]
+  ).filter((word) => typeof word === "string");
+  if (
+    snapshot.initiative &&
+    raw?.choice === "speak" &&
+    claimsLivedAction(words.join("\n"))
+  ) {
+    // Reject a fictional action before experience() can turn its appraisal
+    // into a new memory. A self-initiated message has no unanswered request
+    // that would justify filling in a different story through rewrites.
+    let grounded;
+    try {
+      grounded = await models.call(
+        profile,
+        "validation",
+        EXPRESSION_GROUNDING,
+        {
+          candidate: { words },
+          currentLife: snapshot.inner?.currentLife || {},
+          notes: [],
+          self: [],
+        },
+        trace,
+      );
+    } catch (error) {
+      trace?.steps?.push(`主动经历核对暂不可用，先不分享：${error.message}`);
+    }
+    if (trace)
+      trace.experienceReview = {
+        words: [...words],
+        ok: grounded?.ok === true,
+        reason: grounded?.reason || "实际经历尚未核实",
+      };
+    if (grounded?.ok !== true)
+      return {
+        ...raw,
+        choice: "silent",
+        bubbles: [],
+        appraisal: "",
+        feelings: [],
+        bonds: [],
+        contribution: {
+          kind: "none",
+          point: "旧草稿中的新行动尚无实际记录支持",
+        },
+        reason: "这段念头的经历依据还没有核实，先留在自己这里",
+      };
+  }
+  const exchange = botExchange(snapshot, raw);
+  if (
+    exchange &&
+    (raw.choice === "speak" || raw.choice === "react") &&
+    raw.contribution?.kind !== "none"
+  ) {
+    try {
+      const review = await models.call(
+        profile,
+        "validation",
+        CONTRIBUTION_CHECK,
+        {
+          botExchange: exchange,
+          reply: raw.bubbles || [],
+          plannedPoint: raw.contribution?.point || "",
+        },
+        trace,
+      );
+      if (trace && typeof review.hasContribution === "boolean")
+        trace.contributionReview = review;
+      if (review.hasContribution === false)
+        return {
+          ...raw,
+          choice: "silent",
+          bubbles: [],
+          feelings: [],
+          bonds: [],
+          contribution: { kind: "none", point: "没有新的内容，不再换词确认" },
+        };
+    } catch (error) {
+      trace?.steps?.push(
+        `接话内容核对暂不可用，继续原有校验：${error.message}`,
+      );
+    }
+  }
+  return raw;
 }
 
 const ids = (value) =>
@@ -149,7 +249,11 @@ export function normalizeTurn(raw, snapshot, trace) {
   }
   if (
     choice === "react" &&
-    readerQuestions(snapshot, { choice }).some((q) => targets.includes(q.id))
+    readerQuestions(snapshot, {
+      choice,
+      targetMessageIds: targets,
+      understanding: raw.understanding,
+    }).some((q) => targets.includes(q.id))
   ) {
     choice = "speak";
     trace?.steps?.push("对方在要求解释，保留完整回答空间，不按极短反应截断");
@@ -251,6 +355,9 @@ export function normalizeTurn(raw, snapshot, trace) {
     ...(raw.understanding && typeof raw.understanding === "object"
       ? {
           understanding: {
+            ...(INTENT_KINDS.includes(raw.understanding.kind)
+              ? { kind: raw.understanding.kind }
+              : {}),
             messageIds: ids(raw.understanding.messageIds).filter((id) =>
               batchIds.has(id),
             ),

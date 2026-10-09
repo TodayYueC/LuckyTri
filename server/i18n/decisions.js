@@ -27,6 +27,10 @@ export const DECISIONS = {
     "Context compression failed; it will retry automatically",
 
   // orchestrator, delivery
+  "删去未通过检查的多余末尾气泡，保留已通过全部校验的原答复":
+    "Removed the rejected trailing bubbles and kept the original answer that passed every check",
+  "这段念头的经历依据还没有核实，先留在自己这里":
+    "The experience behind this thought is not verified yet; keeping it private for now",
   "有一个备用模型档案不存在，已跳过":
     "A backup model profile does not exist; skipped",
   "引用消息未能恢复，保留 unknown，不认领对象":
@@ -173,6 +177,18 @@ export const DECISIONS = {
 };
 
 export const DECISION_PATTERNS = [
+  [
+    "主动经历核对暂不可用，先不分享：{0}",
+    "The proactive experience check is unavailable; holding the message: {0}",
+  ],
+  [
+    "接话内容核对暂不可用，继续原有校验：{0}",
+    "The contribution check is unavailable; continuing the existing checks: {0}",
+  ],
+  [
+    "主动消息声称的新行动尚无实际活动记录支持：{0}",
+    "The new action claimed by this proactive message lacks activity records: {0}",
+  ],
   ["整理了 {0} 段语境摘要", "Sorted {0} context summaries"],
   ["QQ 用户·{0}", "QQ user·{0}"],
   ["读取 QQ {0} 失败：{1}", "Reading QQ {0} failed: {1}"],

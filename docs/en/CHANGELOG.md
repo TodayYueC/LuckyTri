@@ -2,6 +2,13 @@
 
 # Changelog
 
+## Unreleased
+
+- Reject duplicate JSON fields so a later `bubbles` field cannot silently replace an answer. Queued messages can see replies already delivered before their turn starts, reducing repeated acknowledgments and corrections.
+- Distinguish questions, proposals, feelings and corrections. Reviews retain the necessary original words and participants to check mistaken adaptations and unsupported apologies. Select old summaries by the current topic while preserving address agreements separately.
+- Check repeated bot confirmations before they produce emotional changes. Verify new actions claimed in proactive drafts against activity records; old wishes cannot prove execution. Preserve history and readable source dates during review.
+- Retain earlier repair constraints. Keep a shortened original reply only after every check passes again. Historical evaluations exclude future memories and self-feedback, record code fingerprints, and fail explicitly when requested cases are missing.
+
 ## 1.0.8 — 2026-10-10
 
 - Rework dialogue instructions and context around the current question, proposal or feeling. Old activity reports, room shorthand and self-summaries no longer dominate ordinary exchanges. Greeting images retain their immediate context and agreed forms of address remain available.

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { world } from "./helpers/world.js";
+import { refreshReplayRecall } from "../scripts/dev/replay-mind.js";
 import { prompts } from "../server/core/persona-manager.js";
 import { classifyActivity } from "../server/mind/time/kinds.js";
 import {
@@ -12,17 +13,428 @@ import {
   currentExchange,
 } from "../server/core/dialogue-context.js";
 import { conversationalMemory } from "../server/core/conversation-grounding.js";
+import { SELF_CAPABILITY_RULE } from "../server/core/dialogue-contract.js";
+import { claimsLivedAction } from "../server/mind/expression-grounding.js";
 import { belongsToGame } from "../server/mind/time/material-relevance.js";
-import { normalizeTurn } from "../server/core/turn.js";
+import { normalizeTurn, takeTurn } from "../server/core/turn.js";
 import {
   reviewContext,
   validateResponse,
 } from "../server/core/response-validator.js";
 import { readerQuestions } from "../server/core/reader-check.js";
+import { initiativeContext } from "../server/core/initiative-context.js";
 import {
   replyFocus,
   conversationalIssues,
 } from "../server/core/conversation-cues.js";
+
+async function replayReply(w, snapshot, raw) {
+  const turn = normalizeTurn(raw, snapshot);
+  const trace = { id: "reply-regression", calls: [], steps: [] };
+  await w.system.speak({
+    session: snapshot.sessionId,
+    batch: snapshot.batch,
+    snapshot,
+    turn,
+    trace,
+    finish: (status) => ({ status }),
+    models: w.system.models,
+    model: w.system.models.profile(),
+    nature: w.mind.nature.current(),
+    prompt: prompts(w.system.repo),
+    policy: { maxReply: 180, deepCheck: true },
+    state: w.system.sessionState(snapshot.sessionId),
+    watermark: snapshot.batchIds.at(-1),
+    clearEpoch: 0,
+    privateChat: snapshot.sessionId.startsWith("private:"),
+    direct: true,
+    simulatedTurn: false,
+    replay: true,
+    preview: null,
+    pressure: 0,
+    generationImages: [],
+  });
+  return trace;
+}
+
+test("empty bot confirmations stop before changing feelings, while new writing ideas and human speech remain possible", async (t) => {
+  const w = world();
+  t.after(w.close);
+  const snapshot = {
+    sessionId: "group:1",
+    batchIds: [5],
+    messages: [
+      { id: 1, role: "user", speaker: "bot-peer", text: "那段我再想想。" },
+      { id: 2, role: "assistant", text: "有想法再说。" },
+      {
+        id: 3,
+        role: "user",
+        speaker: "bot-peer",
+        text: "我自己决定什么时候发。",
+      },
+      { id: 4, role: "assistant", text: "你决定。" },
+      { id: 5, role: "user", speaker: "bot-peer", text: "还是由我定。" },
+    ],
+    inner: {
+      relationships: { known: [{ subjectId: "bot-peer", kind: "bot" }] },
+    },
+  };
+  w.answers.turn = {
+    choice: "speak",
+    targetMessageIds: [5],
+    contribution: { kind: "reaction", point: "再确认决定权" },
+    bubbles: ["好，还是由你自己定。"],
+    feelings: [{ feeling: "开心", cause: [5] }],
+    bonds: [{ userId: "bot-peer", change: "closer", evidence: [5] }],
+  };
+  w.answers.validation = {
+    hasContribution: false,
+    newPoint: "",
+    reason: "相同决定已经确认",
+  };
+  const decide = async () => {
+    const trace = { calls: [], steps: [] };
+    const raw = await takeTurn(
+      w.system.models,
+      w.system.models.profile(),
+      "task",
+      snapshot,
+      trace,
+    );
+    return { turn: normalizeTurn(raw, snapshot, trace), trace };
+  };
+  const empty = await decide();
+  assert.equal(empty.turn.choice, "silent");
+  assert.deepEqual(empty.turn.feelings, []);
+  assert.deepEqual(empty.turn.bonds, []);
+  assert.equal(empty.trace.contributionReview.hasContribution, false);
+  snapshot.messages.at(-1).text = "结尾改成两个人走散，你觉得怎么样？";
+  w.answers.turn = {
+    choice: "speak",
+    targetMessageIds: [5],
+    contribution: { kind: "idea", point: "喜欢更有余味的离别结尾" },
+    bubbles: ["我更喜欢这个结尾，但想让他们走散的理由更具体一点。"],
+  };
+  w.answers.validation = {
+    hasContribution: true,
+    newPoint: "对离别结尾表达偏好并提出具体疑问",
+  };
+  assert.equal((await decide()).turn.choice, "speak");
+  snapshot.messages.at(-1).speaker = "human";
+  w.answers.validation = { hasContribution: false, newPoint: "" };
+  const human = await decide();
+  assert.equal(human.turn.choice, "speak");
+  assert.equal(human.trace.contributionReview, undefined);
+  w.answers.turn = null;
+  const invalid = await takeTurn(
+    w.system.models,
+    w.system.models.profile(),
+    "task",
+    snapshot,
+    { calls: [], steps: [] },
+  );
+  assert.throws(() => normalizeTurn(invalid, snapshot), SyntaxError);
+});
+
+test("repairs retain earlier constraints and preserve a valid answer after rejecting an unnecessary suffix", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("private:1");
+  const snapshot = {
+    sessionId: "private:1",
+    batchIds: [1],
+    batch: [{ id: 1, seq: 1, userId: "friend", text: "忙着想你喵" }],
+    messages: [{ id: 1, role: "user", speaker: "friend", text: "忙着想你喵" }],
+  };
+  w.answers.validation = (data) => {
+    const words = data.response?.bubbles || data.reply;
+    if (words.some((line) => line.includes("冷淡")))
+      return { ok: false, issues: ["称呼对象被倒置，不能说对方冷淡"] };
+    if (words.some((line) => line.includes("睡")))
+      return { ok: false, issues: ["表达亲近，不需要催睡"] };
+    return { ok: true, issues: [] };
+  };
+  let revisions = 0;
+  w.answers.rewrite = (data) => {
+    revisions++;
+    if (revisions === 2) {
+      assert(data.issues.some((issue) => /催睡/.test(issue)));
+      assert(data.issues.some((issue) => /倒置/.test(issue)));
+    }
+    return {
+      bubbles: ["我也想你。", revisions === 1 ? "不算你冷淡了。" : "早点睡。"],
+    };
+  };
+  const trace = await replayReply(w, snapshot, {
+    choice: "speak",
+    targetMessageIds: [1],
+    understanding: { kind: "feeling", messageIds: [1], point: "表达想念" },
+    bubbles: ["我也想你。", "早点睡。"],
+  });
+  assert.deepEqual(trace.response.bubbles, ["我也想你。"]);
+  assert(trace.steps.some((step) => /全部校验/.test(step)));
+  assert(!trace.steps.some((step) => /本地安全短句/.test(step)));
+  assert.equal(w.sent.length, 0);
+});
+
+test("shortening a rejected reply cannot bypass comprehension when the remaining prefix does not answer", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("private:1");
+  const snapshot = {
+    sessionId: "private:1",
+    batchIds: [1],
+    batch: [{ id: 1, seq: 1, userId: "friend", text: "你到底想说什么？" }],
+    messages: [
+      { id: 1, role: "user", speaker: "friend", text: "你到底想说什么？" },
+    ],
+  };
+  w.answers.validation = (data) =>
+    data.questions
+      ? { ok: false, issues: ["剩下的前缀仍没有具体意思"] }
+      : { ok: true, issues: [] };
+  w.answers.rewrite = { bubbles: ["先说两句。", "这个放在那里就算接上了。"] };
+  const trace = await replayReply(w, snapshot, {
+    choice: "speak",
+    targetMessageIds: [1],
+    bubbles: ["先说两句。", "这个放在那里就算接上了。"],
+  });
+  assert(trace.steps.some((step) => /本地安全短句/.test(step)));
+  assert.notDeepEqual(trace.response.bubbles, ["先说两句。"]);
+});
+
+test("a repeated clarification question receives semantic review even when the latest human reply is not a question", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("private:1");
+  const snapshot = {
+    sessionId: "private:1",
+    batchIds: [2],
+    batch: [{ id: 2, seq: 2, userId: "friend", text: "就是这个" }],
+    messages: [
+      {
+        id: 1,
+        role: "assistant",
+        text: "等她发新一节，读完对账；或者前面那几声hh。你指哪样？",
+      },
+      { id: 2, role: "user", speaker: "friend", text: "就是这个" },
+    ],
+  };
+  let reviewed = false;
+  w.answers.validation = (data) => {
+    if (data.response?.bubbles.some((line) => /还是刚才/.test(line))) {
+      reviewed = true;
+      return { ok: false, issues: ["同样两项已问过，不能再逼对方挑一遍"] };
+    }
+    return { ok: true, issues: [] };
+  };
+  w.answers.rewrite = { bubbles: ["你指的是读稿这件事吗？"] };
+  const trace = await replayReply(w, snapshot, {
+    choice: "speak",
+    targetMessageIds: [2],
+    contribution: { kind: "question", point: "弄清这个的指代" },
+    bubbles: ["读稿，还是刚才那个玩笑？你选一样。"],
+  });
+  assert(reviewed);
+  assert.deepEqual(trace.response.bubbles, w.answers.rewrite.bubbles);
+});
+
+test("initiative factual review separates her motives from the recipient's actual history", () => {
+  const snapshot = {
+    sessionId: "private:1",
+    messages: [{ id: 1, role: "user", speaker: "friend", text: "好久没聊了" }],
+    self: { here: "别人的面试很热闹" },
+    inner: {
+      state: "今晚有人聊面试",
+      onMind: ["想继续聊面试"],
+      continuity: { people: [{ id: "friend", places: [{ current: true }] }] },
+    },
+    initiative: { type: "outreach", expression: { words: ["想找你说说话"] } },
+  };
+  const reviewed = reviewContext(snapshot);
+  assert(!JSON.stringify(reviewed).includes("面试"));
+  assert.equal(reviewed.history.messages[0].text, "好久没聊了");
+  assert.equal(reviewed.continuity.people[0].id, "friend");
+  assert.equal(snapshot.inner.state, "今晚有人聊面试");
+});
+
+test("new-topic initiative review uses only words the recipient has actually seen, in live and saved trace forms", () => {
+  const expression = {
+    audience: { shared: false },
+    words: ["那半句要自己承重。"],
+  };
+  const messages = [{ id: 1, role: "user", name: "朋友", text: "今天想聊天" }];
+  const live = { messages, initiative: { type: "presence", expression } };
+  const saved = {
+    messages: [],
+    history: { messages },
+    initiative: { type: "presence" },
+    expression,
+  };
+  for (const snapshot of [live, saved]) {
+    const questions = readerQuestions(snapshot, { choice: "speak" });
+    assert.equal(questions[0].kind, "new_topic");
+    assert.equal(questions[0].precedingExchange[0].text, "今天想聊天");
+    assert(!JSON.stringify(questions).includes("承重"));
+    assert.deepEqual(readerQuestions(snapshot, { choice: "silent" }), []);
+  }
+});
+
+test("initiative projections retain actual history and readable source dates when reviewed again", () => {
+  const formedAt = Date.parse("2026-10-09T21:10:00+08:00");
+  const sourceTime = Date.parse("2026-10-09T19:28:00+08:00");
+  const snapshot = {
+    sessionId: "private:1",
+    conversation: {
+      clock: { timeZone: "Asia/Shanghai", local: "2026-10-09 21:10" },
+    },
+    messages: [{ id: 1, role: "user", speaker: "friend", text: "叫我π" }],
+    initiative: {
+      type: "outreach",
+      initiative: { quietMinutes: 10 },
+      expression: {
+        formedAt,
+        words: ["想聊聊"],
+        sourceMaterial: [
+          { time: sourceTime, kind: "earlier_thought", content: "想再读一遍" },
+        ],
+      },
+    },
+  };
+  const first = initiativeContext(snapshot);
+  const again = initiativeContext(first);
+  assert.equal(first.expression.formedLocal, "2026-10-09 21:10");
+  assert.equal(
+    first.expression.sourceMaterial[0].localTime,
+    "2026-10-09 19:28",
+  );
+  assert.deepEqual(again.expression, first.expression);
+  assert.deepEqual(again.history, first.history);
+  assert.equal(again.initiative.quietMinutes, 10);
+  assert.equal(
+    snapshot.initiative.expression.sourceMaterial[0].localTime,
+    undefined,
+  );
+});
+
+test("delivery checks recent reading claims against actual activities, without treating an old expression as evidence", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("private:1");
+  const falseClaim = "今天没等排好的那个点，坐下来读两段就进去了。";
+  assert(claimsLivedAction(falseClaim));
+  assert(!claimsLivedAction("今天想坐下来读两段。"));
+  const snapshot = {
+    sessionId: "private:1",
+    batchIds: [],
+    batch: [],
+    messages: [],
+    initiative: { type: "presence", expression: { words: [falseClaim] } },
+    inner: {
+      currentLife: {
+        current: null,
+        works: [],
+        pending: [{ title: "待读小说", state: "waiting" }],
+      },
+    },
+  };
+  let checked = false;
+  w.answers.validation = (data) => {
+    if (data.candidate) {
+      checked = true;
+      assert.deepEqual(data.notes, []);
+      assert.equal(data.currentLife.works.length, 0);
+      return { ok: false, reason: "只有待读计划，没有新阅读记录" };
+    }
+    return { ok: true, issues: [] };
+  };
+  w.answers.rewrite = {
+    bubbles: ["那篇我还没开始读，今晚倒是想明白了自己为什么一直拖着。"],
+  };
+  const trace = await replayReply(w, snapshot, {
+    choice: "speak",
+    bubbles: [falseClaim],
+  });
+  assert(checked);
+  assert.deepEqual(trace.response.bubbles, w.answers.rewrite.bubbles);
+});
+
+test("an initiative with an unsupported action stops before its false appraisal becomes experience", async (t) => {
+  const w = world();
+  t.after(w.close);
+  const snapshot = {
+    initiative: { type: "presence" },
+    messages: [],
+    batchIds: [],
+    inner: { currentLife: { current: null, works: [] } },
+  };
+  w.answers.turn = {
+    choice: "speak",
+    bubbles: ["今天坐下来读两段就进去了。"],
+    appraisal: "读完后关系更亲近了",
+    feelings: [{ feeling: "高兴", cause: [1] }],
+    bonds: [{ userId: "friend", change: "closer", evidence: [1] }],
+  };
+  w.answers.validation = { ok: false, reason: "没有实际新阅读记录" };
+  const trace = { calls: [], steps: [] };
+  const raw = await takeTurn(
+    w.system.models,
+    w.system.models.profile(),
+    "task",
+    snapshot,
+    trace,
+  );
+  assert.equal(raw.choice, "silent");
+  assert.equal(raw.appraisal, "");
+  assert.deepEqual(raw.feelings, []);
+  assert.deepEqual(raw.bonds, []);
+  assert.equal(trace.experienceReview.ok, false);
+  w.answers.validation = { ok: true, reason: "已有实际记录" };
+  assert.equal(
+    (
+      await takeTurn(
+        w.system.models,
+        w.system.models.profile(),
+        "task",
+        snapshot,
+        { calls: [], steps: [] },
+      )
+    ).choice,
+    "speak",
+  );
+});
+
+test("claims to have no independent capability are reviewed against the same facts as generation", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("private:1");
+  const snapshot = {
+    sessionId: "private:1",
+    batchIds: [1],
+    batch: [{ id: 1, seq: 1, userId: "friend", text: "先听你说说。" }],
+    messages: [
+      { id: 1, role: "user", speaker: "friend", text: "先听你说说。" },
+    ],
+  };
+  w.answers.validation = (data) => ({
+    ok: !data.response?.bubbles.some((line) => line.includes("才有得回")),
+    issues: ["当前没活动不代表没有自主活动能力"],
+  });
+  w.answers.rewrite = {
+    bubbles: ["我也会自己读东西和写东西，平时不只是在等消息。"],
+  };
+  const trace = await replayReply(w, snapshot, {
+    choice: "speak",
+    targetMessageIds: [1],
+    bubbles: ["玩家开口我才有得回。"],
+  });
+  assert(
+    w.calls
+      .filter((call) => call.stage === "validation")
+      .some((call) => call.system.includes(SELF_CAPABILITY_RULE)),
+  );
+  assert(!trace.response.bubbles.join("").includes("才有得回"));
+});
 
 test("someone else's writing is not her writing task", () => {
   assert.equal(
@@ -510,6 +922,281 @@ test("new joint-work proposals are checked against the person's actual request",
     ),
     ["你们两个该写一部短剧，万一火了呢"],
   );
+});
+
+test("plural references retain visible participants so a proposal to both writers is not reduced to reporting one writer's old task", () => {
+  const snapshot = {
+    persona: { name: "LuckyTri" },
+    batchIds: [3],
+    messages: [
+      { id: 1, role: "user", name: "凛", text: "我在写小说" },
+      { id: 2, role: "assistant", name: "LuckyTri", text: "我等着读。" },
+      {
+        id: 3,
+        role: "user",
+        name: "朋友",
+        speaker: "friend",
+        text: "为啥不让他俩写短剧，万一火了",
+      },
+    ],
+  };
+  const question = readerQuestions(snapshot, {
+    choice: "speak",
+    targetMessageIds: [3],
+  })[0];
+  assert.equal(question.replySpeaker, "LuckyTri");
+  assert.deepEqual(
+    question.precedingExchange.map((m) => [m.name, m.role]),
+    [
+      ["凛", "user"],
+      ["LuckyTri", "assistant"],
+    ],
+  );
+});
+
+test("unrelated latest summaries do not define a new exchange, while address agreements and explicit recall survive", () => {
+  const snapshot = {
+    sessionId: "private:1",
+    batchIds: [1],
+    messages: [{ id: 1, role: "user", text: "忙着想你喵" }],
+    summaries: [
+      {
+        period: "上星期",
+        summary: "聊过简历与面试。双方称呼约定：私聊喊宝宝，外面喊月初。",
+      },
+    ],
+  };
+  const context = dialogueContext(snapshot);
+  assert.deepEqual(context.summaries, []);
+  assert.deepEqual(context.addressConventions, [
+    { period: "上星期", content: "双方称呼约定：私聊喊宝宝，外面喊月初" },
+  ]);
+  snapshot.messages[0].text = "上次说的是什么来着？";
+  assert.equal(dialogueContext(snapshot).summaries[0].period, "上星期");
+  snapshot.messages[0].text = "想问你面试简历怎么改";
+  assert.equal(dialogueContext(snapshot).summaries[0].period, "上星期");
+  assert.equal(snapshot.summaries.length, 1);
+});
+
+test("correction review sees the actual preceding answer, without importing other people's replies or future words", () => {
+  const snapshot = {
+    sessionId: "group:1",
+    batchIds: [6],
+    messages: [
+      {
+        id: 1,
+        role: "user",
+        speaker: "friend",
+        text: "早九晚九，真健康啊",
+        time: 1000,
+      },
+      {
+        id: 2,
+        role: "assistant",
+        text: "健康的是公司吧。",
+        time: 2000,
+        replyTargets: [{ speaker: "friend" }],
+      },
+      { id: 3, role: "user", speaker: "other", text: "我说个别的", time: 3000 },
+      {
+        id: 4,
+        role: "assistant",
+        text: "另一个人的话题",
+        time: 4000,
+        replyTargets: [{ speaker: "other" }],
+      },
+      {
+        id: 5,
+        role: "assistant",
+        text: "未发生的未来回答",
+        time: 7000,
+        replyTargets: [{ speaker: "friend" }],
+      },
+      {
+        id: 6,
+        role: "user",
+        speaker: "friend",
+        text: "我这是反话，累死了",
+        time: 6000,
+      },
+      { id: 7, role: "assistant", text: "这句也还没说", time: 7000 },
+    ],
+  };
+  const questions = readerQuestions(snapshot, {
+    choice: "speak",
+    targetMessageIds: [6],
+    understanding: { kind: "correction" },
+  });
+  assert.deepEqual(
+    questions[0].precedingExchange.map((row) => row.id),
+    [1, 2],
+  );
+  assert.equal(questions[0].precedingExchange[1].text, "健康的是公司吧。");
+  snapshot.messages[1].text = "早九晚九，确实很健康。";
+  assert.equal(
+    readerQuestions(snapshot, {
+      choice: "speak",
+      understanding: { kind: "correction" },
+    })[0].precedingExchange[1].text,
+    "早九晚九，确实很健康。",
+  );
+  snapshot.messages[1].time = -10 * 60000;
+  assert.equal(
+    readerQuestions(snapshot, {
+      choice: "speak",
+      understanding: { kind: "correction" },
+    })[0].precedingExchange,
+    undefined,
+  );
+});
+
+test("request review follows meaning, selected speaker and consecutive supplements rather than a few fixed phrases", () => {
+  for (const text of [
+    "为啥不让她俩拍短片",
+    "怎么不让他们试试新游戏",
+    "为什么不能叫自己一个人呢",
+    "一块儿试个新的吧",
+  ]) {
+    const snapshot = {
+      batchIds: [1, 2, 3],
+      messages: [
+        { id: 1, role: "user", speaker: "friend", text },
+        { id: 2, role: "user", speaker: "friend", text: "万一还挺有意思呢" },
+        {
+          id: 3,
+          role: "user",
+          speaker: "someone-else",
+          text: "你们在聊什么？",
+        },
+      ],
+    };
+    const turn = normalizeTurn(
+      {
+        choice: "react",
+        targetMessageIds: [1, 2],
+        understanding: {
+          kind: "proposal",
+          messageIds: [1, 2],
+          point: "试一件新的事",
+        },
+        bubbles: ["我有个主意。"],
+      },
+      snapshot,
+    );
+    assert.equal(turn.choice, "speak");
+    assert.equal(turn.understanding.kind, "proposal");
+    assert.deepEqual(
+      readerQuestions(snapshot, turn).map((q) => q.id),
+      [1, 2],
+    );
+    assert.deepEqual(
+      readerQuestions(snapshot, { choice: "react", targetMessageIds: [2] }),
+      [],
+    );
+  }
+  assert.deepEqual(
+    readerQuestions(
+      { batchIds: [1], messages: [{ id: 1, role: "user", text: "在吗？" }] },
+      { choice: "speak" },
+    ),
+    [],
+  );
+});
+
+test("a normal situational reaction is allowed, while a repeatedly reused opening is still caught", () => {
+  const snapshot = {
+    batchIds: [1],
+    messages: [{ id: 1, role: "user", speaker: "friend", text: "明天有面试" }],
+  };
+  assert.deepEqual(
+    conversationalIssues(
+      { bubbles: ["明天面试啊，那确实会有点紧张。"] },
+      snapshot,
+    ),
+    [],
+  );
+  snapshot.messages.unshift(
+    { id: -2, role: "assistant", text: "明天面试啊，先看看方向。" },
+    { id: -1, role: "assistant", text: "明天面试啊，还在担心吗？" },
+  );
+  assert(
+    conversationalIssues(
+      { bubbles: ["明天面试啊，先聊聊你现在想的。"] },
+      snapshot,
+    ).some((issue) => /相同开头/.test(issue)),
+  );
+});
+
+test("a queued live message sees the reply she has already delivered, while historical replay keeps its cutoff", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("private:10001");
+  w.answers.turn = { choice: "silent", reason: "没有新意思" };
+  const earlier = w.say("private:10001", "10001", "你刚才说错了吧");
+  await w.hear("private:10001", earlier);
+  const pending = w.say("private:10001", "10001", "是的");
+  w.advance(1000);
+  const delivered = w.say("private:10001", "bot", "我已经认下刚才那个错误了。");
+  w.say("private:10001", "bot", "未来不该可见", { time: w.now() + 60000 });
+  w.say("private:10001", "bot", "模拟回复不该可见", { simulated: true });
+  w.say("private:20002", "bot", "另一人的私聊也不该可见");
+  w.answers.turn = { choice: "silent", reason: "没有新意思" };
+  const live = await w.hear("private:10001", pending);
+  assert(live.snapshot.messages.some((m) => m.id === delivered.seq));
+  assert.deepEqual(live.snapshot.batchIds, [pending.seq]);
+  assert(
+    !live.snapshot.messages.some((m) => /未来|模拟回复|另一人/.test(m.text)),
+  );
+  const replay = await w.system.process("private:10001", [pending], {
+    replay: true,
+  });
+  assert(!replay.snapshot.messages.some((m) => m.id === delivered.seq));
+  assert.equal(w.sent.length, 0);
+});
+
+test("historical evaluation refreshes dated reading evidence without importing later self-feedback", (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1");
+  work(w, "past-reading", "星海物语 人物笔记");
+  const at = w.now();
+  const saved = {
+    sessionId: "group:1",
+    batchIds: [1],
+    messages: [
+      {
+        id: 1,
+        role: "user",
+        speaker: "friend",
+        text: "星海物语的笔记你写过吗",
+      },
+    ],
+    self: { threads: ["我想继续读这个故事"] },
+    inner: {
+      state: "醒着，平静",
+      continuity: { people: [{ id: "friend", recentShared: [] }] },
+      currentLife: { current: null },
+    },
+  };
+  const before = structuredClone(saved);
+  w.advance(60000);
+  w.mind.self.propose(
+    { kind: "view", content: "刚才那句话我已经回应得很好了" },
+    { time: w.now() },
+  );
+  work(w, "future-reading", "星海物语 新章节笔记");
+  const rebuilt = refreshReplayRecall(w.mind, saved, at);
+  assert.deepEqual(rebuilt.self, before.self);
+  assert.deepEqual(rebuilt.inner.continuity, before.inner.continuity);
+  assert.equal(rebuilt.inner.state, "醒着，平静");
+  assert(
+    rebuilt.inner.currentLife.works.some((row) => row.id === "past-reading"),
+  );
+  assert(
+    !rebuilt.inner.currentLife.works.some((row) => row.id === "future-reading"),
+  );
+  assert(!JSON.stringify(rebuilt).includes("已经回应得很好"));
+  assert.deepEqual(saved, before);
 });
 
 test("an apparently plausible bot interpretation is independently checked before the reply adopts it", async (t) => {

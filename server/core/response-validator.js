@@ -118,7 +118,17 @@ export function attributesOwnWordsToThem(text, snapshot) {
 // The reviewer judges one reply; it needs the turn and its recent lead-in,
 // not the summaries, recall or the rest of the transcript.
 export function reviewContext(snapshot, decision = {}, response = {}) {
-  if (snapshot.initiative) return initiativeContext(snapshot);
+  if (snapshot.initiative) {
+    const { self: _self, inner, ...context } = initiativeContext(snapshot);
+    // Wishes, moods and impressions explain why she wants to make contact;
+    // they cannot establish what this recipient actually said or did.
+    return {
+      ...context,
+      relationships: inner?.relationships,
+      continuity: inner?.continuity,
+      currentLife: inner?.currentLife,
+    };
+  }
   const {
     persona: _persona,
     sourceRows: _sourceRows,

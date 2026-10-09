@@ -360,14 +360,6 @@ export function conversationalIssues(result, snapshot, decision = {}) {
     issues.push(
       "不要为接话虚构自己有身体做过的日常经历；保留对眼前趣事的反应，不说自己也拿过、去过或做过",
     );
-  if (
-    texts.some((t) =>
-      /^.{2,22}[啊呀][，,…。]*(?:那)?(?:确实|真的|有点)/.test(t),
-    )
-  )
-    issues.push(
-      "这是复述加感叹的模板，不要只改标点或换同义词；用一句自己的态度回应，也可以很短",
-    );
   // A substantial shared beginning is a useful signal, unlike repeated brief reactions.
   const clean = (t) => t.replace(/[\s\p{P}\p{S}]/gu, "");
   for (const text of texts) {

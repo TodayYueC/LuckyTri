@@ -212,16 +212,14 @@ export class Tasks {
       now,
     );
     if (type === "read" && awaitsTextInput(title)) {
-      this.db
-        .prepare("UPDATE mind_time_tasks SET checkpoint=? WHERE id=?")
-        .run(
-          JSON.stringify({
-            awaitedText: true,
-            expectedTextTitle: intent.topic,
-            awaitedAfter: now,
-          }),
-          id,
-        );
+      this.db.prepare("UPDATE mind_time_tasks SET checkpoint=? WHERE id=?").run(
+        JSON.stringify({
+          awaitedText: true,
+          expectedTextTitle: intent.topic,
+          awaitedAfter: now,
+        }),
+        id,
+      );
       this.wait(
         this.get(id),
         "等待约定的正文或资料",

@@ -251,7 +251,7 @@ test("普通群聊由注意力决定细看还是扫一眼：扫一眼不花 toke
   second.seq = system.repo.append(second);
   const look = await system.process(session, [second]);
   assert.equal(look.status, "sent");
-  assert.deepEqual(stages, ["turn"]);
+  assert.deepEqual(stages, ["turn", "validation", "validation"]);
   assert.deepEqual(look.snapshot.batchIds, [first.seq, second.seq]);
   assert.match(look.attention.reason, /在意/);
   assert.equal(system.mind.unread(session).length, 0);
@@ -1467,6 +1467,7 @@ test("开启图片理解后，回复拿到的是画面而不是图片占位符",
       profile: () => profile,
       call: async (_profile, stage, _prompt, data, _trace, images) => {
         seen.push({ stage, images, guide: data.imageGuide });
+        if (stage === "validation") return { ok: true, issues: [] };
         return { choice: "speak", bubbles: ["这是一只猫"], reason: "看见画面" };
       },
     },
@@ -1496,7 +1497,7 @@ test("开启图片理解后，回复拿到的是画面而不是图片占位符",
   assert.equal(trace.status, "sent");
   assert.deepEqual(
     seen.map((item) => item.stage),
-    ["turn"],
+    ["turn", "validation", "validation"],
   );
   assert.equal(
     seen[0].images[0].url.startsWith("data:image/png;base64,"),

@@ -14,9 +14,15 @@ import {
   conversationGrounding,
 } from "../../server/core/conversation-grounding.js";
 import { validateResponse } from "../../server/core/response-validator.js";
-import { innerView } from "../../server/mind/view.js";
-import { copyReplayMind } from "./replay-mind.js";
-import { CONVERSATION_REVIEW } from "../../server/core/dialogue-contract.js";
+import {
+  copyReplayMind,
+  refreshReplayRecall,
+  evaluationRevision,
+} from "./replay-mind.js";
+import {
+  CONVERSATION_REVIEW,
+  SELF_CAPABILITY_RULE,
+} from "../../server/core/dialogue-contract.js";
 
 const option = (name, fallback) =>
   process.argv.includes(name)
@@ -91,10 +97,18 @@ const flaggedSeqs = new Set(
         .map((row) => row.seq)
     : [],
 );
-db.close();
 
 const buckets = new Map();
 const requestedIds = option("--ids", "").split(",").filter(Boolean);
+const missingIds = requestedIds.filter(
+  (id) => !traces.some((t) => t.id === id),
+);
+if (missingIds.length) {
+  db.close();
+  throw Error(
+    `Requested traces were not selected: ${missingIds.join(", ")}. Check --date and include --initiatives for proactive messages.`,
+  );
+}
 for (const trace of requestedIds.length
   ? traces.filter((t) => requestedIds.includes(t.id))
   : traces.filter(
@@ -148,7 +162,13 @@ const model = {
     ? { reasoningEffort: option("--effort", "") }
     : {}),
 };
-const reviewer = system.models.profile(option("--review-model", "default"));
+const reviewer = {
+  ...system.models.profile(option("--review-model", "default")),
+  ...(option("--review-effort", "")
+    ? { reasoningEffort: option("--review-effort", "") }
+    : {}),
+};
+const sourceRevision = evaluationRevision();
 const taskPrompts = prompts(system.repo);
 if (process.argv.includes("--rebuild-mind")) {
   const source = new DatabaseSync(
@@ -171,7 +191,35 @@ const file = resolve(
 // Replay exact identities, provenance and continuity. Only temporary fixed
 // reply habits and unrelated onMind notes are filtered at the same boundary.
 function contextOf(saved, replayTime) {
-  const snapshot = structuredClone(saved);
+  let snapshot = structuredClone(saved);
+  if (
+    !snapshot.initiative &&
+    Number.isFinite(snapshot.watermark) &&
+    Number.isFinite(replayTime)
+  ) {
+    const known = new Set(snapshot.messages.map((m) => m.id));
+    const delivered = db
+      .prepare(
+        "SELECT seq,time,payload FROM core_events WHERE session_id=? AND seq>? AND time<=? AND role='assistant' AND COALESCE(json_extract(payload,'$.simulated'),0)=0 ORDER BY seq DESC LIMIT 8",
+      )
+      .all(snapshot.sessionId, snapshot.watermark, replayTime);
+    for (const row of delivered.reverse()) {
+      if (known.has(row.seq)) continue;
+      const m = JSON.parse(row.payload);
+      snapshot.messages.push({
+        id: row.seq,
+        speaker: m.userId,
+        name: m.name,
+        role: "assistant",
+        text: m.text,
+        time: row.time,
+        replyTargets: (m.replyTargetIds || []).map((messageId) => ({
+          messageId,
+        })),
+      });
+    }
+    snapshot.messages.sort((a, b) => a.id - b.id);
+  }
   if (
     snapshot.conversation?.clock?.local &&
     !snapshot.conversation.clock.weekday
@@ -189,48 +237,11 @@ function contextOf(saved, replayTime) {
     .filter((m) => m.role === "user")
     .map((m) => interestTerms([m.text]));
   if (process.argv.includes("--rebuild-mind")) {
-    const now = snapshot.initiative
-      ? replayTime
-      : Math.max(...snapshot.messages.map((m) => m.time || 0));
+    const now =
+      replayTime || Math.max(...snapshot.messages.map((m) => m.time || 0));
     if (!now)
       throw Error("Historical message time is required to rebuild mind");
-    const view = innerView(system.mind, {
-      session: snapshot.sessionId,
-      kind: /(?:^|:)private:/.test(snapshot.sessionId) ? "private" : "group",
-      people: batch.map((m) => m.speaker),
-      cue: batch.map((m) => ({ ...m, userId: m.speaker })),
-      now,
-    });
-    snapshot.self = view.self;
-    const currentLife = snapshot.inner?.currentLife;
-    snapshot.inner = {
-      ...snapshot.inner,
-      ...view.inner,
-      ...(currentLife
-        ? {
-            currentLife: {
-              ...currentLife,
-              works: view.inner.currentLife.works,
-              activityRecall: view.inner.currentLife.activityRecall,
-            },
-          }
-        : {}),
-    };
-    // Task checkpoints are mutable: retain the saved historical progress.
-    // This implementation's game tasks read references, never a client.
-    if (
-      currentLife?.current?.activity === "game" ||
-      currentLife?.current?.activityKind === "gaming"
-    )
-      currentLife.current.experienceMode = "reference";
-    for (const work of currentLife?.works || [])
-      if (work.kind === "game") {
-        work.experienceMode = "reference";
-        const original = system.mind.time.works.get(work.id, work.version);
-        if (original) work.provenance = original.provenance;
-      }
-    delete snapshot.inner.onMind;
-    if (view.inner.onMind) snapshot.inner.onMind = view.inner.onMind;
+    snapshot = refreshReplayRecall(system.mind, snapshot, now);
   }
   if (snapshot.self?.threads)
     snapshot.self.threads = snapshot.self.threads.filter(
@@ -270,6 +281,11 @@ async function evaluate(saved, index) {
     if (!occasion?.expression)
       throw Error("Initiative replay requires original expression evidence");
     snapshot.initiative = { ...snapshot.initiative, ...occasion };
+    // Saved initiative traces contain the public projection, with old words
+    // under history rather than messages. Restore that evidence before the
+    // live pipeline projects it again; otherwise every old exchange vanishes.
+    if (!snapshot.messages.length && snapshot.history?.messages?.length)
+      snapshot.messages = structuredClone(snapshot.history.messages);
   }
   const trace = { calls: [], steps: [], id: `eval-${index}` };
   try {
@@ -329,7 +345,7 @@ async function evaluate(saved, index) {
     const verdict = await system.models.call(
       reviewer,
       "evaluation",
-      `${judgePrompt}\n${CONVERSATION_REVIEW}\n另外分别给 understanding（是否回应真实意图）、clarity（没有暗号也能明白）、engagement（尊重并让人愿意继续相处）1到5分，写进 quality 对象。5准确自然，4可接受，3明显机械或未答够，2多处失败，1不可用。符合事实不等于好回复；不要用风格自由为漏答或生硬赶走提问者开脱。无需附和、逗趣或追问，真实而恰当的不同意也可以优秀。`,
+      `${judgePrompt}\n${SELF_CAPABILITY_RULE}\n${CONVERSATION_REVIEW}\n机器人互相纠正也不强制每次复述认下；已经理解且可说的只是换词确认时，结束是合理选择，即使最初由她起话头。天性或旧自我总结里“说错当场认”不成为必须出声的公式。具体新问题或人的认真追问仍须按原话评估，不能一概判为确认循环。\n另外分别给 understanding（是否回应真实意图）、clarity（没有暗号也能明白）、engagement（尊重并让人愿意继续相处）1到5分，写进 quality 对象。5准确自然，4可接受，3明显机械或未答够，2多处失败，1不可用。符合事实不等于好回复；不要用风格自由为漏答或生硬赶走提问者开脱。无需附和、逗趣或追问，真实而恰当的不同意也可以优秀。`,
       {
         messages: snapshot.messages,
         batchIds: snapshot.batchIds,
@@ -350,6 +366,8 @@ async function evaluate(saved, index) {
         targetMessageIds: decision.targetMessageIds,
         addressingNote:
           "botMessageIds只标识哪些是机器人发言，不是所选回复对象；回复可以选择同批较早的其他人。以targetMessageIds核对实际回应对象。",
+        experienceEvidence:
+          "initiative中的expression/thought/words/planned是待核对的原始草稿，不是动作记录；sourceMaterial里的earlier_thought只证明当时想过。不能用旧草稿声称做过，来否决依实际活动记录作出的纠正或沉默。currentLife是相关实际记录；没有材料到达证据，不要求声称读过。主动消息没有待答请求，发现旧念头不可靠可以不发。",
         response: {
           choice: decision.choice,
           words: response?.bubbles?.length
@@ -432,6 +450,8 @@ async function evaluate(saved, index) {
       {
         model: model.model,
         reviewer: reviewer.model,
+        sourceRevision,
+        effort: model.reasoningEffort,
         total: samples.length,
         completed: report.length,
         results: report,
@@ -455,8 +475,10 @@ try {
 } finally {
   system.close();
   store.db.close();
+  db.close();
 }
 const summary = {
+  sourceRevision,
   model: model.model,
   reviewer: reviewer.model,
   total: report.length,

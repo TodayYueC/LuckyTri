@@ -2,6 +2,8 @@
 // key, exactly as the code writes it. `{0}` stands for a value the code puts
 // into the message; patterns are used when a message carries one.
 export const ERRORS = {
+  "JSON 同一对象含重复字段，不能确定哪份内容有效":
+    "A JSON object contains duplicate fields; the intended value is ambiguous",
   "写日记期间关系记录已变化，本次旧稿未保存，下次按新认识整理":
     "Relationships changed while writing the diary; the old draft was not saved and the next attempt will use the new knowledge",
   "写回顾期间关系记录已变化，本次旧稿未保存，下次按新认识整理":
