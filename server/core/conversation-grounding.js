@@ -12,10 +12,86 @@ export const ATTRIBUTION_RULE =
 export const EXTERNAL_FACT_RULE =
   "【外部事实与推测】不了解某个软件、模型或别人项目的具体实现时，不把常见的技术路线说成它实际采用的路线。知道一般原理就说明一般原理，同时讲清自己不了解它的细节；‘好像’和‘应该’不能替无依据的细节作证。作品里的人物、辈分、章节也一样：只确定名字就只答名字，不用一串不确定的设定充实答案，更不拿‘隔太久没重看’编造自己的经历。自己的后台记录只证明自己的能力，不证明其他系统怎么运行。appraisal与reason也写这轮具体理解和选择，不用隐喻或猜别人隐藏的动机。";
 
+export const READABILITY_REQUEST =
+  /看不懂|听不懂|没听懂|没看懂|没懂|听得懂|看得懂|说人话|正常话|太抽象|好好说话|照顾.{0,3}我/;
+
 const normalized = (value) =>
   String(value || "")
     .toLowerCase()
     .replace(/[\p{P}\p{Z}\s]/gu, "");
+
+export function recentOwnMessages(snapshot, limit = 8) {
+  const messages = snapshot.messages || [];
+  const batch = new Set(snapshot.batchIds || []);
+  const currentTimes = messages
+    .filter((m) => batch.has(m.id))
+    .map((m) => m.time)
+    .filter(Number.isFinite);
+  const now = currentTimes.length
+    ? Math.max(...currentTimes)
+    : messages.at(-1)?.time;
+  return messages
+    .filter(
+      (m) =>
+        m.role === "assistant" &&
+        (!Number.isFinite(now) ||
+          !Number.isFinite(m.time) ||
+          now - m.time <= 30 * 60000),
+    )
+    .slice(-limit);
+}
+
+export function routineSocialReply(value, snapshot) {
+  const words = normalized(value).replace(/\p{S}/gu, "");
+  if (words.length > 24) return false;
+  const incoming = (snapshot.messages || [])
+    .filter(
+      (m) => (snapshot.batchIds || []).includes(m.id) && m.role === "user",
+    )
+    .map((m) => m.text || "")
+    .join(" ");
+  return (
+    (/在吗|在不在|还在吗/.test(incoming) &&
+      /^(?:嗯)?(?:我)?在(?:的|呢|呀|啊|这儿|这里)?$/.test(words)) ||
+    (/想你|喜欢你|爱你|抱抱/.test(incoming) &&
+      /^(?:宝宝)?(?:(?:我也)?(?:想你|喜欢你|爱你|抱抱)|我也是)(?:了|啊|呀|呢|宝宝)*$/.test(
+        words,
+      )) ||
+    (/晚安|早安|早上好|你好|再见|拜拜/.test(incoming) &&
+      /^(?:好|嗯|那)?(?:晚安|早安|早上好|你好|再见|拜拜)(?:喵|呀|啊|啦|宝宝|晚安|早安)*$/.test(
+        words,
+      ))
+  );
+}
+
+export function socialOnlyBatch(snapshot) {
+  const current = (snapshot.messages || []).filter(
+    (m) => (snapshot.batchIds || []).includes(m.id) && m.role === "user",
+  );
+  const name = normalized(snapshot.persona?.name || "");
+  const words = current.map((m) => {
+    let value = normalized(
+      String(m.text || "").replace(/^\[(?:图片|表情|媒体)\]$/, ""),
+    ).replace(/\p{S}/gu, "");
+    if (name) value = value.replaceAll(name, "");
+    return value.replaceAll("提及成员", "").replaceAll("@我", "");
+  });
+  return (
+    words.length > 0 &&
+    words.some((value) =>
+      /想你|爱你|喜欢你|晚安|早安|早上好|你好|再见|拜拜|抱抱|在吗|在不在/.test(
+        value,
+      ),
+    ) &&
+    words.every(
+      (value) =>
+        value.replace(
+          /想你|爱你|喜欢你|晚安|早安|早上好|你好|再见|拜拜|抱抱|在吗|在不在|宝宝|有点|突然|我|也|好|很|真|的|了|呀|啊|呢|喵|嗯/g,
+          "",
+        ) === "",
+    )
+  );
+}
 const acknowledgement =
   /^(?:嗯+|哦+|好(?:的|吧)?|行|对(?:呀|啊)?|是的|知道了|收到|晚安|h{2,6}|哈{1,6})$/i;
 const request =
@@ -124,10 +200,26 @@ export function requestedRepeat(snapshot) {
 }
 
 export function groundingIssues(bubbles, snapshot) {
-  const recent = (snapshot.messages || [])
-    .filter((m) => m.role === "assistant")
-    .slice(-6);
+  const recent = recentOwnMessages(snapshot, 6);
   const issues = [];
+  const humanRepair = (snapshot.messages || []).some(
+    (m) =>
+      (snapshot.batchIds || []).includes(m.id) &&
+      m.role === "user" &&
+      !conversationGrounding(snapshot).botMessageIds.includes(m.id) &&
+      READABILITY_REQUEST.test(m.text || ""),
+  );
+  if (
+    humanRepair &&
+    (bubbles || []).some((line) =>
+      /你(?:们)?(?:不必|不用|不需要|没义务).{0,5}(?:看懂|听懂|理解)|(?:绕晕|看不懂|听不懂).{0,8}(?:跳过|别管)/.test(
+        line,
+      ),
+    )
+  )
+    issues.push(
+      "对方正想听懂并参与，却让他不用懂或跳过；解释实际事情，自己也不知道的部分就说不知道，不能把他排除在交流之外",
+    );
   for (const line of bubbles || []) {
     const batch = (snapshot.messages || []).filter((m) =>
       (snapshot.batchIds || []).includes(m.id),
@@ -158,7 +250,25 @@ export function groundingIssues(bubbles, snapshot) {
       issues.push(
         "把吃饭、食堂、外卖、出门或实拍说成自己的实际生活，但本轮没有这类实际能力；回应真实能做的事情，不能拿旧的人类生活台词当经历",
       );
-    if (recent.some((m) => echoesRecentWording(line, m.text))) {
+    const hasGameControl = (snapshot.canDo || []).some((item) =>
+      /game.*(?:control|client|input)|(?:control|input).*game/i.test(
+        item.action || "",
+      ),
+    );
+    if (
+      !fiction &&
+      !hasGameControl &&
+      /像\s*(?:《[^》]+》|[a-z][a-z0-9.! ]{1,30})\s*那样[^。！？]{0,10}(?:在客户端|操作客户端|按键)/i.test(
+        line,
+      )
+    )
+      issues.push(
+        "把另一部游戏说成自己实际操作过客户端的参照，但当前没有游戏客户端操作能力；真实的剧情阅读和笔记不等于客户端经历，不为解释一处错误再编造另一段经历",
+      );
+    if (
+      !routineSocialReply(line, snapshot) &&
+      recent.some((m) => echoesRecentWording(line, m.text))
+    ) {
       // A requested quote, calculation or factual repeat remains legitimate.
       if (!requestedRepeat(snapshot))
         issues.push(
@@ -172,7 +282,23 @@ export function groundingIssues(bubbles, snapshot) {
 export function fixedReplyHabit(content) {
   const value = String(content || "");
   if (/不再|不要|不该|避免/.test(value)) return false;
+  if (
+    /(?:只|就|一律|默认)(?:回|说|用|认|给建议)|只问一句|一睁眼先问|先问的是睡眠|被@到才说|简短回应|认完就继续|安静地陪着比给出方案|建议给得具体不空谈/.test(
+      value,
+    )
+  )
+    return true;
   return /默认反应|基本定型|(?:每次|一律|必须|固定|就(?:只)?回|只(?:说|回)|直接(?:说|回)|问一句|我会用|习惯用|爱用|常用|时说).{0,32}[「“"『].{1,40}[」”"』]/.test(
     value,
   );
+}
+
+// Stored impressions may contain real preferences and a learned reply script
+// in the same paragraph. Keep the former without replaying the latter as law.
+export function conversationalMemory(content) {
+  return String(content || "")
+    .split(/(?<=[。！？；;])/)
+    .filter((part) => !fixedReplyHabit(part))
+    .join("")
+    .trim();
 }

@@ -114,11 +114,38 @@ export function pluginActivities() {
   return [...registry.values()].filter((def) => def.plugin);
 }
 
-// Same order as before: writing wins over a game, a game over reading.
+// Identify her action before matching topic nouns. "She writes a novel and
+// I promised to read it" is reading; the word "novel" is not a writing plan.
 export function classifyActivity(words) {
   const source = String(words || "");
+  const own =
+    source.match(/我(?:会|要|想|打算|准备|答应|先|来|再)([^]*)/) ||
+    source.match(/我(?=读|阅读|看|写|玩|游玩)([^]*)/);
+  const action = own?.[1] || source;
+  if (/^(?:让|请|希望)(?:你|他|她|对方)/.test(action)) return "unknown";
+  const verbs = [
+    ["write", /写|续写|改写|创作/],
+    [
+      "read",
+      /阅读|读(?:书|稿|正文|完|了|过|一|这|那|你|她|他|它|《)|看.{0,12}(?:书|稿|正文|小说|文章|资料)/,
+    ],
+    ["game", /游玩|盲开|玩(?:一|个|下|这|那|《)|通关|打完.{0,10}章/],
+    ["think", /思考|想一想|想想|整理思路/],
+  ]
+    .map(([kind, pattern]) => ({ kind, at: action.search(pattern) }))
+    .filter((item) => item.at >= 0)
+    .sort((a, b) => a.at - b.at);
+  if (verbs.length) {
+    if (
+      verbs[0].kind === "read" &&
+      registry.get("game").pattern.test(action) &&
+      !/稿|正文|小说|故事|书|文章|诗/.test(action)
+    )
+      return "game";
+    return verbs[0].kind;
+  }
   for (const kind of ["write", "game", "read", "think"])
-    if (registry.get(kind).pattern.test(source)) return kind;
+    if (registry.get(kind).pattern.test(action)) return kind;
   for (const def of registry.values())
     if (def.plugin && def.enabled && def.pattern?.test(source)) return def.kind;
   return "unknown";

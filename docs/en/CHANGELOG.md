@@ -2,6 +2,16 @@
 
 # Changelog
 
+## 1.0.8 — 2026-10-10
+
+- Rework dialogue instructions and context around the current question, proposal or feeling. Old activity reports, room shorthand and self-summaries no longer dominate ordinary exchanges. Greeting images retain their immediate context and agreed forms of address remain available.
+- Allow natural recurring affection and greetings without forcing invented counts, elapsed-time reports or lifestyle advice. Complete reactions are no longer mechanically rewritten to fit a twenty-character limit.
+- Preserve the actual addressee and quoted evidence in group conversations. Later laughter does not erase a serious question, and another bot's interpretation is not the person's confirmation. Empty bot reports do not create confirmation chains or relationship growth.
+- Add an independent comprehensibility check for explanation requests; revisions and factual review retain the current question. Validation respects the configured reasoning effort.
+- Recall relevant historical work versions without denying earlier reading because recent records are incomplete or revealing unrelated private text. Exclude unrelated web material from game progress and sharing while retaining the archive.
+- Distinguish someone else's writing from her own reading promise. Waiting for a manuscript does not execute as writing or substitute another or older book. New self-expressions check actions and participants rather than turning wishes into completed experiences.
+- Update both READMEs, capability boundaries and the release badge; expand historical replay, sequential group scenarios and regression coverage. Transcripts and model reports remain local.
+
 ## 1.0.7 — 2026-10-09
 
 - Ground understanding in the current messages, supplements, speakers and quote chains before choosing a response. Corrections address the actual question instead of substituting apologies or abstract monologues.

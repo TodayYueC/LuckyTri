@@ -308,10 +308,15 @@ test("回放只带回放批次之前结束的摘要", async () => {
   assert.equal(trace.status, "replayed");
   const generation = seen.find((item) => item.stage === "generation");
   assert.deepEqual(
-    generation.data.context.summaries.map((item) => item.summary),
+    trace.snapshot.summaries.map((item) => item.summary),
     ["早些时候聊了天气"],
   );
-  assert.equal(generation.data.context.messages[0].id, 31);
+  assert.deepEqual(
+    generation.data.context.summaries,
+    [],
+    "问在吗无需夹带过去的话题，原始摘要仍保留在快照",
+  );
+  assert.equal(trace.snapshot.messages[0].id, 31);
   assert(!JSON.stringify(seen).includes("之后才聊到的话题"));
   system.close();
   store.db.close();

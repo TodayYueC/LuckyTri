@@ -141,6 +141,10 @@ test("历史草稿带错共同经历时可以改成新话题，未参与者仍�
     };
   };
   w.answers.validation = (data) => {
+    if (data.questions) {
+      assert.equal(data.questions[0].kind, "new_topic");
+      return { ok: true, issues: [] };
+    }
     assert.match(data.task, /未参与者也可以聊/);
     return {
       ok: !data.response.bubbles.join("").includes("咱们"),

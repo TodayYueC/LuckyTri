@@ -7,7 +7,12 @@ import { gentlePersona } from "./persona-manager.js";
 import { initiativeContext } from "./initiative-context.js";
 import { interestTerms } from "../mind/attention.js";
 import { relationshipClaimIssues } from "../mind/relationship-context.js";
-import { groundingIssues, requestedRepeat } from "./conversation-grounding.js";
+import {
+  groundingIssues,
+  requestedRepeat,
+  recentOwnMessages,
+  routineSocialReply,
+} from "./conversation-grounding.js";
 const norm = (s) => s.toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
 export function wrongIdentityClaim(text, snapshot) {
   const name = snapshot.persona?.name;
@@ -112,7 +117,7 @@ export function attributesOwnWordsToThem(text, snapshot) {
 }
 // The reviewer judges one reply; it needs the turn and its recent lead-in,
 // not the summaries, recall or the rest of the transcript.
-export function reviewContext(snapshot, decision = {}) {
+export function reviewContext(snapshot, decision = {}, response = {}) {
   if (snapshot.initiative) return initiativeContext(snapshot);
   const {
     persona: _persona,
@@ -137,8 +142,23 @@ export function reviewContext(snapshot, decision = {}) {
   for (const m of messages)
     if (focus.has(m.id)) for (const id of m.replyChain || []) focus.add(id);
   const recent = new Set(messages.slice(-30).map((m) => m.id));
+  const replyTerms = interestTerms(response.bubbles || []);
+  const cited = messages
+    .filter((m) => !recent.has(m.id))
+    .map((m) => ({
+      m,
+      score: [...interestTerms([m.text])].filter((term) => replyTerms.has(term))
+        .length,
+    }))
+    .filter((row) => row.score >= 3)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8);
+  for (const row of cited) focus.add(row.m.id);
   return {
     ...rest,
+    respondingTo: messages.filter((m) =>
+      decision.targetMessageIds?.includes(m.id),
+    ),
     ...(snapshot.inner?.currentLife
       ? { currentLife: snapshot.inner.currentLife }
       : {}),
@@ -201,10 +221,7 @@ export function validateResponse(result, snapshot, decision, maxChars = 180) {
     issues.push("回复超过当前会话总字数");
   if (decision.choice === "react" && Array.from(result.bubbles[0]).length > 20)
     issues.push("选择了简短反应，只写一句不超过20字的短话");
-  const recent = snapshot.messages
-    .filter((m) => m.role === "assistant")
-    .slice(-12)
-    .map((m) => m.text);
+  const recent = recentOwnMessages(snapshot, 12).map((m) => m.text);
   const continuity = snapshot.inner?.continuity;
   const sharedElsewhere =
     continuity?.requested &&
@@ -357,6 +374,7 @@ export function validateResponse(result, snapshot, decision, maxChars = 180) {
       );
     if (
       !briefReaction &&
+      !routineSocialReply(text, snapshot) &&
       !requestedRepeat(snapshot) &&
       recent.some((r) => norm(r) === norm(text))
     )

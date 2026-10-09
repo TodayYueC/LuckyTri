@@ -4,6 +4,7 @@ import { evidence, text, parse } from "../util.js";
 import { gameTopic, intentUnit } from "./intent.js";
 import { naturalGameReason, gameContract, gameText } from "./presentation.js";
 import { gameName } from "./availability.js";
+import { belongsToGame } from "./material-relevance.js";
 
 export class Games {
   constructor(time) {
@@ -93,7 +94,7 @@ export class Games {
         "SELECT title,content,kind,uncertainty FROM mind_time_sources WHERE id=? AND project_id=?",
       )
       .get(task.checkpoint.sourceIds[0], task.project_id);
-    if (!source) return null;
+    if (!source || !belongsToGame(source, this.topic(task))) return null;
     const active = this.time.clock.view(task, now).progress;
     const window = task.checkpoint.readWindow;
     const progress = window
@@ -229,11 +230,7 @@ export class Games {
           " 游戏 剧情 资料 " +
           (contract?.unit?.label || "") +
           " " +
-          (checkpoint.segment
-            ? `主题片段 ${checkpoint.segment + 1}`
-            : contract
-              ? "内容与第一印象"
-              : "简介"),
+          (contract ? "内容与第一印象" : "剧情与角色"),
         {
           projectId: project.id,
           now,
@@ -247,7 +244,9 @@ export class Games {
       if (!time.valid(task))
         return { status: "cancelled", reason: "资料返回时任务已经变化" };
       const seen = new Set(checkpoint.seenSources || []),
-        fresh = sources.filter((s) => !seen.has(s.id));
+        fresh = sources.filter(
+          (s) => !seen.has(s.id) && belongsToGame(s, topic),
+        );
       if (!fresh.length) {
         time.tasks.wait(
           task,
@@ -369,9 +368,15 @@ export class Games {
           )
           .get(id, project.id),
       )
-      .filter(Boolean);
+      .filter((s) => s && belongsToGame(s, topic));
     if (!sources.length) {
       time.tasks.wait(task, "本段资料已不可用", now + 3600000, now);
+      const next = { ...checkpoint, sourceIds: [], stage: "search" };
+      delete next.readWindow;
+      delete next.activityClock;
+      this.db
+        .prepare("UPDATE mind_time_tasks SET checkpoint=? WHERE id=?")
+        .run(JSON.stringify(next), task.id);
       return { status: "waiting", reason: "资料不可用" };
     }
     const prompt =

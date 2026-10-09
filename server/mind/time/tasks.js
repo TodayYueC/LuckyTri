@@ -8,6 +8,7 @@ import { deadlineAt, taskSchedule, spokenDate } from "./schedule.js";
 import { DeliveryLinks } from "./delivery-links.js";
 import { activityPresentation } from "./presentation.js";
 import { activityLabel, classifyActivity, isExecutable } from "./kinds.js";
+import { awaitsTextInput, nextReadingChunk } from "./reading-input.js";
 
 export const TASK_STATES = [
   "todo",
@@ -105,10 +106,13 @@ export class Tasks {
     const privateRoots = this.time.mind.meetings.privateRoots(refs, now);
     session = privateRoots[0] || session;
     if (privateRoots.length && discretion !== "secret") discretion = "private";
+    const inferred = classifyActivity(title);
     const type =
-      activity && (ACTIVITY_LABELS[activity] || isExecutable(activity))
-        ? activity
-        : classifyActivity(title);
+      awaitsTextInput(title) && inferred === "read"
+        ? "read"
+        : activity && (ACTIVITY_LABELS[activity] || isExecutable(activity))
+          ? activity
+          : inferred;
     subject =
       intentRecipient(this.db, { session, subject, title, sources: refs }) ||
       null;
@@ -207,6 +211,24 @@ export class Tasks {
       { sources: refs },
       now,
     );
+    if (type === "read" && awaitsTextInput(title)) {
+      this.db
+        .prepare("UPDATE mind_time_tasks SET checkpoint=? WHERE id=?")
+        .run(
+          JSON.stringify({
+            awaitedText: true,
+            expectedTextTitle: intent.topic,
+            awaitedAfter: now,
+          }),
+          id,
+        );
+      this.wait(
+        this.get(id),
+        "等待约定的正文或资料",
+        Number.MAX_SAFE_INTEGER,
+        now,
+      );
+    }
     return { id };
   }
   sync(now = this.time.now()) {
@@ -326,6 +348,22 @@ export class Tasks {
     return ids;
   }
   ready(now = this.time.now()) {
+    for (const row of this.db
+      .prepare(
+        "SELECT * FROM mind_time_tasks WHERE state='waiting' AND activity='read' AND json_extract(checkpoint,'$.awaitedText')=1 AND json_extract(checkpoint,'$.mergedInto') IS NULL",
+      )
+      .all()) {
+      const task = decode(row);
+      if (
+        this.time.allowed(task, now) &&
+        nextReadingChunk(this.time.mind, task, now)
+      )
+        this.control(
+          task.id,
+          { action: "resume", reason: "约定的正文已可阅读" },
+          now,
+        );
+    }
     return this.db
       .prepare(
         "SELECT * FROM mind_time_tasks WHERE state IN ('todo','scheduled','waiting','paused') AND ready_at<=? AND next_step<=? AND activity!='unknown' AND json_extract(checkpoint,'$.mergedInto') IS NULL ORDER BY priority DESC,created LIMIT 100",

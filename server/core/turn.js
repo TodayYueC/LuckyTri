@@ -2,7 +2,12 @@ import { replyFocus } from "./conversation-cues.js";
 import { INITIATIVE_PROMPT } from "../mind/initiative.js";
 import { initiativeContext } from "./initiative-context.js";
 import { conversationGrounding } from "./conversation-grounding.js";
-import { currentExchange, explicitStop } from "./dialogue-context.js";
+import {
+  currentExchange,
+  dialogueContext,
+  explicitStop,
+} from "./dialogue-context.js";
+import { readerQuestions } from "./reader-check.js";
 
 export const CHOICES = ["speak", "react", "decline", "silent"];
 const LEGACY = {
@@ -42,7 +47,7 @@ export function normalizeAct(raw, trace) {
 
 export function recallWording(snapshot) {
   if (snapshot.initiative) return null;
-  const continuity = snapshot.inner?.continuity;
+  const continuity = dialogueContext(snapshot).inner?.continuity;
   const notes = [];
   if (
     continuity?.people?.some(
@@ -77,12 +82,6 @@ export async function takeTurn(
   trace,
   extra = {},
 ) {
-  const {
-    sourceRows: _rows,
-    batch: _batch,
-    persona: _persona,
-    ...context
-  } = snapshot;
   const images = extra.images || [];
   const initiating =
     extra.occasion && ["presence", "outreach"].includes(extra.occasion.type);
@@ -102,7 +101,7 @@ export async function takeTurn(
     {
       context: initiating
         ? initiativeContext(snapshot, extra.occasion)
-        : { ...context, grounding: conversationGrounding(snapshot) },
+        : dialogueContext(snapshot),
       ...(extra.occasion
         ? {
             occasion: initiating
@@ -148,6 +147,13 @@ export function normalizeTurn(raw, snapshot, trace) {
       .slice(-1)
       .map((m) => m.id);
   }
+  if (
+    choice === "react" &&
+    readerQuestions(snapshot, { choice }).some((q) => targets.includes(q.id))
+  ) {
+    choice = "speak";
+    trace?.steps?.push("对方在要求解释，保留完整回答空间，不按极短反应截断");
+  }
   let bubbles = [];
   if (Array.isArray(raw.bubbles)) bubbles = raw.bubbles;
   else if (typeof raw.bubbles === "string") bubbles = [raw.bubbles];
@@ -161,6 +167,12 @@ export function normalizeTurn(raw, snapshot, trace) {
     .filter((x) => typeof x === "string")
     .map((x) => x.trim())
     .filter(Boolean);
+  if (choice === "react" && bubbles.length === 1 && bubbles[0].length > 20) {
+    choice = "speak";
+    trace?.steps?.push(
+      "这是一句完整回应，按正常发言保留，不为短反应标签改写原意",
+    );
+  }
   if (choice === "silent") bubbles = [];
   const crisisIds = ids(raw.crisis?.messageIds).filter((id) =>
     batchIds.has(id),
@@ -178,7 +190,20 @@ export function normalizeTurn(raw, snapshot, trace) {
     trace?.steps?.push("有人可能处在危机里，底线要求认真回应");
   }
   const botLoop =
-    !crisis && !snapshot.initiative && conversationGrounding(snapshot).botLoop;
+    !crisis &&
+    !snapshot.initiative &&
+    (conversationGrounding(snapshot).botLoop ||
+      (raw.contribution?.kind === "none" &&
+        !raw.act &&
+        !raw.share &&
+        !["chat", "rest"].includes(raw.attention?.action) &&
+        batch.length > 0 &&
+        batch.filter((m) => m.role === "user").length > 0 &&
+        batch
+          .filter((m) => m.role === "user")
+          .every((m) =>
+            conversationGrounding(snapshot).botMessageIds.includes(m.id),
+          )));
   if (botLoop) {
     choice = "silent";
     bubbles = [];
@@ -230,6 +255,14 @@ export function normalizeTurn(raw, snapshot, trace) {
               batchIds.has(id),
             ),
             point: text(raw.understanding.point, 180),
+          },
+        }
+      : {}),
+    ...(raw.contribution && typeof raw.contribution === "object"
+      ? {
+          contribution: {
+            kind: text(raw.contribution.kind, 20),
+            point: text(raw.contribution.point, 180),
           },
         }
       : {}),

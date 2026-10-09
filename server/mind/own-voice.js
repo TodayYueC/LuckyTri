@@ -6,6 +6,11 @@ import { isPrivateSession } from "./memory.js";
 import { sameRecentTheme } from "./novelty.js";
 import { ownLife, sameSelf } from "./salience.js";
 import { conversationOrigin, originSummary } from "./conversation-origin.js";
+import {
+  claimsLivedAction,
+  claimsSharedHistory,
+  EXPRESSION_GROUNDING,
+} from "./expression-grounding.js";
 
 // After this many notes in a row that only take up her own last note, another
 // one has to pick up something new or it is not kept.
@@ -203,6 +208,36 @@ export class OwnVoice {
           sources.some((s) => !valid.has(s))
         )
           throw Error("自己的念头含有无效来源或敏感内容，未保存");
+        if (
+          claimsLivedAction([content, ...words].join("\n")) ||
+          claimsSharedHistory([content, result.reason, ...words].join("\n"))
+        ) {
+          const grounded = await models.call(
+            profile,
+            "expression_grounding",
+            EXPRESSION_GROUNDING,
+            {
+              candidate: { note: content, words, sources },
+              actions: input.actions,
+              currentLife: input.currentLife,
+              notes: input.notes,
+              self: input.self,
+            },
+            trace,
+          );
+          if (grounded.ok !== true) {
+            status = "empty";
+            reason =
+              text(grounded.reason, 240) ||
+              "新行动经历没有得到实际记录支持，未保存";
+            return { status, reason, note: null };
+          }
+          if (life.closed || this.mind.nature.version() !== nature.version) {
+            status = "cancelled";
+            reason = "核对期间状态已变化";
+            return { status, reason, note: null };
+          }
+        }
         // Several notes in a row already went round without taking anything
         // new up. Another one that still does not is not kept.
         const drifting =

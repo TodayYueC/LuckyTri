@@ -31,6 +31,8 @@ export class Sharing {
     const work = this.time.works.get(workId);
     if (!work || work.state !== "complete")
       throw Error("只有真实完成稿可以交付");
+    if (!this.time.works.materialSupported(work))
+      throw Error("这篇记录引用了与作品无关的资料，不能作为游戏阅读进度分享");
     if (
       leaks([work.content], this.time.mind.meetings.privateSayings(session))
         .length
@@ -154,6 +156,14 @@ export class Sharing {
     if (!current || current.state !== "pending") return null;
     share = current;
     const work = this.time.works.get(share.work_id, share.version);
+    if (work && !this.time.works.materialSupported(work)) {
+      this.db
+        .prepare(
+          "UPDATE mind_time_shares SET state='declined',reason=? WHERE id=?",
+        )
+        .run("引用资料与作品无关，保留记录但停止分享", share.id);
+      return { status: "declined", reason: "引用资料与作品无关" };
+    }
     if (
       !work ||
       !life.chat.enabled(share.session_id, { simulated: false }) ||

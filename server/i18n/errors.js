@@ -457,6 +457,8 @@ export const ERRORS = {
   "正在推进活动步骤，请稍后测试":
     "An activity step is in progress. Test again shortly.",
   只有真实完成稿可以交付: "Only a genuinely finished piece can be delivered",
+  "这篇记录引用了与作品无关的资料，不能作为游戏阅读进度分享":
+    "This note uses material unrelated to the work and cannot be shared as reading progress",
   正文包含其他会话的私下内容:
     "The text contains private content from another session",
   作品来源不允许在此会话分享:

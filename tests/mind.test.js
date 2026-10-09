@@ -5481,7 +5481,7 @@ test("没有玩过就不说玩过：亲历的说法被拦，问、想、否定�
       { bubbles: ["这作玩过，结局那段是真的绷不住"] },
       asked,
       decision,
-    ).some((issue) => issue.includes("没有这样的经历记录")),
+    ).some((issue) => issue.includes("实际操控客户端")),
   );
   assert.equal(
     validateResponse(

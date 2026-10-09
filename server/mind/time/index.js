@@ -298,8 +298,8 @@ export class TimeSystem {
   }
   visible(row, session, now = this.now()) {
     if (session === undefined) return true;
-    if (!this.allowed(row, now)) return false;
     if (row.discretion !== "open" && row.session_id !== session) return false;
+    if (!this.allowed(row, now)) return false;
     return this.mind.meetings.stays(
       { ...row, sources: evidence(row.sources) },
       session,
@@ -548,6 +548,7 @@ export class TimeSystem {
           plannedFor: this.planView(row),
         })),
       works: this.works.fragments({ session, now, cue }),
+      activityRecall: this.works.activityEvidence({ session, now, cue }),
       ...(() => {
         const actions = this.db
           .prepare(
@@ -730,9 +731,12 @@ export class TimeSystem {
               ? task.share_state
               : "none",
           activityKind: task.activity === "game" ? "gaming" : task.activity,
+          ...(task.activity === "game" ? { experienceMode: "reference" } : {}),
           progress:
             task.activity === "game"
-              ? `玩过第 ${task.checkpoint.segment || 0} 段，留下自己的游玩记录`
+              ? work?.title
+                ? `已留下《${work.title}》这篇阅读笔记`
+                : "已接触一些游戏资料"
               : `${work?.title || ""}，已保存 ${work?.characters || 0} 字${state === "done" ? "完成稿" : "正文"}`,
           project: task.project_id,
           work: work?.id || null,

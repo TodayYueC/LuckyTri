@@ -16,7 +16,7 @@ export class Reading {
   shared() {
     return this.db
       .prepare(
-        `SELECT c.id, c.document_id, c.ordinal, c.heading, c.text, d.title,
+        `SELECT c.id, c.document_id, c.ordinal, c.heading, c.text, d.title,d.created documentCreated,
           (SELECT COUNT(*) FROM core_chunks x WHERE x.document_id=c.document_id) total
          FROM core_chunks c
          JOIN core_documents d ON d.id=c.document_id AND d.status='ready'
@@ -28,8 +28,20 @@ export class Reading {
   }
   // The next part of something she already started, or the unread passage
   // closest to what she is living for, then what she likes and wonders about.
-  next(now = Date.now()) {
-    const unread = this.shared();
+  next(now = Date.now(), { title = "", after = 0 } = {}) {
+    const clean = (value) =>
+      String(value || "")
+        .toLowerCase()
+        .replace(/[\s\p{P}]/gu, "");
+    const wanted = clean(title);
+    const unread = this.shared().filter(
+      (chunk) =>
+        (!wanted ||
+          clean(chunk.title) === wanted ||
+          (wanted.length >= 2 && clean(chunk.title).includes(wanted))) &&
+        (!after ||
+          (chunk.documentCreated >= after && chunk.documentCreated <= now)),
+    );
     if (!unread.length) return null;
     const last = this.db
       .prepare(

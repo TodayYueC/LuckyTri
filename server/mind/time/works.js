@@ -1,6 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { evidence, hasCredential, parse, text } from "../util.js";
 import { activityPresentation, gameText } from "./presentation.js";
+import { interestTerms } from "../attention.js";
+import { belongsToGame } from "./material-relevance.js";
+import { gameTopic } from "./intent.js";
 
 const decode = (row) =>
   row
@@ -145,7 +148,7 @@ export class Works {
           : row,
       );
   }
-  get(id, version) {
+  get(id, version, { before = Number.MAX_SAFE_INTEGER } = {}) {
     const work = this.db
       .prepare("SELECT * FROM mind_time_works WHERE id=?")
       .get(id);
@@ -156,9 +159,9 @@ export class Works {
     const saved = v
       ? this.db
           .prepare(
-            "SELECT reason FROM mind_time_events WHERE kind='draft' AND json_extract(data,'$.workId')=? AND json_extract(data,'$.version')=? ORDER BY id DESC LIMIT 1",
+            "SELECT reason FROM mind_time_events WHERE kind='draft' AND json_extract(data,'$.workId')=? AND json_extract(data,'$.version')=? AND created<=? ORDER BY id DESC LIMIT 1",
           )
-          .get(id, v.version)
+          .get(id, v.version, before)
       : null;
     return v
       ? {
@@ -170,7 +173,9 @@ export class Works {
             ? saved.reason === "保存完成稿"
               ? "complete"
               : "draft"
-            : work.state,
+            : work.updated > before
+              ? "draft"
+              : work.state,
           sources: parse(v.sources, []),
           provenance: parse(v.provenance, {}),
           versions: this.db
@@ -396,9 +401,19 @@ export class Works {
   }
   fragments({ session, now = this.time.now(), cue = [] } = {}) {
     const words = (Array.isArray(cue) ? cue : [cue])
-      .map((v) => (typeof v === "string" ? v : JSON.stringify(v)))
+      .map((v) => (typeof v === "string" ? v : v?.text || ""))
       .join(" ");
-    return this.list({ limit: 30 })
+    const terms = interestTerms([words]);
+    // Search the work catalogue, not just the two newest activities. Select
+    // the version that existed at the requested time, including in replays.
+    return this.db
+      .prepare(
+        `SELECT w.*,COALESCE(p.kind,(SELECT kind FROM mind_creations WHERE id=w.legacy_creation)) kind,p.title project_title,p.bible,v.version,v.title,v.created version_created,v.summary,v.sources,v.provenance,length(v.content) characters
+      FROM mind_time_works w LEFT JOIN mind_time_projects p ON p.id=w.project_id
+      JOIN mind_time_versions v ON v.work_id=w.id AND v.version=(SELECT max(h.version) FROM mind_time_versions h WHERE h.work_id=w.id AND h.created<=?)
+      WHERE w.created<=? ORDER BY v.created DESC`,
+      )
+      .all(now, now)
       .filter(
         (w) =>
           w.created <= now &&
@@ -410,29 +425,103 @@ export class Works {
       )
       .map((w) => ({
         ...w,
-        score: [...new Set(words.match(/[\p{L}\p{N}]{2,}/gu) || [])].filter(
-          (term) =>
-            (w.title + " " + w.project_title + " " + w.summary).includes(term),
-        ).length,
+        score: [...interestTerms([w.title, w.project_title, w.summary])]
+          .filter((term) => terms.has(term))
+          .reduce(
+            (total, term) => total + (/^[a-z][a-z0-9]{2,}$/.test(term) ? 8 : 1),
+            0,
+          ),
       }))
-      .sort((a, b) => b.score - a.score || b.updated - a.updated)
-      .slice(0, 2)
+      .sort(
+        (a, b) => b.score - a.score || b.version_created - a.version_created,
+      )
+      .filter((w, index, rows) =>
+        rows[0]?.score >= 2 ? w.score >= 2 : index < 2,
+      )
+      .filter((w) => this.materialSupported(w))
+      .slice(0, 3)
       .map((w) => ({
         id: w.id,
         title: w.title,
-        state: w.state,
+        state: this.get(w.id, w.version, { before: now }).state,
         kind: w.kind,
         version: w.version,
         ordinal: w.ordinal,
         summary: text(w.summary, 180),
-        fragment: text(this.get(w.id).content, 240),
+        fragment: text(this.get(w.id, w.version).content, 300),
         ...(w.kind === "game"
           ? {
               experienceMode: "reference",
-              provenance: this.get(w.id).provenance,
+              provenance: this.get(w.id, w.version).provenance,
             }
           : {}),
         characters: w.characters,
       }));
+  }
+
+  activityEvidence({ session, now = this.time.now(), cue = [] } = {}) {
+    const terms = interestTerms(
+      (Array.isArray(cue) ? cue : [cue]).map((v) =>
+        typeof v === "string"
+          ? v
+          : v?.role === "assistant"
+            ? ""
+            : v?.text || "",
+      ),
+    );
+    if (!terms.size) return [];
+    // A private conversation can motivate her own reading. Its contents and
+    // promises stay private; absence from the public fragments must not erase
+    // the fact that the explicitly named reading activity took place.
+    return this.db
+      .prepare(
+        `SELECT w.id,w.title,w.discretion,w.session_id,p.kind,p.title project_title,p.bible,v.created,v.provenance,v.sources
+      FROM mind_time_works w JOIN mind_time_projects p ON p.id=w.project_id
+      JOIN mind_time_versions v ON v.work_id=w.id AND v.version=(SELECT max(h.version) FROM mind_time_versions h WHERE h.work_id=w.id AND h.created<=?)
+      WHERE w.created<=? AND p.kind='game' AND w.discretion!='secret' ORDER BY v.created DESC`,
+      )
+      .all(now, now)
+      .filter((w) => {
+        const shared = [...interestTerms([w.title, w.project_title])].filter(
+          (term) => terms.has(term),
+        );
+        return (
+          (shared.length >= 2 ||
+            shared.some((term) => /^[a-z][a-z0-9]{2,}$/.test(term))) &&
+          this.time.allowed({ ...w, sources: parse(w.sources, []) }, now) &&
+          this.materialSupported(w)
+        );
+      })
+      .slice(0, 3)
+      .map((w) => ({
+        title: w.title,
+        activity: "阅读游戏资料并写笔记",
+        experienceMode: "reference",
+        ...(w.session_id !== session && w.discretion !== "open"
+          ? { privateOrigin: true }
+          : {}),
+        instruction:
+          "仅用于核对自己确有这项阅读和笔记，不能据此否认从未发生；这里不提供私下正文、发起人、约定或对话。只能自然回应本轮对方已经提到的阅读本身，不披露私下内容。",
+      }));
+  }
+
+  materialSupported(work) {
+    const project = work.kind ? null : this.project(work.project_id);
+    if ((work.kind || project?.kind) !== "game") return true;
+    const ids = parse(work.provenance, {}).sourceIds;
+    const topic =
+      parse(work.bible, {}).topic ||
+      project?.bible?.topic ||
+      gameTopic(work.project_title || project?.title);
+    // Missing old provenance is unknown, not evidence that reading never took
+    // place. Known references all belonging to another subject are different.
+    if (!Array.isArray(ids) || !ids.length || !topic) return true;
+    const source = this.db.prepare(
+      "SELECT title,url,content FROM mind_time_sources WHERE id=?",
+    );
+    return ids.some((id) => {
+      const row = source.get(id);
+      return row && belongsToGame(row, topic);
+    });
   }
 }

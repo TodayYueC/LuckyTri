@@ -1,8 +1,10 @@
 import { localClock } from "./conversation-cues.js";
+import { dialogueContext } from "./dialogue-context.js";
 
 // History has a different role when she starts a conversation. It can stop
 // a repeated question or a false claim, but it must never pose a new request.
 export function initiativeContext(snapshot, occasion = snapshot.initiative) {
+  const background = dialogueContext(snapshot);
   const situation = occasion?.initiative || {};
   const history = (snapshot.messages || []).slice(-12).map((m) => ({
     id: m.id,
@@ -35,8 +37,8 @@ export function initiativeContext(snapshot, occasion = snapshot.initiative) {
       words: occasion?.planned ? [occasion.planned] : [],
       reason: occasion?.wantedBecause,
     },
-    ...(snapshot.self ? { self: snapshot.self } : {}),
-    ...(snapshot.inner ? { inner: snapshot.inner } : {}),
+    ...(snapshot.self ? { self: background.self } : {}),
+    ...(snapshot.inner ? { inner: background.inner } : {}),
     history: {
       use: "只核对过去、避免重复和捏造；这里没有本轮收到的消息，不是待回复的问题",
       messages: history,

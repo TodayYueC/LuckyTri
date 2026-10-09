@@ -124,7 +124,8 @@ test("unchanged built-in prompts are sent once; custom ones are extra guidance",
   const p = { name: "Lucky", base: "随和" };
   const plain = replyPrompt(p, PROMPTS, "turn");
   assert(!plain.includes("补充配置"));
-  assert.equal(plain.split(PROMPTS.system).length, 2);
+  assert.equal(plain.split(PROMPTS.turn).length, 2);
+  assert.match(plain, /连续的记忆、兴趣与选择/);
   const custom = replyPrompt(p, { ...PROMPTS, turn: "多用短句" }, "turn");
   assert.match(custom, /补充配置[\s\S]*多用短句/);
   assert(custom.indexOf("多用短句") < custom.lastIndexOf(PROMPTS.turn));

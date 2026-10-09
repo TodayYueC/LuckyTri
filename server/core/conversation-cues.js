@@ -1,4 +1,9 @@
 import { claimedPlay } from "../mind/guard.js";
+import { readerQuestions } from "./reader-check.js";
+import {
+  recentOwnMessages,
+  routineSocialReply,
+} from "./conversation-grounding.js";
 
 // Stable message timestamps stay with history; changing clock/style cues belong at the tail.
 const clockFormats = new Map();
@@ -73,7 +78,11 @@ export function replyFocus(snapshot, decision) {
   if (
     /看不懂|没看懂|听不懂|太抽象|说人话|复读|别重复|好好说话|你在说什么|你在讲什么/.test(
       latest,
-    )
+    ) ||
+    (/^[?？]+$/.test(latest) &&
+      readerQuestions(snapshot, decision).some((q) =>
+        targets.some((m) => m.id === q.id),
+      ))
   )
     return {
       kind: "readability_repair",
@@ -185,7 +194,7 @@ export function conversationCues(
   now = Date.now(),
   timeZone,
 ) {
-  const recent = messages.filter((m) => m.role === "assistant").slice(-8);
+  const recent = recentOwnMessages({ messages, batchIds }, 8);
   const batch = messages.filter((m) => batchIds.includes(m.id));
   const previous = messages
     .filter(
@@ -207,7 +216,7 @@ export function conversationCues(
       ellipsisCount: recent.filter((m) => ellipsis.test(m.text)).length,
       recentReplies: recent.map((m) => ({ id: m.id, text: m.text })),
       instruction:
-        "这是过去说过的话，不是风格示范。保留事实，不继承复述、拖音、省略号、无意义第二句等坏习惯。短反应hh可自然重复，具体台词不要换几个字重发。",
+        "这是近期说过的话，不是风格示范。不继承模板或无意义第二句；新问候和亲近表达可以自然回应，晚安、我也想你、hh不必为避免重复而编花样。没有新意思的承诺和确认不用换词再发。",
     },
   };
 }
@@ -218,10 +227,7 @@ export function conversationalIssues(result, snapshot, decision = {}) {
     : (snapshot.messages || []).filter((m) =>
         snapshot.batchIds?.includes(m.id),
       );
-  const recent = snapshot.messages
-    .filter((m) => m.role === "assistant")
-    .slice(-8)
-    .map((m) => m.text);
+  const recent = recentOwnMessages(snapshot, 8).map((m) => m.text);
   const issues = [];
   if (
     replyFocus(snapshot, decision).kind === "readability_repair" &&
@@ -327,9 +333,22 @@ export function conversationalIssues(result, snapshot, decision = {}) {
     )
   )
     issues.push("不要为共情虚构自己同样上班或亲历；回应对方的事情即可");
-  if (texts.some(claimedPlay))
+  if (
+    texts.some(
+      (line) =>
+        claimedPlay(line) &&
+        !(
+          /通关后|通关才能|解锁|需要.{0,8}通关|二周目.{0,6}(?:设计|设定|模式)/.test(
+            line,
+          ) &&
+          !/我.{0,10}(?:已经|之前|刚|早就|确实|全)?(?:玩过|通关|打完|拿到|达成)/.test(
+            line,
+          )
+        ),
+    )
+  )
     issues.push(
-      "不要说自己玩过、通关过什么或平时玩得杂：你没有这样的经历记录。可以说知道这作、听人聊过，或者想玩；被问到玩过什么，如实说还没真的玩过",
+      "不要把游戏资料阅读说成实际操控客户端、通关或拿到成就。有真实阅读和笔记时，直接谈读到的内容、进度和感受，不能反过来否认读过或写过；只想了解的作品才说想了解，不用旧的口头夸大当经历证据",
     );
   if (
     texts.some((t) =>
@@ -355,6 +374,7 @@ export function conversationalIssues(result, snapshot, decision = {}) {
     const t = clean(text);
     if (
       t.length >= 8 &&
+      !routineSocialReply(text, snapshot) &&
       recent.filter((r) => clean(r).startsWith(t.slice(0, 5))).length >= 2
     )
       issues.push(

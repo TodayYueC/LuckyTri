@@ -6,7 +6,10 @@ import { describeFace } from "./faces.js";
 import { SELF_KINDS } from "./self.js";
 import { DAY, text } from "./util.js";
 import { relationshipHistory } from "./relationship-context.js";
-import { fixedReplyHabit } from "../core/conversation-grounding.js";
+import {
+  fixedReplyHabit,
+  conversationalMemory,
+} from "../core/conversation-grounding.js";
 
 const FORGOTTEN = "（很久没想起了）";
 
@@ -172,9 +175,14 @@ export function innerView(
       ? {
           here: describeFace({
             ...face,
-            notes: face.notes.filter((note) =>
-              spoken(`${note.content} ${note.why}`),
-            ),
+            notes: face.notes
+              .map((note) => ({
+                ...note,
+                content: conversationalMemory(note.content),
+              }))
+              .filter(
+                (note) => note.content && spoken(`${note.content} ${note.why}`),
+              ),
             role: spoken(face.role),
             tone: spoken(face.tone),
             aspiration: spoken(face.aspiration),
@@ -240,7 +248,11 @@ export function innerView(
   const thoughts = relevantContext(
     mind.thoughts
       .open({ now, limit: 400, session })
-      .filter((t) => mind.meetings.sayable(t.content, session)),
+      .filter(
+        (t) =>
+          !fixedReplyHabit(t.content) &&
+          mind.meetings.sayable(t.content, session),
+      ),
     { cues, limit: 3, requireOverlap: cue.length > 0 },
   );
   const heard = feedback(mind, session, now);
@@ -257,6 +269,7 @@ export function innerView(
   });
   const wills = mind.meetings.traces({ session, before: now, limit: 2 });
   const will = wills
+    .filter((row) => !fixedReplyHabit(row.text))
     .map((row) =>
       row.living ? row.text : `${text(row.content, 28)}：${row.text}`,
     )
@@ -272,8 +285,8 @@ export function innerView(
     affect.cause && mind.meetings.sayable(affect.cause, session)
       ? text(affect.cause, 40)
       : "";
-  const withLines = withWhom.filter((line) =>
-    mind.meetings.sayable(line, session),
+  const withLines = withWhom.filter(
+    (line) => !fixedReplyHabit(line) && mind.meetings.sayable(line, session),
   );
   const expectingLines = expecting.filter((line) =>
     mind.meetings.sayable(line, session),

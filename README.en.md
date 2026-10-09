@@ -7,7 +7,7 @@
 <p align="center"><strong>Let the days she lives count.</strong></p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-1.0.1-ff8fb1">
+  <a href="https://www.npmjs.com/package/luckytri"><img alt="npm version" src="https://img.shields.io/npm/v/luckytri?color=ff8fb1"></a>
   <img alt="license" src="https://img.shields.io/badge/license-MIT-7fd6c2">
   <img alt="node" src="https://img.shields.io/badge/node-%E2%89%A5%2024.5-8fb8ff">
   <img alt="channels" src="https://img.shields.io/badge/QQ-OneBot%2011%20%7C%20official%20bot-ffd37f">
@@ -92,10 +92,14 @@ The full design is in [Her life](docs/en/her-life.md) and [Architecture and exte
 
 ## What she can do
 
+Recent work focuses on continuity and clearer conversation. Account-based recognition links public encounters across groups and private chats. Relationships, forms of address, her own views and private promises retain their sources and visibility boundaries. An ordinary greeting need not bring back unfinished tasks or demonstrate how much she remembers.
+
+**Conversation fixes in 1.0.8:** Attend to the current speaker, follow-up messages and quotations; explain plainly when someone cannot follow. Another bot's interpretation does not replace the person's confirmation, and a conversation can pause when there is nothing new to add. Reading, writing and game references require the appropriate material: waiting for a manuscript does not become a writing project, and reading notes are not game-client operation. See the [changelog](docs/en/CHANGELOG.md). These changes still need testing in everyday interaction; automated scores are not a guarantee of conversation quality.
+
 | Area                     | What it does today                                                                                                                                                                    |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Time and solitude        | Lives a day on her own rhythm; in quiet hours sorts her thoughts, reads, writes a diary; reviews every so often, rewrites her story and turns to a new chapter                        |
-| Doing her own things     | Carries out the reading, writing, thinking and play plans she left herself; works are saved even offline and can be viewed under Lifetime and Time                                    |
+| Doing her own things     | Carries out her reading, writing and thinking plans; game activities primarily read and record reference material; works are saved under Lifetime and Time                            |
 | Self and mood            | Forms opinions, tastes, concerns and wishes from sourced experiences; changes can be looked back on and undone                                                                        |
 | Relationships and memory | One memory across groups and private chats; tells "public / private / confidential" apart; private things never surface in another room                                               |
 | Attention and choice     | Understands multi-person talk, @-mentions and quotes, and decides to read closely, to speak or to stay silent; can also reach out from her own thoughts                               |
@@ -202,7 +206,7 @@ To continue an existing source instance, stop it first, then use `luckytri --hom
 | `EMBEDDING_API_KEY` | Optional; a separate key for the knowledge embedding service |
 | `BACKUP_INTERVAL_HOURS` / `BACKUP_KEEP` | Automatic backup interval (24 hours by default, `0` turns it off) and how many to keep (7 by default) |
 
-Everything about her stays on your machine: the database, chat records, model keys and backups live in the ignored `data/` directory and are never uploaded. While running, the server makes one integrity-checked backup a day; backups share a disk with the database, so copy important ones elsewhere. Never commit `.env`, the database or logs. See [Security](.github/SECURITY.md) and [Backup and recovery](docs/en/recovery.md).
+The database, chat records, model keys and backups live locally in the ignored `data/` directory and are excluded from the repository and npm package. When you use a remote model, the context needed for a response is sent to your configured provider. While running, the server makes one integrity-checked backup a day; backups share a disk with the database, so copy important ones elsewhere. Never commit `.env`, the database or logs. See [Security](.github/SECURITY.md) and [Backup and recovery](docs/en/recovery.md).
 
 ## Documentation
 

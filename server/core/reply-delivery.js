@@ -11,6 +11,8 @@ import { deliver, sleep } from "./message-scheduler.js";
 import { leaks } from "../mind/guard.js";
 import { conversationGrounding } from "./conversation-grounding.js";
 import { initiativeAudience } from "../mind/conversation-origin.js";
+import { readerQuestions, READER_CHECK, INTENT_CHECK } from "./reader-check.js";
+import { currentExchange } from "./dialogue-context.js";
 function isFormatError(error) {
   return (
     error instanceof SyntaxError ||
@@ -120,7 +122,7 @@ export class ReplyDelivery {
       prompt,
       snapshot.initiative ? "initiative" : "generation",
     );
-    const makeResponse = async (issues = [], draft = null) => {
+    const makeResponse = async (issues = [], draft = null, plain = false) => {
       try {
         const raw = await generate(
           models,
@@ -131,6 +133,7 @@ export class ReplyDelivery {
           trace,
           c.generationImages,
           issues,
+          { plain },
         );
         return normalizeResponse(raw, turn, fallbackText);
       } catch (error) {
@@ -179,6 +182,13 @@ export class ReplyDelivery {
           person.recentShared?.length || person.myPrivateIntentions?.length,
       );
     const needsDeepCheck = (response) =>
+      readerQuestions(snapshot, turn).length > 0 ||
+      currentExchange(snapshot).thirdPartyClaims.length > 0 ||
+      response.bubbles.some((line) =>
+        /(?:我|刚才|刚刚|刚还|今天|昨天|之前).{0,25}(?:读过|读了|读完|翻开|在翻|写完|完成了|看完了)/.test(
+          line,
+        ),
+      ) ||
       response.bubbles.some((line) =>
         /食堂|外卖|吃了|吃完|点好|点完|拍照|实拍|出门|上课/.test(line),
       ) ||
@@ -245,14 +255,17 @@ export class ReplyDelivery {
           "validation",
           replyPrompt(nature, prompt, "validation"),
           {
-            context: reviewContext(snapshot, turn),
+            context: reviewContext(snapshot, turn, response),
             decision: {
               choice: turn.choice,
               reason: turn.reason,
               targetMessageIds: turn.targetMessageIds,
             },
             response,
+            experienceEvidence:
+              "自己的旧回复可能误报经历，不单独证明实际读过、做完或正在做。声称具体活动须核对currentLife的真实作品、阅读与动作证据；待办和愿望不能证明执行。自己此刻的想法与感受不需要外部动作证明。普通问候不用补答已经换了话题的旧任务。",
             replyFocus: replyFocus(snapshot, turn),
+            thirdPartyClaims: currentExchange(snapshot).thirdPartyClaims,
             imageEvidence: c.generationImages.length
               ? "复审已附上回合模型看到的同一张画面；据图核对具体描述，不凭空判定为编造。"
               : snapshot.vision
@@ -274,6 +287,50 @@ export class ReplyDelivery {
           return snapshot.initiative
             ? ["主动消息的语境核对结果无效，草稿保留"]
             : [];
+        }
+        const claims = currentExchange(snapshot).thirdPartyClaims;
+        if (checked.ok && claims.length) {
+          const claimingSpeakers = new Set(
+            snapshot.messages
+              .filter((m) => claims.some((claim) => claim.id === m.id))
+              .map((m) => m.speaker),
+          );
+          const intent = await models.call(
+            model,
+            "validation",
+            INTENT_CHECK,
+            {
+              claims,
+              humanWords: snapshot.messages
+                .filter(
+                  (m) => m.role === "user" && !claimingSpeakers.has(m.speaker),
+                )
+                .slice(-8)
+                .map(({ id, speaker, text }) => ({ id, speaker, text })),
+              reply: response.bubbles,
+            },
+            trace,
+          );
+          if (intent.ok === false && Array.isArray(intent.issues))
+            return intent.issues.map(
+              (issue) => `第三方解释尚未被本人确认：${issue}`,
+            );
+        }
+        if (checked.ok && readerQuestions(snapshot, turn).length) {
+          const reader = await models.call(
+            model,
+            "validation",
+            READER_CHECK,
+            {
+              questions: readerQuestions(snapshot, turn),
+              reply: response.bubbles,
+            },
+            trace,
+          );
+          if (reader.ok === false && Array.isArray(reader.issues))
+            return reader.issues.map(
+              (issue) => `给提问者的解释仍没说清：${issue}`,
+            );
         }
         return checked.ok
           ? []
@@ -304,9 +361,17 @@ export class ReplyDelivery {
     }
     const rewriteLimit = snapshot.initiative || c.pressure >= 0.85 ? 1 : 2;
     for (let attempt = 0; issues.length && attempt < rewriteLimit; attempt++) {
+      (trace.revisions ||= []).push({
+        draft: response.bubbles,
+        issues: [...issues],
+      });
       trace.validation = issues;
       if (outdated()) return staleExit();
-      response = await makeResponse(issues, response);
+      response = await makeResponse(
+        issues,
+        response,
+        !snapshot.initiative && attempt === rewriteLimit - 1,
+      );
       issues = check(response);
       if (!issues.length && needsDeepCheck(response)) {
         if (outdated()) return staleExit();

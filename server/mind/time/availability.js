@@ -1,5 +1,10 @@
 import { gameTopic } from "./intent.js";
-import { isExecutable, needsEnergy } from "./kinds.js";
+import { isExecutable, needsEnergy, classifyActivity } from "./kinds.js";
+import {
+  nextReadingChunk,
+  expectedTextTitle,
+  awaitsTextInput,
+} from "./reading-input.js";
 export function unsupportedAction(task) {
   return task.activity === "unknown" &&
     /点.{0,8}外卖|下单|购买|实拍|拍照给|尝.{0,6}(?:味道|好吃)/.test(task.title)
@@ -18,6 +23,23 @@ export function executionBlock(time, task, now) {
   const life = time.search.life;
   const unsupported = unsupportedAction(task);
   if (unsupported) return unsupported;
+  if (
+    task.activity === "write" &&
+    awaitsTextInput(task.title) &&
+    classifyActivity(task.title) === "read"
+  )
+    return "等待来稿的阅读约定不能当成写作执行";
+  if (
+    task.checkpoint.awaitedText &&
+    (task.activity !== "read" || !nextReadingChunk(time.mind, task, now))
+  )
+    return "等待约定的正文或资料";
+  if (
+    task.activity === "read" &&
+    expectedTextTitle(task) &&
+    !nextReadingChunk(time.mind, task, now)
+  )
+    return "指定的正文还不可阅读";
   if (task.activity === "unknown" || !isExecutable(task.activity))
     return task.activity === "unknown"
       ? "需要把行动内容想具体"

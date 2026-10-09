@@ -3,6 +3,10 @@
 // key, exactly as the code writes it. Only a whole string that equals a key is
 // translated, so what she writes herself is never touched.
 export const LABELS = {
+  等待约定的正文或资料: "Waiting for the agreed manuscript or material",
+  等待来稿的阅读约定不能当成写作执行:
+    "A promise to read an incoming manuscript cannot run as writing",
+  指定的正文还不可阅读: "The specified manuscript is not available to read yet",
   存在运行伴随文件: "Runtime sidecar files exist",
   近期自动恢复点: "Recent automatic restore point",
   // feedback.js
@@ -608,7 +612,6 @@ export const LABEL_PATTERNS = [
     "Touched by others' words {0} times; last {1}, and she {2}",
   ],
   ["第 {0} / {1} 段", "Passage {0} / {1}"],
-  ["主题片段 {0}", "Topic passage {0}"],
   [
     "正在玩，本段预计约 {0} 分钟",
     "Playing; this span should take about {0} min",
@@ -618,10 +621,8 @@ export const LABEL_PATTERNS = [
     "I finished piece {1} of “{0}”. The text is saved in the works library; the plot and characters in it are made up.",
   ],
   ["接续《{0}》第 {1} 篇", "Continue piece {1} of “{0}”"],
-  [
-    "玩过第 {0} 段，留下自己的游玩记录",
-    "Played passage {0} and left her own play record",
-  ],
+  ["已留下《{0}》这篇阅读笔记", "Saved a reading note titled “{0}”"],
+  ["已接触一些游戏资料", "Has read some game reference material"],
   ["{0}，已保存 {1} 字完成稿", "{0}, saved a finished piece of {1} characters"],
   ["{0}，已保存 {1} 字正文", "{0}, saved {1} characters of text"],
   [

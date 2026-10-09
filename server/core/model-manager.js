@@ -20,14 +20,10 @@ const CACHE_KEY_PROVIDERS = new Set([
   "openrouter",
 ]);
 const CACHE_KEY_HOSTS = /(?:^|\.)(?:openai\.com|opencode\.ai|openrouter\.ai)$/i;
-// Stages that only need a short JSON verdict; thinking is turned off where the
-// provider allows it.
-const QUIET_STAGES = new Set([
-  "decision",
-  "validation",
-  "summary",
-  "expression_novelty",
-]);
+// Mechanical compression can use minimal reasoning. A short review output
+// still requires understanding evidence and intent, so validation must retain
+// the configured reasoning effort.
+const QUIET_STAGES = new Set(["decision", "summary", "expression_novelty"]);
 const STAGE_OUTPUT = {
   decision: 2048,
   validation: 2048,
@@ -39,6 +35,7 @@ const STAGE_OUTPUT = {
   reflection: 4096,
   expression: 2048,
   expression_novelty: 1024,
+  expression_grounding: 1024,
   daily: 6144,
   weekly: 6144,
   memory: 8192,
