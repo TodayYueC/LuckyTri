@@ -323,7 +323,9 @@ test("delivery checks recent reading claims against actual activities, without t
   w.open("private:1");
   const falseClaim = "今天没等排好的那个点，坐下来读两段就进去了。";
   assert(claimsLivedAction(falseClaim));
+  assert(claimsLivedAction("那半句正文我读上了，没等23:20。"));
   assert(!claimsLivedAction("今天想坐下来读两段。"));
+  assert(!claimsLivedAction("我之前读过那本书。"));
   const snapshot = {
     sessionId: "private:1",
     batchIds: [],
