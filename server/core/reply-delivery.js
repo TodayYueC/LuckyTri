@@ -9,6 +9,7 @@ import {
 } from "./response-validator.js";
 import { deliver, sleep } from "./message-scheduler.js";
 import { leaks } from "../mind/guard.js";
+import { interestTerms } from "../mind/attention.js";
 import {
   bubblePreference,
   conversationGrounding,
@@ -34,6 +35,48 @@ function isFormatError(error) {
       error?.message || "",
     )
   );
+}
+
+export function filterTranscriptContradictedIssues(issues, snapshot) {
+  const messages = (snapshot.messages || []).filter(
+    (message) => message.role === "user",
+  );
+  const transcriptTerms = interestTerms(
+    messages.map((message) => message.text),
+  );
+  const absentEvidence =
+    /(?:当前|现有|此前|前文|对话|上下文|原话|原文|消息|记录).{0,20}(?:没有|未|并没有|不在)|(?:没有|并没有|未|无人).{0,24}(?:这句话|这句|提到|说过|出现|提供|给出|片段|原文|上下文|记录)/u;
+  const quotedPhrases = (issue) => {
+    const phrases = [];
+    for (const [open, close] of [
+      ["“", "”"],
+      ["‘", "’"],
+      ["「", "」"],
+      ["『", "』"],
+      ['"', '"'],
+    ]) {
+      let from = 0;
+      while (from < issue.length) {
+        const start = issue.indexOf(open, from);
+        if (start < 0) break;
+        const end = issue.indexOf(close, start + open.length);
+        if (end < 0) break;
+        const phrase = issue.slice(start + open.length, end).trim();
+        if (phrase.length >= 3) phrases.push(phrase);
+        from = start + open.length;
+      }
+    }
+    return phrases;
+  };
+  return (issues || []).filter((issue) => {
+    if (!absentEvidence.test(issue)) return true;
+    return !quotedPhrases(issue).some((phrase) => {
+      if (messages.some((message) => (message.text || "").includes(phrase)))
+        return true;
+      const terms = interestTerms([phrase]);
+      return [...terms].filter((term) => transcriptTerms.has(term)).length >= 2;
+    });
+  });
 }
 
 // Owns this part of the lifecycle; the facade keeps the shared runtime state.
@@ -402,10 +445,14 @@ export class ReplyDelivery {
               (issue) => `给提问者的解释仍没说清：${issue}`,
             );
         }
-        return checked.ok
+        const issues = filterTranscriptContradictedIssues(
+          checked.issues,
+          snapshot,
+        );
+        return checked.ok || (checked.issues.length > 0 && !issues.length)
           ? []
-          : checked.issues.length
-            ? checked.issues
+          : issues.length
+            ? issues
             : ["与天性或语境不一致"];
       } catch (error) {
         trace.steps.push(

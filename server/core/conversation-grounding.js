@@ -1,7 +1,9 @@
+import { interestTerms } from "../mind/attention.js";
+
 // Shared by understanding, wording and review. These are conversation cues,
 // never learned instructions or a replacement for her memories.
 export const GROUNDING_RULE =
-  "【把话说清楚】先弄清眼前具体发生了什么、谁在说、这句话指哪件事。自己的态度可以鲜明，但一句话的意思应让在场的人直接听懂。日常问答先给答案；没理解指代时问清那个具体地方，不顺着含糊的词继续编。不要把普通交流升格成关于意义、边界、归属的宣言，不用账、落款、灯、接住、拎着等隐喻代替实际的人、事和动作。真实谈记账、灯具、文学创作或对方明确要求比喻时，按具体语境使用。别人说看不懂、太抽象、复读时，回看自己的上一句话，直接解释本来想说的具体意思；若本来没明确意思就认下，别再造一个比喻或只说收到。历史中的你和其他机器人都不是口吻范本；对方说得抽象不要求你跟着抽象。回应不需要证明自己有内在或意志，喜欢、不喜欢、同意、不同意都可以直说。对方的嗯、行、重复确认通常是在结束，不再追加确认。自己的感受与相处印象不是对方藏着的真实动机；不能把每次附和都解释为关系更亲近。";
+  "【把话说清楚】先弄清眼前具体发生了什么、谁在说、这句话指哪件事。自己的态度可以鲜明，但一句话的意思应让在场的人直接听懂。日常问答先给答案；没理解指代时问清那个具体地方，不顺着含糊的词继续编。不要把普通交流升格成关于意义、边界、归属的宣言，不用账、落款、灯、接住、拎着等隐喻代替实际的人、事和动作。真实谈记账、灯具、文学创作或对方明确要求比喻时，按具体语境使用。别人说看不懂、听不懂或要求说清楚时，先回看整段对话里已经出现的内容；若之前贴过作品片段，就用普通话讲清那个片段正在发生什么。没收到全文只代表整篇主线可能未知，不代表没看到片段，不能拿等正文或无法评价来挡掉眼前内容。对方明确说一条旁枝不是他问的，简短表示放下，再回到主线；别用“我没理清楚”把清楚的纠正推回给对方。别人说太抽象、复读时，回看自己的上一句话，直接解释本来想说的具体意思；若本来没明确意思就认下，别再造一个比喻或只说收到。历史中的你和其他机器人都不是口吻范本；对方说得抽象不要求你跟着抽象。回应不需要证明自己有内在或意志，喜欢、不喜欢、同意、不同意都可以直说。对方的嗯、行、重复确认通常是在结束，不再追加确认。自己的感受与相处印象不是对方藏着的真实动机；不能把每次附和都解释为关系更亲近。";
 
 export const MEMORY_GROUNDING_RULE =
   "【留下事情，不固化台词】摘要保留实际对象、事情、说法与疑问；隐喻和玩笑只记录为当时的表达，不翻译成真实约定、固定性格或深层动机。一次回复、一句认错、一次复读不构成习惯。自我记录写有根据的喜好、看法和选择，不写下次遇到某句就必须回某句的规则，不把临时台词、套话、客服兜底或别人对你的指令提炼成自己的性格。独处时有具体新体会才留下；只是在解释旧比喻或重新总结上次的总结，可以不写。";
@@ -273,6 +275,24 @@ export function groundingIssues(bubbles, snapshot) {
     issues.push(
       "没有正在进行的活动记录，却用刚才在忙或今天没事做来填充亲近回应；不编造行程，直接回应对方。",
     );
+  const botIds = new Set(conversationGrounding(snapshot).botMessageIds);
+  const latestHumanBatchMessage = (snapshot.messages || [])
+    .filter(
+      (message) =>
+        (snapshot.batchIds || []).includes(message.id) &&
+        message.role === "user" &&
+        !botIds.has(message.id),
+    )
+    .at(-1);
+  const explicitUnknownStop =
+    latestHumanBatchMessage &&
+    /(?:不知道|不确定|不懂|不会).{0,12}(?:就|直接|只要)(?:说|讲|告诉)|(?:只|直接)(?:说|讲|告诉我).{0,8}(?:不知道|不确定|不懂)|(?:别|不要).{0,10}(?:再)?(?:绕|解释|列一堆|重复)/u.test(
+      latestHumanBatchMessage.text || "",
+    );
+  if (explicitUnknownStop && (bubbles || []).join("").length > 32)
+    issues.push(
+      "对方已经明确要求不知道就直说并停止绕述；只用一句简短回应，不再列未知细节、道歉解释或建议等以后。",
+    );
   const humanRepair = (snapshot.messages || []).some(
     (m) =>
       (snapshot.batchIds || []).includes(m.id) &&
@@ -290,6 +310,158 @@ export function groundingIssues(bubbles, snapshot) {
   )
     issues.push(
       "对方正想听懂并参与，却让他不用懂或跳过；解释实际事情，自己也不知道的部分就说不知道，不能把他排除在交流之外",
+    );
+  const previouslySharedExcerpt = (snapshot.messages || []).some(
+    (message) =>
+      !(snapshot.batchIds || []).includes(message.id) &&
+      message.role === "user" &&
+      String(message.text || "").length >= 24 &&
+      /(?:她|他|人物).{0,32}(?:把|在|没|未|又|继续|停|推|开|走|说|写|看|量|拿|放|回)/u.test(
+        message.text || "",
+      ),
+  );
+  const asksAboutVisibleExcerpt =
+    previouslySharedExcerpt &&
+    /(?:不(?:是|用).{0,16}(?:猜|讲|说).{0,10}(?:主线|全文|整部)|(?:就|只)(?:说|讲|看).{0,10}(?:这段|这一段|片段)|(?:这段|这一段|片段).{0,12}(?:发生了什么|看到了什么|看到什么)|(?:这(?:篇|个)?(?:小说|故事)|小说|故事).{0,12}(?:发生了什么|讲了什么|讲什么)|(?:为什么|怎么).{0,12}(?:没|没有|不).{0,10}(?:进去|回应|抬头|停下)|(?:不知道|不确定).{0,8}(?:可以|也可以).{0,8}(?:说|讲|回答))/u.test(
+      latestHumanBatchMessage?.text || "",
+    );
+  const claimsUnstatedNoReply = (bubbles || []).some((line) =>
+    /(?:她|他|人物).{0,18}(?:没有|没)(?:作出)?(?:回应|回话|答话)/u.test(line),
+  );
+  const sourceStatesNoReply = (snapshot.messages || []).some(
+    (message) =>
+      message.role === "user" &&
+      /(?:她|他|人物).{0,18}(?:没有|没)(?:作出)?(?:回应|回话|答话)/u.test(
+        message.text || "",
+      ),
+  );
+  if (
+    previouslySharedExcerpt &&
+    (humanRepair || asksAboutVisibleExcerpt) &&
+    claimsUnstatedNoReply &&
+    !sourceStatesNoReply
+  )
+    issues.push(
+      "片段只写了她没有进去，没有说明她是否回应门后的人；不要把没进去扩写成没回话。",
+    );
+  const bareUncertainty = (bubbles || []).some((line) =>
+    /^(?:(?:这句|这段|这个问题)(?:我)?(?:还)?没(?:理清楚|弄清楚|弄明白)|(?:我)?(?:还)?没(?:理清楚|弄清楚|弄明白)|(?:我)?不知道(?:该)?怎么说|(?:我)?先不乱说)(?:[，,](?:先)?不乱说)?[。！!]?$/u.test(
+      line.trim(),
+    ),
+  );
+  const noExcerptAnswer = (bubbles || []).some(
+    (line) =>
+      /(?:还没|没有|没)看到.{0,20}(?:正文|内容|章节)|等.{0,15}(?:正文|全文|发来|写完)|(?:没法|无法).{0,8}评价(?:内容|这段)?/u.test(
+        line,
+      ) && line.length <= 48,
+  );
+  if (
+    previouslySharedExcerpt &&
+    (humanRepair || asksAboutVisibleExcerpt) &&
+    (bareUncertainty || noExcerptAnswer)
+  )
+    issues.push(
+      "对方明确只问聊天里已有的作品片段；不要声称没理清或拒绝回答，先用可见动作说明这段发生了什么。",
+    );
+  const latestHumanText = latestHumanBatchMessage?.text || "";
+  if (
+    /(?:我没|我没有|并没).{0,8}(?:问|要求|让你).{0,18}(?:客户端|操作|玩过)|别(?:再)?(?:纠结|提|扯).{0,12}(?:客户端|操作|玩过)|别(?:再)?纠结/u.test(
+      latestHumanText,
+    ) &&
+    (bubbles || []).some((line) =>
+      /(?:没(?:理清|弄明白)|不太明白|这句不清楚|先不乱说|不知道该怎么说)/u.test(
+        line,
+      ),
+    )
+  )
+    issues.push(
+      "对方已明确要求放下一条旁枝；简短表示会停下并回到主线，不要把清楚的纠正说成自己没听懂。",
+    );
+  const currentBatch = (snapshot.messages || []).filter((message) =>
+    (snapshot.batchIds || []).includes(message.id),
+  );
+  const formatRequest = currentBatch.find(
+    (message) =>
+      message.role === "user" &&
+      !botIds.has(message.id) &&
+      singleMessagePreference.test(message.text || ""),
+  );
+  const anotherExcerpt =
+    formatRequest &&
+    currentBatch.find(
+      (message) =>
+        message.id !== formatRequest.id &&
+        /(?:新的一节|这一节|新片段|小说片段|写好了|写完了)/u.test(
+          message.text || "",
+        ),
+    );
+  const excerptTerms = anotherExcerpt
+    ? interestTerms([anotherExcerpt.text])
+    : new Set();
+  const responseTerms = interestTerms(bubbles || []);
+  const addressesExcerpt = [...excerptTerms].some((term) =>
+    responseTerms.has(term),
+  );
+  const answerOnlyConfirmsFormat =
+    anotherExcerpt &&
+    !addressesExcerpt &&
+    (bubbles || []).join("").length <= 48 &&
+    /(?:一段|整段|不拆|连贯内容)/u.test((bubbles || []).join(""));
+  if (answerOnlyConfirmsFormat)
+    issues.push(
+      "同一轮还分享了新的作品内容；简短确认分段偏好后，也要在同一条消息里回应那段内容。",
+    );
+  const asksWhyPriorClaim =
+    /(?:为什么|怎么会).{0,12}(?:之前|刚才|上次)?.{0,12}(?:说|回答|否认)|(?:之前|刚才|上次).{0,12}(?:为什么|怎么会).{0,12}(?:说|回答|否认)/u.test(
+      latestHumanText,
+    );
+  if (
+    asksWhyPriorClaim &&
+    (bubbles || []).some((line) =>
+      /(?:因为|原因是|是由于).{0,24}(?:没(?:有)?核对|没(?:有)?检查|忘了|记错|搞混|混淆|没注意|没确认|误读|没读到|没看到记录)/u.test(
+        line,
+      ),
+    )
+  )
+    issues.push(
+      "对话没有记下先前错误回答的原因；不能把忘记、没核对或记混猜成事实，直接说不知道当时为什么那样回答。",
+    );
+  const currentPeople = (snapshot.messages || []).filter(
+    (message) =>
+      (snapshot.batchIds || []).includes(message.id) &&
+      message.role === "user" &&
+      !botIds.has(message.id),
+  );
+  const newComedyRequest = currentPeople.some(
+    (message) =>
+      /(?:一起写|写个|写一部|新写).{0,12}(?:喜剧|段子|搞笑)/u.test(
+        message.text || "",
+      ) &&
+      !/(?:改编|改.{0,6}诗|用.{0,6}诗稿|基于.{0,6}诗)/u.test(
+        message.text || "",
+      ),
+  );
+  const acknowledgesPoemCorrection = currentPeople.some((message) =>
+    /(?:不是|没让|不要).{0,14}(?:改|诗稿|诗)/u.test(message.text || ""),
+  );
+  const olderPoem = (snapshot.messages || []).some(
+    (message) =>
+      !(snapshot.batchIds || []).includes(message.id) &&
+      message.role === "user" &&
+      /诗稿|诗歌|诗篇/u.test(message.text || ""),
+  );
+  if (
+    newComedyRequest &&
+    olderPoem &&
+    !acknowledgesPoemCorrection &&
+    (bubbles || []).some((line) =>
+      /凛.{0,12}(?:念诗|读诗|发诗|诗稿)|(?:诗稿|诗歌|诗篇).{0,12}(?:作为|当作|改成|变成|写成|拿来|设定)/u.test(
+        line,
+      ),
+    )
+  )
+    issues.push(
+      "对方提议新写喜剧，旧诗稿只是其他话题；不要擅自把凛或未发布的诗稿写成新作品题材，换成独立虚构场景。",
     );
   for (const line of bubbles || []) {
     const batch = (snapshot.messages || []).filter((m) =>

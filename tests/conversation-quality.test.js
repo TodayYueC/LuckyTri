@@ -6,6 +6,7 @@ import {
   validateResponse,
 } from "../server/core/response-validator.js";
 import { normalizeTurn } from "../server/core/turn.js";
+import { filterTranscriptContradictedIssues } from "../server/core/reply-delivery.js";
 
 test("history remains a common prefix despite new batch IDs and retrieval", () => {
   const old = {
@@ -34,6 +35,54 @@ test("history remains a common prefix despite new batch IDs and retrieval", () =
   assert(clocked.indexOf("memories") < clocked.indexOf("watermark"));
   assert(later.startsWith(clocked.slice(0, clocked.indexOf('"watermark"'))));
 });
+
+test("复审声称缺少的原话要先和真实聊天记录核对", () => {
+  const issue = "回复无依据地写道“我这边的账没有乱”，但前文并没有这句话。";
+  const snapshot = {
+    messages: [
+      {
+        role: "user",
+        speaker: "rina",
+        text: "我这边的账没有乱。",
+      },
+      {
+        role: "user",
+        speaker: "friend",
+        text: "这段小说发生了什么？",
+      },
+    ],
+  };
+  assert.deepEqual(filterTranscriptContradictedIssues([issue], snapshot), []);
+  const nestedQuoteIssue =
+    "回复凭空加入了“凛说的‘账没有乱’”，前面的对话中无人说过这句话。";
+  assert.deepEqual(
+    filterTranscriptContradictedIssues([nestedQuoteIssue], snapshot),
+    [],
+    "嵌套引号中的转述也按原始消息核对",
+  );
+  assert.deepEqual(
+    filterTranscriptContradictedIssues([issue], {
+      messages: [{ role: "user", speaker: "friend", text: "你好" }],
+    }),
+    [issue],
+  );
+
+  const paraphraseIssue =
+    "当前对话没有提供原文，回复却提到“转了三次钥匙”和“留在门外”。";
+  assert.deepEqual(
+    filterTranscriptContradictedIssues([paraphraseIssue], {
+      messages: [
+        {
+          role: "user",
+          speaker: "writer",
+          text: "她把钥匙转了三次，最后留在门外。",
+        },
+      ],
+    }),
+    [],
+  );
+});
+
 test("allow natural short reactions but reject repeated hh decoration and low-sarcasm attacks", () => {
   const snapshot = {
     persona: { sarcasm: 0 },

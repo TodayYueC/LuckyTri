@@ -268,6 +268,30 @@ test("观察和事实压缩不继承社交口吻或生活愿望，聊天保留�
     replyPrompt(nature, PROMPTS, "turn"),
     /聊小说或作者自己的稿子时/,
   );
+  assert.match(
+    replyPrompt(nature, PROMPTS, "turn"),
+    /明确说“不知道就说不知道”[^；]+简短承认不知道并停下/,
+  );
+  assert.match(
+    replyPrompt(nature, PROMPTS, "turn"),
+    /对方提议新写一部作品时，按独立新作品理解/,
+  );
+  assert.match(
+    replyPrompt(nature, PROMPTS, "turn"),
+    /对方明确说一条旁枝不是他问的，简短承认后回到主线/,
+  );
+  assert.match(
+    replyPrompt(nature, PROMPTS, "turn"),
+    /承认纠正时只说清自己实际弄错的那一点/,
+  );
+  assert.match(
+    replyPrompt(nature, PROMPTS, "turn"),
+    /一件事没有发生，不代表另一件事也没发生/,
+  );
+  assert.match(
+    replyPrompt(nature, PROMPTS, "turn"),
+    /片段本身就是可以回答的问题/,
+  );
   assert.match(replyPrompt(nature, PROMPTS, "turn"), /通常只写一个气泡/);
   const review = replyPrompt(nature, PROMPTS, "validation");
   assert.match(review, /独立的聊天回复审查者/);
@@ -347,6 +371,264 @@ test("亲近回应不靠编造刚才的忙碌来显得有人味", () => {
       line.includes("不编造行程"),
     ),
     [],
+  );
+});
+
+test("明确要求只说不知道时不再列未知项或建议等后续", () => {
+  const snapshot = {
+    batchIds: [1],
+    messages: [
+      {
+        id: 1,
+        role: "user",
+        speaker: "friend",
+        text: "你也不知道就说不知道，别再拿门和账绕我",
+      },
+    ],
+  };
+  assert.ok(
+    groundingIssues(
+      [
+        "我不知道。人物是谁、她为什么做那件事、后面会怎样，我都没看到，只能等凛往下发。之前说得绕了，抱歉。",
+      ],
+      snapshot,
+    ).some((issue) => issue.includes("停止绕述")),
+  );
+  assert.deepEqual(
+    groundingIssues(["我不知道，刚才说得太绕了。"], snapshot),
+    [],
+  );
+
+  snapshot.messages[0].text = "那你觉得她为什么没有进去？不知道可以说不确定";
+  assert.deepEqual(
+    groundingIssues(
+      ["我不确定，这段只能看出她最后没有进去，无法判断具体原因。"],
+      snapshot,
+    ),
+    [],
+    "允许给出不确定的判断不等于要求只说不知道",
+  );
+
+  snapshot.messages[0].text = "她为什么量门？";
+  assert.deepEqual(
+    groundingIssues(["我不知道，原文还没交代原因。"], snapshot),
+    [],
+    "普通的信息不足仍可简短说明缺少哪项",
+  );
+  snapshot.messages.push({
+    id: 2,
+    role: "user",
+    speaker: "friend",
+    text: "具体说说你还不知道哪些",
+  });
+  snapshot.batchIds.push(2);
+  assert.deepEqual(
+    groundingIssues(
+      ["人物是谁、她为什么做那件事、后面会怎样，我都还不知道。"],
+      snapshot,
+    ),
+    [],
+    "当前的详细追问覆盖同一批次较早的简短偏好",
+  );
+});
+
+test("要求说清楚时解释已经贴出的片段，不借没收到全文回避", () => {
+  const snapshot = {
+    batchIds: [2],
+    messages: [
+      {
+        id: 1,
+        role: "user",
+        speaker: "writer",
+        text: "新的一节写好了。她把门推开一条缝，话能过去，人没过去。",
+      },
+      {
+        id: 2,
+        role: "user",
+        speaker: "friend",
+        text: "你们两个能不能说些我听得懂的话",
+      },
+    ],
+  };
+  assert.ok(
+    groundingIssues(
+      ["我还没看到凛写出的章节正文，所以暂时没法评价内容。"],
+      snapshot,
+    ).some((issue) => issue.includes("已有的作品片段")),
+  );
+  assert.deepEqual(
+    groundingIssues(["她把门推开一条缝，隔着门说话，但没有走进去。"], snapshot),
+    [],
+  );
+  assert.ok(
+    groundingIssues(["她听见门后有人喊，却没有回应。"], snapshot).some(
+      (issue) => issue.includes("没有说明她是否回应"),
+    ),
+  );
+  snapshot.messages.push({
+    id: 3,
+    role: "user",
+    speaker: "friend",
+    text: "我不是要你猜整部主线，就说你从这一段看到了什么",
+  });
+  snapshot.batchIds = [3];
+  assert.ok(
+    groundingIssues(["这句我还没理清楚，先不乱说。"], snapshot).some((issue) =>
+      issue.includes("已有的作品片段"),
+    ),
+  );
+  assert.deepEqual(
+    groundingIssues(["她推开门缝说了话，但没有进去。"], snapshot),
+    [],
+  );
+  snapshot.messages.push({
+    id: 4,
+    role: "user",
+    speaker: "friend",
+    text: "我问的是这小说发生了什么，不是你们怎么对稿",
+  });
+  snapshot.batchIds = [4];
+  assert.ok(
+    groundingIssues(["这句我还没理清楚，先不乱说。"], snapshot).some((issue) =>
+      issue.includes("已有的作品片段"),
+    ),
+  );
+});
+
+test("明确要求别纠结旁枝时不把清楚的纠正推回给对方", () => {
+  const snapshot = {
+    batchIds: [2],
+    messages: [
+      {
+        id: 1,
+        role: "assistant",
+        speaker: "self",
+        text: "我读过作品并写过角色笔记。",
+      },
+      {
+        id: 2,
+        role: "user",
+        speaker: "friend",
+        text: "我没要求你用客户端玩过，不要又纠结这个",
+      },
+    ],
+  };
+  assert.ok(
+    groundingIssues(["这句我还没理清楚，先不乱说。"], snapshot).some((issue) =>
+      issue.includes("旁枝"),
+    ),
+  );
+  assert.deepEqual(groundingIssues(["好，客户端先不提了。"], snapshot), []);
+});
+
+test("询问先前错误说法的原因时不编造忘记或没核对", () => {
+  const snapshot = {
+    batchIds: [2],
+    messages: [
+      {
+        id: 1,
+        role: "assistant",
+        speaker: "self",
+        text: "我没看过《星海物语》，也没写过角色路线笔记。",
+      },
+      {
+        id: 2,
+        role: "user",
+        speaker: "friend",
+        text: "所以你之前为什么说没看过？",
+      },
+    ],
+  };
+  assert.ok(
+    groundingIssues(
+      ["因为我当时没有核对已有记录，错误地把没看过说成了事实。"],
+      snapshot,
+    ).some((issue) => issue.includes("不知道当时为什么")),
+  );
+  assert.deepEqual(
+    groundingIssues(["我不知道当时为什么那样说；刚才那句确实错了。"], snapshot),
+    [],
+  );
+});
+
+test("确认群内发言偏好时仍回应同轮新分享的片段", () => {
+  const snapshot = {
+    batchIds: [1, 2],
+    messages: [
+      {
+        id: 1,
+        role: "user",
+        speaker: "friend",
+        text: "你可以一次发一段吗？刚才那些拆着看有点累。",
+      },
+      {
+        id: 2,
+        role: "user",
+        speaker: "rina",
+        text: "新的一节写好了：她把笔搁下，听见门外脚步停住，又继续写。",
+      },
+    ],
+    inner: { relationships: { known: [{ subjectId: "rina", kind: "bot" }] } },
+  };
+  assert.ok(
+    groundingIssues(
+      ["可以。之后我会把连贯的内容整理成一段发，不再拆成很多条。"],
+      snapshot,
+    ).some((issue) => issue.includes("同一轮还分享了新的作品内容")),
+  );
+  assert.deepEqual(
+    groundingIssues(
+      ["好，以后我发一整段。这一节里她听见脚步停了，却没有停笔。"],
+      snapshot,
+    ),
+    [],
+  );
+});
+
+test("新喜剧提议不把另一个机器人的未发作品带成题材", () => {
+  const snapshot = {
+    batchIds: [3],
+    messages: [
+      { id: 1, role: "user", speaker: "rina", text: "我还没准备发诗稿。" },
+      {
+        id: 2,
+        role: "assistant",
+        speaker: "self",
+        text: "好，等你发来我再读。",
+      },
+      {
+        id: 3,
+        role: "user",
+        speaker: "friend",
+        text: "你俩怎么不一起写个喜剧？",
+      },
+    ],
+  };
+  assert.ok(
+    groundingIssues(
+      ["可以写凛在舞台上认真念诗，两个AI围着诗稿争吵。"],
+      snapshot,
+    ).some((issue) => issue.includes("旧诗稿只是其他话题")),
+  );
+  assert.deepEqual(
+    groundingIssues(
+      ["可以写两个合租室友争抢一把伞，最后谁也没带走。"],
+      snapshot,
+    ),
+    [],
+  );
+
+  snapshot.batchIds = [4];
+  snapshot.messages.push({
+    id: 4,
+    role: "user",
+    speaker: "friend",
+    text: "我说新写一个，又没让你们改她的诗",
+  });
+  assert.deepEqual(
+    groundingIssues(["你说得对，是新写一个喜剧，不是改凛的诗稿。"], snapshot),
+    [],
+    "明确纠正新写与改编的区别时可以提诗稿",
   );
 });
 
