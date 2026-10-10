@@ -2,6 +2,7 @@ import { replyFocus } from "./conversation-cues.js";
 import { wordingNotes } from "./turn.js";
 import { initiativeContext } from "./initiative-context.js";
 import { currentExchange, dialogueContext } from "./dialogue-context.js";
+import { bubblePreference } from "./conversation-grounding.js";
 
 // Puts an already chosen answer into words again: used when the turn came
 // back without words or the first draft failed a check.
@@ -88,7 +89,10 @@ export async function generate(
       imageGuide,
       replyFocus: replyFocus(snapshot, decision),
       guidance: wordingNotes(decision, snapshot),
-      maxBubbles: decision.maxBubbles ?? 2,
+      maxBubbles:
+        bubblePreference(snapshot) === "single"
+          ? 1
+          : (decision.maxBubbles ?? 3),
       ...(!snapshot.initiative ? { exchange: currentExchange(snapshot) } : {}),
     },
     trace,

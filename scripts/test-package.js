@@ -74,6 +74,7 @@ const env = {
   LUCKYTRI_HOME: home,
   LOCALAPPDATA: profile,
   XDG_DATA_HOME: profile,
+  npm_config_cache: join(profile, "npm-cache"),
   HOST: "127.0.0.1",
   ADMIN_TOKEN: "package-smoke-test",
   ONEBOT_TOKEN: "package-onebot-test",
@@ -505,7 +506,8 @@ writeUpdateJob(paths.home,{id,parent:${beforeUpdate},previous:${JSON.stringify(V
 const deps=updateExecution(paths);
 // Install only the isolated candidate tarball here. Production always selects
 // an exact checked version from the official public registry.
-deps.install=async(slot)=>execFileSync(process.execPath,[findNpmCli(),'install','--prefix',slot,'--no-audit','--no-fund','--omit=dev',${JSON.stringify(join(sandbox, upgrade.filename))}],{env:installEnvironment(process.env),stdio:'ignore'});
+const updateEnv=installEnvironment(process.env);updateEnv.npm_config_cache=${JSON.stringify(join(profile, "npm-cache"))};
+deps.install=async(slot)=>execFileSync(process.execPath,[findNpmCli(),'install','--prefix',slot,'--cache',updateEnv.npm_config_cache,'--prefer-offline','--no-audit','--no-fund','--omit=dev',${JSON.stringify(join(sandbox, upgrade.filename))}],{env:updateEnv,stdio:'ignore'});
 const result=await performUpdate(paths,id,deps);if(result.status!=='done')throw Error(JSON.stringify(result));
 console.log('PASS: staged install, stopped old instance, verified snapshot, healthy new instance');
 `,

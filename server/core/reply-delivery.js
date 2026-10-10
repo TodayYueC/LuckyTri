@@ -9,7 +9,10 @@ import {
 } from "./response-validator.js";
 import { deliver, sleep } from "./message-scheduler.js";
 import { leaks } from "../mind/guard.js";
-import { conversationGrounding } from "./conversation-grounding.js";
+import {
+  bubblePreference,
+  conversationGrounding,
+} from "./conversation-grounding.js";
 import { initiativeAudience } from "../mind/conversation-origin.js";
 import {
   readerQuestions,
@@ -21,6 +24,9 @@ import {
   claimsLivedAction,
   EXPRESSION_GROUNDING,
 } from "../mind/expression-grounding.js";
+
+const replyFormatFeedback =
+  /(?:看着|看起来|读起来).{0,8}(?:累|太长|太多)|(?:你|你们).{0,12}(?:可以|能不能|别|不要).{0,12}(?:一段|一条|一句|合在一起|拆|少发|少说)|(?:一小节|一段|一条|一句).{0,12}(?:发|说|回|拆|累)|(?:太抽象|太人机|太机械|复读|看不懂|说人话|别拆|不要拆)/;
 function isFormatError(error) {
   return (
     error instanceof SyntaxError ||
@@ -63,7 +69,10 @@ export class ReplyDelivery {
         (m) =>
           c.privateChat ||
           targetUsers.has(m.userId) ||
-          (m.replyId && snapshot.batch.some((b) => b.platformId === m.replyId)),
+          m.relation === "direct" ||
+          (m.replyId &&
+            snapshot.batch.some((b) => b.platformId === m.replyId)) ||
+          replyFormatFeedback.test(m.text || ""),
       );
     const audienceCurrent = () =>
       !snapshot.initiative ||
@@ -143,7 +152,15 @@ export class ReplyDelivery {
           issues,
           { plain },
         );
-        return normalizeResponse(raw, turn, fallbackText);
+        return normalizeResponse(
+          raw,
+          {
+            ...turn,
+            maxBubbles:
+              bubblePreference(snapshot) === "single" ? 1 : turn.maxBubbles,
+          },
+          fallbackText,
+        );
       } catch (error) {
         if (!isFormatError(error)) throw error;
         if (snapshot.initiative) throw error;

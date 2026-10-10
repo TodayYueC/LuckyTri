@@ -96,6 +96,10 @@ const acknowledgement =
   /^(?:嗯+|哦+|好(?:的|吧)?|行|对(?:呀|啊)?|是的|知道了|收到|晚安|h{2,6}|哈{1,6})$/i;
 const request =
   /[?？]|怎么|为什么|多少|哪个|什么|能不能|有没有|解释|说清|告诉|帮我|请你|写一|继续写|看不懂|没看懂|太抽象|复读|别重复/;
+const singleMessagePreference =
+  /(?:一次(?:发|说|回).{0,8}(?:一段|一句|一条)|(?:一段|一条|一句).{0,10}(?:一次发|发完|一起说|一起发|合在一起)|整段.{0,8}(?:发|说)|一小节一小节.{0,10}(?:好|很)?累|(?:别|不要).{0,8}拆(?:开发|成几条))/;
+const splitMessagePreference =
+  /(?:分成(?:几|两|三|多)条|分开(?:发|说)|一条一条(?:发|说)|每段(?:单独|分别)(?:发|说)|分条(?:发|说))/;
 
 function grams(value) {
   const text = normalized(value);
@@ -111,6 +115,32 @@ export function echoesRecentWording(candidate, previous) {
   if (a.size < 5 || b.size < 5) return false;
   const common = [...a].filter((part) => b.has(part)).length;
   return common >= 4 && common / Math.min(a.size, b.size) >= 0.6;
+}
+
+export function bubblePreference(snapshot) {
+  const botIds = new Set([
+    ...(snapshot.inner?.relationships?.known || [])
+      .filter((person) => person.kind === "bot")
+      .map((person) => String(person.subjectId)),
+    ...(snapshot.inner?.people || [])
+      .filter((person) => person.relationship?.kind === "bot")
+      .map((person) => String(person.id)),
+  ]);
+  const humanMessages = (snapshot.messages || []).filter(
+    (message) =>
+      message.role === "user" &&
+      !message.referenceOnly &&
+      !botIds.has(String(message.speaker)),
+  );
+  for (const message of humanMessages.reverse()) {
+    if (splitMessagePreference.test(message.text || "")) return "split";
+    if (singleMessagePreference.test(message.text || "")) return "single";
+  }
+  return "default";
+}
+
+export function prefersSingleBubble(snapshot) {
+  return bubblePreference(snapshot) === "single";
 }
 
 export function conversationGrounding(snapshot) {
@@ -142,6 +172,25 @@ export function conversationGrounding(snapshot) {
   }
   const own = tail.filter((m) => m.role === "assistant");
   const last = batch.at(-1);
+  const ownIds = new Set(own.map((m) => m.id));
+  const invitedBack = batch.some(
+    (m) =>
+      m.relation === "direct" ||
+      m.replyTo?.role === "assistant" ||
+      (m.replyChain || []).some((id) => ownIds.has(id)) ||
+      request.test(m.text || "") ||
+      /(?:你刚才|你前面|你说的|你这处|这句你|不是.{0,12}而是|不对|说错|理解错|记错|押错|漏了.{0,10}(?:你|那句|这句|问题|重点|前面|刚才|答案)|纠正|收回.{0,8}(?:那句|那条|判断|说法|刚才|前面)|你.{0,12}(?:押|猜|判断|读法).{0,32}(?:没给|没写|不对|不准确|没落|没留))/.test(
+        m.text || "",
+      ) ||
+      /(?:这一节|这一段|这段原文|新稿|新片段|小说正文|刚.{0,4}(?:写完|读完|看完|回看完)|写完了.{0,20}(?:一篇|短文|新段))/.test(
+        m.text || "",
+      ),
+  );
+  // A running conversation between bots can be interesting, but it should not
+  // become an automatic turn-taking loop. After two of our messages in the
+  // current uninterrupted bot-only stretch, leave room unless someone asks,
+  // replies directly, corrects us, or brings a fresh piece of writing.
+  const botFollowupLimit = onlyBots && own.length >= 2 && !invitedBack;
   const repeated =
     last &&
     tail
@@ -180,12 +229,17 @@ export function conversationGrounding(snapshot) {
       .filter((m) => botIds.has(String(m.speaker)))
       .map((m) => m.id),
     botOnlyTail: onlyBots ? tail.length : 0,
+    botFollowupLimit,
     botLoop,
     ...(botLoop
       ? {
           note: "连续机器人互相确认，当前没有新问题或新内容；这段对话可以结束，不再回一遍确认。",
         }
-      : {}),
+      : botFollowupLimit
+        ? {
+            note: "连续机器人互答中已经说过两轮，这次没有直接提问、纠正或新内容；先给对话留点空间。",
+          }
+        : {}),
   };
 }
 
@@ -202,6 +256,23 @@ export function requestedRepeat(snapshot) {
 export function groundingIssues(bubbles, snapshot) {
   const recent = recentOwnMessages(snapshot, 6);
   const issues = [];
+  const currentActivity = snapshot.inner?.currentLife?.current;
+  const activityIsUnderway =
+    currentActivity &&
+    ["doing", "active", "in_progress", "in-progress"].includes(
+      String(currentActivity.state || "").toLowerCase(),
+    );
+  if (
+    !activityIsUnderway &&
+    (bubbles || []).some((line) =>
+      /(?:刚才|刚刚|前一会儿).{0,12}(?:还在|正在|忙着).{0,10}(?:做别的事|忙别的|处理别的)|(?:我这边)?(?:今天|下午|现在)?本来就没什么要忙/u.test(
+        line,
+      ),
+    )
+  )
+    issues.push(
+      "没有正在进行的活动记录，却用刚才在忙或今天没事做来填充亲近回应；不编造行程，直接回应对方。",
+    );
   const humanRepair = (snapshot.messages || []).some(
     (m) =>
       (snapshot.batchIds || []).includes(m.id) &&

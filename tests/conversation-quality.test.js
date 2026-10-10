@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { cacheOrdered } from "../server/core/model-manager.js";
-import { validateResponse } from "../server/core/response-validator.js";
+import {
+  normalizeResponse,
+  validateResponse,
+} from "../server/core/response-validator.js";
 import { normalizeTurn } from "../server/core/turn.js";
 
 test("history remains a common prefix despite new batch IDs and retrieval", () => {
@@ -116,6 +119,43 @@ test("a real crisis overrides her choice to stay silent; history cannot become a
       react,
     ).length,
   );
+});
+
+test("改写阶段生成的多条补充也合成同一条消息", () => {
+  const bubbles = ["第一句。", "第二句补上事实。", "第三句继续解释。"];
+  const response = normalizeResponse(
+    { bubbles },
+    { choice: "speak", maxBubbles: 1 },
+  );
+  assert.deepEqual(response.bubbles, [
+    "第一句。第二句补上事实。第三句继续解释。",
+  ]);
+  assert.deepEqual(
+    normalizeResponse({ bubbles }, { choice: "speak", maxBubbles: 3 }).bubbles,
+    bubbles,
+  );
+});
+
+test("生成阶段保留自然分段，只在对方明确要求合段时强制一条", async () => {
+  const { generate } = await import("../server/core/response-generator.js");
+  const limits = [];
+  const models = {
+    call: async (_profile, _stage, _prompt, input) => {
+      limits.push(input.maxBubbles);
+      return { bubbles: ["第一句。", "第二句。"] };
+    },
+  };
+  const decision = { choice: "speak", maxBubbles: 3 };
+  const snapshot = { messages: [], batchIds: [] };
+  await generate(models, {}, "prompt", snapshot, decision, {}, []);
+  snapshot.messages.push({
+    id: 1,
+    role: "user",
+    speaker: "friend",
+    text: "以后一次发一段就好",
+  });
+  await generate(models, {}, "prompt", snapshot, decision, {}, []);
+  assert.deepEqual(limits, [3, 1]);
 });
 
 test("unchanged built-in prompts are sent once; custom ones are extra guidance", async () => {

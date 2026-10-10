@@ -662,6 +662,70 @@ test("她在想的时候对方又补充了消息，就不再为旧批次发送�
   store.db.close();
 });
 
+test("群聊里新来的阅读反馈会打断旧稿，无关闲聊不会", async () => {
+  async function run(newText) {
+    const { store } = setup();
+    const session = "group:12345";
+    store.db
+      .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
+      .run(session, "测试", "group");
+    const sent = [];
+    let system;
+    system = new ChatSystem(
+      store,
+      async (_message, text) => (sent.push(text), { message_id: 1 }),
+      {
+        models: {
+          profile: () => defaultModel(store.settings()),
+          call: async (_profile, stage) => {
+            if (stage === "turn") {
+              system.repo.append(
+                msg(2, {
+                  userId: "10002",
+                  name: "乙",
+                  text: newText,
+                  platformId: "2",
+                }),
+              );
+              return {
+                choice: "speak",
+                reason: "回应甲",
+                targetMessageIds: [1],
+                bubbles: ["针对旧批次的回复"],
+              };
+            }
+            return { ok: true, issues: [] };
+          },
+        },
+      },
+    );
+    system.repo.append(
+      msg(1, {
+        text: "LuckyBot，想听听你的看法",
+        userId: "10001",
+        name: "甲",
+        mentions: ["99999"],
+      }),
+    );
+    const result = await system.process(session, [
+      system.repo.events(session).at(-1),
+    ]);
+    system.close();
+    store.db.close();
+    return { result, sent };
+  }
+
+  for (const text of ["你可以一次发一段吗", "一小节一小节看着好累呀"]) {
+    const feedback = await run(text);
+    assert.equal(feedback.result.status, "stale", text);
+    assert.deepEqual(feedback.sent, [], text);
+  }
+
+  const unrelated = await run("周末大家想去哪玩？");
+  assert.equal(unrelated.result.status, "sent");
+  assert.deepEqual(unrelated.sent, ["针对旧批次的回复"]);
+});
+
 test("旧稿完成后对方又连发，首句发送前并回队列重组", async () => {
   const { store } = setup();
   const session = "group:12345";

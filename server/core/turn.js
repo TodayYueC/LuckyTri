@@ -1,7 +1,10 @@
 import { replyFocus } from "./conversation-cues.js";
 import { INITIATIVE_PROMPT } from "../mind/initiative.js";
 import { initiativeContext } from "./initiative-context.js";
-import { conversationGrounding } from "./conversation-grounding.js";
+import {
+  conversationGrounding,
+  prefersSingleBubble,
+} from "./conversation-grounding.js";
 import {
   currentExchange,
   dialogueContext,
@@ -36,8 +39,22 @@ const LEGACY = {
   SILENT: "silent",
 };
 
-export function maxBubbles(choice) {
-  return choice === "speak" ? 3 : 1;
+export function maxBubbles(choice, snapshot) {
+  if (choice !== "speak") return 1;
+  return prefersSingleBubble(snapshot || {}) ? 1 : 3;
+}
+
+export function joinBubbleParts(parts) {
+  return parts.reduce((joined, part) => {
+    if (!joined) return part;
+    if (/^(?:[-*•]|\d+[.)、])\s/u.test(part)) return `${joined}\n${part}`;
+    if (/[A-Za-z0-9]$/u.test(joined) && /^[A-Za-z0-9]/u.test(part))
+      return `${joined} ${part}`;
+    if (/[，、：:]$/u.test(joined) || /^[，、；;]/u.test(part))
+      return `${joined}${part}`;
+    if (/[。！？!?；;…）」』】》]$/u.test(joined)) return `${joined}${part}`;
+    return `${joined}，${part}`;
+  }, "");
 }
 
 const ACTION_NAME = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]{0,40}$/;
@@ -341,6 +358,20 @@ export function normalizeTurn(raw, snapshot, trace) {
       "这是一句完整回应，按正常发言保留，不为短反应标签改写原意",
     );
   }
+  const bubbleLimit = maxBubbles(choice, snapshot);
+  if (bubbles.length > bubbleLimit) {
+    if (choice === "speak" && bubbleLimit === 1) {
+      bubbles = [joinBubbleParts(bubbles)];
+      trace?.steps?.push("根据对方的偏好，把连续补充合成一条完整消息");
+    } else {
+      bubbles = bubbles.slice(0, bubbleLimit);
+      trace?.steps?.push(
+        choice === "react"
+          ? "简短反应只留第一条气泡"
+          : "回复超过当前对方的分段偏好，已收束到允许的条数",
+      );
+    }
+  }
   if (choice === "silent") bubbles = [];
   const crisisIds = ids(raw.crisis?.messageIds).filter((id) =>
     batchIds.has(id),
@@ -357,10 +388,13 @@ export function normalizeTurn(raw, snapshot, trace) {
     bubbles = [];
     trace?.steps?.push("有人可能处在危机里，底线要求认真回应");
   }
+  const grounding = conversationGrounding(snapshot);
+  const botFollowupLimit =
+    !crisis && !snapshot.initiative && grounding.botFollowupLimit;
   const botLoop =
     !crisis &&
     !snapshot.initiative &&
-    (conversationGrounding(snapshot).botLoop ||
+    (grounding.botLoop ||
       (raw.contribution?.kind === "none" &&
         !raw.act &&
         !raw.share &&
@@ -372,10 +406,15 @@ export function normalizeTurn(raw, snapshot, trace) {
           .every((m) =>
             conversationGrounding(snapshot).botMessageIds.includes(m.id),
           )));
-  if (botLoop) {
+  const botYield = botLoop || botFollowupLimit;
+  if (botYield) {
     choice = "silent";
     bubbles = [];
-    trace?.steps?.push("机器人连续确认没有新内容，这段对话在此收住");
+    trace?.steps?.push(
+      botFollowupLimit
+        ? "机器人之间已经连续说过两轮，这次没有新的直接提问或纠正，先留出空间"
+        : "机器人连续确认没有新内容，这段对话在此收住",
+    );
   }
   const stopped = !crisis && explicitStop(snapshot);
   if (stopped) {
@@ -390,7 +429,7 @@ export function normalizeTurn(raw, snapshot, trace) {
   return {
     choice,
     share:
-      !botLoop &&
+      !botYield &&
       !stopped &&
       raw.share &&
       ["send", "later", "decline"].includes(raw.share.choice)
@@ -401,7 +440,7 @@ export function normalizeTurn(raw, snapshot, trace) {
           }
         : null,
     attention:
-      !botLoop &&
+      !botYield &&
       raw.attention &&
       ["continue", "chat", "rest"].includes(raw.attention.action)
         ? {
@@ -409,13 +448,17 @@ export function normalizeTurn(raw, snapshot, trace) {
             reason: text(raw.attention.reason, 120),
           }
         : { action: "continue" },
-    appraisal: botLoop
-      ? "对方在确认先前的话，没有新的内容。"
+    appraisal: botYield
+      ? botFollowupLimit
+        ? "这段互答已经有来有回，先给聊天留点空间。"
+        : "对方在确认先前的话，没有新的内容。"
       : text(raw.appraisal, 200),
-    reason: botLoop
-      ? "这段交流已经结束，先收住。"
+    reason: botYield
+      ? botFollowupLimit
+        ? "连续互答两轮，眼下没有直接问题或纠正，先给群里留点空间。"
+        : "这段交流已经结束，先收住。"
       : text(raw.reason || raw.appraisal, 300) || "此刻的判断",
-    topic: botLoop ? "交流结束" : text(raw.topic, 40),
+    topic: botYield ? "暂时停一下" : text(raw.topic, 40),
     ...(raw.understanding && typeof raw.understanding === "object"
       ? {
           understanding: {
@@ -446,17 +489,17 @@ export function normalizeTurn(raw, snapshot, trace) {
       ),
     ],
     evidenceIds: ids(raw.evidenceIds).filter((id) => known.has(id)),
-    feelings: (Array.isArray(raw.feelings) && !botLoop ? raw.feelings : [])
+    feelings: (Array.isArray(raw.feelings) && !botYield ? raw.feelings : [])
       .filter((f) => f && typeof f.feeling === "string")
       .slice(0, 3),
-    bonds: (Array.isArray(raw.bonds) && !botLoop ? raw.bonds : [])
+    bonds: (Array.isArray(raw.bonds) && !botYield ? raw.bonds : [])
       .filter((b) => b && b.userId != null && typeof b.change === "string")
       .map((b) => ({ ...b, evidence: ids(b.evidence) }))
       .slice(0, 4),
     crisis: crisis ? { clear: true, messageIds: crisisIds } : { clear: false },
-    act: botLoop || stopped ? null : normalizeAct(raw.act, trace),
-    bubbles: bubbles.slice(0, maxBubbles(choice)),
-    maxBubbles: maxBubbles(choice),
+    act: botYield || stopped ? null : normalizeAct(raw.act, trace),
+    bubbles: bubbles.slice(0, bubbleLimit),
+    maxBubbles: bubbleLimit,
   };
 }
 

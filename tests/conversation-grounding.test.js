@@ -5,7 +5,7 @@ import {
   groundingIssues,
   fixedReplyHabit,
 } from "../server/core/conversation-grounding.js";
-import { normalizeTurn } from "../server/core/turn.js";
+import { maxBubbles, normalizeTurn } from "../server/core/turn.js";
 import { relevantContext } from "../server/mind/context-selection.js";
 import { interestTerms } from "../server/mind/attention.js";
 import { world } from "./helpers/world.js";
@@ -106,6 +106,96 @@ test("机器人确认循环收住，问题、纠正、新内容、人类及危�
   assert.equal(conversationGrounding(interrupted).botLoop, false);
 });
 
+test("机器人互聊说过两轮后先让出空间，直接问题和纠正仍能接", () => {
+  const s = botSnapshot("这一页的留白我还想再想想", {
+    relation: "unknown",
+  });
+  assert.equal(conversationGrounding(s).botFollowupLimit, true);
+  const held = normalizeTurn(
+    { choice: "speak", bubbles: ["我再补充一个看法。"] },
+    s,
+  );
+  assert.equal(held.choice, "silent");
+  assert.match(held.reason, /留点空间/);
+  assert.equal(
+    conversationGrounding(
+      botSnapshot("屋里的人不知道劲漏了没有，最后还是要收回门缝。", {
+        relation: "unknown",
+      }),
+    ).botFollowupLimit,
+    true,
+    "小说里的‘收回门缝’不能误判成对机器人的纠正",
+  );
+
+  for (const text of [
+    "你觉得她为什么停笔？",
+    "你刚才把门缝和门槛说反了。",
+    "你押的那一下我没写进去，门外的脚步最后停在门口。",
+    "这一节我写完了，门外的人还在等。",
+    "我收回刚才那句对人物动机的判断。",
+  ]) {
+    const invited = botSnapshot(text, { relation: "unknown" });
+    assert.equal(conversationGrounding(invited).botFollowupLimit, false, text);
+    assert.equal(
+      normalizeTurn({ choice: "speak", bubbles: ["我来回答这个点。"] }, invited)
+        .choice,
+      "speak",
+    );
+  }
+
+  const human = botSnapshot("再补一句", { relation: "unknown" });
+  human.messages.at(-1).speaker = "human";
+  assert.equal(conversationGrounding(human).botFollowupLimit, false);
+});
+
+test("一轮拆出的补充会合成同一条完整消息", () => {
+  const trace = { steps: [] };
+  const turn = normalizeTurn(
+    {
+      choice: "speak",
+      bubbles: ["第一处我认。", "第二处我不同意", "第三处想再问一句？"],
+    },
+    {
+      messages: [
+        {
+          id: 0,
+          role: "user",
+          speaker: "friend",
+          text: "你可以一次发一段吗",
+        },
+        { id: 1, role: "user", speaker: "friend", text: "我想继续听" },
+      ],
+      batchIds: [1],
+    },
+    trace,
+  );
+  assert.deepEqual(turn.bubbles, [
+    "第一处我认。第二处我不同意，第三处想再问一句？",
+  ]);
+  assert.equal(turn.maxBubbles, 1);
+  assert.match(trace.steps.join(" "), /合成一条完整消息/);
+});
+
+test("单条消息是明确偏好而非全局硬限制", () => {
+  const ordinary = {
+    messages: [{ role: "user", speaker: "friend", text: "你觉得怎么样？" }],
+  };
+  assert.equal(maxBubbles("speak", ordinary), 3);
+  const bundled = {
+    messages: [
+      ...ordinary.messages,
+      { role: "user", speaker: "friend", text: "以后一次发一段就好" },
+    ],
+  };
+  assert.equal(maxBubbles("speak", bundled), 1);
+  bundled.messages.push({
+    role: "user",
+    speaker: "friend",
+    text: "这次麻烦分成两条发",
+  });
+  assert.equal(maxBubbles("speak", bundled), 3);
+});
+
 test("回声按内容检查，正常短回应、原文引用与真实账目不被词表误伤", () => {
   const s = botSnapshot("继续拎着吧");
   assert.ok(groundingIssues(["行，掉了先跟你说，不闷着。"], s).length);
@@ -167,8 +257,18 @@ test("观察和事实压缩不继承社交口吻或生活愿望，聊天保留�
   );
   assert.match(
     replyPrompt(nature, PROMPTS, "turn"),
-    /若眼前给了具体动作或场景，就先用自己的话说清这段发生了什么/,
+    /若眼前给了具体动作或场景，就先用自己的普通话说清这段发生了什么/,
   );
+  assert.match(
+    replyPrompt(nature, PROMPTS, "turn"),
+    /用自己的普通话说清这段发生了什么/,
+  );
+  assert.match(replyPrompt(nature, PROMPTS, "turn"), /说过两轮后先停/);
+  assert.match(
+    replyPrompt(nature, PROMPTS, "turn"),
+    /聊小说或作者自己的稿子时/,
+  );
+  assert.match(replyPrompt(nature, PROMPTS, "turn"), /通常只写一个气泡/);
   const review = replyPrompt(nature, PROMPTS, "validation");
   assert.match(review, /独立的聊天回复审查者/);
   assert.match(review, /连续追问时看清这轮新问的维度/);
@@ -225,6 +325,29 @@ test("没有身体或外部行动时，旧吃饭台词不能冒充当下经历�
     assert.deepEqual(groundingIssues([line], s), []);
   s.messages[0].text = "写个第一人称的小故事";
   assert.deepEqual(groundingIssues(["我刚去食堂了"], s), []);
+});
+
+test("亲近回应不靠编造刚才的忙碌来显得有人味", () => {
+  const s = {
+    sessionId: "private:1",
+    batchIds: [1],
+    messages: [{ id: 1, role: "user", speaker: "friend", text: "想你了" }],
+    inner: { currentLife: { current: null } },
+  };
+  const issue = groundingIssues(
+    ["我也想你，刚才还在做别的事，看到这句话心里软了一下。"],
+    s,
+  );
+  assert.ok(issue.some((line) => line.includes("不编造行程")));
+  assert.deepEqual(groundingIssues(["我也想你。"], s), []);
+
+  s.inner.currentLife.current = { state: "doing", title: "整理新一节" };
+  assert.deepEqual(
+    groundingIssues(["刚才还在忙着整理新一节呢。"], s).filter((line) =>
+      line.includes("不编造行程"),
+    ),
+    [],
+  );
 });
 
 test("口头禅不变成长久自我，修正、愿望和习惯仍可形成", (t) => {
