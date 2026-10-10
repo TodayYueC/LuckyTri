@@ -8,7 +8,11 @@ import {
   explicitStop,
 } from "./dialogue-context.js";
 import { readerQuestions } from "./reader-check.js";
-import { botExchange, CONTRIBUTION_CHECK } from "./contribution-check.js";
+import {
+  botExchange,
+  CONTRIBUTION_CHECK,
+  CONTRIBUTION_REPAIR,
+} from "./contribution-check.js";
 import {
   claimsLivedAction,
   EXPRESSION_GROUNDING,
@@ -88,7 +92,8 @@ export function recallWording(snapshot) {
 }
 
 // One look at the conversation: what it means to her, how it moves her, and
-// whether and how she answers. Comes back as a single model call.
+// whether and how she answers. A bot exchange gets at most one repair pass
+// when its first draft repeats old promises instead of answering new content.
 export async function takeTurn(
   models,
   profile,
@@ -107,32 +112,35 @@ export async function takeTurn(
       : snapshot.unavailableImages?.length
         ? "本轮图片没有读取成功，不要编造画面内容。"
         : undefined;
-  const raw = await models.call(
-    profile,
-    "turn",
+  const turnSystem =
     extra.occasion && ["presence", "outreach"].includes(extra.occasion.type)
       ? `${system}\n${INITIATIVE_PROMPT}`
-      : system,
-    {
-      context: initiating
-        ? initiativeContext(snapshot, extra.occasion)
-        : dialogueContext(snapshot),
-      ...(extra.occasion
-        ? {
-            occasion: initiating
-              ? {
-                  ...extra.occasion,
-                  initiative: initiativeContext(snapshot, extra.occasion)
-                    .initiative,
-                }
-              : extra.occasion,
-          }
-        : {}),
-      ...(imageGuide ? { imageGuide } : {}),
-      ...(extra.pressure ? { pressure: extra.pressure } : {}),
-      ...(recallWording(snapshot) ? { guidance: recallWording(snapshot) } : {}),
-      ...(!initiating ? { exchange: currentExchange(snapshot) } : {}),
-    },
+      : system;
+  const turnInput = {
+    context: initiating
+      ? initiativeContext(snapshot, extra.occasion)
+      : dialogueContext(snapshot),
+    ...(extra.occasion
+      ? {
+          occasion: initiating
+            ? {
+                ...extra.occasion,
+                initiative: initiativeContext(snapshot, extra.occasion)
+                  .initiative,
+              }
+            : extra.occasion,
+        }
+      : {}),
+    ...(imageGuide ? { imageGuide } : {}),
+    ...(extra.pressure ? { pressure: extra.pressure } : {}),
+    ...(recallWording(snapshot) ? { guidance: recallWording(snapshot) } : {}),
+    ...(!initiating ? { exchange: currentExchange(snapshot) } : {}),
+  };
+  let raw = await models.call(
+    profile,
+    "turn",
+    turnSystem,
+    turnInput,
     trace,
     images,
   );
@@ -192,7 +200,7 @@ export async function takeTurn(
     raw.contribution?.kind !== "none"
   ) {
     try {
-      const review = await models.call(
+      let review = await models.call(
         profile,
         "validation",
         CONTRIBUTION_CHECK,
@@ -205,6 +213,62 @@ export async function takeTurn(
       );
       if (trace && typeof review.hasContribution === "boolean")
         trace.contributionReview = review;
+      if (review.hasContribution === false && review.shouldRepair === true) {
+        trace?.steps?.push("新问题或新段落被上一稿漏接，按当前内容重新想一次");
+        try {
+          const repaired = await models.call(
+            profile,
+            "turn",
+            `${turnSystem}\n${CONTRIBUTION_REPAIR}`,
+            {
+              ...turnInput,
+              contributionRepair: {
+                previousReply: raw.bubbles || [],
+              },
+            },
+            trace,
+            images,
+          );
+          const repairedExchange = botExchange(snapshot, repaired);
+          if (
+            repairedExchange &&
+            ["speak", "react"].includes(repaired.choice) &&
+            repaired.contribution?.kind !== "none"
+          ) {
+            const revisedReview = await models.call(
+              profile,
+              "validation",
+              CONTRIBUTION_CHECK,
+              {
+                botExchange: repairedExchange,
+                reply: repaired.bubbles || [],
+                plannedPoint: repaired.contribution?.point || "",
+                repairAttempt: true,
+              },
+              trace,
+            );
+            review = revisedReview;
+          }
+          if (trace) {
+            trace.contributionReview = review;
+            trace.contributionRepair = {
+              attempted: true,
+              succeeded: review.hasContribution === true,
+            };
+          }
+          if (review.hasContribution === true) return repaired;
+        } catch (error) {
+          trace?.steps?.push(`按新内容重答失败，本轮先不发：${error.message}`);
+        }
+        return {
+          ...raw,
+          choice: "silent",
+          bubbles: [],
+          feelings: [],
+          bonds: [],
+          contribution: { kind: "none", point: "新内容没有形成可发送的回复" },
+        };
+      }
       if (review.hasContribution === false)
         return {
           ...raw,

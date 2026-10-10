@@ -4,8 +4,11 @@
 
 ## Unreleased
 
+- In follow-ups, answer the new detail without repeating limitations already explained; answer a question about source or feelings directly.
+- Discuss project proposals using the details actually given, without inventing the other person's existing game mechanics or assignment. If a first bot reply misses a newly delivered passage or question, retry once for that content; empty confirmations still stop.
+- For a concrete story excerpt, describe the visible events before clarifying that the larger plot is unknown.
 - Reject duplicate JSON fields so a later `bubbles` field cannot silently replace an answer. Queued messages can see replies already delivered before their turn starts, reducing repeated acknowledgments and corrections.
-- Distinguish questions, proposals, feelings and corrections. Reviews retain the necessary original words and participants to check mistaken adaptations and unsupported apologies. Select old summaries by the current topic while preserving address agreements separately.
+- Distinguish questions, proposals, feelings and corrections. Reviews retain the necessary original words and participants to check mistaken adaptations and unsupported apologies. When a follow-up omits a work's title, use the immediately delivered reply to that same person in the same conversation to find reading records, returning only the reading fact, not the reply's text. Select old summaries by the current topic while preserving address agreements separately.
 - Check repeated bot confirmations before they produce emotional changes. Verify new actions claimed in proactive drafts against activity records; old wishes cannot prove execution. Preserve history and readable source dates during review.
 - Retain earlier repair constraints. Keep a shortened original reply only after every check passes again. Historical evaluations exclude future memories and self-feedback, record code fingerprints, and fail explicitly when requested cases are missing.
 
@@ -41,7 +44,6 @@
 - Removed the fixed LuckyTri identity from built-in nature and reflection prompts. Renamed instances use their configured identity; the exact old shipped rule is repaired without spending an edit. Other robots remain separate accounts.
 - Update and restart stages and validates the official release before stopping, saves a verified data restore point, and switches programs. Failed startup attempts restoration of the previous code and data. Source/npm installs and instance configuration remain intact; repeated clicks coalesce and CLI launches retain managed updates.
 - Added privacy, same-name identity, recovery, real installed-package switching and viewport regression checks. Archive checks verify bytes before parsing SQLite, so damaged files do not expose raw schema errors.
-
 
 ## 1.0.3 — 2026-10-06
 

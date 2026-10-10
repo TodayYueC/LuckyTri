@@ -422,7 +422,7 @@ export class TimeSystem {
       }),
     };
   }
-  view({ session, now = this.now(), cue = [] } = {}) {
+  view({ session, now = this.now(), cue = [], activityCue = cue } = {}) {
     const primary = this.primary(),
       task = primary?.created <= now ? primary : null;
     let current =
@@ -548,7 +548,11 @@ export class TimeSystem {
           plannedFor: this.planView(row),
         })),
       works: this.works.fragments({ session, now, cue }),
-      activityRecall: this.works.activityEvidence({ session, now, cue }),
+      activityRecall: this.works.activityEvidence({
+        session,
+        now,
+        cue: activityCue,
+      }),
       ...(() => {
         const actions = this.db
           .prepare(

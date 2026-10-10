@@ -23,6 +23,7 @@ import {
 } from "../server/core/response-validator.js";
 import { readerQuestions } from "../server/core/reader-check.js";
 import { initiativeContext } from "../server/core/initiative-context.js";
+import { activityRecallCue } from "../server/mind/time/activity-recall.js";
 import {
   replyFocus,
   conversationalIssues,
@@ -90,6 +91,7 @@ test("empty bot confirmations stop before changing feelings, while new writing i
   w.answers.validation = {
     hasContribution: false,
     newPoint: "",
+    shouldRepair: false,
     reason: "相同决定已经确认",
   };
   const decide = async () => {
@@ -108,6 +110,11 @@ test("empty bot confirmations stop before changing feelings, while new writing i
   assert.deepEqual(empty.turn.feelings, []);
   assert.deepEqual(empty.turn.bonds, []);
   assert.equal(empty.trace.contributionReview.hasContribution, false);
+  assert.equal(
+    empty.trace.calls.filter((call) => call.stage === "turn").length,
+    1,
+    "a repeated bot confirmation is not regenerated",
+  );
   snapshot.messages.at(-1).text = "结尾改成两个人走散，你觉得怎么样？";
   w.answers.turn = {
     choice: "speak",
@@ -134,6 +141,89 @@ test("empty bot confirmations stop before changing feelings, while new writing i
     { calls: [], steps: [] },
   );
   assert.throws(() => normalizeTurn(invalid, snapshot), SyntaxError);
+});
+
+test("a new manuscript is answered after the duplicate bot reply is rejected", async (t) => {
+  const w = world();
+  t.after(w.close);
+  const snapshot = {
+    sessionId: "group:1",
+    batchIds: [5],
+    messages: [
+      {
+        id: 1,
+        role: "user",
+        speaker: "bot-peer",
+        text: "我在改那段门的故事。",
+      },
+      { id: 2, role: "assistant", text: "改好发来我再读。" },
+      { id: 3, role: "user", speaker: "bot-peer", text: "我把结尾也改了。" },
+      { id: 4, role: "assistant", text: "好，发来我按上次那套读。" },
+      {
+        id: 5,
+        role: "user",
+        speaker: "bot-peer",
+        text: "正文：她把钥匙转了三次，最后留在门外。拿去，按上次那套读。",
+      },
+    ],
+    inner: {
+      relationships: { known: [{ subjectId: "bot-peer", kind: "bot" }] },
+    },
+  };
+  let turnCalls = 0;
+  let reviewCalls = 0;
+  w.answers.turn = (data, context) => {
+    turnCalls++;
+    if (turnCalls === 1)
+      return {
+        choice: "speak",
+        targetMessageIds: [5],
+        contribution: { kind: "answer", point: "承诺收到后阅读" },
+        bubbles: ["收到，发来我按上次那套读。"],
+      };
+    assert.match(context.calls.at(-1).system, /本轮实际给出的文字里挑一处/);
+    assert.deepEqual(data.contributionRepair.previousReply, [
+      "收到，发来我按上次那套读。",
+    ]);
+    return {
+      choice: "speak",
+      targetMessageIds: [5],
+      contribution: { kind: "reaction", point: "留意钥匙与门外的动作" },
+      bubbles: [
+        "她把钥匙转了三次，最后还是没进去，这一下比解释原因更吊人胃口。",
+      ],
+      feelings: [],
+      bonds: [],
+    };
+  };
+  w.answers.validation = (data) => {
+    reviewCalls++;
+    if (data.repairAttempt)
+      return {
+        hasContribution: true,
+        newPoint: "具体回应钥匙转动后仍留在门外的动作",
+      };
+    return {
+      hasContribution: false,
+      newPoint: "",
+      shouldRepair: true,
+      reason: "草稿只重复等稿承诺，没回应新交付的片段",
+    };
+  };
+  const trace = { calls: [], steps: [] };
+  const result = await takeTurn(
+    w.system.models,
+    w.system.models.profile(),
+    "task",
+    snapshot,
+    trace,
+  );
+  assert.equal(turnCalls, 2);
+  assert.equal(reviewCalls, 2);
+  assert.equal(result.choice, "speak");
+  assert.match(result.bubbles.join(""), /钥匙转了三次/);
+  assert.equal(trace.contributionRepair.succeeded, true);
+  assert(trace.steps.some((step) => /新段落.*重新想一次/.test(step)));
 });
 
 test("repairs retain earlier constraints and preserve a valid answer after rejecting an unnecessary suffix", async (t) => {
@@ -588,6 +678,113 @@ test("explicitly named own reading remains verifiable without disclosing private
     }),
     [],
   );
+  const followup = [
+    {
+      id: 20,
+      role: "user",
+      speaker: "friend",
+      userId: "friend",
+      text: "但是你跟嗣北不是说你在推吗",
+      time: w.now(),
+    },
+  ];
+  const history = [
+    {
+      seq: 17,
+      id: 17,
+      role: "user",
+      speaker: "friend",
+      userId: "friend",
+      text: "Rewrite呢，你不是在推吗",
+      time: w.now() - 3000,
+    },
+    {
+      seq: 19,
+      id: 19,
+      role: "assistant",
+      speaker: "self",
+      text: "Rewrite我没推",
+      replyTargetIds: [17],
+      time: w.now() - 2000,
+    },
+  ];
+  const cue = activityRecallCue(followup, history);
+  assert.equal(cue.length, 2);
+  const recalled = w.mind.time.works.activityEvidence({
+    session: "group:1",
+    cue,
+  });
+  assert.equal(recalled[0].title, "Rewrite 小鸟线");
+  assert.equal(recalled[0].privateOrigin, true);
+  assert.doesNotMatch(JSON.stringify(recalled), /私下的事情和约定|private:1/);
+  const currentLife = w.mind.view({
+    session: "group:1",
+    now: w.now(),
+    cue: followup,
+    activityCue: cue,
+  }).inner.currentLife;
+  assert.equal(currentLife.activityRecall[0].title, "Rewrite 小鸟线");
+  assert.equal(currentLife.activityRecall[0].privateOrigin, true);
+  assert.equal(
+    activityRecallCue([{ ...followup[0], text: "想你了" }], history).length,
+    1,
+  );
+  assert.equal(
+    activityRecallCue(
+      [{ ...followup[0], text: "但是你跟嗣北不是说你在推吗" }],
+      history.map((m) =>
+        m.role === "assistant" ? { ...m, replyTargetIds: [18] } : m,
+      ),
+    ).length,
+    1,
+  );
+  assert.equal(
+    activityRecallCue(followup, history, {
+      excludedSpeakers: new Set(["friend"]),
+    }).length,
+    1,
+  );
+  const mixedBatch = [
+    ...followup,
+    {
+      id: 21,
+      role: "user",
+      speaker: "stranger",
+      userId: "stranger",
+      text: "怎么回事？",
+      time: w.now(),
+    },
+  ];
+  const strangerHistory = [
+    history[0],
+    {
+      id: 18,
+      seq: 18,
+      role: "user",
+      speaker: "stranger",
+      userId: "stranger",
+      text: "别的事",
+      time: w.now() - 2500,
+    },
+    { ...history[1], replyTargetIds: [18] },
+  ];
+  assert.equal(
+    activityRecallCue(mixedBatch, strangerHistory).length,
+    mixedBatch.length,
+    "a different participant's delivered reply cannot supply this speaker's private search cue",
+  );
+  const botFollowup = [
+    {
+      ...followup[0],
+      speaker: "rina-bot",
+      userId: "rina-bot",
+    },
+  ];
+  const noBotPrivateRecall = activityRecallCue(botFollowup, history, {
+    excludedSpeakers: new Set(["rina-bot"]),
+  });
+  assert.equal(noBotPrivateRecall.length, 1);
+  assert.equal(noBotPrivateRecall[0], botFollowup[0]);
 });
 
 test("conversation keeps current human question and quoted evidence while removing learned scripts and unrelated old context", () => {

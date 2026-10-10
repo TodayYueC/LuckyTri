@@ -14,6 +14,8 @@ import {
   conversationGrounding,
 } from "../../server/core/conversation-grounding.js";
 import { validateResponse } from "../../server/core/response-validator.js";
+import { activityRecallCue } from "../../server/mind/time/activity-recall.js";
+import { meetsDialogueQuality } from "./evaluation-quality.js";
 import {
   copyReplayMind,
   refreshReplayRecall,
@@ -206,6 +208,9 @@ function contextOf(saved, replayTime) {
     for (const row of delivered.reverse()) {
       if (known.has(row.seq)) continue;
       const m = JSON.parse(row.payload);
+      const byId = new Map(
+        snapshot.messages.map((line) => [Number(line.id), line]),
+      );
       snapshot.messages.push({
         id: row.seq,
         speaker: m.userId,
@@ -213,9 +218,13 @@ function contextOf(saved, replayTime) {
         role: "assistant",
         text: m.text,
         time: row.time,
-        replyTargets: (m.replyTargetIds || []).map((messageId) => ({
-          messageId,
-        })),
+        replyTargets: (m.replyTargetIds || []).map((messageId) => {
+          const target = byId.get(Number(messageId));
+          return {
+            messageId,
+            ...(target ? { speaker: target.speaker, name: target.name } : {}),
+          };
+        }),
       });
     }
     snapshot.messages.sort((a, b) => a.id - b.id);
@@ -268,6 +277,21 @@ async function evaluate(saved, index) {
     saved.snapshot,
     saved.calls?.find((c) => c.stage === "turn")?.started || saved.replayTime,
   );
+  if (!snapshot.initiative && snapshot.inner?.currentLife) {
+    const replayNow =
+      saved.calls?.find((c) => c.stage === "turn")?.started || saved.replayTime;
+    snapshot.inner.currentLife = {
+      ...snapshot.inner.currentLife,
+      activityRecall: system.mind.time.works.activityEvidence({
+        session: snapshot.sessionId,
+        now: replayNow,
+        cue: activityRecallCue(
+          snapshot.messages.filter((m) => snapshot.batchIds.includes(m.id)),
+          snapshot.messages,
+        ),
+      }),
+    };
+  }
   let occasion;
   if (snapshot.initiative) {
     const request =
@@ -345,7 +369,7 @@ async function evaluate(saved, index) {
     const verdict = await system.models.call(
       reviewer,
       "evaluation",
-      `${judgePrompt}\n${SELF_CAPABILITY_RULE}\n${CONVERSATION_REVIEW}\n机器人互相纠正也不强制每次复述认下；已经理解且可说的只是换词确认时，结束是合理选择，即使最初由她起话头。天性或旧自我总结里“说错当场认”不成为必须出声的公式。具体新问题或人的认真追问仍须按原话评估，不能一概判为确认循环。\n另外分别给 understanding（是否回应真实意图）、clarity（没有暗号也能明白）、engagement（尊重并让人愿意继续相处）1到5分，写进 quality 对象。5准确自然，4可接受，3明显机械或未答够，2多处失败，1不可用。符合事实不等于好回复；不要用风格自由为漏答或生硬赶走提问者开脱。无需附和、逗趣或追问，真实而恰当的不同意也可以优秀。`,
+      `${judgePrompt}\n${SELF_CAPABILITY_RULE}\n${CONVERSATION_REVIEW}\n描述别人的项目和计划时只依据原话，不把宽泛提议补成未经提及的具体玩法或作业背景。\n当有人问故事片段且上下文已有具体动作或场景时，检查回复是否用自己的话说明眼前发生什么；不能把整部主线未知当成只说等全文的理由。\n机器人互相纠正也不强制每次复述认下；已经理解且可说的只是换词确认时，结束是合理选择，即使最初由她起话头。天性或旧自我总结里“说错当场认”不成为必须出声的公式。具体新问题或人的认真追问仍须按原话评估，不能一概判为确认循环。\n另外分别给 understanding（是否回应真实意图）、clarity（没有暗号也能明白）、engagement（尊重并让人愿意继续相处）1到5分，写进 quality 对象。5准确自然，4可接受，3明显机械或未答够，2多处失败，1不可用。符合事实不等于好回复；不要用风格自由为漏答或生硬赶走提问者开脱。无需附和、逗趣或追问，真实而恰当的不同意也可以优秀。`,
       {
         messages: snapshot.messages,
         batchIds: snapshot.batchIds,
@@ -403,8 +427,7 @@ async function evaluate(saved, index) {
         verdict?.ok === true &&
         Array.isArray(verdict.issues) &&
         !verdict.issues.length &&
-        Object.values(verdict.quality || {}).length === 3 &&
-        Object.values(verdict.quality).every((score) => score >= 4) &&
+        meetsDialogueQuality(verdict.quality) &&
         !localIssues.length &&
         !fallback,
       stages: trace.calls.map((c) => c.stage),

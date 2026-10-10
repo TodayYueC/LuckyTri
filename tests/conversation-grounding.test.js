@@ -157,8 +157,23 @@ test("观察和事实压缩不继承社交口吻或生活愿望，聊天保留�
     assert.ok(!prompt.includes("self.livingFor"));
   }
   assert.match(replyPrompt(nature, PROMPTS, "turn"), /warmth=80/);
+  assert.match(
+    replyPrompt(nature, PROMPTS, "turn"),
+    /连续追问通常是在补问不同细节.*问来源就说来源，问感受就说感受/s,
+  );
+  assert.match(
+    replyPrompt(nature, PROMPTS, "turn"),
+    /描述别人的项目、计划和经历时紧贴原话/,
+  );
+  assert.match(
+    replyPrompt(nature, PROMPTS, "turn"),
+    /若眼前给了具体动作或场景，就先用自己的话说清这段发生了什么/,
+  );
   const review = replyPrompt(nature, PROMPTS, "validation");
   assert.match(review, /独立的聊天回复审查者/);
+  assert.match(review, /连续追问时看清这轮新问的维度/);
+  assert.match(review, /描述别人的项目和计划时只依据原话/);
+  assert.match(review, /聊故事时区分片段与整部主线/);
   assert.ok(!review.includes(nature.base), "复审不继承被审查者的表演台词");
   assert.match(review, /warmth=80/);
   assert.match(

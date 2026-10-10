@@ -464,7 +464,7 @@ export class Works {
       (Array.isArray(cue) ? cue : [cue]).map((v) =>
         typeof v === "string"
           ? v
-          : v?.role === "assistant"
+          : v?.role === "assistant" && !v.activityEvidence
             ? ""
             : v?.text || "",
       ),
@@ -472,7 +472,8 @@ export class Works {
     if (!terms.size) return [];
     // A private conversation can motivate her own reading. Its contents and
     // promises stay private; absence from the public fragments must not erase
-    // the fact that the explicitly named reading activity took place.
+    // the fact that the reading took place. Search may also use a same-speaker
+    // reply delivered in this room to resolve an implicit follow-up.
     return this.db
       .prepare(
         `SELECT w.id,w.title,w.discretion,w.session_id,p.kind,p.title project_title,p.bible,v.created,v.provenance,v.sources

@@ -95,7 +95,14 @@ function feedback(mind, session, now) {
 // so anything this batch of messages brings back to mind belongs there.
 export function innerView(
   mind,
-  { session, kind = "group", people = [], cue = [], now = Date.now() },
+  {
+    session,
+    kind = "group",
+    people = [],
+    cue = [],
+    activityCue = cue,
+    now = Date.now(),
+  },
 ) {
   const nature = mind.nature.current(now);
   const affect = mind.affect.state(now, { nature, room: session });
@@ -300,7 +307,7 @@ export function innerView(
     self,
     affect: cause ? affect : { ...affect, cause: "" },
     inner: {
-      currentLife: mind.time.view({ session, now, cue }),
+      currentLife: mind.time.view({ session, now, cue, activityCue }),
       state: `${affect.phaseLabel}，精力${affect.energyLabel}，心情${affect.mood}${cause ? `（${cause}）` : ""}${affect.lately ? `，${affect.lately}` : ""}`,
       ...(persons.length ? { people: persons } : {}),
       ...(relationships.known.length ? { relationships } : {}),

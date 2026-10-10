@@ -1,6 +1,7 @@
 import { parseSessionKey } from "../channels/session-key.js";
 import { initiativeContext, initiativeSnapshot } from "./initiative-context.js";
 import { withFallback } from "./model-manager.js";
+import { activityRecallCue } from "../mind/time/activity-recall.js";
 import { replyPrompt, prompts } from "./persona-manager.js";
 import { buildContext, perceive } from "./context-builder.js";
 import {
@@ -205,6 +206,13 @@ export class TurnProcessor {
       );
       const batchIds = batch.map((m) => m.seq);
       const window = resolved.filter((m) => !m.referenceOnly).slice(-60);
+      const cues = batch.map((m) => ({
+        id: m.seq,
+        role: m.role,
+        speaker: m.userId,
+        userId: m.userId,
+        text: m.text || "",
+      }));
       // The speakers in this batch are the people whose history matters now.
       // Pulling everyone from a long room window made unrelated plans compete
       // with the exchange actually taking place.
@@ -267,14 +275,27 @@ export class TurnProcessor {
         kind: privateChat ? "private" : "group",
         people,
         cue: batch.map((m) => ({
-          role: m.role,
-          userId: m.userId,
-          text: m.text || "",
+          ...cues.find((row) => row.id === m.seq),
           relation: resolved.find((line) => line.id === m.seq)?.relation,
           mentioned: m.mentioned === true,
         })),
         now,
       });
+      const botSpeakers = new Set(
+        (view.inner?.relationships?.known || [])
+          .filter((relationship) => relationship.kind === "bot")
+          .map((relationship) => String(relationship.subjectId)),
+      );
+      const activityCue = activityRecallCue(cues, window, {
+        excludedSpeakers: botSpeakers,
+      });
+      if (activityCue !== cues)
+        view.inner.currentLife = this.owner.mind.time.view({
+          session: preview?.viewSession || session,
+          now,
+          cue: cues,
+          activityCue,
+        });
       const snapshot = ownInitiative
         ? initiativeSnapshot(session, window, nature, now, policy.timeZone)
         : buildContext(
