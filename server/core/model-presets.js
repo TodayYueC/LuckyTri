@@ -1,4 +1,4 @@
-// Checked against vendor API docs on 2026-09-23.
+// Checked against vendor API docs on 2026-10-11.
 // maxOutputTokens is the published output ceiling and maxInputTokens is what
 // the window leaves after it, so every preset passes validateModel as is.
 
@@ -44,8 +44,18 @@ const OPENCODE_GO = "https://opencode.ai/zen/go/v1";
 const OPENCODE_ZEN = "https://opencode.ai/zen/v1";
 const VOLCENGINE_CODING_PLAN =
   "https://ark.cn-beijing.volces.com/api/coding/v3";
+const VOLCENGINE_AGENT_PLAN = "https://ark.cn-beijing.volces.com/api/plan/v3";
 const GPT_EFFORTS = ["none", "low", "medium", "high", "xhigh", "max"];
 const ASTRA_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+const VOLCENGINE_REASONING_EFFORTS = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
 
 function gpt(fields) {
   return {
@@ -287,6 +297,158 @@ const VOLCENGINE_CODING_PLAN_MODELS = [
   }),
 ];
 
+// Agent Plan has its own API route, credentials and model catalogue. Its
+// Responses endpoint is recommended by Volcengine for new integrations.
+function agentPlanModel({
+  model,
+  label,
+  context,
+  output,
+  vision = false,
+  summary = "",
+  reasoningEffort = "high",
+  reasoningEfforts = VOLCENGINE_REASONING_EFFORTS,
+}) {
+  return {
+    id: `volcengine-agent-plan-${model}`,
+    vendor: "火山方舟 Agent Plan",
+    label,
+    summary:
+      summary ||
+      `Agent Plan 专属 Responses 接口 · 上下文 ${context.toLocaleString("en-US")} · LuckyTri 输出预算 ${output.toLocaleString("en-US")}${vision ? " · 支持图片理解" : " · 文本模型"}。采样参数由模型服务端处理。`,
+    provider: "volcengine-agent-plan",
+    baseUrl: VOLCENGINE_AGENT_PLAN,
+    model,
+    apiProtocol: "responses",
+    ...limits(context, output),
+    ...shared,
+    vision,
+    thinkingStyle: "volcengine",
+    tokenField: "max_completion_tokens",
+    reasoningEfforts,
+    reasoningEffort,
+    omitSampling: true,
+    temperature: 1,
+    topP: 1,
+    timeoutMs: 180000,
+  };
+}
+
+const VOLCENGINE_AGENT_PLAN_MODELS = [
+  agentPlanModel({
+    model: "ark-code-latest",
+    label: "方舟自动路由（ark-code-latest）",
+    context: 256000,
+    output: 32000,
+    vision: true,
+    summary:
+      "Agent Plan 自动路由入口；由套餐配置动态选择可用语言模型，支持图片理解。",
+  }),
+  agentPlanModel({
+    model: "doubao-seed-evolving",
+    label: "Doubao Seed Evolving",
+    context: 1024000,
+    output: 65536,
+    vision: true,
+  }),
+  agentPlanModel({
+    model: "doubao-seed-2.1-pro",
+    label: "Doubao Seed 2.1 Pro",
+    context: 1024000,
+    output: 65536,
+    vision: true,
+  }),
+  agentPlanModel({
+    model: "doubao-seed-2.1-lite",
+    label: "Doubao Seed 2.1 Lite",
+    context: 1024000,
+    output: 65536,
+    vision: true,
+  }),
+  agentPlanModel({
+    model: "doubao-seed-2.0-mini",
+    label: "Doubao Seed 2.0 Mini",
+    context: 256000,
+    output: 65536,
+    vision: true,
+    reasoningEffort: "medium",
+  }),
+  agentPlanModel({
+    model: "deepseek-v4.1-flash",
+    label: "DeepSeek V4.1 Flash",
+    context: 1024000,
+    output: 65536,
+    vision: true,
+  }),
+  agentPlanModel({
+    model: "deepseek-v4-flash",
+    label: "DeepSeek V4 Flash",
+    context: 1024000,
+    output: 65536,
+  }),
+  agentPlanModel({
+    model: "deepseek-v4-pro",
+    label: "DeepSeek V4 Pro",
+    context: 1024000,
+    output: 65536,
+  }),
+  agentPlanModel({
+    model: "glm-5.3",
+    label: "GLM 5.3",
+    context: 1024000,
+    output: 65536,
+    reasoningEffort: "max",
+    reasoningEfforts: ["low", "high", "max"],
+  }),
+  agentPlanModel({
+    model: "glm-5.3-flash",
+    label: "GLM 5.3 Flash",
+    context: 1024000,
+    output: 65536,
+    vision: true,
+    reasoningEffort: "max",
+    reasoningEfforts: ["low", "high", "max"],
+  }),
+  agentPlanModel({
+    model: "glm-latest",
+    label: "GLM 最新别名（glm-latest）",
+    context: 1024000,
+    output: 65536,
+    reasoningEffort: "max",
+    reasoningEfforts: ["low", "high", "max"],
+  }),
+  agentPlanModel({
+    model: "minimax-m3",
+    label: "MiniMax M3",
+    context: 1024000,
+    output: 65536,
+    vision: true,
+  }),
+  agentPlanModel({
+    model: "kimi-k2.7-code",
+    label: "Kimi K2.7 Code",
+    context: 256000,
+    output: 32000,
+    vision: true,
+  }),
+  agentPlanModel({
+    model: "kimi-k2.8-preview",
+    label: "Kimi K2.8 Preview",
+    context: 1024000,
+    output: 65536,
+    vision: true,
+  }),
+  agentPlanModel({
+    model: "kimi-k3",
+    label: "Kimi K3",
+    context: 1024000,
+    output: 65536,
+    vision: true,
+    reasoningEffort: "max",
+    reasoningEfforts: ["low", "high", "max"],
+  }),
+];
+
 export const EFFORT_LABELS = {
   none: "关闭",
   minimal: "极低",
@@ -298,6 +460,7 @@ export const EFFORT_LABELS = {
 };
 
 export const MODEL_CATALOG = [
+  ...VOLCENGINE_AGENT_PLAN_MODELS,
   ...VOLCENGINE_CODING_PLAN_MODELS,
   {
     id: "deepseek-flash",
@@ -737,29 +900,6 @@ export const MODEL_CATALOG = [
     reasoningEfforts: ["none", "low", "medium", "high"],
     summary: "OpenCode Zen · MiniMax 主力模型 · Chat Completions 接口。",
   }),
-  openCodeModel({
-    channel: "zen",
-    model: "space-bunny-free",
-    label: "Space Bunny Free",
-    limits: {
-      contextWindow: 1000000,
-      maxInputTokens: 128000,
-      maxOutputTokens: 8192,
-    },
-    vision: true,
-    reasoningEfforts: [
-      "none",
-      "minimal",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max",
-    ],
-    reasoningEffort: "low",
-    summary:
-      "OpenCode Zen · 当前限时免费 · Chat Completions 接口。参考 OpenRouter Space Bunny Alpha 规格：1M 上下文、最高 524K 输出，支持图像/视频、推理、工具和 JSON；其匿名第三方提供方可能保留提示和回答。LuckyTri 默认输入 128K、输出 8K、低推理；当前图片链路可用，视频链路未支持。Zen 路由能力与数据政策可能不同。",
-  }),
   {
     id: "custom",
     vendor: "自定义",
@@ -885,6 +1025,11 @@ export const MODEL_PRESETS = {
   "volcengine-coding-plan": {
     label: "火山方舟 Coding Plan",
     baseUrl: VOLCENGINE_CODING_PLAN,
+    model: "ark-code-latest",
+  },
+  "volcengine-agent-plan": {
+    label: "火山方舟 Agent Plan",
+    baseUrl: VOLCENGINE_AGENT_PLAN,
     model: "ark-code-latest",
   },
 };

@@ -63,11 +63,13 @@ Without a model key, simulated replies use local samples and call no model. Once
 
 Open "System → Model library", click "+ Add model" and choose a preset.
 
-- For the API address enter the root of the provider's compatible endpoint. The program appends `/chat/completions` itself; do not write the full path again.
+- For the API address enter the root of the provider's compatible endpoint. The program appends `/chat/completions` or `/responses` according to the preset; do not write the full path again.
 - For the model name enter a model ID the provider accepts.
 - Leaving the API key empty keeps the saved key.
 
 A preset only fills in a common address and model name; the real models are whatever your provider's console shows. Speaking decisions and replies need the model to return a JSON object.
+
+Volcengine Ark Agent Plan and Coding Plan use separate plans, keys and endpoints. The Agent Plan preset uses its dedicated `/api/plan/v3` address and the Responses API. Enter an Agent Plan API key; do not reuse a Coding Plan key or a regular Ark inference key.
 
 After saving, click "Test this model's connection". The test carries no group chat text. Test again after changing the address, model or key.
 

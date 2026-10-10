@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>LuckyTri v1.0.8 · Getting Started</title>
+    <title>LuckyTri v1.0.9 · Getting Started</title>
     <style>
       * {
         box-sizing: border-box;
@@ -269,7 +269,7 @@
   <body>
     <header>
       <div>
-        <b>LuckyTri · Handbook</b><small>TIME · MEMORY · CHOICE / v1.0.8</small>
+        <b>LuckyTri · Handbook</b><small>TIME · MEMORY · CHOICE / v1.0.9</small>
       </div>
       <nav>
         <a href="/#setup">Back to the studio</a
@@ -497,8 +497,9 @@ luckytri
         <ul>
           <li>
             For the API address enter the root of the provider&#39;s compatible
-            endpoint. The program appends <code>/chat/completions</code> itself;
-            do not write the full path again.
+            endpoint. The program appends <code>/chat/completions</code> or
+            <code>/responses</code> according to the preset; do not write the
+            full path again.
           </li>
           <li>For the model name enter a model ID the provider accepts.</li>
           <li>Leaving the API key empty keeps the saved key.</li>
@@ -507,6 +508,13 @@ luckytri
           A preset only fills in a common address and model name; the real
           models are whatever your provider&#39;s console shows. Speaking
           decisions and replies need the model to return a JSON object.
+        </p>
+        <p>
+          Volcengine Ark Agent Plan and Coding Plan use separate plans, keys and
+          endpoints. The Agent Plan preset uses its dedicated
+          <code>/api/plan/v3</code> address and the Responses API. Enter an
+          Agent Plan API key; do not reuse a Coding Plan key or a regular Ark
+          inference key.
         </p>
         <p>
           After saving, click &quot;Test this model&#39;s connection&quot;. The
@@ -1057,7 +1065,7 @@ npm start
     </div>
     <footer>
       LuckyTri · so that experience and choice stay coherent. This guide matches
-      the v1.0.8 interface.
+      the v1.0.9 interface.
     </footer>
   </body>
 </html>

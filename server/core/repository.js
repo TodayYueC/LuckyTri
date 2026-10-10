@@ -30,6 +30,39 @@ export function migrateCore(store) {
     CREATE TABLE IF NOT EXISTS core_context_summaries (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, level INTEGER NOT NULL, first_seq INTEGER NOT NULL, last_seq INTEGER NOT NULL, first_time INTEGER, last_time INTEGER, created INTEGER NOT NULL, data TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS core_context_summaries_session ON core_context_summaries(session_id,first_seq);
   `);
+  const savedModelsRow = db
+    .prepare("SELECT value FROM core_config WHERE id=?")
+    .get("models");
+  if (savedModelsRow) {
+    let savedModels;
+    try {
+      savedModels = JSON.parse(savedModelsRow.value);
+    } catch {
+      savedModels = null;
+    }
+    if (Array.isArray(savedModels)) {
+      const unavailablePresetIds = new Set([
+        "opencode-zen-space-bunny-free",
+        "opencode-zen-step-5-preview-free",
+      ]);
+      const unavailableZenModels = new Set([
+        "space-bunny-free",
+        "step-5-preview-free",
+      ]);
+      const availableModels = savedModels.filter(
+        (model) =>
+          !(
+            unavailablePresetIds.has(model?.id) ||
+            (model?.provider === "opencode-zen" &&
+              unavailableZenModels.has(model?.model))
+          ),
+      );
+      if (availableModels.length !== savedModels.length)
+        db.prepare(
+          "UPDATE core_config SET value=?,version=version+1 WHERE id=?",
+        ).run(JSON.stringify(availableModels), "models");
+    }
+  }
   // A saved persona or prompt may intentionally use an older name. Leave it
   // intact; fresh workspaces receive the LuckyTri defaults from the store.
   if (!db.prepare("SELECT id FROM core_config WHERE id='migration-v1'").get()) {

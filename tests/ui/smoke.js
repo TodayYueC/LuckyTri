@@ -373,8 +373,8 @@ try {
   await (await openPreset("opencode-go-grok-4.7")).waitFor();
   await (await openPreset("opencode-zen-qwen3.8-flash")).waitFor();
   assert.equal(await p.locator('[data-preset^="opencode-go-"]').count(), 7);
-  assert.equal(await p.locator('[data-preset^="opencode-zen-"]').count(), 12);
-  await (await openPreset("opencode-zen-space-bunny-free")).waitFor();
+  assert.equal(await p.locator('[data-preset^="opencode-zen-"]').count(), 11);
+  assert.equal(await p.locator('[data-preset*="step-5-preview"]').count(), 0);
   assert.equal(await p.locator('[data-preset*="muse-spark"]').count(), 0);
   await (await openPreset("openrouter")).click();
   assert.equal(await p.locator('[name="provider"]').inputValue(), "openrouter");

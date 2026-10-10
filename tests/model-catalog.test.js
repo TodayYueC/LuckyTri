@@ -10,6 +10,8 @@ import {
   pickModel,
   validateModel,
 } from "../server/core/model-manager.js";
+import { Repository } from "../server/core/repository.js";
+import { createStore } from "../server/storage/store.js";
 
 const find = (id) => MODEL_CATALOG.find((item) => item.id === id);
 const GPT_IDS = [
@@ -51,8 +53,25 @@ const OPENCODE_ZEN_MODELS = [
   "kimi-k3",
   "qwen3.8-flash",
   "minimax-m3",
-  "space-bunny-free",
 ];
+const VOLCENGINE_AGENT_PLAN_MODELS = [
+  "ark-code-latest",
+  "doubao-seed-evolving",
+  "doubao-seed-2.1-pro",
+  "doubao-seed-2.1-lite",
+  "doubao-seed-2.0-mini",
+  "deepseek-v4.1-flash",
+  "deepseek-v4-flash",
+  "deepseek-v4-pro",
+  "glm-5.3",
+  "glm-5.3-flash",
+  "glm-latest",
+  "minimax-m3",
+  "kimi-k2.7-code",
+  "kimi-k2.8-preview",
+  "kimi-k3",
+];
+
 const OPENROUTER_GPT_MODELS = {
   "openrouter-gpt-6-astra": "openai/gpt-6-astra",
   "openrouter-gpt-6-sol": "openai/gpt-6-sol",
@@ -174,6 +193,87 @@ test("只有官方按输入分档计价的 GPT 提供标准和百万两档", () 
   assert.equal(find("qwen3.8-max").maxOutputTokens, 131072);
 });
 
+test("Agent Plan 使用独立 Responses 接口并包含完整的当前语言模型清单", () => {
+  const models = MODEL_CATALOG.filter(
+    (item) => item.vendor === "火山方舟 Agent Plan",
+  );
+  assert.deepEqual(
+    models.map((item) => item.model),
+    VOLCENGINE_AGENT_PLAN_MODELS,
+  );
+  const limits = {
+    "ark-code-latest": [256000, 32000],
+    "doubao-seed-evolving": [1024000, 65536],
+    "doubao-seed-2.1-pro": [1024000, 65536],
+    "doubao-seed-2.1-lite": [1024000, 65536],
+    "doubao-seed-2.0-mini": [256000, 65536],
+    "deepseek-v4.1-flash": [1024000, 65536],
+    "deepseek-v4-flash": [1024000, 65536],
+    "deepseek-v4-pro": [1024000, 65536],
+    "glm-5.3": [1024000, 65536],
+    "glm-5.3-flash": [1024000, 65536],
+    "glm-latest": [1024000, 65536],
+    "minimax-m3": [1024000, 65536],
+    "kimi-k2.7-code": [256000, 32000],
+    "kimi-k2.8-preview": [1024000, 65536],
+    "kimi-k3": [1024000, 65536],
+  };
+  const visionModels = new Set([
+    "ark-code-latest",
+    "doubao-seed-evolving",
+    "doubao-seed-2.1-pro",
+    "doubao-seed-2.1-lite",
+    "doubao-seed-2.0-mini",
+    "deepseek-v4.1-flash",
+    "glm-5.3-flash",
+    "minimax-m3",
+    "kimi-k2.7-code",
+    "kimi-k2.8-preview",
+    "kimi-k3",
+  ]);
+  const reasoningDefaults = {
+    "doubao-seed-2.0-mini": "medium",
+    "glm-5.3": "max",
+    "glm-5.3-flash": "max",
+    "glm-latest": "max",
+    "kimi-k3": "max",
+  };
+  for (const model of models) {
+    const [contextWindow, maxOutputTokens] = limits[model.model];
+    assert.equal(model.id, `volcengine-agent-plan-${model.model}`);
+    assert.equal(model.provider, "volcengine-agent-plan");
+    assert.equal(
+      model.baseUrl,
+      "https://ark.cn-beijing.volces.com/api/plan/v3",
+    );
+    assert.equal(model.apiProtocol, "responses");
+    assert.equal(model.tokenField, "max_completion_tokens");
+    assert.equal(model.contextWindow, contextWindow);
+    assert.equal(model.maxOutputTokens, maxOutputTokens);
+    assert.equal(model.maxInputTokens, contextWindow - maxOutputTokens);
+    assert.equal(model.vision, visionModels.has(model.model));
+    assert.equal(model.omitSampling, true);
+    assert.equal(model.thinkingStyle, "volcengine");
+    assert.equal(
+      model.reasoningEffort,
+      reasoningDefaults[model.model] || "high",
+    );
+    assert.ok(model.reasoningEfforts.includes(model.reasoningEffort));
+    assert.equal(model.timeoutMs, 180000);
+  }
+  assert.deepEqual(MODEL_PRESETS["volcengine-agent-plan"], {
+    label: "火山方舟 Agent Plan",
+    baseUrl: "https://ark.cn-beijing.volces.com/api/plan/v3",
+    model: "ark-code-latest",
+  });
+  assert.equal(
+    models.some((item) =>
+      /seedream|seedance|embedding|asr|tts/i.test(item.model),
+    ),
+    false,
+  );
+});
+
 test("OpenCode Go 与 Zen 只显示精选模型，且目录中没有 Muse Spark", () => {
   const go = MODEL_CATALOG.filter((item) => item.vendor === "OpenCode Go");
   assert.equal(go.length, 7);
@@ -206,24 +306,47 @@ test("OpenCode Go 与 Zen 只显示精选模型，且目录中没有 Muse Spark"
   assert.equal(find("opencode-zen-qwen3.8-max"), undefined);
   assert.equal(find("opencode-go-minimax-m3").apiProtocol, "anthropic");
   assert.equal(find("opencode-zen-minimax-m3").apiProtocol, "chat");
-  const spaceBunny = find("opencode-zen-space-bunny-free");
-  assert.equal(spaceBunny.apiProtocol, "chat");
-  assert.equal(spaceBunny.contextWindow, 1000000);
-  assert.equal(spaceBunny.maxInputTokens, 128000);
-  assert.equal(spaceBunny.maxOutputTokens, 8192);
-  assert.equal(spaceBunny.vision, true);
-  assert.deepEqual(spaceBunny.reasoningEfforts, [
-    "none",
-    "minimal",
-    "low",
-    "medium",
-    "high",
-    "xhigh",
-    "max",
-  ]);
-  assert.equal(spaceBunny.reasoningEffort, "low");
-  assert.equal(spaceBunny.tools, true);
-  assert.equal(spaceBunny.json, true);
+  assert.equal(find("opencode-zen-space-bunny-free"), undefined);
+  assert.equal(find("opencode-zen-step-5-preview-free"), undefined);
+  assert.equal(
+    MODEL_CATALOG.some((item) => item.model === "step-5-preview-free"),
+    false,
+  );
+});
+
+test("启动时移除不可用的 OpenCode Free 档案并保留其他模型配置", () => {
+  const store = createStore(":memory:");
+  const repo = new Repository(store);
+  const saved = [
+    {
+      id: "primary",
+      provider: "volcengine-coding-plan",
+      model: "glm-5.3-flash",
+      isDefault: true,
+    },
+    {
+      id: "restricted-space-bunny",
+      provider: "opencode-zen",
+      model: "space-bunny-free",
+      apiKey: "keep-private",
+    },
+    {
+      id: "restricted-step",
+      provider: "opencode-zen",
+      model: "step-5-preview-free",
+      apiKey: "keep-private",
+    },
+    {
+      id: "paid-step",
+      provider: "openrouter",
+      model: "stepfun/step-5-preview",
+    },
+  ];
+  repo.saveConfig("models", saved);
+
+  const restarted = new Repository(store);
+  assert.deepEqual(restarted.config("models"), [saved[0], saved[3]]);
+  store.db.close();
 });
 
 test("思考档位和输出字段按各厂商文档填写", () => {

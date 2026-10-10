@@ -23,6 +23,7 @@ export const MODEL_LABELS = {
 
   // providers and labels
   火山方舟: "Volcengine Ark",
+  "火山方舟 Agent Plan": "Volcengine Ark Agent Plan",
   "火山方舟 Coding Plan": "Volcengine Ark Coding Plan",
   "方舟自动路由（ark-code-latest）": "Ark auto-routing (ark-code-latest)",
   "GLM 最新别名（glm-latest）": "GLM latest alias (glm-latest)",
@@ -37,6 +38,8 @@ export const MODEL_LABELS = {
   // notes
   "控制台管理的动态模型入口；实际使用哪一个模型由 Coding Plan 控制台选择，切换通常数分钟后生效。支持图片理解。":
     "A dynamic model entry managed in the console; which model is actually used is chosen in the Coding Plan console, and a switch usually takes a few minutes. Supports image understanding.",
+  "Agent Plan 自动路由入口；由套餐配置动态选择可用语言模型，支持图片理解。":
+    "Agent Plan auto-routing entry; the plan dynamically selects an available language model. Supports image understanding.",
   [`当前主力。思考默认开启（high），可关闭；支持看图。${FLAT_TAIL}`]: `The current mainstay. Thinking is on by default (high) and can be turned off; supports images. ${FLAT_TAIL_EN}`,
   [`V4-Pro-0813。思考默认开启（high），可关闭；仅文本。${FLAT_TAIL}`]: `V4-Pro-0813. Thinking is on by default (high) and can be turned off; text only. ${FLAT_TAIL_EN}`,
   [`旗舰。思考默认开启，可关闭；支持图片、视频、音频输入。${FLAT_TAIL}`]: `Flagship. Thinking is on by default and can be turned off; accepts image, video and audio input. ${FLAT_TAIL_EN}`,
@@ -87,8 +90,6 @@ export const MODEL_LABELS = {
     "OpenCode Zen · Qwen lightweight multimodal · Anthropic Messages API.",
   "OpenCode Zen · MiniMax 主力模型 · Chat Completions 接口。":
     "OpenCode Zen · MiniMax main model · Chat Completions API.",
-  "OpenCode Zen · 当前限时免费 · Chat Completions 接口。参考 OpenRouter Space Bunny Alpha 规格：1M 上下文、最高 524K 输出，支持图像/视频、推理、工具和 JSON；其匿名第三方提供方可能保留提示和回答。LuckyTri 默认输入 128K、输出 8K、低推理；当前图片链路可用，视频链路未支持。Zen 路由能力与数据政策可能不同。":
-    "OpenCode Zen · free for a limited time · Chat Completions API. Modeled on the OpenRouter Space Bunny Alpha spec: 1M context, up to 524K output, image/video, reasoning, tools and JSON; its anonymous third-party providers may keep prompts and replies. LuckyTri defaults to 128K input, 8K output and low reasoning; images work today, video is not supported. Zen routes may differ in ability and data policy.",
   "OpenAI 兼容接口。上下文先按 128K 填，思考档可按供应商再改。":
     "OpenAI-compatible API. Context is prefilled at 128K; the thinking level can be changed per provider.",
   "已填好 OpenRouter API 地址。请自行填写模型 ID、API Key，并按所选模型设置上下文、输出和能力参数。":
@@ -99,6 +100,14 @@ export const MODEL_PATTERNS = [
   [
     "OpenCode Go · {0} · {1} 接口。默认上下文和输出预算为保守起始值，可按账户实际模型上限调整。",
     "OpenCode Go · {0} · {1} API. Default context and output budgets are conservative starting values; adjust them to your account's real model limits.",
+  ],
+  [
+    "Agent Plan 专属 Responses 接口 · 上下文 {0} · LuckyTri 输出预算 {1} · 支持图片理解。默认高强度推理；采样参数由模型服务端处理。",
+    "Agent Plan Responses API · context {0} · LuckyTri output budget {1} · supports image understanding. High reasoning by default; sampling parameters are handled by the model service.",
+  ],
+  [
+    "Agent Plan 专属 Responses 接口 · 上下文 {0} · LuckyTri 输出预算 {1} · 文本模型。默认高强度推理；采样参数由模型服务端处理。",
+    "Agent Plan Responses API · context {0} · LuckyTri output budget {1} · text model. High reasoning by default; sampling parameters are handled by the model service.",
   ],
   [
     "Coding Plan 专属 Responses 接口 · 上下文 {0} · 官方最大输出 {1} · 支持图片理解。默认中等推理；Kimi K2.8 Preview 在 LuckyTri 中预留 64K 输出预算以保留长上下文。",

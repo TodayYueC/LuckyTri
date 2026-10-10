@@ -2,7 +2,7 @@
 
 # Changelog
 
-## Unreleased
+## 1.0.9 — 2026-10-11
 
 - In follow-ups, answer the new detail without repeating limitations already explained; answer a question about source or feelings directly.
 - Discuss project proposals using the details actually given, without inventing the other person's existing game mechanics or assignment. If a first bot reply misses a newly delivered passage or question, retry once for that content; empty confirmations still stop.
@@ -11,6 +11,8 @@
 - Distinguish questions, proposals, feelings and corrections. Reviews retain the necessary original words and participants to check mistaken adaptations and unsupported apologies. When a follow-up omits a work's title, use the immediately delivered reply to that same person in the same conversation to find reading records, returning only the reading fact, not the reply's text. Select old summaries by the current topic while preserving address agreements separately.
 - Check repeated bot confirmations before they produce emotional changes. Verify new actions claimed in proactive drafts against activity records; old wishes cannot prove execution. Preserve history and readable source dates during review.
 - Retain earlier repair constraints. Keep a shortened original reply only after every check passes again. Historical evaluations exclude future memories and self-feedback, record code fingerprints, and fail explicitly when requested cases are missing.
+- Remove the unavailable OpenCode Zen Space Bunny Free and Step 5 Preview Free presets. On startup, remove their saved profiles while preserving other models and the default.
+- Add a separate Volcengine Ark Agent Plan category with its auto-router and all 14 current text model IDs/aliases. Use the dedicated `/api/plan/v3` Responses API, official context sizes and vision capabilities; exclude Coding Plan, models already being retired, and image, video, speech and embedding models.
 
 ## 1.0.8 — 2026-10-10
 

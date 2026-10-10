@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>LuckyTri v1.0.8 · 使用教程</title>
+    <title>LuckyTri v1.0.9 · 使用教程</title>
     <style>
       * {
         box-sizing: border-box;
@@ -269,7 +269,7 @@
   <body>
     <header>
       <div>
-        <b>LuckyTri · 上手手册</b><small>TIME · MEMORY · CHOICE / v1.0.8</small>
+        <b>LuckyTri · 上手手册</b><small>TIME · MEMORY · CHOICE / v1.0.9</small>
       </div>
       <nav>
         <a href="/#setup">返回管理台</a
@@ -460,8 +460,9 @@ luckytri
         <p>打开「系统 → 模型库」，点「＋ 新增模型」选择一个预设。</p>
         <ul>
           <li>
-            API 地址填写服务商的兼容接口根路径。程序会自己拼接
-            <code>/chat/completions</code>，不要把完整路径再写一遍。
+            API 地址填写服务商的兼容接口根路径。程序会按预设自动拼接
+            <code>/chat/completions</code> 或
+            <code>/responses</code>，不要把完整路径再写一遍。
           </li>
           <li>模型名称填写服务商接受的模型 ID。</li>
           <li>API Key 留空表示保留已保存的密钥。</li>
@@ -469,6 +470,12 @@ luckytri
         <p>
           预设只填入常见地址和模型名，以服务商控制台里的实际模型为准。发言决策和回复生成需要模型返回
           JSON 对象。
+        </p>
+        <p>
+          火山方舟 Agent Plan 与 Coding Plan 使用不同套餐、密钥和接口地址。Agent
+          Plan 预设使用专属 <code>/api/plan/v3</code> 地址和 Responses
+          API；请填入 Agent Plan 专属 API Key，不要与 Coding Plan 或普通方舟推理
+          API 的密钥混用。
         </p>
         <p>
           保存后点「测试此模型连接」。测试不携带群聊原文。更换地址、模型或密钥后需要重新测试。
@@ -864,6 +871,6 @@ npm start
         </p>
       </article>
     </div>
-    <footer>LuckyTri · 让经历和选择彼此连贯。教程与 v1.0.8 界面同步。</footer>
+    <footer>LuckyTri · 让经历和选择彼此连贯。教程与 v1.0.9 界面同步。</footer>
   </body>
 </html>

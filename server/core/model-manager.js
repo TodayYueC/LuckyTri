@@ -214,7 +214,7 @@ function applyGenerationControls(
   } else if (style === "kimi-effort") {
     if (!off) body.reasoning_effort = profile.reasoningEffort;
   } else if (style === "volcengine") {
-    // Coding Plan's Responses endpoint accepts reasoning.effort. Keep sampling
+    // Volcengine's Responses endpoint accepts reasoning.effort. Keep sampling
     // parameters out of these reasoning models; "none" uses minimal effort.
     body.reasoning_effort =
       off || QUIET_STAGES.has(stage)
