@@ -828,10 +828,8 @@ test("conversation keeps current human question and quoted evidence while removi
   assert.equal(context.inner.stood, undefined);
   assert.equal(context.inner.currentLife.intentions[0].why, undefined);
   assert.equal(context.self.here, undefined);
-  assert.deepEqual(
-    currentExchange(snapshot).humanMessages.map((m) => m.id),
-    [80],
-  );
+  assert.equal(currentExchange(snapshot).humanMessages, undefined);
+  assert.ok(currentExchange(snapshot).current.some((m) => m.id === 80));
   assert.deepEqual(snapshot, before);
   assert.match(
     conversationalMemory("我喜欢科幻；被@到才说；我想读沙丘。"),

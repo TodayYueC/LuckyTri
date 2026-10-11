@@ -29,11 +29,8 @@ export function currentExchange(snapshot) {
     current,
     quoted: [...quoted.values()],
     recentOwnWords: recentOwnMessages(snapshot, 3),
-    humanMessages: current.filter(
-      (m) =>
-        m.role === "user" &&
-        !conversationGrounding(snapshot).botMessageIds.includes(m.id),
-    ),
+    // humanMessages used to mirror current's human rows and doubled the turn
+    // payload (~0.7–1.5k chars) without being referenced in any prompt.
     thirdPartyClaims: current
       .filter(
         (m) =>
