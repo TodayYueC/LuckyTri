@@ -81,6 +81,8 @@ export class Thoughts {
           : null,
         text(outreachReason, 300),
       );
+    // Searchable, and dated in the audit, from the moment it is written.
+    this.mind.recall?.sync("thought", id);
     return id;
   }
   get(id) {

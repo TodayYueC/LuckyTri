@@ -4,6 +4,7 @@ import { world, HOUR } from "./helpers/world.js";
 import { scriptedLife } from "./helpers/life-scenario.js";
 import { fillRoots } from "../server/mind/recall/roots.js";
 import { Recall } from "../server/mind/recall/index.js";
+import { enableFakeEmbedding } from "./helpers/fake-embedder.js";
 
 const DAY = 24 * HOUR;
 const turnData = (w) =>
@@ -13,7 +14,12 @@ const items = (data) => data?.context?.inner?.recollections?.items || [];
 // One friend's affair, her note about it, and a turn that brings it back.
 async function affair(
   w,
-  { note = {}, plan = null, ask = "@她 那家游戏公司的面试怎么样了？" } = {},
+  {
+    note = {},
+    plan = null,
+    ask = "@她 那家游戏公司的面试怎么样了？",
+    before = null,
+  } = {},
 ) {
   w.open("group:1");
   const said = [
@@ -65,6 +71,7 @@ async function affair(
     });
   // Far enough that the note is no longer simply on her mind.
   w.advance(12 * DAY);
+  await before?.(w);
   w.answers.turn = { choice: "silent", reason: "听着" };
   const asked = w.say("group:1", "10001", ask, { mentioned: true });
   await w.hear("group:1", asked);
@@ -216,4 +223,40 @@ test("找关联出错时，回合照常进行，只是没有 mine", async (t) =>
     w.store.db.prepare("SELECT reason FROM mind_choices").get().reason,
     "听着",
   );
+});
+
+test("只有一个不在标题里的词相同（同源）也不算关联", async (t) => {
+  const w = world();
+  t.after(w.close);
+  // Shares only "紧张" with the affair, and it is not in its title.
+  await affair(w, { note: { content: "最近考试好紧张" } });
+  assert.ok(items(turnData(w)[0])[0]);
+  assert.equal(items(turnData(w)[0])[0].mine, undefined);
+});
+
+test("没有共同的词、但意思相近（两边都有向量）时，同源的手记也会跟着回来", async (t) => {
+  const w = world();
+  t.after(w.close);
+  enableFakeEmbedding(w.store, w.system.models);
+  w.mind.embedding.backgroundInterval = 0;
+  w.mind.embedding.tokensPerMinute = 0;
+  const content = "他好像在找工作，希望顺利";
+  let lexical = true;
+  await affair(w, {
+    note: { content },
+    before: async (w) => {
+      await w.mind.recall.prepare(w.now());
+      const { interestTerms } = await import("../server/mind/attention.js");
+      const shared = [...interestTerms([content])].filter((x) =>
+        interestTerms([
+          "游戏公司面试 下周三要去一家游戏公司面试，有点紧张",
+        ]).has(x),
+      );
+      lexical = shared.length > 0;
+    },
+  });
+  assert.equal(lexical, false, "确实没有共同的词");
+  const first = items(turnData(w)[0])[0];
+  assert.ok(first);
+  assert.deepEqual(first.mine, [`当时想：${content}`]);
 });

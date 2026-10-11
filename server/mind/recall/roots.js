@@ -103,8 +103,8 @@ const ANTICIPATION_STATE = {
 };
 
 // Her own notes, intentions and self threads that rest on the same moments
-// as an affair, and that speak of it (shared words, or close in meaning when
-// both have vectors). At most two short lines: the first and the latest of a
+// as an affair, and that speak of it (two shared words, one from its title,
+// or close in meaning when both have vectors). At most two short lines: the first and the latest of a
 // revised note ("当时想 / 后来想"), then an intention of hers, then a self
 // thread. Records already in front of her are left out. Each line carries
 // the index id it came from, for the record of what came to mind.
@@ -130,8 +130,15 @@ export function mineFor(
   const terms = interestTerms(
     steps.map((s) => [s.title, s.content, s.outcome].join(" ")),
   );
-  const speaks = (id, words) =>
-    [...interestTerms([words])].some((t) => terms.has(t)) || close(id, ids);
+  // One shared pair is too easy to come by ("最近", "晚上"); it counts only
+  // when it is in the affair's own title. Otherwise two, or close meaning.
+  const titled = interestTerms(steps.map((s) => s.title));
+  const speaks = (id, words) => {
+    const shared = [...interestTerms([words])].filter((t) => terms.has(t));
+    return (
+      shared.length >= 2 || shared.some((t) => titled.has(t)) || close(id, ids)
+    );
+  };
   const fits = (words) =>
     words && !fixedReplyHabit(words) && mind.meetings.sayable(words, session);
   const lines = [];

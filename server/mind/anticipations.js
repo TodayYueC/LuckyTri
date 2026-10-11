@@ -268,6 +268,8 @@ export class Anticipations {
         origin,
         kind === "plan" && isExecutable(activity) ? activity : "",
       );
+    // Searchable, and dated in the audit, from the moment it is made.
+    this.mind.recall?.sync("anticipation", id);
     return { id };
   }
   get(id) {
