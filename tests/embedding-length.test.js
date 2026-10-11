@@ -5,6 +5,7 @@ import { world } from "./helpers/world.js";
 import { fakeVector } from "./helpers/fake-embedder.js";
 import { KnowledgeManager } from "../server/knowledge/manager.js";
 import {
+  MODEL_LENGTHS,
   automaticLength,
   embeddingSignature,
   resolveEmbeddingProfile,
@@ -65,26 +66,19 @@ function fact(w, subject, content) {
   });
 }
 
-test("自动长度：豆包多模态向量用 1024；写明 2048 和旧的不指定是同一套向量", () => {
+test("自动长度：豆包和其他模型一样用自己的长度；写明 2048 和不指定是同一套向量", () => {
   const doubaoProfile = { baseUrl: BASE, model: MODEL, dimensions: 0 };
-  assert.equal(automaticLength(doubaoProfile), 1024);
+  assert.equal(automaticLength(doubaoProfile), 0, "不再默认请求 1024");
   assert.equal(automaticLength({ ...doubaoProfile, dimensions: 2048 }), 2048);
+  assert.equal(automaticLength({ ...doubaoProfile, dimensions: 1024 }), 1024);
   assert.equal(automaticLength({ ...doubaoProfile, model: "bge-m3" }), 0);
-  assert.equal(
-    automaticLength(doubaoProfile, { [`${BASE}|${MODEL}`]: { at: 1 } }),
-    0,
-    "服务拒绝过自动长度就用模型自己的",
-  );
+  assert.equal(embeddingSignature(doubaoProfile), OLD, "1.1.2 的向量原样可用");
   assert.equal(
     embeddingSignature({ ...doubaoProfile, dimensions: 2048 }),
     OLD,
-    "改回 2048 能直接用回旧向量",
+    "写 2048 也能直接用回旧向量",
   );
-  assert.notEqual(
-    embeddingSignature({ ...doubaoProfile, dimensions: 1024 }),
-    OLD,
-  );
-  // Installs that saved 1024 before it became 0 keep their vectors too.
+  // Installs that saved 1024 keep their vectors too.
   assert.equal(
     embeddingSignature({ ...doubaoProfile, dimensions: 1024 }),
     createHash("sha256")
@@ -93,7 +87,7 @@ test("自动长度：豆包多模态向量用 1024；写明 2048 和旧的不指
   );
 });
 
-test("已有 2048 向量的旧部署：换成 1024 后分批补建，补建期间按词回忆，旧向量一直留着可切回", async (t) => {
+test("已有 2048 向量的部署：改成 1024 后分批补建，补建期间按词回忆，旧向量一直留着可切回", async (t) => {
   const { w, calls, use } = setup(t);
   w.open("group:1");
   const recall = w.mind.recall;
@@ -112,8 +106,8 @@ test("已有 2048 向量的旧部署：换成 1024 后分批补建，补建期�
       .get(profile);
   const old = count(OLD);
   assert.equal(old.dim, 2048);
-  // The release: the same saved profile, dimension 0, now means 1024.
-  use(0);
+  // The owner asks for 1024 explicitly.
+  use(1024);
   const next = recall.profile();
   assert.notEqual(next, OLD);
   assert.equal(w.mind.embedding.status().dimensions, 1024);
@@ -141,8 +135,8 @@ test("已有 2048 向量的旧部署：换成 1024 后分批补建，补建期�
   recall.prunedAt = 0;
   recall.pruneProfiles(w.now());
   assert.equal(count(OLD).n, old.n, "建好后旧的一套仍留作回退");
-  // Going back costs nothing.
-  use(2048);
+  // Going back costs nothing, written as 0 or as 2048.
+  use(0);
   calls.length = 0;
   recall.coverageCache = null;
   assert.equal(recall.profile(), OLD);
@@ -151,7 +145,20 @@ test("已有 2048 向量的旧部署：换成 1024 后分批补建，补建期�
   assert.equal(calls.length, 0);
 });
 
+// The refusal path still exists for any model given a shorter automatic
+// length; none ships with one, so the test names its own.
+function shrinkable(t) {
+  const entry = {
+    model: /doubao-embedding-vision/i,
+    automatic: 1024,
+    native: 2048,
+  };
+  MODEL_LENGTHS.unshift(entry);
+  t.after(() => MODEL_LENGTHS.splice(MODEL_LENGTHS.indexOf(entry), 1));
+}
+
 test("服务拒绝或无视自动长度时，记下来退回模型自己的长度和旧向量，密钥错误不算", async (t) => {
+  shrinkable(t);
   {
     const { w, calls, use } = setup(t, (calls) => async (profile, texts) => {
       calls.push(profile.dimensions || 0);
@@ -229,7 +236,7 @@ test("知识资料换长度后在后台补建，期间按词查；新向量能�
     );
   // No shared words: only the vector can find it.
   assert.deepEqual(await find("猫咪"), ["宠物"]);
-  use(0);
+  use(1024);
   assert.deepEqual(await find("猫咪"), [], "旧长度的向量不和新问题比");
   assert.deepEqual(await find("团子"), ["宠物"], "按词照样能查");
   calls.length = 0;
@@ -237,7 +244,7 @@ test("知识资料换长度后在后台补建，期间按词查；新向量能�
   assert.ok(calls.every((call) => call.dimensions === 1024));
   assert.deepEqual(await find("猫咪"), ["宠物"]);
   assert.equal(await km.reembedStale({ limit: 20 }), 0);
-  use(2048);
+  use(0);
   calls.length = 0;
   assert.equal(await km.reembedStale({ limit: 20 }), 2);
   assert.equal(calls.length, 0, "资料直接换回旧向量，不发请求");

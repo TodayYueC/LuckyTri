@@ -1338,10 +1338,10 @@ export class ModelManager {
               if (!r.ok) {
                 const error = await httpError(r);
                 error.message = `向量接口失败 HTTP ${r.status}`;
-                const limit = String(error.detail || "").match(
-                  /max\s*(\d+)\s*,\s*got/i,
-                );
-                if (limit) error.batchLimit = Number(limit[1]);
+                const limit = batchLimitOf(error.detail);
+                if (limit) error.batchLimit = limit;
+                else if (r.status === 413 && Array.isArray(input))
+                  error.batchLimit = Math.floor(input.length / 2);
                 throw error;
               }
               return await r.json();
@@ -1398,6 +1398,9 @@ export class ModelManager {
     return rows
       .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
       .map((row) => {
+        // Some servers answer base64 even when asked for floats.
+        if (typeof row.embedding === "string")
+          row.embedding = decodeBase64Vector(row.embedding);
         if (!Array.isArray(row.embedding) || !row.embedding.length)
           throw Error("向量接口未返回 embedding");
         if (
@@ -1409,4 +1412,31 @@ export class ModelManager {
         return row.embedding;
       });
   }
+}
+
+// How providers say a batch was too big. Ark: "max 10, got 23"; others name
+// a maximum number of inputs or a batch size. Only a number tied to inputs
+// counts, so a token limit is not mistaken for a batch limit.
+const BATCH_LIMITS = [
+  /max\s*(\d+)\s*,\s*got/i,
+  /(?:batch size|number of inputs|inputs?|items|texts)[^.\d]{0,40}?(?:at most|maximum(?: of)?|max(?:imum)?|limit(?: of| is)?|up to|exceed(?:s|ed)?)\s*(\d+)/i,
+  /(?:at most|maximum(?: of)?|up to)\s*(\d+)\s*(?:inputs|items|texts|strings)/i,
+];
+export function batchLimitOf(detail) {
+  const text = String(detail || "");
+  if (/token/i.test(text) && !/input|batch|item|text/i.test(text)) return 0;
+  for (const pattern of BATCH_LIMITS) {
+    const found = text.match(pattern);
+    if (found && Number(found[1]) > 0) return Number(found[1]);
+  }
+  return 0;
+}
+
+function decodeBase64Vector(value) {
+  const bytes = Buffer.from(value, "base64");
+  if (!bytes.length || bytes.length % 4) return [];
+  const floats = new Float32Array(
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length),
+  );
+  return Array.from(floats);
 }

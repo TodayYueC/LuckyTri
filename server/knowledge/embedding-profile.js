@@ -16,37 +16,67 @@ export const EMBEDDING_DEFAULTS = {
 };
 export const EMBEDDING_PROTOCOLS = new Set(["openai", "multimodal"]);
 
+// Embeddings are any OpenAI-compatible /embeddings endpoint: an address, a
+// model name and a key. Presets only fill in what the user left empty for
+// providers known to need it; none of them is what "embedding" means.
+// `chat: true` keeps the chat address, because that plan's key works only
+// there (an Agent Plan key is refused by the ordinary /api/v3 address).
+export const EMBEDDING_PRESETS = [
+  {
+    id: "volcengine-agent-plan",
+    label: "火山方舟 Agent Plan",
+    match: /volces\.com\/api\/plan\//i,
+    chat: true,
+    model: "doubao-embedding-vision",
+  },
+  {
+    id: "volcengine-ark",
+    label: "火山方舟",
+    match: /volces\.com|volcengine/i,
+    baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+    model: "doubao-embedding-vision",
+  },
+];
+
+const trimUrl = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/\/$/, "");
+export const embeddingPreset = (address) =>
+  EMBEDDING_PRESETS.find((preset) => preset.match.test(trimUrl(address))) ||
+  null;
+
 // Defaults when the user gives an address and a key. Dimension 0 means
-// automatic: see automaticLength below. The model name is filled in only
-// when the address is Volcengine Ark.
+// automatic: see automaticLength below. Without a preset the address is the
+// chat one and the model must be named.
 export function suggestEmbedding(chat = {}, address = "") {
-  const given = String(address || "")
-    .trim()
-    .replace(/\/$/, "");
-  const chatBase = String(chat.baseUrl || "")
-    .trim()
-    .replace(/\/$/, "");
+  const given = trimUrl(address);
+  const chatBase = trimUrl(chat.baseUrl);
   const base = given || chatBase;
-  const ark = /volces\.com|volcengine/i.test(base);
+  const preset = embeddingPreset(base);
   return {
     protocol: "openai",
     dimensions: 0,
     batchSize: 10,
     timeoutMs: 90000,
-    baseUrl:
-      given || (ark ? "https://ark.cn-beijing.volces.com/api/v3" : chatBase),
-    model: ark ? "doubao-embedding-vision" : String(chat.embeddingModel || ""),
+    baseUrl: given || (preset && !preset.chat ? preset.baseUrl : chatBase),
+    model: preset?.model || String(chat.embeddingModel || ""),
+    preset: preset?.id || "",
   };
 }
 
-// What "automatic" (dimension 0) asks a model for. doubao-embedding-vision
-// answers 2048 numbers unless asked for 1024. On the recall benchmark the
-// shorter vector ranked the same, and it halves memory, storage and the time
-// to scan them. The price is per input token, so the bill does not change.
-// Other models keep their own length.
-const LENGTHS = [
-  { model: /doubao-embedding-vision/i, automatic: 1024, native: 2048 },
+// What "automatic" (dimension 0) asks a model for, per model rather than per
+// provider. Every model is asked for nothing and keeps its own length unless
+// an entry here names a shorter `automatic` one. doubao-embedding-vision has
+// no such entry: on the recall benchmark with real vectors (2026-10-12) 1024
+// ranked slightly worse than its own 2048 (one more miss and one more fact
+// attributed to the wrong person in 59 cases), and a shorter default would
+// make every install that already has 2048 vectors embed everything again.
+// `native` says which explicit length is the same space as asking nothing.
+export const MODEL_LENGTHS = [
+  { model: /doubao-embedding-vision/i, native: 2048 },
 ];
+const LENGTHS = MODEL_LENGTHS;
 // Providers seen to refuse or ignore the automatic length, by address and
 // model. Saving the profile again clears it.
 const NATIVE = "embedding-native-length";
@@ -64,8 +94,8 @@ export function automaticLength(profile, refused = {}) {
 }
 
 // Asking for the length a model returns anyway is the same space as not
-// asking, so both share one signature: typing 2048 after the move to 1024
-// finds the old vectors again instead of paying to embed everything twice.
+// asking, so both share one signature: typing 2048 for doubao finds the
+// vectors made with 0 instead of paying to embed everything twice.
 export function embeddingSignature(profile) {
   const length = profile.dimensions || 0;
   return createHash("sha256")
@@ -200,7 +230,9 @@ export async function embedBatches(models, profile, texts, options = {}) {
           profile.refuseLength(`answered ${vector.length}`);
           throw lengthChanged();
         }
-        throw Error("向量维度不一致");
+        throw Error(
+          `向量维度不一致：接口返回 ${vector.length} 维，应为 ${dimension} 维`,
+        );
       }
       vectors.push(vector);
     }

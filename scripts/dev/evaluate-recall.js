@@ -85,7 +85,7 @@ else if (baseUrl) {
     batchSize: 10,
   };
 }
-profile.dimensions = Number(option("--dimensions", fake || baseUrl ? 0 : 1024));
+profile.dimensions = Number(option("--dimensions", 0));
 saveEmbeddingProfile(repo, profile);
 system.mind.embedding.backgroundInterval = fake || baseUrl ? 0 : 1500;
 if (fake || baseUrl) system.mind.embedding.tokensPerMinute = 0;

@@ -10,8 +10,7 @@
 - Each turn records what came to her mind (facts, episodes, self threads, thoughts, promises) in the choice record, kept for good and never sent to the model; turn input stays byte-for-byte the same. The database only gains one column, so older versions still open it.
 - New `npm run audit:life -- --db <backup>`: a read-only check-up of a backup that reports on the integrity and continuity of her life record. New `npm run evaluate:traits`: trait probes with the scripted model.
 - New [Ultimate vision](vision.md) document; the evolution charter sits under it.
-- Embedding dimension 0 now means automatic: doubao-embedding-vision is asked for 1024, and other models keep their own length. Recall ranks the same as with 2048, with half the memory and scan time, at the same price. An install with 2048-dimension vectors fills the new ones in the background, recalls by keywords meanwhile and keeps the old vectors; writing 2048 switches back without new requests. A service that does not support 1024 falls back to the model's own length.
-- A profile changed from 1024 back to 0 after the 1.1.2 note uses its earlier 1024-dimension vectors again.
+- Embeddings no longer default to doubao: any OpenAI-compatible `/embeddings` endpoint works with an address, a model name and a key, and Volcengine Ark (including Agent Plan) is one preset. With dimension 0 every model keeps its own length; doubao-embedding-vision stays at 2048 as in 1.1.2, so existing vectors are not rebuilt. In a recall comparison with real vectors 1024 was slightly worse, so it is no longer the default. Vectors returned as base64, the different ways services say a batch is too big, and a 413 without a limit are all handled.
 
 ## 1.1.2 — 2026-10-11
 

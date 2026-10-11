@@ -81,10 +81,10 @@ export default {
   "连接成功，向量维度 {dimensions}":
     "Connected. Vector dimensions: {dimensions}",
   知识向量模型: "Knowledge vector model",
-  "填写向量服务的请求地址和密钥。模型名可以留空：火山方舟地址会用 doubao-embedding-vision。维度填 0 表示自动：这个模型用 1024，其他模型用自己的长度；要完整的 2048 就写 2048。不启用或连不上时，对话和关键词回忆照常进行。":
-    "Enter the vector service address and key. The model name can be left empty: a Volcengine Ark address uses doubao-embedding-vision. Dimension 0 means automatic: this model uses 1024 and other models use their own length; write 2048 for the full length. Without it, or if it cannot be reached, conversation and keyword recall still run.",
+  "填写任意 OpenAI 兼容向量服务（/embeddings）的请求地址、模型名和密钥。火山方舟地址可以不填模型名，会用 doubao-embedding-vision。维度填 0 表示用模型自己的长度（doubao-embedding-vision 是 2048），写明长度就按写的请求。不启用或连不上时，对话和关键词回忆照常进行。":
+    "Enter the address, model name and key of any OpenAI-compatible embeddings service (/embeddings). A Volcengine Ark address may leave the model empty and uses doubao-embedding-vision. Dimension 0 means the model's own length (2048 for doubao-embedding-vision); a written length is requested as is. Without it, or if it cannot be reached, conversation and keyword recall still run.",
   请求地址: "Request address",
-  "可留空，按地址选择": "Optional; chosen from the address",
+  火山方舟可留空: "Optional for Volcengine Ark",
   向量服务密钥: "Vector service key",
   自动选择的细节: "Details chosen automatically",
   "当前兼容旧配置，跟随默认模型。保存后改用独立配置。":
@@ -98,7 +98,7 @@ export default {
   配置已载入: "Configuration loaded",
   请求格式: "Request format",
   "OpenAI 兼容（可批量）": "OpenAI-compatible (batched)",
-  "多模态接口（逐条）": "Multimodal endpoint (one at a time)",
+  "方舟多模态接口（逐条）": "Ark multimodal endpoint (one at a time)",
 
   // RecallPanel.vue
   回忆索引: "Recall index",

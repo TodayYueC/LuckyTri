@@ -66,7 +66,7 @@ onMounted(load);
     <p class="muted">
       {{
         t(
-          "填写向量服务的请求地址和密钥。模型名可以留空：火山方舟地址会用 doubao-embedding-vision。维度填 0 表示自动：这个模型用 1024，其他模型用自己的长度；要完整的 2048 就写 2048。不启用或连不上时，对话和关键词回忆照常进行。",
+          "填写任意 OpenAI 兼容向量服务（/embeddings）的请求地址、模型名和密钥。火山方舟地址可以不填模型名，会用 doubao-embedding-vision。维度填 0 表示用模型自己的长度（doubao-embedding-vision 是 2048），写明长度就按写的请求。不启用或连不上时，对话和关键词回忆照常进行。",
         )
       }}
     </p>
@@ -107,7 +107,7 @@ onMounted(load);
             name="embeddingModelName"
             autocomplete="off"
             spellcheck="false"
-            :placeholder="t('可留空，按地址选择')"
+            :placeholder="t('火山方舟可留空')"
         /></label>
         <label
           >{{ t("向量服务密钥")
@@ -150,7 +150,9 @@ onMounted(load);
             >{{ t("请求格式")
             }}<select v-model="draft.protocol" name="embeddingProtocol">
               <option value="openai">{{ t("OpenAI 兼容（可批量）") }}</option>
-              <option value="multimodal">{{ t("多模态接口（逐条）") }}</option>
+              <option value="multimodal">
+                {{ t("方舟多模态接口（逐条）") }}
+              </option>
             </select></label
           >
         </div>

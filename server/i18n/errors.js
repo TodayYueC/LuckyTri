@@ -553,6 +553,10 @@ export const ERRORS = {
 // in; the values are passed through the dictionaries again.
 export const ERROR_PATTERNS = [
   ["删除失败（{0}）", "Removal failed ({0})"],
+  [
+    "向量维度不一致：接口返回 {0} 维，应为 {1} 维",
+    "The vector dimensions are inconsistent: the service returned {0}, expected {1}",
+  ],
   ["清理工作异常结束：{0}", "Cleanup ended unexpectedly: {0}"],
   ["{0} Prompt 无效", "{0} prompt is invalid"],
   ["模型请求失败 HTTP {0}：{1}", "The model request failed with HTTP {0}: {1}"],
