@@ -183,7 +183,7 @@ function codingPlanModel({
     reasoningEfforts: ["none", "minimal", "low", "medium", "high"],
     reasoningEffort: "medium",
     // Reasoning models may reject sampling parameters. The Responses API uses
-    // reasoning.effort; the "none" choice maps to minimal reasoning.
+    // reasoning.effort; "none" sends thinking disabled, which these accept.
     omitSampling: true,
     temperature: 1,
     topP: 1,

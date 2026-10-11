@@ -153,6 +153,13 @@ export function isMimoProfile(profile) {
     /^mimo(?:-|$)/i.test(String(profile?.model || ""))
   );
 }
+// Only a model whose own list offers "none" is asked to stop thinking.
+function canStopThinking(profile) {
+  return (
+    Array.isArray(profile.reasoningEfforts) &&
+    profile.reasoningEfforts.includes("none")
+  );
+}
 function thinkingOff(profile) {
   return !profile.reasoningEffort || profile.reasoningEffort === "none";
 }
@@ -235,11 +242,13 @@ function applyGenerationControls(
     if (!off) body.reasoning_effort = profile.reasoningEffort;
   } else if (style === "volcengine") {
     // Volcengine's Responses endpoint accepts reasoning.effort. Keep sampling
-    // parameters out of these reasoning models; "none" uses minimal effort.
-    body.reasoning_effort =
-      off || QUIET_STAGES.has(stage)
-        ? "minimal"
-        : profile.reasoningEffort || "medium";
+    // parameters out of these reasoning models. "minimal" still thinks for a
+    // few hundred to a few thousand tokens; a model that offers "none" really
+    // stops with thinking disabled (GLM refuses that and keeps minimal).
+    if (off || QUIET_STAGES.has(stage)) {
+      if (canStopThinking(profile)) body.thinking = { type: "disabled" };
+      else body.reasoning_effort = "minimal";
+    } else body.reasoning_effort = profile.reasoningEffort || "medium";
   } else if (style === "qwen" || style === "qwen-effort") {
     body.enable_thinking = !off;
     if (style === "qwen-effort" && !off)
@@ -302,6 +311,8 @@ function protocolRequest(body, profile, stage) {
     };
     if (body.reasoning_effort)
       output.reasoning = { effort: body.reasoning_effort };
+    if (body.thinking && profile.thinkingStyle === "volcengine")
+      output.thinking = body.thinking;
     if (body.temperature !== undefined) output.temperature = body.temperature;
     if (body.top_p !== undefined) output.top_p = body.top_p;
     if (body.response_format)
@@ -1218,6 +1229,30 @@ export class ModelManager {
           },
         );
       } catch (error) {
+        // A model in a "none"-offering list that still refuses to stop
+        // thinking is asked once more the old way, with minimal reasoning.
+        if (
+          error?.status === 400 &&
+          request.body.thinking?.type === "disabled" &&
+          /thinking/i.test(String(error.message || ""))
+        ) {
+          entry.thinkingRefused = true;
+          return this.call(
+            {
+              ...profile,
+              reasoningEfforts: profile.reasoningEfforts.filter(
+                (effort) => effort !== "none",
+              ),
+            },
+            stage,
+            system,
+            data,
+            trace,
+            images,
+            attempt,
+            options,
+          );
+        }
         if (guarded && isAvailabilityFailure(error))
           this.recordFailure(circuit);
         if (guarded && accountRefusal(error))
