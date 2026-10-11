@@ -1469,3 +1469,41 @@ test("an apparently plausible bot interpretation is independently checked before
   );
   assert.equal(w.sent.length, 0);
 });
+
+test("复审与给提问者的解释核对同时发出，按原来的先后采信结论", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("private:1");
+  const snapshot = {
+    sessionId: "private:1",
+    batchIds: [1],
+    batch: [{ id: 1, seq: 1, userId: "friend", text: "你到底想说什么？" }],
+    messages: [
+      { id: 1, role: "user", speaker: "friend", text: "你到底想说什么？" },
+    ],
+  };
+  let inflight = 0;
+  let most = 0;
+  const kinds = [];
+  w.answers.validation = async (data) => {
+    inflight++;
+    most = Math.max(most, inflight);
+    kinds.push(data.questions ? "reader" : "review");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    inflight--;
+    // Both reject: the general review's verdict must be the one used.
+    return data.questions
+      ? { ok: false, issues: ["解释没说清"] }
+      : kinds.filter((k) => k === "review").length === 1
+        ? { ok: false, issues: ["与语境不一致"] }
+        : { ok: true, issues: [] };
+  };
+  w.answers.rewrite = { bubbles: ["我是说，刚才那句话我讲反了。"] };
+  const trace = await replayReply(w, snapshot, {
+    choice: "speak",
+    targetMessageIds: [1],
+    bubbles: ["先说两句。"],
+  });
+  assert.ok(most >= 2, "两项核对同时进行，不再一项等一项");
+  assert.deepEqual(trace.revisions[0].issues, ["与语境不一致"]);
+});

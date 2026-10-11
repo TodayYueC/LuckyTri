@@ -342,20 +342,33 @@ export class ReplyDelivery {
       return needed;
     };
     const deepCheck = async (response) => {
+      // The checks below do not depend on one another's answers, only on
+      // the order in which their verdicts count. They are asked together and
+      // read in that order: a reply that needs two or three reviews waits
+      // for the slowest one instead of their sum. A later verdict is simply
+      // unused when an earlier one already rejects the draft.
+      const ask = (...args) => {
+        const pending = models.call(...args);
+        pending.catch(() => {});
+        return pending;
+      };
       try {
+        const claims = currentExchange(snapshot).thirdPartyClaims;
+        const questions = readerQuestions(snapshot, turn);
         // An old expression can already contain a fictional action. Check
         // the actual words again against activity records, without giving
         // that draft or its own earlier explanations the role of evidence.
-        if (
+        const livedNeeded =
           snapshot.initiative &&
           claimsLivedAction(response.bubbles.join("\n")) &&
           !(
             trace.experienceReview?.ok === true &&
             trace.experienceReview.words.join("\n") ===
               response.bubbles.join("\n")
-          )
-        ) {
-          const lived = await models.call(
+          );
+        const livedCheck =
+          livedNeeded &&
+          ask(
             model,
             "validation",
             EXPRESSION_GROUNDING,
@@ -367,12 +380,7 @@ export class ReplyDelivery {
             },
             trace,
           );
-          if (lived.ok !== true)
-            return [
-              `主动消息声称的新行动尚无实际活动记录支持：${lived.reason || "没有核实该行动"}`,
-            ];
-        }
-        const checked = await models.call(
+        const review = ask(
           model,
           "validation",
           replyPrompt(nature, prompt, "validation"),
@@ -404,20 +412,14 @@ export class ReplyDelivery {
           trace,
           c.generationImages,
         );
-        if (typeof checked.ok !== "boolean" || !Array.isArray(checked.issues)) {
-          trace.steps.push("回复复审结果格式异常，已按本地校验继续");
-          return snapshot.initiative
-            ? ["主动消息的语境核对结果无效，草稿保留"]
-            : [];
-        }
-        const claims = currentExchange(snapshot).thirdPartyClaims;
-        if (checked.ok && claims.length) {
-          const claimingSpeakers = new Set(
-            snapshot.messages
-              .filter((m) => claims.some((claim) => claim.id === m.id))
-              .map((m) => m.speaker),
-          );
-          const intent = await models.call(
+        const claimingSpeakers = new Set(
+          snapshot.messages
+            .filter((m) => claims.some((claim) => claim.id === m.id))
+            .map((m) => m.speaker),
+        );
+        const intentCheck =
+          claims.length > 0 &&
+          ask(
             model,
             "validation",
             INTENT_CHECK,
@@ -433,23 +435,42 @@ export class ReplyDelivery {
             },
             trace,
           );
-          if (intent.ok === false && Array.isArray(intent.issues))
-            return intent.issues.map(
-              (issue) => `第三方解释尚未被本人确认：${issue}`,
-            );
-        }
-        if (checked.ok && readerQuestions(snapshot, turn).length) {
-          const reader = await models.call(
+        const readerCheck =
+          questions.length > 0 &&
+          ask(
             model,
             "validation",
             readerCheckPrompt(turn),
             {
-              questions: readerQuestions(snapshot, turn),
+              questions,
               choice: turn.choice,
               reply: response.bubbles,
             },
             trace,
           );
+        if (livedCheck) {
+          const lived = await livedCheck;
+          if (lived.ok !== true)
+            return [
+              `主动消息声称的新行动尚无实际活动记录支持：${lived.reason || "没有核实该行动"}`,
+            ];
+        }
+        const checked = await review;
+        if (typeof checked.ok !== "boolean" || !Array.isArray(checked.issues)) {
+          trace.steps.push("回复复审结果格式异常，已按本地校验继续");
+          return snapshot.initiative
+            ? ["主动消息的语境核对结果无效，草稿保留"]
+            : [];
+        }
+        if (checked.ok && intentCheck) {
+          const intent = await intentCheck;
+          if (intent.ok === false && Array.isArray(intent.issues))
+            return intent.issues.map(
+              (issue) => `第三方解释尚未被本人确认：${issue}`,
+            );
+        }
+        if (checked.ok && readerCheck) {
+          const reader = await readerCheck;
           if (reader.ok === false && Array.isArray(reader.issues))
             return reader.issues.map(
               (issue) => `给提问者的解释仍没说清：${issue}`,
