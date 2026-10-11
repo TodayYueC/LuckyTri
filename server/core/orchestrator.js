@@ -55,7 +55,7 @@ export class ChatSystem {
       )
       .run();
     this.models = models || new ModelManager(this.repo);
-    this.mind = new Mind(this.repo, { models: this.models });
+    this.mind = new Mind(this.repo, { models: this.models, now });
     this.memory = this.mind.memory;
     this.knowledge = knowledge || new KnowledgeManager(this.repo, this.models);
     this.compactor = new ContextCompactor(this.repo);

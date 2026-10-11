@@ -488,6 +488,9 @@ export const ERRORS = {
   "所选时间与已有安排重叠，需要重新选定":
     "The chosen time overlaps an existing plan; choose again",
   一周内没有空出的时间段: "No free time slot within a week",
+  向量模型未启用: "The embedding model is not enabled",
+  向量服务暂停中: "The embedding service is paused after repeated failures",
+  向量接口格式无效: "The embedding request format is invalid",
   事项已变化: "The item has changed",
   任务不存在: "The task does not exist",
   "这条记录已合并，请调整唯一任务":

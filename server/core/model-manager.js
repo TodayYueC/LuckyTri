@@ -1288,32 +1288,94 @@ export class ModelManager {
       entry.elapsed = Date.now() - entry.started;
     }
   }
-  async embed(profile, texts) {
+  // Vectors travel in their own lane: a reply waiting for a recall vector must
+  // not queue behind long chat completions on the same gateway. Two request
+  // shapes exist: OpenAI-compatible batches, and multimodal endpoints that
+  // take one item per request.
+  async embed(
+    profile,
+    texts,
+    {
+      priority = "foreground",
+      timeoutMs = profile.timeoutMs || 90000,
+      onUsage,
+    } = {},
+  ) {
     const key = profile.isolatedEmbeddingKey
       ? process.env.EMBEDDING_API_KEY || profile.apiKey
       : profile.apiKey || process.env.LLM_API_KEY;
     if (!key) throw Error("模型尚未配置 API Key");
     const model = profile.embeddingModel || profile.model;
-    const endpoint = profile.baseUrl.replace(/\/$/, "") + "/embeddings";
-    const raw = await withTransientRequestRetry(() =>
-      this.withRequestSlot(endpoint, async () => {
-        const r = await this.fetcher(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${key}`,
-          },
-          body: JSON.stringify({
-            model,
-            input: texts,
-            ...(profile.dimensions ? { dimensions: profile.dimensions } : {}),
-          }),
-          signal: AbortSignal.timeout(profile.timeoutMs || 90000),
-        });
-        if (!r.ok) throw Error(`向量接口失败 HTTP ${r.status}`);
-        return await r.json();
-      }),
-    );
+    const multimodal = profile.protocol === "multimodal";
+    const endpoint =
+      profile.baseUrl.replace(/\/$/, "") +
+      (multimodal ? "/embeddings/multimodal" : "/embeddings");
+    const circuit = `${new URL(endpoint).origin}|embed:${model}`;
+    this.checkCircuit(circuit, {});
+    const send = (input) =>
+      withTransientRequestRetry(
+        () =>
+          this.withRequestSlot(
+            endpoint,
+            async () => {
+              const r = await this.fetcher(endpoint, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${key}`,
+                },
+                body: JSON.stringify({
+                  model,
+                  input,
+                  encoding_format: "float",
+                  ...(profile.dimensions
+                    ? { dimensions: profile.dimensions }
+                    : {}),
+                }),
+                signal: AbortSignal.timeout(timeoutMs),
+              });
+              if (!r.ok) {
+                const error = await httpError(r);
+                error.message = `向量接口失败 HTTP ${r.status}`;
+                const limit = String(error.detail || "").match(
+                  /max\s*(\d+)\s*,\s*got/i,
+                );
+                if (limit) error.batchLimit = Number(limit[1]);
+                throw error;
+              }
+              return await r.json();
+            },
+            { priority, lane: "embedding" },
+          ),
+        { retries: priority === "background" ? 2 : 1, deadlineMs: timeoutMs },
+      );
+    let raw;
+    try {
+      raw = multimodal
+        ? await Promise.all(
+            texts.map((text) => send([{ type: "text", text }])),
+          ).then((answers) => ({
+            data: answers.map((answer, index) => ({
+              index,
+              embedding: Array.isArray(answer.data)
+                ? answer.data[0]?.embedding
+                : answer.data?.embedding,
+            })),
+            usage: {
+              total_tokens: answers.reduce(
+                (sum, answer) =>
+                  sum + (Number(answer.usage?.total_tokens) || 0),
+                0,
+              ),
+            },
+          }))
+        : await send(texts);
+    } catch (error) {
+      if (isAvailabilityFailure(error)) this.recordFailure(circuit);
+      throw requestFailure(error, {}, { timeoutMs });
+    }
+    this.recordSuccess(circuit);
+    onUsage?.(raw.usage || null);
     const rows = Array.isArray(raw.data) ? raw.data : [];
     if (rows.length !== texts.length)
       throw Error("向量接口返回数量与输入不一致");

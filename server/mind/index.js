@@ -23,6 +23,7 @@ import { Senses } from "./senses.js";
 import { Observations } from "./observations.js";
 import { clamp, dayKey, parse, text } from "./util.js";
 import { Backoff } from "../core/backoff.js";
+import { EmbeddingService } from "../core/embedding.js";
 
 // The wish a day's snapshot says she was living. Older snapshots did not
 // store it; those fall back to her own-life threads from that day.
@@ -87,12 +88,13 @@ const TURN_CHANGES = new Set(
 // One of her, across every conversation. Sessions only say where something
 // happened; they are no longer walls between parts of her.
 export class Mind {
-  constructor(repo, { models } = {}) {
+  constructor(repo, { models, now = () => Date.now() } = {}) {
     this.repo = repo;
     this.db = repo.db;
     this.store = repo.store;
     migrateMind(this.db, this.store);
     this.backoff = new Backoff(this.db);
+    this.embedding = new EmbeddingService(repo, models, { now });
     this.db.exec(
       "CREATE INDEX IF NOT EXISTS core_events_time ON core_events(time)",
     );

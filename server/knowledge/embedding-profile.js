@@ -10,7 +10,11 @@ export const EMBEDDING_DEFAULTS = {
   dimensions: 0,
   batchSize: 32,
   timeoutMs: 90000,
+  // "openai": batched /embeddings. "multimodal": one item per request to
+  // /embeddings/multimodal. Both return the same vector space for text.
+  protocol: "openai",
 };
+export const EMBEDDING_PROTOCOLS = new Set(["openai", "multimodal"]);
 
 export function embeddingSignature(profile) {
   return createHash("sha256")
@@ -19,6 +23,7 @@ export function embeddingSignature(profile) {
         profile.baseUrl || "",
         profile.embeddingModel || profile.model || "",
         profile.dimensions || 0,
+        ...(profile.protocol === "multimodal" ? ["multimodal"] : []),
       ]),
     )
     .digest("hex");
@@ -58,6 +63,7 @@ export function saveEmbeddingProfile(repo, input) {
   }
   if (next.enabled && (!next.baseUrl || !next.model))
     throw Error("启用向量需要独立地址和模型名");
+  if (!EMBEDDING_PROTOCOLS.has(next.protocol)) throw Error("向量接口格式无效");
   for (const [key, min, max] of [
     ["dimensions", 0, 65536],
     ["batchSize", 1, 128],
@@ -87,14 +93,33 @@ export function resolveEmbeddingProfile(repo, models) {
   return { profile, signature: embeddingSignature(profile), legacy: true };
 }
 
-export async function embedBatches(models, profile, texts) {
+// A provider may accept fewer inputs per request than configured; its own
+// "max N" answer lowers the batch for the rest of this process.
+const batchLimits = new Map();
+
+export async function embedBatches(models, profile, texts, options = {}) {
   if (!profile.embedding) return [];
   const vectors = [];
-  const size = profile.batchSize || 32;
+  const limitKey = `${profile.baseUrl}|${profile.embeddingModel || profile.model}`;
+  let size = Math.min(
+    profile.batchSize || 32,
+    batchLimits.get(limitKey) || 128,
+  );
   let dimension = profile.dimensions || 0;
-  for (let start = 0; start < texts.length; start += size) {
+  for (let start = 0; start < texts.length;) {
     const batch = texts.slice(start, start + size);
-    const result = await models.embed(profile, batch);
+    let result;
+    try {
+      result = await models.embed(profile, batch, options);
+    } catch (error) {
+      if (error?.batchLimit > 0 && error.batchLimit < batch.length) {
+        size = error.batchLimit;
+        batchLimits.set(limitKey, size);
+        continue;
+      }
+      throw error;
+    }
+    start += batch.length;
     if (!Array.isArray(result) || result.length !== batch.length)
       throw Error("向量数量与输入不一致");
     for (const vector of result) {
