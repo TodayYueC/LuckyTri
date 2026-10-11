@@ -98,3 +98,36 @@ test("同时检索不同会话的向量不会覆盖彼此", async (t) => {
   assert.equal(result[0].title, "甲");
   assert.equal(second[0].title, "乙");
 });
+
+test("资料库的提问向量走同一个向量服务：同一句话只请求一次，服务暂停时不再等它", async (t) => {
+  const { enableFakeEmbedding } = await import("./helpers/fake-embedder.js");
+  const w = world();
+  t.after(w.close);
+  const calls = enableFakeEmbedding(w.store, w.system.models);
+  const km = w.system.knowledge;
+  const c = km.createCollection({ name: "资料" });
+  await km.ingest({
+    collectionId: c.id,
+    title: "猫的饲养",
+    text: "猫咪每天需要新鲜的水和适量的猫粮。",
+  });
+  const rows = [{ role: "user", userId: "10001", text: "猫咪要喝多少水" }];
+  calls.length = 0;
+  // The recall index asks first, as a turn does; knowledge reuses it.
+  await w.mind.embedding.embed(["猫咪要喝多少水"], { purpose: "query" });
+  const hits = await km.retrieveWithEmbed("group:1", rows);
+  assert.equal(calls.length, 1, "同一句话只向向量服务请求一次");
+  assert.equal(hits[0]?.title, "猫的饲养");
+  assert.ok(
+    calls.every((call) => call.options.timeoutMs <= 4000),
+    "回合前的提问向量用短超时",
+  );
+  // A paused service is not waited for; words still find the document.
+  w.mind.embedding.pausedUntil = Date.now() + 60000;
+  calls.length = 0;
+  const words = await km.retrieveWithEmbed("group:1", [
+    { role: "user", userId: "10001", text: "猫粮怎么喂" },
+  ]);
+  assert.equal(calls.length, 0);
+  assert.equal(words[0]?.title, "猫的饲养");
+});

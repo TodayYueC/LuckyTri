@@ -67,9 +67,14 @@ function allowedCollection(db, collection, session) {
 }
 
 export class KnowledgeManager {
-  constructor(repo, models) {
+  // `embedding` is her one embedding service. When given, a question is
+  // embedded through it: the vector the recall index just asked for is
+  // reused from its cache, a slow service gives up after a few seconds
+  // instead of holding the reply, and repeated failures pause it for both.
+  constructor(repo, models, { embedding = null } = {}) {
     this.repo = repo;
     this.models = models;
+    this.embedding = embedding;
   }
   collections(session = "") {
     return this.repo.db
@@ -308,11 +313,20 @@ export class KnowledgeManager {
       .get();
     if (profile.embedding && queries.length && searchable) {
       try {
-        vectors = await embedBatches(
-          this.models,
-          profile,
-          queries.map((query) => query.slice(0, 2000)),
-        );
+        vectors = this.embedding
+          ? this.embedding.available()
+            ? (
+                await this.embedding.embed(queries, {
+                  purpose: "query",
+                  session,
+                })
+              ).map((vector) => Array.from(vector))
+            : []
+          : await embedBatches(
+              this.models,
+              profile,
+              queries.map((query) => query.slice(0, 2000)),
+            );
       } catch {
         vectors = [];
       }
