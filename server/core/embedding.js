@@ -9,9 +9,17 @@ const CACHE_TTL = 30 * 60000;
 const FAILURES_TO_PAUSE = 3;
 const PAUSE_BASE_MS = 60000;
 const PAUSE_MAX_MS = 10 * 60000;
-// The plan endpoint refuses more than about one request a second. Filling the
-// index waits its turn; a recall during a reply does not wait for it.
+// Embedding endpoints limit requests and tokens per minute; the one this was
+// measured on answered 429 after about 16k tokens in a minute. Filling the
+// index stays under a token budget; a recall during a reply does not wait.
 export const BACKGROUND_INTERVAL_MS = 1500;
+export const BACKGROUND_TOKENS_PER_MINUTE = 4000;
+// Chinese text costs a little under one token per character.
+export const estimateEmbeddingTokens = (texts) =>
+  texts.reduce(
+    (sum, value) => sum + Math.ceil(String(value).length * 0.9) + 4,
+    0,
+  );
 
 export const textHash = (value) =>
   createHash("sha256").update(String(value)).digest("hex").slice(0, 32);
@@ -47,6 +55,8 @@ export class EmbeddingService {
     this.lastError = "";
     this.backgroundAt = 0;
     this.backgroundInterval = BACKGROUND_INTERVAL_MS;
+    this.tokensPerMinute = BACKGROUND_TOKENS_PER_MINUTE;
+    this.spent = [];
     this.stats = { requests: 0, texts: 0, tokens: 0, cacheHits: 0, ms: [] };
   }
   resolved() {
@@ -102,13 +112,7 @@ export class EmbeddingService {
           ...profile,
           ...(background
             ? {
-                beforeBatch: async () => {
-                  const wait =
-                    this.backgroundAt + this.backgroundInterval - Date.now();
-                  if (wait > 0)
-                    await new Promise((resolve) => setTimeout(resolve, wait));
-                  this.backgroundAt = Date.now();
-                },
+                beforeBatch: (batch) => this.pace(batch),
               }
             : {}),
         },
@@ -134,11 +138,17 @@ export class EmbeddingService {
     } catch (error) {
       // A rate limit means the pace was too fast for this account; slow down
       // for the rest of this process instead of tripping it again.
-      if (background && Number(error?.status) === 429)
+      if (background && Number(error?.status) === 429) {
         this.backgroundInterval = Math.min(
           15000,
           this.backgroundInterval * 2 || BACKGROUND_INTERVAL_MS,
         );
+        if (this.tokensPerMinute > 0)
+          this.tokensPerMinute = Math.max(
+            1000,
+            Math.floor(this.tokensPerMinute * 0.7),
+          );
+      }
       this.failures++;
       this.lastError = String(error.message || error).slice(0, 200);
       if (this.failures >= FAILURES_TO_PAUSE)
@@ -159,6 +169,31 @@ export class EmbeddingService {
     this.stats.tokens += tokens;
     this.record(purpose, session, tokens, missing.length, now);
     return out;
+  }
+  // Waits until a background batch fits both the request spacing and the
+  // token budget of the last minute. The wall clock is right here: this is
+  // pacing against a real service, not a moment in her life.
+  async pace(batch) {
+    const cost = estimateEmbeddingTokens(batch);
+    for (;;) {
+      const at = Date.now();
+      this.spent = this.spent.filter((entry) => entry.at > at - 60000);
+      const used = this.spent.reduce((sum, entry) => sum + entry.tokens, 0);
+      const spacing = this.backgroundAt + this.backgroundInterval - at;
+      const overBudget =
+        this.tokensPerMinute > 0 &&
+        used > 0 &&
+        used + cost > this.tokensPerMinute;
+      if (spacing <= 0 && !overBudget) break;
+      const wait = Math.max(
+        spacing,
+        overBudget ? this.spent[0].at + 60000 - at : 0,
+        50,
+      );
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+    this.backgroundAt = Date.now();
+    this.spent.push({ at: this.backgroundAt, tokens: cost });
   }
   remember(key, vector, now) {
     this.cache.delete(key);

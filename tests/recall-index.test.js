@@ -8,6 +8,7 @@ function vectorWorld(t) {
   t.after(w.close);
   const calls = enableFakeEmbedding(w.store, w.system.models);
   w.mind.embedding.backgroundInterval = 0;
+  w.mind.embedding.tokensPerMinute = 0;
   return { w, calls };
 }
 

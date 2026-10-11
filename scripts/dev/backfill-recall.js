@@ -59,13 +59,16 @@ const before = recall.store.coverage(profile);
 console.log(
   `向量档案 ${profile.slice(0, 12)}…，待补建 ${before.total - (before.embedded || 0)} 条`,
 );
+// --kinds fact,self limits the run; the endpoint's quota may be shared with a
+// live instance.
+const kinds = option("--kinds", "") ? option("--kinds").split(",") : undefined;
 started = performance.now();
 const tokensBefore = system.mind.embedding.stats.tokens;
 let total = 0;
 for (;;) {
   let saved = 0;
   try {
-    saved = await recall.embedPending({ limit: 200 });
+    saved = await recall.embedPending({ limit: 200, kinds });
   } catch (error) {
     // A rate limit or a short outage: wait, then continue where it stopped.
     console.log(`\n${error.message}，30 秒后继续`);

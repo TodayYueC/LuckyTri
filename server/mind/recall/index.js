@@ -9,10 +9,18 @@ import { KINDS } from "./sources.js";
 // Unrelated sentences from the configured model sit near 0.5, paraphrases of
 // one fact near 0.9, and a statement and its opposite also near 0.85. So a
 // vector says "about the same thing", never "the same fact".
-export const SEMANTIC_FLOOR = 0.5;
-export const SEMANTIC_SPAN = 0.4;
+// Between stored items (fact to fact) the scale is wider than between a chat
+// line and a fact: there, the right fact scored 0.42-0.65 and the best wrong
+// one 0.39-0.58 on the benchmark, yet the right one ranked first 40 of 49
+// times. Thresholds below are set from evaluate-recall.js --analyze.
 export const RELATED = 0.62;
 export const NEAR_DUPLICATE = 0.95;
+export const COSINE_FLOOR = 0.4;
+export const MIN_SPREAD = 0.05;
+export const STANDS_OUT = 0.65;
+export const FLOOR_SPEAKER = 0.42;
+export const FLOOR_PRESENT = 0.48;
+export const FLOOR_OTHER = 0.55;
 const RRF_K = 60;
 const CATCH_UP_EVERY = 60000;
 export const HYBRID_COVERAGE = 0.8;
@@ -68,9 +76,6 @@ const BASIS_LABEL = {
   inferred: "推断，不是对方明说的",
   hearsay: "转述，未经本人确认",
 };
-
-const semantic = (score) =>
-  clamp((score - SEMANTIC_FLOOR) / SEMANTIC_SPAN, 0, 1);
 
 function speakerQueries(rows) {
   const groups = new Map();
@@ -155,17 +160,16 @@ export class Recall {
   // Share of searchable items that have a vector for the active profile.
   // Below the threshold (a new model, a fresh database) facts are recalled by
   // words as before, so a half-built index never hides what she knows.
-  coverage(now = Date.now()) {
+  coverage(now = Date.now(), kinds = KINDS) {
     const profile = this.profile();
     if (!profile) return 0;
-    if (
-      this.coverageCache?.profile === profile &&
-      now - this.coverageCache.at < 60000
-    )
-      return this.coverageCache.value;
-    const { total, embedded } = this.store.coverage(profile);
+    const key = `${profile}|${kinds.join(",")}`;
+    this.coverageCache ||= new Map();
+    const cached = this.coverageCache.get(key);
+    if (cached && now - cached.at < 60000) return cached.value;
+    const { total, embedded } = this.store.coverage(profile, kinds);
     const value = total ? (embedded || 0) / total : 0;
-    this.coverageCache = { profile, at: now, value };
+    this.coverageCache.set(key, { at: now, value });
     return value;
   }
   sync(kind, ref) {
@@ -181,13 +185,15 @@ export class Recall {
   }
   // Fills missing vectors in the background, newest first. Returns how many
   // were written; an unavailable service just leaves them for later.
-  async embedPending({ limit = 100, now = Date.now() } = {}) {
+  async embedPending({ limit = 100, now = Date.now(), kinds } = {}) {
     const profile = this.profile();
     if (!profile || !this.embedding.available(now)) return 0;
-    const pending = this.store.pending(profile, limit);
+    const pending = this.store.pending(profile, limit, kinds);
     if (!pending.length) return 0;
+    // The opening of an item carries its meaning; the rest is detail that
+    // costs tokens without moving the vector much.
     const vectors = await this.embedding.embed(
-      pending.map((row) => row.text),
+      pending.map((row) => row.text.slice(0, 300)),
       { purpose: "document" },
     );
     let saved = 0;
@@ -268,6 +274,7 @@ export class Recall {
     vectors,
     lexicalOnly = false,
     includeStatuses = ["active"],
+    profileFacts = 2,
   }) {
     this.ensure(now);
     const allow = this.#permit(session, now);
@@ -281,33 +288,47 @@ export class Recall {
     const mode = queryVectors && profile ? "hybrid" : "lexical";
     const kindSet = new Set(kinds);
     const lists = [];
+    // Raw cosine between a short chat line and a stored fact is low and
+    // varies from line to line; what tells is how far an item stands above
+    // the rest for this same line. `stand` is that height: 1 for the best
+    // hit, 0 at the median of the nearest sixty. A line that lifts nothing
+    // above the crowd relates to nothing by meaning.
     const sem = new Map();
+    const cos = new Map();
     if (mode === "hybrid") {
-      const okIds = new Set();
-      const filter = (id) => {
-        if (okIds.has(id)) return true;
-        return kindSet.has(id.slice(0, id.indexOf(":")));
-      };
+      const filter = (id) => kindSet.has(id.slice(0, id.indexOf(":")));
       queryVectors.forEach((vector) => {
         const hits = this.store.nearest(profile, vector, {
           limit: 60,
           allow: filter,
-          minScore: SEMANTIC_FLOOR,
         });
-        lists.push(hits.map((h) => h.id));
-        for (const hit of hits)
-          sem.set(hit.id, Math.max(sem.get(hit.id) || 0, hit.score));
+        if (!hits.length) return;
+        const top = hits[0].score;
+        const median = hits[Math.floor(hits.length / 2)].score;
+        const spread = top - median;
+        const distinct = spread >= MIN_SPREAD;
+        lists.push(
+          hits.filter((h) => h.score >= COSINE_FLOOR).map((h) => h.id),
+        );
+        for (const hit of hits) {
+          cos.set(hit.id, Math.max(cos.get(hit.id) || 0, hit.score));
+          if (!distinct || hit.score < COSINE_FLOOR) continue;
+          const stand = (hit.score - median) / spread;
+          sem.set(hit.id, Math.max(sem.get(hit.id) || 0, stand));
+        }
       });
     }
-    for (const q of queries)
-      lists.push(
-        this.store
-          .keyword(ftsMatchQuery(q.text), 80)
-          .filter((id) => kindSet.has(id.slice(0, id.indexOf(":")))),
-      );
+    const vectorOnly = rank === "vector";
+    if (!vectorOnly)
+      for (const q of queries)
+        lists.push(
+          this.store
+            .keyword(ftsMatchQuery(q.text), 80)
+            .filter((id) => kindSet.has(id.slice(0, id.indexOf(":")))),
+        );
     const speakers = new Set(queries.map((q) => q.speaker).filter(Boolean));
     const present = new Set([...people.map(String), ...speakers]);
-    lists.push(this.store.byPeople([...present], kinds, 120));
+    if (!vectorOnly) lists.push(this.store.byPeople([...present], kinds, 120));
     const rrf = new Map();
     for (const list of lists)
       list.forEach((id, index) =>
@@ -336,9 +357,23 @@ export class Recall {
       const who = this.store.people(row.id);
       const aboutSpeaker = who.some((id) => speakers.has(id));
       const aboutPresent = who.some((id) => present.has(id));
-      const cosine = sem.get(row.id) ?? null;
+      const stand = sem.get(row.id) ?? null;
+      const cosine = cos.get(row.id) ?? null;
+      // Standing out among this line's neighbours is necessary, not enough:
+      // the best hit always stands out. Something about the speaker needs
+      // less evidence than something about a person who is not here.
+      const floor = aboutSpeaker
+        ? FLOOR_SPEAKER
+        : aboutPresent || !who.length
+          ? FLOOR_PRESENT
+          : FLOOR_OTHER;
+      const meant =
+        stand !== null &&
+        stand >= STANDS_OUT &&
+        cosine !== null &&
+        cosine >= floor;
       const features = {
-        sem: cosine === null ? 0 : semantic(cosine),
+        sem: stand === null ? 0 : clamp(stand),
         lex: Math.min(1, overlap / 4),
         person: aboutSpeaker ? 1 : aboutPresent ? 0.5 : 0,
         recency:
@@ -351,14 +386,17 @@ export class Recall {
       };
       // Something must actually connect it to what is being said: meaning,
       // shared words, or being about the person speaking.
-      const related =
-        (cosine !== null && cosine >= RELATED) ||
-        overlap >= 2 ||
-        (aboutSpeaker && row.kind === "fact");
+      // Two shared words can be a frame ("在学…") rather than a subject; for
+      // a person who is not here the words must overlap more.
+      const worded = overlap >= (aboutPresent || !who.length ? 2 : 3);
+      const related = vectorOnly
+        ? meant
+        : meant || worded || (aboutSpeaker && row.kind === "fact");
       if (!related) continue;
       const reliability = RELIABILITY[row.basis] ?? 0.8;
-      const value =
-        rank === "rrf"
+      const value = vectorOnly
+        ? stand
+        : rank === "rrf"
           ? rrf.get(row.id)
           : Object.entries(weights).reduce(
               (sum, [key, w]) => sum + w * features[key],
@@ -368,6 +406,9 @@ export class Recall {
         row,
         who,
         cosine,
+        stand,
+        meant,
+        worded,
         overlap,
         features,
         rrf: rrf.get(row.id),
@@ -375,10 +416,15 @@ export class Recall {
       });
     }
     scored.sort((a, b) => b.score - a.score || b.row.updated - a.row.updated);
-    // Two wordings of the same thing take one place.
+    // Two wordings of the same thing take one place. A fact that is only
+    // about the speaker, with nothing in what they said reaching it, is
+    // background: a couple of those help, a dozen crowd out the relevant.
     const chosen = [];
+    let background = 0;
     for (const item of scored) {
       if (chosen.length >= limit) break;
+      const onlyAbout = !item.meant && !item.worded;
+      if (onlyAbout && rank !== "rrf" && background >= profileFacts) continue;
       const vector = profile ? this.store.vector(item.row.id, profile) : null;
       const duplicate = chosen.some((other) => {
         const otherVector = profile
@@ -391,7 +437,9 @@ export class Recall {
           similar(other.row.text, item.row.text, 0.85)
         );
       });
-      if (!duplicate) chosen.push(item);
+      if (duplicate) continue;
+      if (onlyAbout) background++;
+      chosen.push(item);
     }
     return {
       mode,
@@ -414,7 +462,7 @@ export class Recall {
       !this.profile() ||
       !this.embedding.available(now) ||
       !this.ready() ||
-      this.coverage(now) < HYBRID_COVERAGE
+      this.coverage(now, ["fact"]) < HYBRID_COVERAGE
     )
       return memory.retrieve(session, rows, now, { people, touch, forSpeech });
     const result = await this.search({
@@ -425,6 +473,9 @@ export class Recall {
       kinds: ["fact"],
       limit,
       vectors: options.vectors,
+      ...(options.profileFacts !== undefined
+        ? { profileFacts: options.profileFacts }
+        : {}),
     });
     if (result.mode !== "hybrid")
       return memory.retrieve(session, rows, now, { people, touch, forSpeech });
@@ -449,8 +500,7 @@ export class Recall {
       const permission = memory.permission(m, session, now);
       if (!permission.recall) continue;
       const local = scopes.has(m.session_id) || m.session_id === "__shared__";
-      if (touch && (item.cosine >= 0.75 || item.features.person === 1))
-        access.run(now, m.id);
+      if (touch && (item.meant || item.worded)) access.run(now, m.id);
       const age = now - Number(m.created || now);
       const replaced = this.db
         .prepare(
@@ -467,14 +517,13 @@ export class Recall {
         type: m.type,
         confidence: m.confidence,
         importance: m.importance,
-        whySelected:
-          item.cosine !== null && item.cosine >= RELATED
-            ? item.overlap >= 2
-              ? "semantic+lexical"
-              : "semantic"
-            : item.features.person
-              ? "subject"
-              : "lexical",
+        whySelected: item.meant
+          ? item.worded
+            ? "semantic+lexical"
+            : "semantic"
+          : item.features.person
+            ? "subject"
+            : "lexical",
         source: local
           ? "这里"
           : isPrivateSession(m.session_id)
@@ -515,10 +564,13 @@ export class Recall {
     const seen = new Set([...refs.values()].map((k) => k.id));
     const profile = this.profile();
     queries.forEach((q, i) => {
+      // Among this person's own facts the nearest few are the candidates;
+      // the model decides whether any is the same, replaced or in conflict.
+      const theirs = new Set(this.store.byPeople([q.speaker], ["fact"], 2000));
       const hits = this.store.nearest(profile, vectors[i], {
         limit: perSubject,
-        minScore: RELATED,
-        allow: (id) => id.startsWith("fact:"),
+        minScore: COSINE_FLOOR,
+        allow: (id) => theirs.has(id),
       });
       for (const hit of hits) {
         if (known.length >= 30) break;

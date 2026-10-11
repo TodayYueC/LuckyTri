@@ -231,22 +231,26 @@ export class RecallStore {
   }
   // Items that still need a vector for this profile, oldest words first so a
   // rebuild is resumable.
-  pending(profile, limit = 100) {
+  pending(profile, limit = 100, kinds = KINDS) {
     return this.db
       .prepare(
         `SELECT i.id,i.text,i.text_hash FROM mind_index i
          LEFT JOIN mind_vectors v ON v.item_id=i.id AND v.profile=?
          WHERE (v.item_id IS NULL OR v.text_hash!=i.text_hash) AND i.status!='candidate'
-         ORDER BY i.updated DESC LIMIT ?`,
+         AND i.kind IN (${kinds.map((k) => `'${k.replace(/[^a-z]/g, "")}'`).join(",")})
+         ORDER BY CASE i.kind WHEN 'fact' THEN 0 WHEN 'episode' THEN 1 WHEN 'anticipation' THEN 2
+           WHEN 'self' THEN 3 WHEN 'thought' THEN 4 WHEN 'diary' THEN 5 WHEN 'period' THEN 6 ELSE 7 END,
+           i.updated DESC LIMIT ?`,
       )
       .all(profile, limit);
   }
-  coverage(profile) {
+  coverage(profile, kinds = KINDS) {
     return this.db
       .prepare(
         `SELECT COUNT(*) total, SUM(CASE WHEN v.text_hash=i.text_hash THEN 1 ELSE 0 END) embedded
          FROM mind_index i LEFT JOIN mind_vectors v ON v.item_id=i.id AND v.profile=?
-         WHERE i.status!='candidate'`,
+         WHERE i.status!='candidate'
+         AND i.kind IN (${kinds.map((k) => `'${k.replace(/[^a-z]/g, "")}'`).join(",")})`,
       )
       .get(profile);
   }

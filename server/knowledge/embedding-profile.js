@@ -110,7 +110,7 @@ export async function embedBatches(models, profile, texts, options = {}) {
     const batch = texts.slice(start, start + size);
     let result;
     try {
-      await profile.beforeBatch?.();
+      await profile.beforeBatch?.(batch);
       result = await models.embed(profile, batch, options);
     } catch (error) {
       if (error?.batchLimit > 0 && error.batchLimit < batch.length) {
