@@ -16,7 +16,7 @@ import { dirname, basename, resolve, join } from "node:path";
 import { VERSION } from "../version.js";
 import { withBackupLock } from "./backup-lock.js";
 
-export const DATABASE_VERSION = 4;
+export const DATABASE_VERSION = 5;
 const appVersion = VERSION;
 const IDENTITY = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 

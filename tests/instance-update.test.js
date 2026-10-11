@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { world } from "./helpers/world.js";
+import { DATABASE_VERSION } from "../server/storage/archive.js";
 import { UpdateChecker } from "../server/studio/updates.js";
 import {
   InstanceUpdater,
@@ -174,7 +175,10 @@ test("failed new startup rolls back mutated data and restores old code, preservi
       .name,
     "Rina",
   );
-  assert.equal(db.prepare("PRAGMA user_version").get().user_version, 4);
+  assert.equal(
+    db.prepare("PRAGMA user_version").get().user_version,
+    DATABASE_VERSION,
+  );
   db.close();
   assert.ok(existsSync(`${f.paths.database}.update-failed-${f.id}`));
   assert.ok(f.events.includes("stop:456"));

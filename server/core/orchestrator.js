@@ -537,6 +537,7 @@ export class ChatSystem {
       const { more } = this.repo.pruneTraces(now);
       this.tracePruneDue = more ? now : now + TRACE_PRUNE_INTERVAL_MS;
     }
+    this.recallUpkeep(now);
     for (const { id } of this.repo.db
       .prepare("SELECT id FROM sessions WHERE enabled=1 AND archived=0")
       .all()) {
@@ -545,6 +546,39 @@ export class ChatSystem {
       this.backgroundWork(id, policy, now);
       this.checkBacklog(id, now);
     }
+  }
+  // Keeps the recall index in step with her memories and fills missing
+  // vectors a little at a time, so a new profile or an old database is
+  // covered within the hour without a burst of requests.
+  recallUpkeep(now = this.now()) {
+    const recall = this.mind.recall;
+    try {
+      recall.ensure(now);
+    } catch (error) {
+      this.recallError = error.message;
+    }
+    if (
+      this.embeddingRun ||
+      !recall.profile() ||
+      !this.mind.backoff.ready("recall:embed", now)
+    )
+      return;
+    const settle = (write) => {
+      try {
+        if (!this.queue.closed) write();
+      } catch {
+        // The database may already be closed during shutdown.
+      }
+    };
+    this.embeddingRun = recall
+      .embedPending({ limit: 100, now })
+      .then(() => settle(() => this.mind.backoff.succeed("recall:embed")))
+      .catch((error) =>
+        settle(() => this.mind.backoff.fail("recall:embed", error, now)),
+      )
+      .finally(() => {
+        this.embeddingRun = null;
+      });
   }
   checkBacklog(session, now = this.now()) {
     if (this.queue.lanes.has(session)) return null;

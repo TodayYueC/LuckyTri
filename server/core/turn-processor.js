@@ -244,7 +244,7 @@ export class TurnProcessor {
       // the past; her inner state is folded as of the replayed moment.
       const memories =
         policy.memory && !replay && !ownInitiative
-          ? this.owner.mind.memory.retrieve(session, batch, now, {
+          ? await this.owner.mind.recall.memories(session, batch, now, {
               people,
               touch: live,
               forSpeech: true,

@@ -473,6 +473,7 @@ export class Self {
         origin,
         home,
       );
+    this.mind.recall?.sync("self", prior?.thread || id);
     return { id, thread: prior?.thread || id, action };
   }
   // Wording that matches something she learned in private stays in that room,

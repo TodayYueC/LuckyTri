@@ -14,7 +14,7 @@ import {
 import { agoLabel } from "./clock.js";
 import { hasCredential, secretRequest } from "./guard.js";
 import { MEMORY_IDLE_DAYS, grounded } from "./salience.js";
-import { DAY, clamp, similar, text } from "./util.js";
+import { DAY, clamp, parse, similar, text } from "./util.js";
 import { recallIntent } from "./continuity.js";
 import { consolidationDecision } from "./memory-policy.js";
 import { requestedName } from "../core/person-name.js";
@@ -65,6 +65,16 @@ function recallQuery(rows) {
     .join(" OR ");
 }
 const marks = (list) => list.map(() => "?").join(",");
+
+// How a fact was learned, from the certainty its sources carry.
+function basisOf(sources) {
+  const certainty = (Array.isArray(sources) ? sources : []).map(
+    (s) => s?.certainty,
+  );
+  if (certainty.includes("inferred")) return "inferred";
+  if (certainty.includes("hearsay")) return "hearsay";
+  return "stated";
+}
 
 export function isPrivateSession(session) {
   const value = String(session || "");
@@ -380,6 +390,7 @@ export class MemoryManager {
       db.exec("RELEASE memory_update");
       throw e;
     }
+    this.mind?.recall?.sync("fact", id);
     this.repo.store.revision++;
   }
   // Withdrawal leaves a tombstone, so a later consolidation cannot bring the
@@ -458,6 +469,14 @@ export class MemoryManager {
       db.prepare(`DELETE FROM core_memories WHERE id IN (${placeholders})`).run(
         ...rowIds,
       );
+      // Deleted means deleted: the searchable copy and its vectors go too.
+      for (const id of rowIds) this.mind?.recall?.store.remove(`fact:${id}`);
+      db.prepare(
+        `DELETE FROM mind_links WHERE from_id IN (${placeholders}) OR to_id IN (${placeholders})`,
+      ).run(
+        ...rowIds.map((id) => `fact:${id}`),
+        ...rowIds.map((id) => `fact:${id}`),
+      );
       db.exec("COMMIT");
     } catch (e) {
       db.exec("ROLLBACK");
@@ -479,19 +498,21 @@ export class MemoryManager {
     time = Date.now(),
   }) {
     const db = this.repo.db;
-    if (
-      db
-        .prepare(
-          "SELECT 1 FROM core_memories WHERE subject=? AND content=? AND status!='deleted'",
-        )
-        .get(subject, content)
-    )
+    const same = db
+      .prepare(
+        "SELECT id FROM core_memories WHERE subject=? AND content=? AND status!='deleted'",
+      )
+      .get(subject, content);
+    if (same) {
+      // Said again is remembered more firmly, not remembered twice.
+      this.reinforce(same.id, sources, time);
       return null;
+    }
     if (this.revokedFor(subject).some((old) => similar(old, content, 0.75)))
       return null;
     const id = randomUUID();
     db.prepare(
-      "INSERT INTO core_memories(id,session_id,subject,content,type,confidence,importance,status,locked,sources,created,updated,discretion) VALUES (?,?,?,?,?,?,?,'confirmed',?,?,?,?,?)",
+      "INSERT INTO core_memories(id,session_id,subject,content,type,confidence,importance,status,locked,sources,created,updated,discretion,basis,last_confirmed) VALUES (?,?,?,?,?,?,?,'confirmed',?,?,?,?,?,?,?)",
     ).run(
       id,
       session,
@@ -505,9 +526,43 @@ export class MemoryManager {
       time,
       time,
       DISCRETIONS.has(discretion) ? discretion : "open",
+      basisOf(sources),
+      time,
     );
     indexMemory(db, id, content);
+    this.mind?.recall?.sync("fact", id);
     return id;
+  }
+  // Another time the person said the same thing. The memory keeps its words
+  // and gains the new source, a count and the date it was last confirmed.
+  reinforce(id, sources = [], time = Date.now()) {
+    const db = this.repo.db;
+    const row = db
+      .prepare(
+        "SELECT sources,evidence_count FROM core_memories WHERE id=? AND status='confirmed'",
+      )
+      .get(id);
+    if (!row) return false;
+    const old = parse(row.sources, []);
+    const known = new Set(old.map((s) => `${s?.id}`));
+    const added = (Array.isArray(sources) ? sources : []).filter(
+      (s) => s && !known.has(`${s.id}`),
+    );
+    if (!added.length && old.length) return false;
+    db.prepare(
+      "UPDATE core_memories SET sources=?,evidence_count=evidence_count+1,last_confirmed=MAX(COALESCE(last_confirmed,0),?) WHERE id=?",
+    ).run(JSON.stringify([...old, ...added].slice(-12)), time, id);
+    this.mind?.recall?.sync("fact", id);
+    return true;
+  }
+  // Two statements that cannot both hold and could not be settled. Both stay
+  // remembered; the link lets recall show them side by side with their dates.
+  conflict(newer, older, sources = [], time = Date.now()) {
+    this.repo.db
+      .prepare(
+        "INSERT OR IGNORE INTO mind_links(from_id,to_id,relation,created,sources) VALUES (?,?,'conflicts',?,?)",
+      )
+      .run(`fact:${newer}`, `fact:${older}`, time, JSON.stringify(sources));
   }
   // "记住，我……" is a friend asking to be remembered, not a draft for review.
   remember(message) {
@@ -741,7 +796,9 @@ export class MemoryManager {
       const names = speakerNames(db, [session]);
       const self = this.mind?.nature.current().name || "self";
       const zone = this.mind?.timeZone() || "Asia/Shanghai";
-      const { known, refs } = this.known(session, block);
+      const { known, refs } = this.mind?.recall
+        ? await this.mind.recall.knownFor(session, block)
+        : this.known(session, block);
       const value = await models.call(
         profile,
         "memory",
@@ -814,6 +871,20 @@ export class MemoryManager {
             f.discretion === "secret" ||
             askedSecret(block, f.subject, Math.max(...f.sources));
           const content = applySpeakerNames(f.content.trim(), names);
+          const citations = sources.map((m) => ({
+            id: m.seq,
+            text: m.text,
+            speaker: m.userId,
+            time: m.time,
+            certainty: f.certainty || "unknown",
+          }));
+          const confirmed = (Array.isArray(f.confirms) ? f.confirms : [])
+            .map((ref) => refs.get(String(ref)))
+            .find((old) => old && String(old.subject) === String(f.subject));
+          if (confirmed) {
+            this.reinforce(confirmed.id, citations, now);
+            continue;
+          }
           const discretion = secret
             ? "secret"
             : privateChat || f.discretion === "private"
@@ -829,13 +900,7 @@ export class MemoryManager {
                 ? Math.min(0.6, f.confidence)
                 : f.confidence,
             importance: f.importance,
-            sources: sources.map((m) => ({
-              id: m.seq,
-              text: m.text,
-              speaker: m.userId,
-              time: m.time,
-              certainty: f.certainty || "unknown",
-            })),
+            sources: citations,
             discretion,
             time: now,
           });
@@ -849,6 +914,11 @@ export class MemoryManager {
             const old = refs.get(String(ref));
             if (old && String(old.subject) === String(f.subject))
               this.supersede(old.id, id);
+          }
+          for (const ref of Array.isArray(f.conflicts) ? f.conflicts : []) {
+            const old = refs.get(String(ref));
+            if (old && String(old.subject) === String(f.subject))
+              this.conflict(id, old.id, f.sources, now);
           }
         }
         db.prepare(

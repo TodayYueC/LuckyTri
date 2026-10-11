@@ -5,6 +5,7 @@ import { migrateKnowledge } from "../knowledge/schema.js";
 import { migrateMind } from "../mind/schema.js";
 import { recordUsage } from "../mind/budget.js";
 import { migratePlugins } from "../plugins/schema.js";
+import { migrateRecall } from "../mind/recall/schema.js";
 
 export function migrateCore(store) {
   const db = store.db;
@@ -126,6 +127,7 @@ export function migrateCore(store) {
   ).run();
   migrateKnowledge(db);
   migrateMind(db, store);
+  migrateRecall(db);
   migratePlugins(db);
   db.exec(`PRAGMA user_version=${DATABASE_VERSION}`);
 }

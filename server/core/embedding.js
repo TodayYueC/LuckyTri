@@ -9,6 +9,9 @@ const CACHE_TTL = 30 * 60000;
 const FAILURES_TO_PAUSE = 3;
 const PAUSE_BASE_MS = 60000;
 const PAUSE_MAX_MS = 10 * 60000;
+// The plan endpoint refuses more than about one request a second. Filling the
+// index waits its turn; a recall during a reply does not wait for it.
+export const BACKGROUND_INTERVAL_MS = 1500;
 
 export const textHash = (value) =>
   createHash("sha256").update(String(value)).digest("hex").slice(0, 32);
@@ -42,6 +45,8 @@ export class EmbeddingService {
     this.failures = 0;
     this.pausedUntil = 0;
     this.lastError = "";
+    this.backgroundAt = 0;
+    this.backgroundInterval = BACKGROUND_INTERVAL_MS;
     this.stats = { requests: 0, texts: 0, tokens: 0, cacheHits: 0, ms: [] };
   }
   resolved() {
@@ -89,10 +94,24 @@ export class EmbeddingService {
     if (!missing.length) return out;
     const started = performance.now();
     let tokens = 0;
+    const background = purpose !== "query";
     try {
       const vectors = await embedBatches(
         this.models,
-        profile,
+        {
+          ...profile,
+          ...(background
+            ? {
+                beforeBatch: async () => {
+                  const wait =
+                    this.backgroundAt + this.backgroundInterval - Date.now();
+                  if (wait > 0)
+                    await new Promise((resolve) => setTimeout(resolve, wait));
+                  this.backgroundAt = Date.now();
+                },
+              }
+            : {}),
+        },
         missing.map((index) => String(texts[index]).slice(0, 2000)),
         {
           priority:
@@ -113,6 +132,13 @@ export class EmbeddingService {
       this.failures = 0;
       this.lastError = "";
     } catch (error) {
+      // A rate limit means the pace was too fast for this account; slow down
+      // for the rest of this process instead of tripping it again.
+      if (background && Number(error?.status) === 429)
+        this.backgroundInterval = Math.min(
+          15000,
+          this.backgroundInterval * 2 || BACKGROUND_INTERVAL_MS,
+        );
       this.failures++;
       this.lastError = String(error.message || error).slice(0, 200);
       if (this.failures >= FAILURES_TO_PAUSE)

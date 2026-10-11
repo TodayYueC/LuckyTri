@@ -129,6 +129,7 @@ export class Meetings {
       "INSERT INTO mind_meeting_people(meeting_id,user_id) VALUES (?,?)",
     );
     for (const userId of people) link.run(id, userId);
+    this.mind.recall?.sync("meeting", id);
     return { id, willMet };
   }
   #open(clause, args) {
