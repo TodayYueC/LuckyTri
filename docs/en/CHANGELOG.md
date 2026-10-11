@@ -2,6 +2,10 @@
 
 # Changelog
 
+## 1.1.2 — 2026-10-11
+
+- Embedding length is no longer forced to 1024. Dimension 0 does not ask the service for a length, so doubao-embedding-vision uses its own 2048. A profile already saved as 1024 has to be set back to 0 and saved again.
+
 ## 1.1.1 — 2026-10-11
 
 - The embedding service asks for its request address and key. The model name can be left empty; a Volcengine Ark address uses doubao-embedding-vision.
