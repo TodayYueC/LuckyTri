@@ -2,6 +2,7 @@ import { interestTerms } from "../attention.js";
 import { dot } from "../../core/embedding.js";
 import { agoLabel } from "../clock.js";
 import { isPrivateSession } from "../memory.js";
+import { recallIntent } from "../continuity.js";
 import { DAY, clamp, parse, similar } from "../util.js";
 import { RecallStore } from "./store.js";
 import { MEMORY_KINDS } from "./sources.js";
@@ -22,6 +23,10 @@ export const FLOOR_SPEAKER = 0.42;
 export const FLOOR_PRESENT = 0.48;
 export const FLOOR_OTHER = 0.55;
 const RRF_K = 60;
+// Facts about the speaker kept when they ask what she remembers of them.
+const RECALL_INTENT_FACTS = 5;
+// Studio-pinned facts carried into a turn regardless of the words.
+const PINNED_LIMIT = 3;
 const CATCH_UP_EVERY = 60000;
 export const HYBRID_COVERAGE = 0.8;
 
@@ -478,6 +483,10 @@ export class Recall {
       this.coverage(now, ["fact"]) < HYBRID_COVERAGE
     )
       return memory.retrieve(session, rows, now, { people, touch, forSpeech });
+    // "Do you remember me?" asks for a range of what she knows about the
+    // speaker, not only what today's words reach; the word path widened the
+    // same way, and the hybrid path should not answer it more narrowly.
+    const asked = recallIntent(rows);
     const result = await this.search({
       session,
       rows,
@@ -488,10 +497,37 @@ export class Recall {
       vectors: options.vectors,
       ...(options.profileFacts !== undefined
         ? { profileFacts: options.profileFacts }
-        : {}),
+        : asked
+          ? { profileFacts: RECALL_INTENT_FACTS }
+          : {}),
     });
     if (result.mode !== "hybrid")
       return memory.retrieve(session, rows, now, { people, touch, forSpeech });
+    // A fact pinned in the studio stays in mind here, as it does on the word
+    // path, even when nothing said right now reaches it.
+    const chosen = new Set(result.items.map((item) => item.row.ref));
+    const pinned = this.db
+      .prepare(
+        `SELECT id FROM core_memories WHERE locked=1 AND status='confirmed' AND created<=? AND (expires IS NULL OR expires>?) ORDER BY importance DESC, updated DESC LIMIT ${PINNED_LIMIT * 3}`,
+      )
+      .all(now, now)
+      .map((row) => row.id)
+      .filter((id) => !chosen.has(id));
+    const scopesHere = new Set(memory.scopes(session));
+    let pinnedTaken = 0;
+    for (const id of pinned) {
+      if (pinnedTaken >= PINNED_LIMIT || result.items.length >= limit) break;
+      const row = this.store.get(`fact:${id}`);
+      if (!row || !scopesHere.has(row.session_id)) continue;
+      result.items.push({
+        row,
+        meant: false,
+        worded: false,
+        pinned: true,
+        features: { person: 0 },
+      });
+      pinnedTaken++;
+    }
     const ids = result.items.map((item) => item.row.ref);
     if (!ids.length) return [];
     const facts = new Map(
@@ -513,7 +549,8 @@ export class Recall {
       const permission = memory.permission(m, session, now);
       if (!permission.recall) continue;
       const local = scopes.has(m.session_id) || m.session_id === "__shared__";
-      if (touch && (item.meant || item.worded)) access.run(now, m.id);
+      if (touch && (item.meant || item.worded || item.pinned))
+        access.run(now, m.id);
       const age = now - Number(m.created || now);
       const replaced = this.db
         .prepare(
@@ -530,13 +567,15 @@ export class Recall {
         type: m.type,
         confidence: m.confidence,
         importance: m.importance,
-        whySelected: item.meant
-          ? item.worded
-            ? "semantic+lexical"
-            : "semantic"
-          : item.features.person
-            ? "subject"
-            : "lexical",
+        whySelected: item.pinned
+          ? "locked"
+          : item.meant
+            ? item.worded
+              ? "semantic+lexical"
+              : "semantic"
+            : item.features.person
+              ? "subject"
+              : "lexical",
         source: local
           ? "这里"
           : isPrivateSession(m.session_id)

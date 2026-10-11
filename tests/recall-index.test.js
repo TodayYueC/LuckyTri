@@ -339,3 +339,55 @@ test("按类别检索只看那一类的向量，结果与全量过滤一致", as
   });
   assert.deepEqual(byKind, byFilter);
 });
+
+test("混合检索与词面检索一致：锁定的事始终在心里，被问到还记不记得时看得更全", async (t) => {
+  const { w } = vectorWorld(t);
+  w.open("group:1");
+  const recall = w.mind.recall;
+  const pinned = fact(w, "10002", "群规：不在群里讨论政治");
+  const about = [
+    fact(w, "10001", "养了一只叫团子的猫"),
+    fact(w, "10001", "周末喜欢去爬山"),
+    fact(w, "10001", "在一家游戏公司做策划"),
+    fact(w, "10001", "最喜欢的歌手是周杰伦"),
+    fact(w, "10001", "不吃香菜"),
+  ];
+  w.mind.memory.update(pinned, { locked: true });
+  await recall.prepare(w.now());
+  const ask = (text) =>
+    recall.memories(
+      "group:1",
+      [{ role: "user", userId: "10001", text }],
+      w.now(),
+      { people: ["10001"], touch: false },
+    );
+  const plain = await ask("今天好热啊");
+  assert.ok(
+    plain.some((m) => m.id === pinned && m.whySelected === "locked"),
+    "锁定的事不因为这句话没提到就被放下",
+  );
+  const lexical = w.mind.memory.retrieve(
+    "group:1",
+    [{ role: "user", userId: "10001", text: "今天好热啊" }],
+    w.now(),
+    { people: ["10001"], touch: false },
+  );
+  assert.ok(
+    lexical.some((m) => m.id === pinned),
+    "词面检索本来就带着它",
+  );
+  const background = plain.filter((m) => about.includes(m.id)).length;
+  const asked = await ask("你还记得我吗");
+  const recalled = asked.filter((m) => about.includes(m.id)).length;
+  assert.ok(recalled > background, `${recalled} > ${background}`);
+  assert.ok(recalled >= 4);
+  // Elsewhere, a pinned fact of another room does not come along.
+  w.open("group:2");
+  const elsewhere = await recall.memories(
+    "group:2",
+    [{ role: "user", userId: "10001", text: "今天好热啊" }],
+    w.now(),
+    { people: ["10001"], touch: false },
+  );
+  assert.ok(!elsewhere.some((m) => m.id === pinned));
+});
