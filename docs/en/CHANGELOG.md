@@ -4,6 +4,9 @@
 
 ## Unreleased
 
+- When an affair comes back to her, so does what she made of it: her note then and later, or an intention about it, at most two lines. Links come from the sources she already keeps, with no model call; private thoughts stay out of groups.
+- Times over a week ago are no longer all "a long time ago": a week ago, two or three weeks ago, over a month ago, a few months ago, over a year ago.
+- Revocations are stamped on her own clock, on the same timeline as the rest of her life.
 - Each turn records what came to her mind (facts, episodes, self threads, thoughts, promises) in the choice record, kept for good and never sent to the model; turn input stays byte-for-byte the same. The database only gains one column, so older versions still open it.
 - New `npm run audit:life -- --db <backup>`: a read-only check-up of a backup that reports on the integrity and continuity of her life record. New `npm run evaluate:traits`: trait probes with the scripted model.
 - New [Ultimate vision](vision.md) document; the evolution charter sits under it.

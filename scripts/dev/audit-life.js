@@ -12,6 +12,7 @@ import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { evidenceRoots } from "../../server/mind/evidence.js";
 
 const DAY = 86400000;
 // Kinds that may begin without a source (see SELF_ORIGINATED in self.js).
@@ -449,6 +450,64 @@ export function auditLife(db, { now } = {}) {
         );
     } else
       put("回忆账本", null, "这份数据库还没有 recalled 列（升级前的备份）");
+  });
+
+  section("links", "经历之间的关联", "二", (put) => {
+    if (!has.has("mind_episodes") || !has.has("mind_thoughts"))
+      return put("关联", null, "这份数据库没有情景或手记");
+    // Recomputed from the sources themselves, so a backup from before the
+    // derived roots table existed gives the same answer.
+    const rootsOf = (refs) => new Set(evidenceRoots(db, refs));
+    const thoughts = all("SELECT id FROM mind_thoughts WHERE hidden=0").map(
+      (r) => ({ id: r.id, roots: rootsOf([`t:${r.id}`]) }),
+    );
+    const plans = has.has("mind_anticipations")
+      ? all(
+          "SELECT id FROM mind_anticipations WHERE kind IN ('promise','plan')",
+        ).map((r) => ({ roots: rootsOf([`a:${r.id}`]) }))
+      : [];
+    const threads = new Map();
+    for (const row of all("SELECT thread_id,sources FROM mind_episodes")) {
+      const set = threads.get(row.thread_id) || new Set();
+      for (const root of rootsOf(parse(row.sources))) set.add(root);
+      threads.set(row.thread_id, set);
+    }
+    const hers = new Set(
+      [...thoughts, ...plans].flatMap((item) => [...item.roots]),
+    );
+    const lived = new Set([...threads.values()].flatMap((r) => [...r]));
+    const tied = [...threads.values()].filter((roots) =>
+      [...roots].some((root) => hers.has(root)),
+    ).length;
+    put(
+      "和她自己的手记或打算共享来源的情景线程",
+      threads.size ? `${share(tied, threads.size)}%` : null,
+      `${tied}/${threads.size}；只看来源是否相同，不判断内容是否相关`,
+    );
+    const lone = thoughts.filter(
+      (t) => ![...t.roots].some((root) => lived.has(root)),
+    ).length;
+    put(
+      "和任何情景都不共享来源的手记",
+      thoughts.length ? `${share(lone, thoughts.length)}%` : null,
+      `${lone}/${thoughts.length}；独处里的感想本来就常常不属于某件事`,
+    );
+    if (has.has("mind_choices") && columns("mind_choices").has("recalled")) {
+      let linked = 0;
+      let total = 0;
+      for (const row of all(
+        "SELECT recalled FROM mind_choices WHERE recalled!='[]'",
+      ))
+        for (const item of parse(row.recalled)) {
+          total++;
+          if (item.why === "linked") linked++;
+        }
+      put(
+        "账本里因为关联而想起的条目",
+        linked,
+        `占全部 ${total} 条的 ${share(linked, total) ?? 0}%；关联回忆从第 2 轮开始`,
+      );
+    }
   });
 
   section("judgement", "判断与选择", "三", (put) => {

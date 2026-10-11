@@ -4,6 +4,8 @@
 
 She is still one turn call, not one model call per layer. What was added is a hint while a message is waiting, one recall path, episode threads, working memory, and lessons written in solitude from experience.
 
+When an affair comes back to her, it brings at most two lines of what she herself made of it (`mine`): notes that rest on the same moments and speak of it (a revised note shows "then / later"), an intention of hers about it, or a self thread that grew from it. A note only appears in the conversations it was written for, private intentions stay private, and nothing already in front of her is repeated.
+
 ## How a message moves
 
 1. It is stored in `core_events`. The speaker's query vector is computed while the batch is waiting.
@@ -17,7 +19,7 @@ When the embedding service is down, recall falls back to full text, structured l
 
 ## Storage
 
-`DATABASE_VERSION` is 5. `mind_index`, `mind_index_fts` and `mind_vectors` are derived and can be rebuilt. `mind_episodes` is append-only: a status change is a new row in the same `thread_id`. `mind_self` gained a `lesson` kind and a `subject`. A lesson must cite experience that did not come from the model. The same experience is used once. Two independent pieces move it from `emerging` to `active`. A counterexample revises it downward.
+`DATABASE_VERSION` is 5. `mind_index`, `mind_index_fts`, `mind_vectors` and `mind_roots` (what each record ultimately rests on, worked out from the sources it already cites) are derived and can be rebuilt. `mind_episodes` is append-only: a status change is a new row in the same `thread_id`. `mind_self` gained a `lesson` kind and a `subject`. A lesson must cite experience that did not come from the model. The same experience is used once. Two independent pieces move it from `emerging` to `active`. A counterexample revises it downward.
 
 A fact can be archived. Archiving only removes it from ordinary recall. When a person asks for deletion, the source, the index row and the vector are removed together.
 

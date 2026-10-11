@@ -411,7 +411,10 @@ export class TurnProcessor {
           session,
           recallBatch,
           now,
-          { people },
+          {
+            people,
+            exclude: new Set((view.recalled || []).map((r) => r.id)),
+          },
         );
         recollected = recollections;
         if (recollections.length)
@@ -814,7 +817,10 @@ function whatCameToMind(memories, recollected, view, trace) {
         id: `fact:${m.id}`,
         why: m.whySelected,
       })),
-      ...(recollected || []).map((r) => ({ id: r.ref, why: r.why })),
+      ...(recollected || []).flatMap((r) => [
+        { id: r.ref, why: r.why },
+        ...(r.linked || []).map((id) => ({ id, why: "linked" })),
+      ]),
       ...(view?.recalled || []),
     ];
   } catch (error) {

@@ -1,4 +1,5 @@
 import { recallTokens } from "./store.js";
+import { migrateRoots } from "./roots.js";
 
 // The recall index is derived: every row can be rebuilt from the tables that
 // hold her actual memories, so it may be dropped and refilled at any time.
@@ -129,4 +130,5 @@ export function migrateRecall(db) {
       JSON.stringify({ time: Date.now() }),
     );
   }
+  migrateRoots(db);
 }

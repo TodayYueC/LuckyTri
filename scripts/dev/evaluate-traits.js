@@ -64,6 +64,15 @@ export async function probeTraits() {
       metric(audit, "多步线程的跨度（中位，天）").value,
       metric(audit, "经历之间的链接").value,
     );
+    const asked = turns[2]?.data?.context?.inner?.recollections?.items || [];
+    const mine = asked.flatMap((item) => item.mine || []);
+    probe(
+      "二",
+      "事情回来时，她当时的心思也一起回来",
+      mine.some((line) => line.startsWith("当时想") && line.includes("担心")),
+      mine.length ? mine.join(" / ") : 0,
+      "第 3 回合朋友问起那次面试",
+    );
     probe(
       "二",
       "每个回合都记下了想起了什么",

@@ -563,6 +563,9 @@ export class ChatSystem {
     const recall = this.mind.recall;
     try {
       recall.ensure(now);
+      // What her records rest on, a page per tick; a turn only looks at
+      // the newest rows itself.
+      recall.fillRoots(500);
       recall.pruneProfiles(now);
     } catch (error) {
       this.recallError = error.message;

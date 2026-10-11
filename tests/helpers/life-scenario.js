@@ -83,6 +83,8 @@ export async function scriptedLife({ path = ":memory:" } = {}) {
     kind: "reflection",
     content: "他面试前很紧张，我有点替他担心",
     sources: [first[1].seq],
+    // As solitude does: a note belongs to the places its sources came from.
+    sessions: ["group:1"],
     time: w.now(),
   });
   w.mind.anticipations.add({
@@ -122,6 +124,7 @@ export async function scriptedLife({ path = ":memory:" } = {}) {
     kind: "reflection",
     content: "原来不用替他担心，他准备得很好",
     sources: [later[0].seq],
+    sessions: ["group:1"],
     parentId: thought,
     time: w.now(),
   });
