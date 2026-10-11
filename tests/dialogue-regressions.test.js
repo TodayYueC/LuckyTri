@@ -1507,3 +1507,60 @@ test("复审与给提问者的解释核对同时发出，按原来的先后采�
   assert.ok(most >= 2, "两项核对同时进行，不再一项等一项");
   assert.deepEqual(trace.revisions[0].issues, ["与语境不一致"]);
 });
+
+test("“刚才说的那个面试是哪天”：复核也看到提问者自己更早说过的相关原话", () => {
+  const snapshot = {
+    sessionId: "group:1",
+    batchIds: [5],
+    messages: [
+      {
+        id: 1,
+        role: "user",
+        speaker: "ming",
+        name: "阿明",
+        text: "我下周三要去一家游戏公司面试",
+        time: 0,
+      },
+      {
+        id: 2,
+        role: "user",
+        speaker: "hong",
+        name: "小红",
+        text: "食堂的面好难吃",
+        time: 60000,
+      },
+      {
+        id: 3,
+        role: "user",
+        speaker: "ming",
+        name: "阿明",
+        text: "你觉得要准备点什么？",
+        time: 12 * 60000,
+      },
+      {
+        id: 4,
+        role: "assistant",
+        text: "先把简历上的项目过一遍。",
+        time: 12 * 60000,
+        replyTargets: [{ speaker: "ming" }],
+      },
+      {
+        id: 5,
+        role: "user",
+        speaker: "ming",
+        name: "阿明",
+        text: "刚才说的那个面试，你还记得是哪天吗",
+        time: 15 * 60000,
+      },
+    ],
+  };
+  const [question] = readerQuestions(snapshot, {
+    choice: "speak",
+    targetMessageIds: [5],
+    understanding: { kind: "question" },
+  });
+  assert.deepEqual(
+    question.precedingExchange.map((row) => row.id),
+    [1, 3, 4],
+  );
+});

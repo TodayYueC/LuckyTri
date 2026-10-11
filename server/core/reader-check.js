@@ -3,6 +3,7 @@ import {
   READABILITY_REQUEST,
   socialOnlyBatch,
 } from "./conversation-grounding.js";
+import { interestTerms } from "../mind/attention.js";
 
 function precedingExchange(messages, message, snapshot) {
   const before = messages
@@ -34,7 +35,22 @@ function precedingExchange(messages, message, snapshot) {
     .findLast(
       (past) => past.role === "user" && past.speaker === message.speaker,
     );
-  return [...(earlier ? [earlier] : []), ...own].map(
+  // "刚才说的那个面试" may point at what the asker said before this short
+  // exchange. Without those words a true answer looks invented, so the
+  // asker's own latest two messages about the same thing come first.
+  const asked = interestTerms([message.text]);
+  const shown = new Set([earlier, ...own].filter(Boolean));
+  const theirs = messages
+    .slice(0, messages.indexOf(message))
+    .filter(
+      (past) =>
+        past.role === "user" &&
+        past.speaker === message.speaker &&
+        !shown.has(past) &&
+        [...interestTerms([past.text])].some((term) => asked.has(term)),
+    )
+    .slice(-2);
+  return [...theirs, ...(earlier ? [earlier] : []), ...own].map(
     ({ id, role, speaker, name, text }) => ({ id, role, speaker, name, text }),
   );
 }
