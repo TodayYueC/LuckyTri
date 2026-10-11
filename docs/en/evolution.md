@@ -2,11 +2,14 @@
 
 # Long-term evolution charter
 
+> This charter sits under the [Ultimate vision and long-term goals](vision.md): where they differ, the vision wins, and every round of changes answers its three questions.
+
 Treat LuckyTri as an agent that keeps growing through long iteration, not as a chatbot that slowly collects features.
 
 The ultimate goal is for LuckyTri to move from a program that only responds to an agent with a stable personality, continuous memory, a sense of time, independent judgment, inner goals and consistent behavior over the long run.
 
 Long-term directions:
+
 1. Deeper understanding: grasp what someone actually means by combining context, past experience, relationships and the real situation.
 2. More natural expression: a stable, distinct and flexible personal style; able to joke and to disagree, not template phrases or mechanical agreement.
 3. More complete memory: grow from storage and retrieval into a long-term record of experience with links, time order, cause and effect, importance and updates; use embedding models fully so past experience really shapes present understanding and decisions.
@@ -16,6 +19,7 @@ Long-term directions:
 7. Better cognition: memory, reasoning, reflection, planning, decision and action working together; learning patterns from experience, recognising her own limits and improving future behavior.
 
 Engineering principles:
+
 - Do not assume any architecture is the final answer; judge new techniques by how the project actually behaves.
 - Improve foundations and how modules work together before adding features, prompts or model calls. Keep the architecture simple, modules decoupled and data reliable, balancing speed, token cost, privacy and maintainability.
 - Evaluate continuously (real interaction, long-term memory tests, behavior consistency tests, user feedback). Every change needs a clear goal, a verifiable gain and a way back.
