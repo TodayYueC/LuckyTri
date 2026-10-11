@@ -2,6 +2,15 @@
 
 # Changelog
 
+## 1.1.0 — 2026-10-11
+
+- She is the same person in every room. What was just said elsewhere comes into the current turn, and she knows it. She does not usually bring another place up here. When the person in front of her was part of it, she may continue or leave it unsaid. Private wording, secrets and another account's history still stay out.
+- Every turn carries her own state: awake or asleep, energy, mood, what she is living for, and the people she is close to. That is for her, not a report to recite.
+- Memory uses one rebuildable index. Facts, meetings, episodes, self, thoughts, diaries and promises can be found by meaning, words and who is present. Without an embedding model, keyword recall and recent context still answer, and conversation continues.
+- The embedding service needs only an API key. Address, model and 1024 dimensions are chosen from the chat service. Those requests use their own lane and do not block replies.
+- An affair is an episode thread from its start to its outcome. A follow-up that comes due is only a candidate and still passes the existing initiative gates. A lesson must cite lived experience, the same experience is used once, and two independent pieces establish it.
+- Background failures no longer retry in a loop. Conversation stays ahead of upkeep, a permanent model error pauses that model, and a schedule clash takes the nearest free slot. The database schema moves to version 5 and copies the whole file before upgrading.
+
 ## 1.0.9 — 2026-10-11
 
 - In follow-ups, answer the new detail without repeating limitations already explained; answer a question about source or feelings directly.
