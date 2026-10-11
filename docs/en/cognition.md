@@ -8,12 +8,12 @@ She is still one turn call, not one model call per layer. What was added is a hi
 
 1. It is stored in `core_events`. The speaker's query vector is computed while the batch is waiting.
 2. Messages in one session become one turn. `understanding.js` joins one person's consecutive lines and notes tone, stance and time expressions. Those are hints.
-3. `mind/recall` takes vector, full-text and structured candidates together, fuses them by reciprocal rank, then reranks by person, age and source. Permission is applied before ranking.
+3. `mind/recall` takes vector, full-text and structured candidates together, fuses them by reciprocal rank, then reranks by person, age and source. Permission is applied before ranking. A very short follow-up (under six character pairs, such as "唉，估计没戏") is searched together with the line it leans on: the quoted message, the same person's lines from the last ten minutes, or her line they answer (`mind/recall/cue.js`, no model call, the stored words unchanged). Pinned facts and questions like "do you remember me" are handled on the hybrid path as on the word path.
 4. Working memory keeps the current stretch verbatim. Older stretches are a summary plus semantic recall. Open episodes appear on a relationship as `goingOn`.
 5. One turn call. A model sometimes nests `choice` inside `understanding` or `contribution`. Normalization puts the fields back where the contract says they belong.
 6. The reply is checked and sent. Background consolidation writes facts and episodes. An episode whose follow-up time has arrived, or a promise that is due, is only a candidate during solitude. It still passes the existing initiative gates.
 
-When the embedding service is down, recall falls back to full text, structured lookup and recent context. The turn still runs.
+When the embedding service is down, recall falls back to full text, structured lookup and recent context. The turn still runs. The knowledge library embeds its question through the same service: the words recall just asked about are not sent again, the wait is capped at four seconds, and a paused service is skipped.
 
 ## Storage
 
@@ -26,6 +26,8 @@ A fact can be archived. Archiving only removes it from ordinary recall. When a p
 The configured embedding model uses the OpenAI-compatible `/embeddings` endpoint, in batches, 2048 dimensions by default. Asking for 1024 works and is similar. The Ark multimodal endpoint takes one item at a time. Cosine between a short chat line and a stored fact is low, so a hit counts when it stands above the median of the nearest batch, with different floors for the speaker, people present, and everyone else. Queries have their own request lane and do not queue behind conversation. Background backfill is paced and slows down on HTTP 429.
 
 On a backup copy, with 1024 dimensions and about 40 paraphrased real facts: lexical Recall@5 was 0.475; hybrid recall with feature rerank was 0.950, and the average number returned fell from 12 to about 3.9. There is no separate model reranker.
+
+Vectors in memory are split by kind and kept in step item by item: a new message, a rewrite or a removal touches only its own entry, so the next turn no longer reads the whole `mind_vectors` table back, and a fact search no longer walks a month of message vectors. After an embedding model change, once the active profile covers her memories, only it and the most recent older profile are kept.
 
 ## What evaluation showed
 

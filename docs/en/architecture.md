@@ -153,4 +153,4 @@ Nothing above the core changes. The connection option in settings and the readin
 
 ## Cognition and memory
 
-How understanding, recall, episodes, lessons and follow-ups fit together is in [Cognition](cognition.md). The recall index is derived. Episodes and self threads stay append-only.
+How understanding, recall, episodes, lessons and follow-ups fit together is in [Cognition](cognition.md). The recall index is derived. Episodes and self threads stay append-only. Long-term directions and how changes are evaluated are in the [Evolution charter](evolution.md).
