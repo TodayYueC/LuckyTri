@@ -25,6 +25,7 @@ import { clamp, dayKey, parse, text } from "./util.js";
 import { Backoff } from "../core/backoff.js";
 import { EmbeddingService } from "../core/embedding.js";
 import { Recall } from "./recall/index.js";
+import { Episodes } from "./episodes.js";
 
 // The wish a day's snapshot says she was living. Older snapshots did not
 // store it; those fall back to her own-life threads from that day.
@@ -118,6 +119,7 @@ export class Mind {
     this.time = new TimeSystem(this);
     this.senses = new Senses();
     this.observations = new Observations(this);
+    this.episodes = new Episodes(this);
     this.recall = new Recall(this);
     this.body = () => [];
     this.days.reconcile();

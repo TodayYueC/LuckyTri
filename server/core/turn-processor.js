@@ -16,6 +16,7 @@ import {
   visionWindow,
 } from "./vision-manager.js";
 import { normalizeTurn, takeTurn } from "./turn.js";
+import { RECOLLECTION_NOTE } from "../mind/recall/index.js";
 import {
   initiativeAudience,
   originSummary,
@@ -313,6 +314,19 @@ export class TurnProcessor {
             activityCue,
           }),
         );
+      if (policy.memory && !replay && !ownInitiative) {
+        const recollections = await this.owner.mind.recall.recollect(
+          session,
+          batch,
+          now,
+          { people },
+        );
+        if (recollections.length)
+          view.inner.recollections = {
+            note: RECOLLECTION_NOTE,
+            items: recollections,
+          };
+      }
       lap("view");
       const snapshot = ownInitiative
         ? initiativeSnapshot(session, window, nature, now, policy.timeZone)

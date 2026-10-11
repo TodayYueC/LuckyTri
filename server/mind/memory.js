@@ -799,6 +799,10 @@ export class MemoryManager {
       const { known, refs } = this.mind?.recall
         ? await this.mind.recall.knownFor(session, block)
         : this.known(session, block);
+      const threads = this.mind?.episodes?.candidates(session, block, now) || {
+        list: [],
+        refs: new Map(),
+      };
       const value = await models.call(
         profile,
         "memory",
@@ -809,6 +813,7 @@ export class MemoryManager {
           self,
           privateChat: isPrivateSession(session),
           ...(known.length ? { known } : {}),
+          ...(threads.list.length ? { openEpisodes: threads.list } : {}),
           messages: block.map((m) => ({
             id: m.seq,
             userId: m.role === "assistant" ? "self" : m.userId,
@@ -934,6 +939,14 @@ export class MemoryManager {
         this.anticipate(value.anticipations, {
           block,
           session,
+          names,
+          privateChat,
+          now,
+        });
+        this.mind?.episodes?.record(value.episodes, {
+          block,
+          session,
+          refs: threads.refs,
           names,
           privateChat,
           now,
