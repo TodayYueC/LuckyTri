@@ -23,7 +23,13 @@ const CACHE_KEY_HOSTS = /(?:^|\.)(?:openai\.com|opencode\.ai|openrouter\.ai)$/i;
 // Mechanical compression can use minimal reasoning. A short review output
 // still requires understanding evidence and intent, so validation must retain
 // the configured reasoning effort.
-const QUIET_STAGES = new Set(["decision", "summary", "expression_novelty"]);
+const QUIET_STAGES = new Set([
+  "decision",
+  "summary",
+  "summaryMerge",
+  "memory",
+  "expression_novelty",
+]);
 const STAGE_OUTPUT = {
   decision: 2048,
   validation: 2048,

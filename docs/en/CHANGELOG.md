@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- Memory consolidation and summary merges join the other mechanical stages in turning off hidden reasoning, so background work no longer burns thousands of reasoning tokens to extract facts.
 - A bare “you got it wrong” about a fact is no longer treated as a repair that must admit fault; only meta-critique of how she speaks (robotic, repetitive, unnatural) takes that path, and even then she checks whether she actually did.
 - Older related lines pulled in from outside the chat window are deduplicated and capped at five, so eight near-identical old rows no longer fill the prompt.
 - When someone claims she got a fact wrong without evidence, restating her own recent basis is no longer treated as empty rephrasing and rewritten twice; the turn payload also drops the humanMessages field that duplicated exchange.current.

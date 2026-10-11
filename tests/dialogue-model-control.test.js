@@ -98,6 +98,8 @@ test("Agent Plan stops thinking for quiet stages and for “none” when the mod
   const ask = (profile, stage) =>
     manager.call(profile, stage, "只输出JSON", { a: 1 }, { calls: [] });
   await ask(preset("deepseek-v4.1-flash"), "summary");
+  await ask(preset("deepseek-v4.1-flash"), "memory");
+  await ask(preset("deepseek-v4.1-flash"), "summaryMerge");
   await ask(preset("deepseek-v4.1-flash"), "turn");
   await ask(
     { ...preset("deepseek-v4.1-flash"), reasoningEffort: "none" },
@@ -106,11 +108,13 @@ test("Agent Plan stops thinking for quiet stages and for “none” when the mod
   await ask(preset("glm-5.3-flash"), "summary");
   assert.deepEqual(requests[0].thinking, { type: "disabled" });
   assert.equal(requests[0].reasoning, undefined);
-  assert.deepEqual(requests[1].reasoning, { effort: "high" });
-  assert.equal(requests[1].thinking, undefined);
+  assert.deepEqual(requests[1].thinking, { type: "disabled" });
   assert.deepEqual(requests[2].thinking, { type: "disabled" });
+  assert.deepEqual(requests[3].reasoning, { effort: "high" });
   assert.equal(requests[3].thinking, undefined);
-  assert.deepEqual(requests[3].reasoning, { effort: "minimal" });
+  assert.deepEqual(requests[4].thinking, { type: "disabled" });
+  assert.equal(requests[5].thinking, undefined);
+  assert.deepEqual(requests[5].reasoning, { effort: "minimal" });
 });
 
 test("a model that refuses thinking disabled is asked again once with minimal reasoning", async (t) => {
