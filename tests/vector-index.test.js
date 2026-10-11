@@ -123,7 +123,7 @@ test("资料库的提问向量走同一个向量服务：同一句话只请求�
     "回合前的提问向量用短超时",
   );
   // A paused service is not waited for; words still find the document.
-  w.mind.embedding.pausedUntil = Date.now() + 60000;
+  w.mind.embedding.pausedUntil = w.now() + 60000;
   calls.length = 0;
   const words = await km.retrieveWithEmbed("group:1", [
     { role: "user", userId: "10001", text: "猫粮怎么喂" },
