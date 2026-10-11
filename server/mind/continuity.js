@@ -6,7 +6,7 @@ import { lexicalTerms, overlapScore } from "../knowledge/retrieval.js";
 import { interestTerms } from "./attention.js";
 import { elapsedLabel } from "./clock.js";
 import { secretRequest } from "./guard.js";
-import { DAY, hasCredential, messageSeqs, parse, text } from "./util.js";
+import { DAY, HOUR, hasCredential, messageSeqs, parse, text } from "./util.js";
 
 // A wish to remember someone is not necessarily a request about a topic.
 // This cue widens the selection of existing memories; it invents none.
@@ -26,6 +26,20 @@ function roomKey(session) {
   } catch {
     return null;
   }
+}
+
+function accountOf(db, session, now) {
+  const parsed = roomKey(session);
+  if (!parsed) return "";
+  const id =
+    parsed.accountId !== "_"
+      ? parsed.accountId
+      : db
+          .prepare(
+            "SELECT account_id FROM core_events WHERE session_id=? AND time<=? AND account_id IS NOT NULL AND account_id!='' ORDER BY seq DESC LIMIT 1",
+          )
+          .get(session, now)?.account_id || "";
+  return id ? `${parsed.channel}:${id}` : "";
 }
 
 // Identity and actual shared encounters, rather than another room's entire
@@ -401,6 +415,69 @@ export class Continuity {
         privateOrigin: true,
         maySayAloud: false,
       }));
+  }
+  // What she just lived somewhere else. She knows it in every room. Saying it
+  // aloud is separate: she does not bring up another place unless the person
+  // in front of her was part of it, and even then she decides.
+  justLived({ session, people = [], now = Date.now() }) {
+    const current = roomKey(session);
+    if (!current) return null;
+    const mine = accountOf(this.db, session, now);
+    const present = new Set(people.map(String));
+    const rows = this.db
+      .prepare(
+        `SELECT session_id,time,role,payload FROM core_events
+         WHERE time>=? AND time<? AND session_id!=?
+         AND seq NOT IN (SELECT seq FROM mind_unlived)
+         AND COALESCE(json_extract(payload,'$.simulated'),0)=0
+         ORDER BY time DESC LIMIT 24`,
+      )
+      .all(now - 3 * HOUR, now, session);
+    const lines = [];
+    let privateNoted = false;
+    for (const row of rows) {
+      const payload = parse(row.payload, {});
+      const said = text(payload.text, 80);
+      if (
+        !said ||
+        payload.simulated ||
+        hasCredential(said) ||
+        secretRequest(said)
+      )
+        continue;
+      const source = roomKey(row.session_id);
+      if (!source || source.channel !== current.channel) continue;
+      const theirs = accountOf(this.db, row.session_id, now);
+      if (mine && theirs && mine !== theirs) continue;
+      const who = String(payload.userId || "");
+      const samePerson = who && present.has(who);
+      const fromPrivate = source.kind === "private";
+      if (fromPrivate && row.session_id !== session) {
+        if (current.kind === "group" && samePerson && !privateNoted) {
+          privateNoted = true;
+          lines.push({
+            who: payload.name || who,
+            samePerson: true,
+            maySayAloud: false,
+            text: "你们刚刚私下说过话",
+          });
+        }
+        continue;
+      }
+      if (!this.mind.meetings.sayable(said, session)) continue;
+      lines.push({
+        who: row.role === "assistant" ? "我" : payload.name || who,
+        samePerson: !!samePerson,
+        maySayAloud: !!samePerson && row.role === "user",
+        text: said,
+      });
+      if (lines.length >= 4) break;
+    }
+    if (!lines.length) return null;
+    return {
+      note: "这是你刚刚在别处经历的，你知道。一般不要主动向这里的人提起别的地方的事。眼前如果就是当时的人，可以接着，也可以不提，由你决定。",
+      lines: lines.reverse(),
+    };
   }
   #words(sources, id, room, destination, now, happened = now) {
     const seqs = messageSeqs(parse(sources, []));

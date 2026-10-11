@@ -8,13 +8,31 @@ export const EMBEDDING_DEFAULTS = {
   model: "",
   apiKey: "",
   dimensions: 0,
-  batchSize: 32,
+  batchSize: 10,
   timeoutMs: 90000,
   // "openai": batched /embeddings. "multimodal": one item per request to
   // /embeddings/multimodal. Both return the same vector space for text.
   protocol: "openai",
 };
 export const EMBEDDING_PROTOCOLS = new Set(["openai", "multimodal"]);
+
+// What to use when only an API key is given. 1024 dimensions and the batched
+// OpenAI-style endpoint matched the configured vision embedding model; the
+// Ark host uses that model name. Any other chat address is reused as-is.
+export function suggestEmbedding(chat = {}) {
+  const base = String(chat.baseUrl || "")
+    .trim()
+    .replace(/\/$/, "");
+  const ark = /volces\.com|volcengine/i.test(base);
+  return {
+    protocol: "openai",
+    dimensions: 1024,
+    batchSize: 10,
+    timeoutMs: 90000,
+    baseUrl: ark ? "https://ark.cn-beijing.volces.com/api/v3" : base,
+    model: ark ? "doubao-embedding-vision" : String(chat.embeddingModel || ""),
+  };
+}
 
 export function embeddingSignature(profile) {
   return createHash("sha256")

@@ -81,12 +81,13 @@ export default {
   "连接成功，向量维度 {dimensions}":
     "Connected. Vector dimensions: {dimensions}",
   知识向量模型: "Knowledge vector model",
-  "单独配置资料检索使用的模型。更换对话模型后仍使用这里的配置。更换向量模型后，可在资料书架逐份重建向量；原文仍能通过关键词检索。":
-    "Configure the model used for material retrieval separately. It keeps using this setup after you change the chat model. After changing the vector model, rebuild vectors document by document on the bookshelf; the original text can still be found by keyword search.",
+  "只需要填写向量服务的密钥。地址、模型和维度会按对话服务自动选择。不启用或没有密钥时，对话和关键词回忆照常进行，只是没有按意思检索。":
+    "Only the vector service key is needed. The address, model and dimensions are chosen from the chat service. Without it, conversation and keyword recall still run; only retrieval by meaning is absent.",
+  向量服务密钥: "Vector service key",
+  自动选择的细节: "Details chosen automatically",
   "当前兼容旧配置，跟随默认模型。保存后改用独立配置。":
     "Currently using the old configuration and following the default model. Saving switches to a separate configuration.",
   启用知识向量: "Enable knowledge vectors",
-  "独立 API Key": "Separate API key",
   填写向量服务密钥: "Enter the vector service key",
   "向量维度（0 表示自动）": "Vector dimensions (0 = automatic)",
   每批段落数: "Passages per batch",

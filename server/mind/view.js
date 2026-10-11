@@ -285,6 +285,7 @@ export function innerView(
         });
   const heard = feedback(mind, session, now);
   const continuity = mind.continuity.recall({ session, people, cue, now });
+  const justLived = mind.continuity.justLived({ session, people, now });
   const expecting = mind.anticipations
     .upcoming({ now, people, session, limit: 3 })
     .map((a) => a.text);
@@ -313,6 +314,21 @@ export function innerView(
     affect.cause && mind.meetings.sayable(affect.cause, session)
       ? text(affect.cause, 40)
       : "";
+  const closeTo = mind.bonds
+    .people({ now, limit: 30 })
+    .filter((person) => person.closeness >= 0.2 && person.interactions)
+    .sort((a, b) => b.closeness - a.closeness)
+    .slice(0, 4)
+    .map((person) => ({
+      name: person.name,
+      feel: person.feel,
+    }));
+  const selfKnown = {
+    note: "你在每个地方都是同一个人。这是你现在的状态、心情和亲近的人，你知道，不必向眼前的人汇报。",
+    state: `${affect.phaseLabel}，精力${affect.energyLabel}，心情${affect.mood}${cause ? `（${cause}）` : ""}`,
+    ...(shownLiving ? { livingFor: text(shownLiving.content, 80) } : {}),
+    ...(closeTo.length ? { closeTo } : {}),
+  };
   const withLines = withWhom.filter(
     (line) => !fixedReplyHabit(line) && mind.meetings.sayable(line, session),
   );
@@ -330,9 +346,11 @@ export function innerView(
     inner: {
       currentLife: mind.time.view({ session, now, cue, activityCue }),
       state: `${affect.phaseLabel}，精力${affect.energyLabel}，心情${affect.mood}${cause ? `（${cause}）` : ""}${affect.lately ? `，${affect.lately}` : ""}`,
+      selfKnown,
       ...(persons.length ? { people: persons } : {}),
       ...(relationships.known.length ? { relationships } : {}),
       ...(continuity ? { continuity } : {}),
+      ...(justLived ? { justLived } : {}),
       ...(group ? { thisGroup: group.feel } : {}),
       ...(thoughts.length
         ? {

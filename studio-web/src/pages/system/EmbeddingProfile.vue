@@ -9,8 +9,8 @@ const draft = reactive<any>({
   baseUrl: "",
   model: "",
   apiKey: "",
-  dimensions: 0,
-  batchSize: 32,
+  dimensions: 1024,
+  batchSize: 10,
   timeoutMs: 90000,
   protocol: "openai",
 });
@@ -66,7 +66,7 @@ onMounted(load);
     <p class="muted">
       {{
         t(
-          "单独配置资料检索使用的模型。更换对话模型后仍使用这里的配置。更换向量模型后，可在资料书架逐份重建向量；原文仍能通过关键词检索。",
+          "只需要填写向量服务的密钥。地址、模型和维度会按对话服务自动选择。不启用或没有密钥时，对话和关键词回忆照常进行，只是没有按意思检索。",
         )
       }}
     </p>
@@ -88,23 +88,7 @@ onMounted(load);
       >
       <div class="fields">
         <label
-          >{{ t("API 地址")
-          }}<input
-            v-model="draft.baseUrl"
-            name="embeddingBaseUrl"
-            type="url"
-            :required="draft.enabled"
-            placeholder="https://example.com/v1"
-        /></label>
-        <label
-          >{{ t("模型名称")
-          }}<input
-            v-model="draft.model"
-            name="embeddingModelName"
-            :required="draft.enabled"
-        /></label>
-        <label
-          >{{ t("独立 API Key")
+          >{{ t("向量服务密钥")
           }}<input
             v-model="draft.apiKey"
             name="embeddingApiKey"
@@ -114,32 +98,49 @@ onMounted(load);
               draft.hasApiKey ? t('已保存，留空保留') : t('填写向量服务密钥')
             "
         /></label>
-        <label
-          >{{ t("向量维度（0 表示自动）")
-          }}<input
-            v-model.number="draft.dimensions"
-            name="embeddingDimensions"
-            type="number"
-            min="0"
-            max="65536"
-        /></label>
-        <label
-          >{{ t("每批段落数")
-          }}<input
-            v-model.number="draft.batchSize"
-            name="embeddingBatchSize"
-            type="number"
-            min="1"
-            max="128"
-        /></label>
-        <label
-          >{{ t("请求格式")
-          }}<select v-model="draft.protocol" name="embeddingProtocol">
-            <option value="openai">{{ t("OpenAI 兼容（可批量）") }}</option>
-            <option value="multimodal">{{ t("多模态接口（逐条）") }}</option>
-          </select></label
-        >
       </div>
+      <details>
+        <summary>{{ t("自动选择的细节") }}</summary>
+        <div class="fields">
+          <label
+            >{{ t("API 地址")
+            }}<input
+              v-model="draft.baseUrl"
+              name="embeddingBaseUrl"
+              type="url"
+              placeholder="https://example.com/v1"
+          /></label>
+          <label
+            >{{ t("模型名称")
+            }}<input v-model="draft.model" name="embeddingModelName"
+          /></label>
+          <label
+            >{{ t("向量维度（0 表示自动）")
+            }}<input
+              v-model.number="draft.dimensions"
+              name="embeddingDimensions"
+              type="number"
+              min="0"
+              max="65536"
+          /></label>
+          <label
+            >{{ t("每批段落数")
+            }}<input
+              v-model.number="draft.batchSize"
+              name="embeddingBatchSize"
+              type="number"
+              min="1"
+              max="128"
+          /></label>
+          <label
+            >{{ t("请求格式")
+            }}<select v-model="draft.protocol" name="embeddingProtocol">
+              <option value="openai">{{ t("OpenAI 兼容（可批量）") }}</option>
+              <option value="multimodal">{{ t("多模态接口（逐条）") }}</option>
+            </select></label
+          >
+        </div>
+      </details>
       <div class="save-bar">
         <button class="primary" :disabled="busy">
           {{ t("保存向量模型") }}

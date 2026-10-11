@@ -6,6 +6,7 @@ import {
   publicEmbeddingProfile,
   saveEmbeddingProfile,
   resolveEmbeddingProfile,
+  suggestEmbedding,
   embedBatches,
 } from "./embedding-profile.js";
 import {
@@ -31,7 +32,20 @@ export function mountKnowledge(app, system) {
   );
   app.patch(
     "/api/core/knowledge/embedding",
-    wrap((req, res) => res.json(saveEmbeddingProfile(repo, req.body))),
+    wrap((req, res) => {
+      let chat = {};
+      try {
+        chat = system.models.profile();
+      } catch {
+        chat = {};
+      }
+      const suggested = suggestEmbedding(chat);
+      const body = { ...suggested, ...req.body };
+      if (!body.baseUrl) body.baseUrl = suggested.baseUrl;
+      if (!body.model) body.model = suggested.model;
+      if (!body.dimensions) body.dimensions = suggested.dimensions;
+      res.json(saveEmbeddingProfile(repo, body));
+    }),
   );
   app.post(
     "/api/core/knowledge/embedding/test",
