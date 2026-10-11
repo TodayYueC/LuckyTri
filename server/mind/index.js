@@ -105,6 +105,8 @@ export class Mind {
     this.repo = repo;
     this.db = repo.db;
     this.store = repo.store;
+    // Her clock, so a tombstone sits on the same timeline as what it buries.
+    this.now = now;
     migrateMind(this.db, this.store);
     this.backoff = new Backoff(this.db);
     this.embedding = new EmbeddingService(repo, models, { now });
@@ -350,7 +352,7 @@ export class Mind {
         .prepare(
           "INSERT INTO mind_revocations(id,created,target_kind,target_id,content,reason) VALUES (?,?,?,?,?,?)",
         )
-        .run(randomUUID(), Date.now(), kind, id, content, note);
+        .run(randomUUID(), this.now(), kind, id, content, note);
     if (kind === "memory") return this.memory.revoke(id, note);
     if (kind === "self") {
       const rows = this.self.history(id);

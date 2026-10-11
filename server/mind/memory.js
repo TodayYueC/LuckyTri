@@ -421,7 +421,7 @@ export class MemoryManager {
       )
       .run(
         randomUUID(),
-        Date.now(),
+        this.mind?.now?.() ?? Date.now(),
         "memory",
         id,
         `${row.subject}\n${row.content}`,
