@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- Older related lines pulled in from outside the chat window are deduplicated and capped at five, so eight near-identical old rows no longer fill the prompt.
 - When someone claims she got a fact wrong without evidence, restating her own recent basis is no longer treated as empty rephrasing and rewritten twice; the turn payload also drops the humanMessages field that duplicated exchange.current.
 - When two statements about someone do not fit together and neither is settled, recalling one now shows the other beside it, with when and where she heard it, instead of taking either for fact. A restricted one is only noted, not repeated.
 - The check of whether a reply answers the person who asked now sees that person’s own earlier words on the same thing (at most two), so a correct answer to “that interview I mentioned, which day was it” is no longer taken for invention and rewritten again and again.
