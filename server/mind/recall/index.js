@@ -308,6 +308,7 @@ export class Recall {
         const hits = this.store.nearest(profile, vector, {
           limit: 60,
           allow: filter,
+          kinds,
         });
         if (!hits.length) return;
         const top = hits[0].score;
@@ -357,6 +358,7 @@ export class Recall {
     const scopes = new Set(this.mind.memory.scopes(session));
     const weights = WEIGHTS[purpose] || WEIGHTS.turn;
     const scored = [];
+    const peopleOf = this.store.peopleOf(rows_.map((row) => row.id));
     for (const row of rows_) {
       const itemTerms = interestTerms([row.text]);
       let overlap = 0;
@@ -365,7 +367,7 @@ export class Recall {
         for (const term of itemTerms) if (set.has(term)) count++;
         overlap = Math.max(overlap, count);
       }
-      const who = this.store.people(row.id);
+      const who = peopleOf.get(row.id) || [];
       const aboutSpeaker = who.some((id) => speakers.has(id));
       const aboutPresent = who.some((id) => present.has(id));
       const stand = sem.get(row.id) ?? null;
@@ -751,6 +753,7 @@ export class Recall {
         limit: perSubject,
         minScore: COSINE_FLOOR,
         allow: (id) => theirs.has(id),
+        kinds: ["fact"],
       });
       for (const hit of hits) {
         if (known.length >= 30) break;

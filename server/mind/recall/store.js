@@ -20,14 +20,41 @@ const fromBlob = (blob) => {
   );
 };
 
+const kindOf = (id) => String(id).slice(0, String(id).indexOf(":"));
+
 // The searchable shadow of her memories: one row per item, its words for
 // keyword search, its people for structured lookups, and vectors kept per
 // embedding profile. Vectors of the active profile are held in memory for
-// exact cosine search; at tens of thousands of items that is milliseconds.
+// exact cosine search, split by kind so a search for facts never walks a
+// month of messages. The memory copy is kept in step item by item: a new
+// message, a rewritten fact or a removed item touches only its own entry.
+// Reading every vector back from the database happens once per profile,
+// and again only after a rolled-back write.
 export class RecallStore {
   constructor(db) {
     this.db = db;
     this.vectors = new Map();
+  }
+  // Forget the memory copy; the next search reads it again.
+  invalidate() {
+    for (const cache of this.vectors.values()) cache.dirty = true;
+  }
+  #drop(id) {
+    for (const cache of this.vectors.values()) {
+      if (cache.dirty) continue;
+      const part = cache.kinds.get(kindOf(id));
+      const at = part?.index.get(id);
+      if (at === undefined) continue;
+      const last = part.ids.length - 1;
+      if (at !== last) {
+        part.ids[at] = part.ids[last];
+        part.rows[at] = part.rows[last];
+        part.index.set(part.ids[at], at);
+      }
+      part.ids.pop();
+      part.rows.pop();
+      part.index.delete(id);
+    }
   }
   get(id) {
     return this.db.prepare("SELECT * FROM mind_index WHERE id=?").get(id);
@@ -95,8 +122,12 @@ export class RecallStore {
         this.db
           .prepare("INSERT INTO mind_index_fts(item_id,tokens) VALUES (?,?)")
           .run(item.id, tokens);
-      this.db.prepare("DELETE FROM mind_vectors WHERE item_id=?").run(item.id);
-      for (const cache of this.vectors.values()) cache.dirty = true;
+      if (old) {
+        this.db
+          .prepare("DELETE FROM mind_vectors WHERE item_id=?")
+          .run(item.id);
+        this.#drop(item.id);
+      }
     }
     this.db
       .prepare("DELETE FROM mind_index_people WHERE item_id=?")
@@ -114,7 +145,7 @@ export class RecallStore {
     this.db.prepare("DELETE FROM mind_index_fts WHERE item_id=?").run(id);
     this.db.prepare("DELETE FROM mind_index_people WHERE item_id=?").run(id);
     this.db.prepare("DELETE FROM mind_vectors WHERE item_id=?").run(id);
-    if (existed) for (const cache of this.vectors.values()) cache.dirty = true;
+    this.#drop(id);
     return !!existed;
   }
   // Re-read one memory from where it lives. Gone or hidden means gone here.
@@ -150,6 +181,7 @@ export class RecallStore {
       this.db.exec("RELEASE recall_reconcile");
     } catch (error) {
       this.db.exec("ROLLBACK TO recall_reconcile");
+      this.invalidate();
       this.db.exec("RELEASE recall_reconcile");
       throw error;
     }
@@ -199,6 +231,7 @@ export class RecallStore {
       this.db.exec("RELEASE recall_catch_up");
     } catch (error) {
       this.db.exec("ROLLBACK TO recall_catch_up");
+      this.invalidate();
       this.db.exec("RELEASE recall_catch_up");
       throw error;
     }
@@ -232,6 +265,7 @@ export class RecallStore {
           this.db.exec("COMMIT");
         } catch (error) {
           this.db.exec("ROLLBACK");
+          this.invalidate();
           throw error;
         }
         await new Promise((resolve) => setImmediate(resolve));
@@ -283,53 +317,67 @@ export class RecallStore {
       )
       .run(id, profile, hash, vector.length, toBlob(vector), now);
     const cache = this.vectors.get(profile);
-    if (cache && !cache.dirty) {
-      const at = cache.index.get(id);
-      if (at === undefined) {
-        cache.index.set(id, cache.ids.length);
-        cache.ids.push(id);
-        cache.rows.push(vector);
-      } else cache.rows[at] = vector;
-    }
+    if (cache && !cache.dirty)
+      this.#place(cache, id, Float32Array.from(vector));
     return true;
+  }
+  #place(cache, id, vector) {
+    const kind = kindOf(id);
+    let part = cache.kinds.get(kind);
+    if (!part) {
+      part = { ids: [], rows: [], index: new Map() };
+      cache.kinds.set(kind, part);
+    }
+    const at = part.index.get(id);
+    if (at === undefined) {
+      part.index.set(id, part.ids.length);
+      part.ids.push(id);
+      part.rows.push(vector);
+    } else part.rows[at] = vector;
   }
   #cache(profile) {
     let cache = this.vectors.get(profile);
     if (!cache || cache.dirty) {
-      cache = { ids: [], rows: [], index: new Map(), dirty: false };
+      cache = { kinds: new Map(), dirty: false };
       for (const row of this.db
         .prepare(
           "SELECT v.item_id,v.vector FROM mind_vectors v JOIN mind_index i ON i.id=v.item_id AND i.text_hash=v.text_hash WHERE v.profile=?",
         )
-        .iterate(profile)) {
-        cache.index.set(row.item_id, cache.ids.length);
-        cache.ids.push(row.item_id);
-        cache.rows.push(fromBlob(row.vector));
-      }
+        .iterate(profile))
+        this.#place(cache, row.item_id, fromBlob(row.vector));
+      // Only the active profile is searched; a copy of an old one would sit
+      // in memory for nothing.
+      for (const key of this.vectors.keys())
+        if (key !== profile) this.vectors.delete(key);
       this.vectors.set(profile, cache);
     }
     return cache;
   }
   vector(id, profile) {
-    const cache = this.#cache(profile);
-    const at = cache.index.get(id);
-    return at === undefined ? null : cache.rows[at];
+    const part = this.#cache(profile).kinds.get(kindOf(id));
+    const at = part?.index.get(id);
+    return at === undefined ? null : part.rows[at];
   }
-  // Exact nearest items. `allow` filters before ranking, so what may not be
-  // recalled here never takes a place in the list.
+  // Exact nearest items. `kinds` limits the walk to those kinds; `allow`
+  // filters before ranking, so what may not be recalled here never takes a
+  // place in the list.
   nearest(
     profile,
     query,
-    { limit = 50, allow = () => true, minScore = 0 } = {},
+    { limit = 50, allow = () => true, minScore = 0, kinds = null } = {},
   ) {
     const cache = this.#cache(profile);
     const hits = [];
-    for (let i = 0; i < cache.ids.length; i++) {
-      const id = cache.ids[i];
-      if (!allow(id)) continue;
-      const score = dot(query, cache.rows[i]);
-      if (score >= minScore) hits.push({ id, score });
-    }
+    const parts = kinds
+      ? kinds.map((kind) => cache.kinds.get(kind)).filter(Boolean)
+      : [...cache.kinds.values()];
+    for (const part of parts)
+      for (let i = 0; i < part.ids.length; i++) {
+        const id = part.ids[i];
+        if (!allow(id)) continue;
+        const score = dot(query, part.rows[i]);
+        if (score >= minScore) hits.push({ id, score });
+      }
     hits.sort((a, b) => b.score - a.score);
     return hits.slice(0, limit);
   }
@@ -364,5 +412,19 @@ export class RecallStore {
       .prepare("SELECT user_id FROM mind_index_people WHERE item_id=?")
       .all(id)
       .map((row) => row.user_id);
+  }
+  // The people of many items in one read, for ranking a candidate list.
+  peopleOf(ids) {
+    const out = new Map(ids.map((id) => [id, []]));
+    for (let i = 0; i < ids.length; i += 400) {
+      const part = ids.slice(i, i + 400);
+      for (const row of this.db
+        .prepare(
+          `SELECT item_id,user_id FROM mind_index_people WHERE item_id IN (${part.map(() => "?").join(",")})`,
+        )
+        .all(...part))
+        out.get(row.item_id)?.push(row.user_id);
+    }
+    return out;
   }
 }

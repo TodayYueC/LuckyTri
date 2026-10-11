@@ -273,3 +273,69 @@ test("撤销的相遇不再能被检索到", async (t) => {
   w.mind.revoke("meeting", row.id, "测试");
   assert.equal(w.mind.recall.store.get(`meeting:${row.id}`), undefined);
 });
+
+test("向量的内存副本逐条跟着改：新消息不触发整库重读，改写和删除只动自己那条", async (t) => {
+  const { w } = vectorWorld(t);
+  w.open("group:1");
+  const recall = w.mind.recall;
+  const a = fact(w, "10001", "养了一只叫团子的猫");
+  const b = fact(w, "10002", "在学吉他，每周六上课");
+  await recall.prepare(w.now());
+  const profile = recall.profile();
+  const store = recall.store;
+  // Count full reloads of the vector table.
+  let reloads = 0;
+  const prepare = store.db.prepare.bind(store.db);
+  store.db.prepare = (sql) => {
+    if (/FROM mind_vectors v JOIN mind_index/.test(sql)) reloads++;
+    return prepare(sql);
+  };
+  t.after(() => (store.db.prepare = prepare));
+  const query = store.vector(`fact:${a}`, profile);
+  assert.ok(query);
+  store.nearest(profile, query, { kinds: ["fact"] });
+  const loaded = reloads;
+  // A brand-new item has no vector yet: nothing to invalidate.
+  const c = fact(w, "10003", "正在准备考研");
+  assert.equal(store.vector(`fact:${c}`, profile), null);
+  await recall.embedPending({ now: w.now() });
+  assert.ok(store.vector(`fact:${c}`, profile), "新向量直接进入内存副本");
+  // A rewrite drops only that item's old vector.
+  w.mind.memory.update(a, { content: "养了两只猫，一只叫团子" });
+  assert.equal(store.vector(`fact:${a}`, profile), null);
+  assert.ok(store.vector(`fact:${b}`, profile));
+  // A deletion removes it from search at once.
+  w.mind.memory.deleteBatch("group:1", [b]);
+  const ids = store
+    .nearest(profile, query, { kinds: ["fact"], limit: 50 })
+    .map((h) => h.id);
+  assert.ok(!ids.includes(`fact:${b}`));
+  assert.ok(ids.includes(`fact:${c}`));
+  assert.equal(reloads, loaded, "这些变化都没有整库重读向量");
+  // The memory copy matches what a fresh read of the database would give.
+  store.invalidate();
+  const fresh = store
+    .nearest(profile, query, { kinds: ["fact"], limit: 50 })
+    .map((h) => h.id)
+    .sort();
+  assert.deepEqual([...ids].sort(), fresh);
+  assert.equal(reloads, loaded + 1);
+});
+
+test("按类别检索只看那一类的向量，结果与全量过滤一致", async (t) => {
+  const { w } = vectorWorld(t);
+  w.open("group:1");
+  const recall = w.mind.recall;
+  fact(w, "10001", "养了一只叫团子的猫");
+  fact(w, "10002", "周末喜欢去钓鱼");
+  await recall.prepare(w.now());
+  const profile = recall.profile();
+  const [query] = await w.mind.embedding.embed(["猫咪今天很乖"], {
+    purpose: "query",
+  });
+  const byKind = recall.store.nearest(profile, query, { kinds: ["fact"] });
+  const byFilter = recall.store.nearest(profile, query, {
+    allow: (id) => id.startsWith("fact:"),
+  });
+  assert.deepEqual(byKind, byFilter);
+});
