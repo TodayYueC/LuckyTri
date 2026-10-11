@@ -1,3 +1,5 @@
+import { recallTokens } from "./store.js";
+
 // The recall index is derived: every row can be rebuilt from the tables that
 // hold her actual memories, so it may be dropped and refilled at any time.
 // Episodes are memories in their own right and follow the append-only rule:
@@ -83,6 +85,21 @@ export function migrateRecall(db) {
   db.exec(
     "CREATE VIRTUAL TABLE IF NOT EXISTS mind_index_fts USING fts5(item_id UNINDEXED, tokens)",
   );
+  // Keyword tokens moved to overlapping character pairs; rebuild once.
+  if (!db.prepare("SELECT 1 FROM core_config WHERE id='recall-fts-v2'").get()) {
+    db.exec("DELETE FROM mind_index_fts");
+    const insert = db.prepare(
+      "INSERT INTO mind_index_fts(item_id,tokens) VALUES (?,?)",
+    );
+    for (const row of db.prepare("SELECT id,text FROM mind_index").iterate()) {
+      const tokens = recallTokens(row.text);
+      if (tokens) insert.run(row.id, tokens);
+    }
+    db.prepare("INSERT INTO core_config(id,value) VALUES (?,?)").run(
+      "recall-fts-v2",
+      JSON.stringify({ time: Date.now() }),
+    );
+  }
   const columns = new Set(
     db
       .prepare("PRAGMA table_info(core_memories)")

@@ -166,3 +166,19 @@ test("被当作玩笑读的话不会整理成关于这个人的事实", async (t
     0,
   );
 });
+
+test("放错层级的回合字段会被归回约定的位置", () => {
+  const turn = normalizeTurn(
+    {
+      understanding: { summary: "在开玩笑", tone: "joking" },
+      contribution: { choice: "speak", targetMessageIds: [1], bubbles: ["嗯"] },
+    },
+    {
+      messages: [{ id: 1, role: "user", relation: "direct" }],
+      batchIds: [1],
+    },
+    { steps: [] },
+  );
+  assert.equal(turn.choice, "speak");
+  assert.equal(turn.understanding.tone, "joking");
+});

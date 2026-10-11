@@ -4,7 +4,7 @@ import { interestTerms } from "./attention.js";
 import { agoLabel, elapsedLabel } from "./clock.js";
 import { describeFace } from "./faces.js";
 import { SELF_KINDS } from "./self.js";
-import { DAY, text } from "./util.js";
+import { DAY, parse, text } from "./util.js";
 import { relationshipHistory } from "./relationship-context.js";
 import {
   fixedReplyHabit,
@@ -102,6 +102,10 @@ export function innerView(
     cue = [],
     activityCue = cue,
     now = Date.now(),
+    // Index ids that recall found related by meaning ("self:THREAD",
+    // "thought:ID"). When given, they choose what comes to mind; word
+    // overlap remains the fallback when vectors are not available.
+    meant = null,
   },
 ) {
   const nature = mind.nature.current(now);
@@ -138,10 +142,16 @@ export function innerView(
       pinned: (t) => t.core || t.thread === living?.thread,
     },
   );
-  const relatedSelf = relevantContext(
-    availableThreads.filter((t) => !visibleThreads.includes(t)),
-    { cues, limit: 2, requireOverlap: true },
-  );
+  const relatedSelf = meant
+    ? availableThreads
+        .filter(
+          (t) => !visibleThreads.includes(t) && meant.has(`self:${t.thread}`),
+        )
+        .slice(0, 2)
+    : relevantContext(
+        availableThreads.filter((t) => !visibleThreads.includes(t)),
+        { cues, limit: 2, requireOverlap: true },
+      );
   const shownLiving = living && carries(living) ? living : null;
   const reminded = [
     ...mind.self
@@ -234,10 +244,16 @@ export function innerView(
         bond.tension < 0.15)
     )
       continue;
+    // What the two of you went through, as threads with how each stands.
+    const shared = mind.episodes
+      .open({ session, people: [id], now, limit: 2 })
+      .filter((row) => parse(row.participants, []).map(String).includes(id))
+      .map((row) => `${text(row.title, 20)}（还没结束）`);
     persons.push({
       id,
       name: bond.name,
       feel: bond.feel,
+      ...(shared.length ? { goingOn: shared } : {}),
       ...(bond.relationship ? { relationship: bond.relationship } : {}),
       ...(bond.impression && mind.meetings.sayable(bond.impression, session)
         ? { impression: bond.impression }
@@ -252,16 +268,21 @@ export function innerView(
     });
   }
   const group = kind === "group" ? mind.bonds.group(session, now) : null;
-  const thoughts = relevantContext(
-    mind.thoughts
-      .open({ now, limit: 400, session })
-      .filter(
-        (t) =>
-          !fixedReplyHabit(t.content) &&
-          mind.meetings.sayable(t.content, session),
-      ),
-    { cues, limit: 3, requireOverlap: cue.length > 0 },
-  );
+  const openThoughts = mind.thoughts
+    .open({ now, limit: 400, session })
+    .filter(
+      (t) =>
+        !fixedReplyHabit(t.content) &&
+        mind.meetings.sayable(t.content, session),
+    );
+  const thoughts =
+    meant && cue.length
+      ? openThoughts.filter((t) => meant.has(`thought:${t.id}`)).slice(0, 3)
+      : relevantContext(openThoughts, {
+          cues,
+          limit: 3,
+          requireOverlap: cue.length > 0,
+        });
   const heard = feedback(mind, session, now);
   const continuity = mind.continuity.recall({ session, people, cue, now });
   const expecting = mind.anticipations

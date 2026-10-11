@@ -1,7 +1,16 @@
-import { ftsTokens } from "../../knowledge/retrieval.js";
 import { dot, textHash } from "../../core/embedding.js";
+import { interestTerms } from "../attention.js";
 import { KINDS, MESSAGE_DAYS, SOURCES } from "./sources.js";
 
+// Overlapping character pairs and Latin words, so "考完试" and "他考完试"
+// share tokens; fixed two-character chunks would not.
+export const recallTokens = (text) => [...interestTerms([text])].join(" ");
+export function recallMatch(text, limit = 32) {
+  return [...interestTerms([text])]
+    .slice(0, limit)
+    .map((term) => `"${term.replace(/"/g, "")}"`)
+    .join(" OR ");
+}
 const toBlob = (vector) =>
   Buffer.from(vector.buffer, vector.byteOffset, vector.byteLength);
 const fromBlob = (blob) => {
@@ -81,7 +90,7 @@ export class RecallStore {
       this.db
         .prepare("DELETE FROM mind_index_fts WHERE item_id=?")
         .run(item.id);
-      const tokens = ftsTokens(item.text);
+      const tokens = recallTokens(item.text);
       if (tokens)
         this.db
           .prepare("INSERT INTO mind_index_fts(item_id,tokens) VALUES (?,?)")
@@ -324,7 +333,8 @@ export class RecallStore {
     hits.sort((a, b) => b.score - a.score);
     return hits.slice(0, limit);
   }
-  keyword(match, limit = 100) {
+  keyword(text, limit = 100) {
+    const match = recallMatch(text);
     if (!match) return [];
     try {
       return this.db

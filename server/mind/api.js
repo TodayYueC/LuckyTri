@@ -78,6 +78,74 @@ function activityOf({ db, life, now, affect, words, names }) {
 export function mountMind(app, chat, life) {
   const { mind } = chat;
   mountTime(app, life);
+  // How her recall stands: what is indexed, vector coverage for the active
+  // embedding profile, the embedding service, background work waiting out
+  // a failure, and models taken out of the backup list.
+  app.get(
+    "/api/mind/recall",
+    wrap((_req, res) =>
+      res.json({
+        ...mind.recall.status(),
+        ready: mind.recall.ready(),
+        waiting: mind.backoff.list().map((row) => ({
+          key: row.key,
+          failures: row.failures,
+          nextAt: row.next_at,
+          lastError: row.last_error,
+        })),
+        unavailableModels: chat.models.health?.() || [],
+      }),
+    ),
+  );
+  // What a line would bring back in a room, with why each item came up.
+  // Read-only: nothing is touched or remembered by asking.
+  app.post(
+    "/api/mind/recall/probe",
+    wrap(async (req, res) => {
+      const { session, text: said, userId = "probe" } = req.body || {};
+      if (typeof session !== "string" || !session) throw Error("请选择会话");
+      if (typeof said !== "string" || !said.trim() || said.length > 500)
+        throw Error("检索内容应为 1–500 字");
+      const now = life.now();
+      const rows = [
+        { role: "user", userId: String(userId), text: said.trim() },
+      ];
+      const people = [String(userId)];
+      const search = await mind.recall.search({
+        session,
+        rows,
+        people,
+        now,
+        limit: 10,
+      });
+      res.json({
+        mode: search.mode,
+        candidates: search.candidates,
+        items: search.items.map((item) => ({
+          id: item.row.id,
+          kind: item.row.kind,
+          text: item.row.text,
+          status: item.row.status,
+          discretion: item.row.discretion,
+          cosine:
+            item.cosine === null ? null : Math.round(item.cosine * 1000) / 1000,
+          standsOut:
+            item.stand === null ? null : Math.round(item.stand * 100) / 100,
+          sharedWords: item.overlap,
+          score: Math.round(item.score * 1000) / 1000,
+          why: item.meant ? "meaning" : item.worded ? "words" : "person",
+        })),
+        facts: await mind.recall.memories(session, rows, now, {
+          people,
+          touch: false,
+          forSpeech: true,
+        }),
+        recollections: await mind.recall.recollect(session, rows, now, {
+          people,
+        }),
+      });
+    }),
+  );
   app.get(
     "/api/mind/relationships",
     wrap((_req, res) =>

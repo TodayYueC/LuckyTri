@@ -369,6 +369,10 @@ export class TurnProcessor {
               }))
           : [];
       lap("summaries");
+      const meant =
+        !replay && !ownInitiative
+          ? await this.owner.mind.recall.relatedOwn(session, batch, now)
+          : null;
       const view = this.owner.mind.view({
         session: preview?.viewSession || session,
         kind: privateChat ? "private" : "group",
@@ -379,6 +383,7 @@ export class TurnProcessor {
           mentioned: m.mentioned === true,
         })),
         now,
+        meant,
       });
       const botSpeakers = new Set(
         (view.inner?.relationships?.known || [])

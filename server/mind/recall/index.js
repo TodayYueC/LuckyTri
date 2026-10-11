@@ -1,4 +1,3 @@
-import { ftsMatchQuery } from "../../knowledge/retrieval.js";
 import { interestTerms } from "../attention.js";
 import { dot } from "../../core/embedding.js";
 import { agoLabel } from "../clock.js";
@@ -331,7 +330,7 @@ export class Recall {
       for (const q of queries)
         lists.push(
           this.store
-            .keyword(ftsMatchQuery(q.text), 80)
+            .keyword(q.text, 80)
             .filter((id) => kindSet.has(id.slice(0, id.indexOf(":")))),
         );
     const speakers = new Set(queries.map((q) => q.speaker).filter(Boolean));
@@ -557,6 +556,28 @@ export class Recall {
       });
     }
     return out;
+  }
+  // Her own threads and thoughts that what is being said reaches by meaning,
+  // as index ids for her inner view. Null when vectors do not cover them, so
+  // the view keeps choosing by shared words.
+  async relatedOwn(session, rows, now = Date.now()) {
+    if (
+      !this.profile() ||
+      !this.embedding.available(now) ||
+      this.coverage(now, ["self", "thought"]) < HYBRID_COVERAGE
+    )
+      return null;
+    const result = await this.search({
+      session,
+      rows,
+      now,
+      kinds: ["self", "thought"],
+      limit: 6,
+      profileFacts: 0,
+    });
+    return new Set(
+      result.items.filter((i) => i.meant || i.worded).map((i) => i.row.id),
+    );
   }
   // A message as it arrives: indexed at once, and its vector made while the
   // batch is still gathering, so the turn's recall finds it in the cache.

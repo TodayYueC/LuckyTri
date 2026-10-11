@@ -311,11 +311,44 @@ const ids = (value) =>
     .map((id) => (typeof id === "string" && /^\d+$/.test(id) ? Number(id) : id))
     .filter((id) => Number.isSafeInteger(id));
 
+// A model sometimes closes an object too early or too late, leaving a
+// top-level field inside understanding or contribution, or the reading
+// fields outside. Put them back where the contract says they belong.
+function liftMisplaced(raw, trace) {
+  const out = { ...raw };
+  let moved = false;
+  for (const key of ["understanding", "contribution"]) {
+    const inner = out[key];
+    if (!inner || typeof inner !== "object" || Array.isArray(inner)) continue;
+    for (const field of [
+      "choice",
+      "targetMessageIds",
+      "topic",
+      "bubbles",
+      "appraisal",
+      "reason",
+    ])
+      if (out[field] === undefined && inner[field] !== undefined) {
+        out[field] = inner[field];
+        moved = true;
+      }
+  }
+  if (out.understanding && typeof out.understanding === "object")
+    for (const field of ["tone", "stance"])
+      if (out[field] !== undefined && out.understanding[field] === undefined) {
+        out.understanding = { ...out.understanding, [field]: out[field] };
+        moved = true;
+      }
+  if (moved) trace?.steps?.push("回合输出有字段放错了层级，已按约定归位");
+  return out;
+}
+
 export function normalizeTurn(raw, snapshot, trace) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw))
     throw SyntaxError("回合输出不是 JSON 对象");
   const known = new Set((snapshot.messages || []).map((m) => m.id));
   const batchIds = new Set(snapshot.batchIds || []);
+  raw = liftMisplaced(raw, trace);
   let choice = CHOICES.includes(raw.choice)
     ? raw.choice
     : LEGACY[raw.action] || null;

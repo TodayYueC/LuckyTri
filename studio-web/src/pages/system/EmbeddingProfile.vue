@@ -12,6 +12,7 @@ const draft = reactive<any>({
   dimensions: 0,
   batchSize: 32,
   timeoutMs: 90000,
+  protocol: "openai",
 });
 const busy = ref(false),
   dirty = ref(false),
@@ -131,6 +132,13 @@ onMounted(load);
             min="1"
             max="128"
         /></label>
+        <label
+          >{{ t("请求格式")
+          }}<select v-model="draft.protocol" name="embeddingProtocol">
+            <option value="openai">{{ t("OpenAI 兼容（可批量）") }}</option>
+            <option value="multimodal">{{ t("多模态接口（逐条）") }}</option>
+          </select></label
+        >
       </div>
       <div class="save-bar">
         <button class="primary" :disabled="busy">
