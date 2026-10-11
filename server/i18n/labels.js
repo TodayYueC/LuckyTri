@@ -145,6 +145,11 @@ export const LABELS = {
   刚才: "just now",
   今天早些时候: "earlier today",
   好几天前: "several days ago",
+  一周前: "a week ago",
+  两三周前: "two or three weeks ago",
+  一个多月前: "over a month ago",
+  几个月前: "a few months ago",
+  一年多前: "over a year ago",
   很久以前: "a long time ago",
   还未相遇: "Not met yet",
   "还没有真实聊天，时间暂时没有可以延续的落点。":

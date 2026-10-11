@@ -10,7 +10,15 @@ export function elapsedLabel(time, now, zone = "Asia/Shanghai") {
   if (day === today) return "今天早些时候";
   if (day === localClock(now - 86400000, zone).local.slice(0, 10))
     return "昨天";
-  return age < 7 * 86400000 ? "好几天前" : "很久以前";
+  const days = age / 86400000;
+  if (days < 7) return "好几天前";
+  // Nine days and two years ago should not read the same.
+  if (days < 14) return "一周前";
+  if (days < 30) return "两三周前";
+  if (days < 60) return "一个多月前";
+  if (days < 365) return "几个月前";
+  if (days < 730) return "一年多前";
+  return "很久以前";
 }
 
 // Coarse distance in time, the way a person would say it.
