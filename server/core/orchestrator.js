@@ -556,7 +556,9 @@ export class ChatSystem {
   }
   // Keeps the recall index in step with her memories and fills missing
   // vectors a little at a time, so a new profile or an old database is
-  // covered within the hour without a burst of requests.
+  // covered without a burst of requests. Memories come first; knowledge
+  // chunks from an earlier profile follow once nothing of hers is waiting.
+  // Until then both are found by words, and the old profile's vectors stay.
   recallUpkeep(now = this.now()) {
     const recall = this.mind.recall;
     try {
@@ -580,6 +582,9 @@ export class ChatSystem {
     };
     this.embeddingRun = recall
       .embedPending({ limit: 100, now })
+      .then((saved) =>
+        saved ? saved : this.knowledge?.reembedStale?.({ limit: 20 }),
+      )
       .then(() => settle(() => this.mind.backoff.succeed("recall:embed")))
       .catch((error) =>
         settle(() => this.mind.backoff.fail("recall:embed", error, now)),

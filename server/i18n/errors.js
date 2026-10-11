@@ -283,6 +283,8 @@ export const ERRORS = {
   向量数量与输入不一致: "The vector count does not match the input",
   向量内容无效: "The vector content is invalid",
   向量维度不一致: "The vector dimensions are inconsistent",
+  "向量服务不支持自动长度，已改用模型自己的长度":
+    "The vector service does not support the automatic length; using the model's own length",
   知识库名称无效: "The collection name is invalid",
   知识库不存在: "The collection does not exist",
   "文档内容应为 1–400000 字": "The document must be 1–400000 characters",

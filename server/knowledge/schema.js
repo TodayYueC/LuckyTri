@@ -131,6 +131,19 @@ export function migrateKnowledge(db) {
     db.exec(
       "ALTER TABLE core_chunks ADD COLUMN embedding_profile TEXT NOT NULL DEFAULT ''",
     );
+  // The vector a chunk had under the profile before the current one, so
+  // switching back costs no requests.
+  for (const [name, type] of [
+    ["previous_embedding", "BLOB"],
+    ["previous_profile", "TEXT NOT NULL DEFAULT ''"],
+  ])
+    if (
+      !db
+        .prepare("PRAGMA table_info(core_chunks)")
+        .all()
+        .some((c) => c.name === name)
+    )
+      db.exec(`ALTER TABLE core_chunks ADD COLUMN ${name} ${type}`);
   db.exec(`CREATE INDEX IF NOT EXISTS core_chunks_collection ON core_chunks(collection_id, document_id);
     CREATE INDEX IF NOT EXISTS core_chunks_unindexed ON core_chunks(vector_indexed) WHERE embedding IS NOT NULL;
     CREATE TABLE IF NOT EXISTS core_vector_buckets(dimension INTEGER NOT NULL,band INTEGER NOT NULL,bucket INTEGER NOT NULL,chunk_id TEXT NOT NULL,PRIMARY KEY(dimension,band,bucket,chunk_id));

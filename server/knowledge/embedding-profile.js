@@ -16,9 +16,8 @@ export const EMBEDDING_DEFAULTS = {
 };
 export const EMBEDDING_PROTOCOLS = new Set(["openai", "multimodal"]);
 
-// Defaults when the user gives an address and a key. Dimension 0 means the
-// request does not name a length, so the model returns its own. For
-// doubao-embedding-vision that is 2048. The model name is filled in only
+// Defaults when the user gives an address and a key. Dimension 0 means
+// automatic: see automaticLength below. The model name is filled in only
 // when the address is Volcengine Ark.
 export function suggestEmbedding(chat = {}, address = "") {
   const given = String(address || "")
@@ -40,13 +39,41 @@ export function suggestEmbedding(chat = {}, address = "") {
   };
 }
 
+// What "automatic" (dimension 0) asks a model for. doubao-embedding-vision
+// answers 2048 numbers unless asked for 1024. On the recall benchmark the
+// shorter vector ranked the same, and it halves memory, storage and the time
+// to scan them. The price is per input token, so the bill does not change.
+// Other models keep their own length.
+const LENGTHS = [
+  { model: /doubao-embedding-vision/i, automatic: 1024, native: 2048 },
+];
+// Providers seen to refuse or ignore the automatic length, by address and
+// model. Saving the profile again clears it.
+const NATIVE = "embedding-native-length";
+
+const modelOf = (profile) => profile.embeddingModel || profile.model || "";
+const lengthsOf = (profile) =>
+  LENGTHS.find((entry) => entry.model.test(modelOf(profile)));
+const nativeKey = (profile) => `${profile.baseUrl || ""}|${modelOf(profile)}`;
+
+// The length actually requested. 0 means "do not name one".
+export function automaticLength(profile, refused = {}) {
+  if (profile.dimensions) return profile.dimensions;
+  if (refused[nativeKey(profile)]) return 0;
+  return lengthsOf(profile)?.automatic || 0;
+}
+
+// Asking for the length a model returns anyway is the same space as not
+// asking, so both share one signature: typing 2048 after the move to 1024
+// finds the old vectors again instead of paying to embed everything twice.
 export function embeddingSignature(profile) {
+  const length = profile.dimensions || 0;
   return createHash("sha256")
     .update(
       JSON.stringify([
         profile.baseUrl || "",
-        profile.embeddingModel || profile.model || "",
-        profile.dimensions || 0,
+        modelOf(profile),
+        length === lengthsOf(profile)?.native ? 0 : length,
         ...(profile.protocol === "multimodal" ? ["multimodal"] : []),
       ]),
     )
@@ -96,25 +123,35 @@ export function saveEmbeddingProfile(repo, input) {
     if (!Number.isSafeInteger(next[key]) || next[key] < min || next[key] > max)
       throw Error(`${key} 超出范围`);
   repo.saveConfig(CONFIG, next);
+  repo.saveConfig(NATIVE, {});
   return publicEmbeddingProfile(repo);
 }
 
 export function resolveEmbeddingProfile(repo, models) {
   const saved = repo.config(CONFIG, null);
-  if (saved) {
-    const profile = {
-      ...EMBEDDING_DEFAULTS,
-      ...saved,
-      id: "embedding",
-      embedding: saved.enabled,
-      embeddingModel: saved.model,
-      isolatedEmbeddingKey: true,
-    };
-    return { profile, signature: embeddingSignature(profile), legacy: false };
-  }
   // Existing installations remain compatible until an independent profile is saved.
-  const profile = models.profile("default");
-  return { profile, signature: embeddingSignature(profile), legacy: true };
+  const base = saved
+    ? {
+        ...EMBEDDING_DEFAULTS,
+        ...saved,
+        id: "embedding",
+        embedding: saved.enabled,
+        embeddingModel: saved.model,
+        isolatedEmbeddingKey: true,
+      }
+    : models.profile("default");
+  const refused = repo.config(NATIVE, {}) || {};
+  const dimensions = automaticLength(base, refused);
+  const profile = { ...base, dimensions };
+  if (!base.dimensions && dimensions)
+    // A provider that refuses the length, or answers another, is remembered;
+    // the next request goes back to the model's own length and signature.
+    profile.refuseLength = (reason) =>
+      repo.saveConfig(NATIVE, {
+        ...(repo.config(NATIVE, {}) || {}),
+        [nativeKey(base)]: { at: Date.now(), reason: String(reason) },
+      });
+  return { profile, signature: embeddingSignature(profile), legacy: !saved };
 }
 
 // A provider may accept fewer inputs per request than configured; its own
@@ -142,6 +179,8 @@ export async function embedBatches(models, profile, texts, options = {}) {
         batchLimits.set(limitKey, size);
         continue;
       }
+      if (profile.refuseLength && Number(error?.status) === 400)
+        await refusedLength(models, profile, batch, options, error);
       throw error;
     }
     start += batch.length;
@@ -156,9 +195,35 @@ export async function embedBatches(models, profile, texts, options = {}) {
       )
         throw Error("向量内容无效");
       dimension ||= vector.length;
-      if (vector.length !== dimension) throw Error("向量维度不一致");
+      if (vector.length !== dimension) {
+        if (profile.refuseLength && vector.length !== profile.dimensions) {
+          profile.refuseLength(`answered ${vector.length}`);
+          throw lengthChanged();
+        }
+        throw Error("向量维度不一致");
+      }
       vectors.push(vector);
     }
   }
   return vectors;
+}
+
+const lengthChanged = () =>
+  Object.assign(Error("向量服务不支持自动长度，已改用模型自己的长度"), {
+    lengthChanged: true,
+  });
+
+// A 400 may be the length or anything else (a bad key arrives as 400 too).
+// One request without the length tells which. Vectors already made under
+// the old signature must not be saved, so the caller still gets an error
+// and asks again under the new one.
+async function refusedLength(models, profile, batch, options, error) {
+  try {
+    const { refuseLength, beforeBatch, ...plain } = profile;
+    await models.embed({ ...plain, dimensions: 0 }, batch.slice(0, 1), options);
+  } catch {
+    return;
+  }
+  profile.refuseLength(error.detail || error.message);
+  throw lengthChanged();
 }

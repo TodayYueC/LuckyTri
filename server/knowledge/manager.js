@@ -274,8 +274,11 @@ export class KnowledgeManager {
           (!signature ||
             chunk.embedding_profile === signature ||
             (legacy && !chunk.embedding_profile))
-        )
-          score += cosine(vec, unpackVector(chunk.embedding)) * 4;
+        ) {
+          // A vector of another length (an old unsigned chunk) is not comparable.
+          const stored = unpackVector(chunk.embedding);
+          if (stored?.length === vec.length) score += cosine(vec, stored) * 4;
+        }
         const ageDays = (cutoff - (chunk.document_created || 0)) / 86400000;
         if (ageDays > 30) score *= 0.85;
         if (score > (best.get(chunk.id) || 0)) best.set(chunk.id, score);
@@ -336,7 +339,7 @@ export class KnowledgeManager {
   async reembedDocument(id) {
     const rows = this.repo.db
       .prepare(
-        "SELECT id,text FROM core_chunks WHERE document_id=? ORDER BY ordinal",
+        "SELECT id,text,embedding_profile,previous_profile FROM core_chunks WHERE document_id=? ORDER BY ordinal",
       )
       .all(id);
     if (!rows.length) throw Error("文档没有可建立向量的段落");
@@ -345,37 +348,89 @@ export class KnowledgeManager {
       this.models,
     );
     if (!profile.embedding) throw Error("请先启用知识向量模型");
-    const vectors = await embedBatches(
-      this.models,
-      profile,
-      rows.map((row) => row.text),
+    const { vectors, ask } = await this.#vectorsFor(rows, signature, (texts) =>
+      embedBatches(this.models, profile, texts),
     );
+    if (!this.#saveVectors(rows, vectors, signature, id))
+      throw Error("文档已变化，请重新建立向量");
+    return { chunks: rows.length, embedded: ask.length };
+  }
+  // After a model or length change, chunks made under the old profile are
+  // searched by words only. This brings them over a few at a time on the
+  // maintenance tick, through the paced embedding service. Returns how many
+  // chunks moved; 0 when nothing is left or the service is not available.
+  async reembedStale({ limit = 20 } = {}) {
+    if (!this.embedding?.available()) return 0;
+    const { signature, legacy } = resolveEmbeddingProfile(
+      this.repo,
+      this.models,
+    );
+    if (!signature) return 0;
+    const rows = this.repo.db
+      .prepare(
+        `SELECT c.id,c.text,c.embedding_profile,c.previous_profile FROM core_chunks c
+         JOIN core_documents d ON d.id=c.document_id
+         WHERE d.status='ready' AND c.embedding IS NOT NULL AND c.embedding_profile!=?
+         ${legacy ? "AND c.embedding_profile!=''" : ""}
+         ORDER BY c.created DESC LIMIT ?`,
+      )
+      .all(signature, limit);
+    if (!rows.length) return 0;
+    const { vectors } = await this.#vectorsFor(rows, signature, (texts) =>
+      this.embedding.embed(texts, { purpose: "document" }),
+    );
+    this.#saveVectors(rows, vectors, signature);
+    return rows.length;
+  }
+  // A chunk whose previous vector already belongs to this profile swaps
+  // back; only the rest are asked for.
+  async #vectorsFor(rows, signature, embed) {
+    const ask = rows.filter((row) => row.previous_profile !== signature);
+    const made = ask.length ? await embed(ask.map((row) => row.text)) : [];
+    const vectors = new Map(ask.map((row, i) => [row.id, made[i]]));
+    return { vectors, ask };
+  }
+  // The current vector becomes the previous one, so nothing is thrown away
+  // until a third profile arrives. A trigger re-indexes the chunk.
+  #saveVectors(rows, vectors, signature, documentId = null) {
     const db = this.repo.db;
-    db.exec("SAVEPOINT reembed_document");
+    const fresh = db.prepare(
+      `UPDATE core_chunks SET
+         previous_embedding=CASE WHEN embedding_profile!=? THEN embedding ELSE previous_embedding END,
+         previous_profile=CASE WHEN embedding_profile!=? THEN embedding_profile ELSE previous_profile END,
+         embedding=?,embedding_profile=?
+       WHERE id=? AND text=?`,
+    );
+    const swap = db.prepare(
+      `UPDATE core_chunks SET
+         embedding=previous_embedding,embedding_profile=previous_profile,
+         previous_embedding=embedding,previous_profile=embedding_profile
+       WHERE id=? AND previous_profile=?`,
+    );
+    db.exec("SAVEPOINT reembed_chunks");
     try {
-      const update = db.prepare(
-        "UPDATE core_chunks SET embedding=?,embedding_profile=? WHERE id=? AND document_id=? AND text=?",
-      );
-      rows.forEach((row, index) => {
-        if (
-          !update.run(
-            packVector(vectors[index]),
-            signature,
-            row.id,
-            id,
-            row.text,
-          ).changes
-        )
-          throw Error("文档已变化，请重新建立向量");
-      });
-      db.exec("RELEASE reembed_document");
-    } catch (error) {
-      db.exec("ROLLBACK TO reembed_document");
-      db.exec("RELEASE reembed_document");
-      throw error;
+      for (const row of rows) {
+        const vector = vectors.get(row.id);
+        const changed = vector
+          ? fresh.run(
+              signature,
+              signature,
+              packVector(vector),
+              signature,
+              row.id,
+              row.text,
+            ).changes
+          : swap.run(row.id, signature).changes;
+        if (!changed && documentId) throw Error("changed");
+      }
+      db.exec("RELEASE reembed_chunks");
+    } catch {
+      db.exec("ROLLBACK TO reembed_chunks");
+      db.exec("RELEASE reembed_chunks");
+      return false;
     }
     this.repo.store.revision++;
-    return { chunks: rows.length };
+    return true;
   }
   removeDocument(id) {
     const row = this.repo.db
