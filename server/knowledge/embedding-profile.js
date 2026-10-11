@@ -16,9 +16,10 @@ export const EMBEDDING_DEFAULTS = {
 };
 export const EMBEDDING_PROTOCOLS = new Set(["openai", "multimodal"]);
 
-// Defaults when the user gives an address and a key. 1024 dimensions and the
-// batched OpenAI-style endpoint matched doubao-embedding-vision; that model
-// name is used only when the address is Volcengine Ark.
+// Defaults when the user gives an address and a key. Dimension 0 means the
+// request does not name a length, so the model returns its own. For
+// doubao-embedding-vision that is 2048. The model name is filled in only
+// when the address is Volcengine Ark.
 export function suggestEmbedding(chat = {}, address = "") {
   const given = String(address || "")
     .trim()
@@ -30,7 +31,7 @@ export function suggestEmbedding(chat = {}, address = "") {
   const ark = /volces\.com|volcengine/i.test(base);
   return {
     protocol: "openai",
-    dimensions: 1024,
+    dimensions: 0,
     batchSize: 10,
     timeoutMs: 90000,
     baseUrl:

@@ -81,8 +81,8 @@ export default {
   "连接成功，向量维度 {dimensions}":
     "Connected. Vector dimensions: {dimensions}",
   知识向量模型: "Knowledge vector model",
-  "填写向量服务的请求地址和密钥。模型名可以留空：火山方舟地址会用 doubao-embedding-vision，维度和接口有默认值。不启用或连不上时，对话和关键词回忆照常进行。":
-    "Enter the vector service address and key. The model name can be left empty: a Volcengine Ark address uses doubao-embedding-vision, and dimensions and the request format have defaults. Without it, or if it cannot be reached, conversation and keyword recall still run.",
+  "填写向量服务的请求地址和密钥。模型名可以留空：火山方舟地址会用 doubao-embedding-vision。维度填 0 表示不指定，用模型自己的长度，这个模型是 2048。不启用或连不上时，对话和关键词回忆照常进行。":
+    "Enter the vector service address and key. The model name can be left empty: a Volcengine Ark address uses doubao-embedding-vision. Dimension 0 means do not ask for a length, so the model uses its own, which is 2048. Without it, or if it cannot be reached, conversation and keyword recall still run.",
   请求地址: "Request address",
   "可留空，按地址选择": "Optional; chosen from the address",
   向量服务密钥: "Vector service key",

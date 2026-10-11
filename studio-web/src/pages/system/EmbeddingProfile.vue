@@ -9,7 +9,7 @@ const draft = reactive<any>({
   baseUrl: "",
   model: "",
   apiKey: "",
-  dimensions: 1024,
+  dimensions: 0,
   batchSize: 10,
   timeoutMs: 90000,
   protocol: "openai",
@@ -66,7 +66,7 @@ onMounted(load);
     <p class="muted">
       {{
         t(
-          "填写向量服务的请求地址和密钥。模型名可以留空：火山方舟地址会用 doubao-embedding-vision，维度和接口有默认值。不启用或连不上时，对话和关键词回忆照常进行。",
+          "填写向量服务的请求地址和密钥。模型名可以留空：火山方舟地址会用 doubao-embedding-vision。维度填 0 表示不指定，用模型自己的长度，这个模型是 2048。不启用或连不上时，对话和关键词回忆照常进行。",
         )
       }}
     </p>
