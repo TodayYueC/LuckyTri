@@ -28,6 +28,9 @@ const option = (name, fallback) => {
   return at === -1 ? fallback : args[at + 1];
 };
 const fake = args.includes("--fake");
+// Any OpenAI-compatible endpoint without a saved profile, e.g. a local model
+// server used for offline benchmarking: --base-url http://127.0.0.1:8811/v1
+const baseUrl = option("--base-url", "");
 const path = join(tmpdir(), `luckytri-recall-eval-${process.pid}.db`);
 const store = createStore(path);
 const now = Date.parse("2026-10-11T12:00:00+08:00");
@@ -45,7 +48,15 @@ let profile = {
   protocol: "openai",
 };
 if (fake) system.models.embed = fakeEmbedder();
-else {
+else if (baseUrl) {
+  profile = {
+    ...profile,
+    baseUrl,
+    model: option("--model", "local"),
+    apiKey: process.env.EMBEDDING_API_KEY || "local",
+    batchSize: 32,
+  };
+} else {
   const source = new DatabaseSync(
     resolve(option("--key-from", "data/friend.db")),
     {
@@ -65,10 +76,12 @@ else {
     batchSize: 10,
   };
 }
-profile.dimensions = Number(option("--dimensions", fake ? 0 : 1024));
+profile.dimensions = Number(
+  option("--dimensions", fake || baseUrl ? 0 : 1024),
+);
 saveEmbeddingProfile(repo, profile);
-system.mind.embedding.backgroundInterval = fake ? 0 : 1500;
-if (fake) system.mind.embedding.tokensPerMinute = 0;
+system.mind.embedding.backgroundInterval = fake || baseUrl ? 0 : 1500;
+if (fake || baseUrl) system.mind.embedding.tokensPerMinute = 0;
 
 for (const session of ["group:1", "group:2", "private:10001", "private:10003"])
   db.prepare(
@@ -266,6 +279,7 @@ for (const [name, run] of Object.entries(METHODS)) {
 }
 report.embedding = {
   model: fake ? "fake" : profile.model,
+  baseUrl: fake ? "" : profile.baseUrl,
   dimensions: profile.dimensions || "default",
   indexRequests: embedBefore,
   queryRequests: system.mind.embedding.stats.requests - embedBefore,
@@ -282,7 +296,7 @@ const directory = resolve("data/evaluations");
 mkdirSync(directory, { recursive: true });
 const file = join(
   directory,
-  `recall-${fake ? "fake" : `real-${profile.dimensions || "default"}`}-${Date.now()}.json`,
+  `recall-${fake ? "fake" : `${baseUrl ? "local" : "real"}-${profile.dimensions || "default"}`}-${Date.now()}.json`,
 );
 writeFileSync(file, JSON.stringify(report, null, 2));
 console.log(`报告：${file}`);
