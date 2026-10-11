@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- The review prompt drops a duplicated “admitting fault scores no points” clause so that idea is stated once, trimming prompt bloat.
 - The check of whether a reply answers the asker now treats “I don’t eat / have no body” as a real answer to “what did you eat”, not as dodging the question.
 - Memory consolidation and summary merges join the other mechanical stages in turning off hidden reasoning, so background work no longer burns thousands of reasoning tokens to extract facts.
 - A bare “you got it wrong” about a fact is no longer treated as a repair that must admit fault; only meta-critique of how she speaks (robotic, repetitive, unnatural) takes that path, and even then she checks whether she actually did.
