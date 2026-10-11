@@ -18,6 +18,7 @@ import {
 import { normalizeTurn, takeTurn } from "./turn.js";
 import { RECOLLECTION_NOTE } from "../mind/recall/index.js";
 import { workingMemory } from "./working-memory.js";
+import { expressionStrategy } from "./expression-strategy.js";
 import { localClock } from "./conversation-cues.js";
 import {
   initiativeAudience,
@@ -80,7 +81,21 @@ export class TurnProcessor {
       zone,
       previousTalk,
     });
-    if (working) snapshot.working = working;
+    const ownLines = this.owner.repo.db
+      .prepare(
+        "SELECT payload FROM core_events WHERE session_id=? AND role='assistant' AND seq<? AND COALESCE(json_extract(payload,'$.simulated'),0)=0 ORDER BY seq DESC LIMIT 12",
+      )
+      .all(session, Number.isFinite(before) ? before : Number.MAX_SAFE_INTEGER)
+      .map((row) => JSON.parse(row.payload).text || "")
+      .reverse();
+    const style = expressionStrategy({
+      ownLines,
+      theirLines: (snapshot.messages || [])
+        .filter((m) => fresh.has(m.id) && m.role === "user")
+        .map((m) => m.text || ""),
+    });
+    if (working || style)
+      snapshot.working = { ...(working || {}), ...(style ? { style } : {}) };
     if (replay || !snapshot.historyStart) return;
     const kept = new Set((snapshot.messages || []).map((m) => m.id));
     const older = await this.owner.mind.recall.olderMessages(
@@ -650,6 +665,24 @@ export class TurnProcessor {
       }
       trace.decision = turn;
       if (live) this.owner.mind.time.adjust(turn, clock());
+      const reading = turn.understanding;
+      if (
+        live &&
+        reading?.messageIds?.length &&
+        (reading.tone || reading.stance)
+      ) {
+        const keep = this.owner.repo.db.prepare(
+          "INSERT INTO core_message_cues(seq,tone,stance,trace_id,created) VALUES (?,?,?,?,?) ON CONFLICT(seq) DO UPDATE SET tone=excluded.tone,stance=excluded.stance,trace_id=excluded.trace_id",
+        );
+        for (const seq of reading.messageIds)
+          keep.run(
+            seq,
+            reading.tone || null,
+            reading.stance || null,
+            trace.id,
+            now,
+          );
+      }
       trace.path = occasion?.type || (direct ? "direct" : "contextual");
       const roomKind = privateChat ? "private" : "group";
       let talkSettled = false;

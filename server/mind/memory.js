@@ -803,6 +803,21 @@ export class MemoryManager {
         list: [],
         refs: new Map(),
       };
+      // How she read these messages when she answered them.
+      const readings = new Map(
+        db
+          .prepare(
+            `SELECT seq,tone,stance FROM core_message_cues WHERE seq IN (${block.map(() => "?").join(",")})`,
+          )
+          .all(...block.map((m) => m.seq))
+          .map((row) => [
+            row.seq,
+            {
+              ...(row.tone ? { tone: row.tone } : {}),
+              ...(row.stance ? { stance: row.stance } : {}),
+            },
+          ]),
+      );
       const value = await models.call(
         profile,
         "memory",
@@ -825,6 +840,7 @@ export class MemoryManager {
                   m.userId,
             role: m.role,
             ...(m.artifact ? { artifact: m.artifact } : {}),
+            ...(readings.get(m.seq) ? { readAs: readings.get(m.seq) } : {}),
             text: String(m.text || "").slice(0, 600),
             // A readable local time lets "明天" become a date.
             localTime: localClock(m.time, zone).local,
@@ -872,6 +888,21 @@ export class MemoryManager {
             )
           )
             continue;
+          // Said as a joke, in irony or as hearsay when she read it: not a
+          // fact about the person. A guess is kept as an inference at most.
+          const read = sources.map((m) => readings.get(m.seq) || {});
+          if (
+            read.every(
+              (r) =>
+                ["joke", "hearsay"].includes(r.stance) ||
+                ["joking", "teasing", "ironic"].includes(r.tone),
+            )
+          )
+            continue;
+          if (read.every((r) => r.stance === "guess")) {
+            f.certainty = "inferred";
+            f.confidence = Math.min(0.6, f.confidence);
+          }
           const secret =
             f.discretion === "secret" ||
             askedSecret(block, f.subject, Math.max(...f.sources));

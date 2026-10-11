@@ -249,7 +249,7 @@ export class ReplyDelivery {
         (person) =>
           person.recentShared?.length || person.myPrivateIntentions?.length,
       );
-    const needsDeepCheck = (response) =>
+    const deepCheckFor = (response, ignoreBotTail = false) =>
       readerQuestions(snapshot, turn).length > 0 ||
       (turn.contribution?.kind === "question" &&
         snapshot.messages
@@ -289,7 +289,7 @@ export class ReplyDelivery {
       response.bubbles.some((line) =>
         /从.{1,16}(?:学来|听来|知道|学的)|(?:教|告诉)我的/.test(line),
       ) ||
-      conversationGrounding(snapshot).botOnlyTail >= 6 ||
+      (!ignoreBotTail && conversationGrounding(snapshot).botOnlyTail >= 6) ||
       snapshot.batch.some((m) =>
         /看不懂|没看懂|听不懂|太抽象|人机|复读|说人话|好好说话|冷淡|冷漠|你觉得我|我的人格|性格怎么样/.test(
           m.text || "",
@@ -331,6 +331,16 @@ export class ReplyDelivery {
           (!c.direct &&
             (response.bubbles.join("").length > 60 ||
               snapshot.batch.some((m) => m.relation === "unresolved")))));
+    // A bot exchange whose reply the contribution review already found to
+    // add something new does not need a second review for that same reason.
+    const contributionReviewed =
+      trace.contributionReview?.hasContribution === true;
+    const needsDeepCheck = (response) => {
+      const needed = deepCheckFor(response, contributionReviewed);
+      if (!needed && contributionReviewed && deepCheckFor(response))
+        trace.steps.push("接话内容已复核过，这次不再为同一原因整段复审");
+      return needed;
+    };
     const deepCheck = async (response) => {
       try {
         // An old expression can already contain a fictional action. Check

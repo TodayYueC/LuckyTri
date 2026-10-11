@@ -70,6 +70,15 @@ export function migrateRecall(db) {
       PRIMARY KEY(from_id,to_id,relation)
     );
     CREATE INDEX IF NOT EXISTS mind_links_to ON mind_links(to_id,relation);
+    -- How the turn read a message it answered: in earnest or as a joke, a
+    -- fact or a guess. Consolidation uses it so a joke is not filed as fact.
+    CREATE TABLE IF NOT EXISTS core_message_cues(
+      seq INTEGER PRIMARY KEY,
+      tone TEXT,
+      stance TEXT,
+      trace_id TEXT,
+      created INTEGER NOT NULL
+    );
   `);
   db.exec(
     "CREATE VIRTUAL TABLE IF NOT EXISTS mind_index_fts USING fts5(item_id UNINDEXED, tokens)",

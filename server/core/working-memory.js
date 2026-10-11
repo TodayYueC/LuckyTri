@@ -1,5 +1,6 @@
 import { agoLabel, timePhase } from "../mind/clock.js";
 import { timeExpressions } from "./time-expressions.js";
+import { understandingHints } from "./understanding.js";
 
 // A pause this long ends one stretch of talk and starts the next.
 export const SEGMENT_GAP = 40 * 60000;
@@ -127,6 +128,8 @@ export function workingMemory({
       note: "本轮有代词或指代，这些只是候选；判断不了就按最自然的理解，必要时简单问一句。",
     };
   }
+  const reading = understandingHints(rows, batchIds);
+  if (reading) out.reading = reading;
   const times = current.flatMap((m) =>
     timeExpressions(m.text, m.time, zone).map((t) => ({
       messageId: m.id,

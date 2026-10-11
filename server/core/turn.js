@@ -32,6 +32,8 @@ const INTENT_KINDS = [
   "closing",
   "other",
 ];
+export const TONES = ["serious", "joking", "teasing", "ironic", "venting"];
+export const STANCES = ["fact", "guess", "opinion", "joke", "hearsay"];
 const LEGACY = {
   REPLY: "speak",
   MULTI_MESSAGE: "speak",
@@ -469,6 +471,12 @@ export function normalizeTurn(raw, snapshot, trace) {
               batchIds.has(id),
             ),
             point: text(raw.understanding.point, 180),
+            ...(TONES.includes(raw.understanding.tone)
+              ? { tone: raw.understanding.tone }
+              : {}),
+            ...(STANCES.includes(raw.understanding.stance)
+              ? { stance: raw.understanding.stance }
+              : {}),
           },
         }
       : {}),
