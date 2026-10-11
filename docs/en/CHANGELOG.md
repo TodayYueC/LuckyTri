@@ -2,6 +2,11 @@
 
 # Changelog
 
+## Unreleased
+
+- Embedding dimension 0 now means automatic: doubao-embedding-vision is asked for 1024, and other models keep their own length. Recall ranks the same as with 2048, with half the memory and scan time, at the same price. An install with 2048-dimension vectors fills the new ones in the background, recalls by keywords meanwhile and keeps the old vectors; writing 2048 switches back without new requests. A service that does not support 1024 falls back to the model's own length.
+- A profile changed from 1024 back to 0 after the 1.1.2 note uses its earlier 1024-dimension vectors again.
+
 ## 1.1.2 — 2026-10-11
 
 - Embedding length is no longer forced to 1024. Dimension 0 does not ask the service for a length, so doubao-embedding-vision uses its own 2048. A profile already saved as 1024 has to be set back to 0 and saved again.
