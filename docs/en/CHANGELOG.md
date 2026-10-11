@@ -2,6 +2,11 @@
 
 # Changelog
 
+## 1.1.1 — 2026-10-11
+
+- The embedding service asks for its request address and key. The model name can be left empty; a Volcengine Ark address uses doubao-embedding-vision.
+- The key is no longer a password field, so the browser does not treat it as a studio sign-in and ask to log in again. A 401 from the vector service is no longer treated as a signed-out studio.
+
 ## 1.1.0 — 2026-10-11
 
 - She is the same person in every room. What was just said elsewhere comes into the current turn, and she knows it. She does not usually bring another place up here. When the person in front of her was part of it, she may continue or leave it unsaid. Private wording, secrets and another account's history still stay out.

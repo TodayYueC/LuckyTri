@@ -94,7 +94,7 @@ The full design is in [Her life](docs/en/her-life.md) and [Architecture and exte
 
 Recent work focuses on continuity and clearer conversation. Account-based recognition links public encounters across groups and private chats. Relationships, forms of address, her own views and private promises retain their sources and visibility boundaries. An ordinary greeting need not bring back unfinished tasks or demonstrate how much she remembers.
 
-**1.1.0 update:** She is the same person in every room. She knows her mood, energy and who she is close to, and she knows what just happened elsewhere. She does not usually mention another place; when the person in front of her was there, she decides whether to continue. Recall can search by meaning. Only an embedding API key is required, and conversation and keyword recall still run without one. See the [changelog](docs/en/CHANGELOG.md).
+**1.1.1 update:** The embedding service takes a request address and a key; the model name can be left empty. The key is no longer a password field, so the browser does not keep asking to sign in again. See the [changelog](docs/en/CHANGELOG.md).
 
 | Area                     | What it does today                                                                                                                                                                    |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
