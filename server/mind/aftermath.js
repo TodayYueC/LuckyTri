@@ -11,7 +11,7 @@ export const WINDOW_MESSAGES = 20;
 // Said to her, these usually mean she got something wrong. Only a hint:
 // "可能" is all it ever claims, with the message beside it.
 const CORRECTION =
-  /(?:^|[，,。！!？?\s])(?:不是(?:的|啦|吧)?|不对|没有啦|才不是|搞错|记错|说错|弄错|错了|并没有|不是这样)/;
+  /(?:^|[，,。！!？?\s])(?:你|您)?(?:不是(?:的|啦|吧)?|不对|没有啦|才不是|搞错|记错|说错|弄错|错了|并没有|不是这样)/;
 
 const parse = (value) => {
   try {
@@ -109,6 +109,7 @@ export function aftermathOf(db, choice, now) {
     ...(tone.length ? { tone } : {}),
     ...(corrected.length ? { corrected: "maybe" } : {}),
     ...(feedback.length ? { feedback: [...new Set(feedback)] } : {}),
+    ...(spoke && own >= 0 ? { own: `m:${rows[own].seq}` } : {}),
     refs: [...corrected, ...toHer.filter((row) => !corrected.includes(row))]
       .slice(0, 4)
       .map((row) => `m:${row.seq}`),

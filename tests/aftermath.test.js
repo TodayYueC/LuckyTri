@@ -76,6 +76,21 @@ test("可能被纠正：冲着她说“不是周五啦”，标为可能，并�
   assert.match(describeAftermath(choice.after), /可能说错了/);
 });
 
+test("“@她 你记错了吧”也算可能被纠正：前面带着称呼和“你”", async (t) => {
+  const w = world();
+  t.after(w.close);
+  await speak(w);
+  w.advance(MINUTE);
+  const fix = w.say("group:1", "10002", "@她 你记错了吧，根本没有会", {
+    mentioned: true,
+  });
+  w.advance(2 * HOUR);
+  settleAftermath(w.store.db, { now: w.now() });
+  const [choice] = choices(w);
+  assert.equal(choice.after.corrected, "maybe");
+  assert.equal(choice.after.refs[0], `m:${fix.seq}`);
+});
+
 test("不是冲着她说的“不是”不算纠正；说完没人理记为没人接话", async (t) => {
   const w = world();
   t.after(w.close);
