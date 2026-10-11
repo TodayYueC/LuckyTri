@@ -18,12 +18,14 @@ import { DAY, clamp, similar, text } from "./util.js";
 import { recallIntent } from "./continuity.js";
 import { consolidationDecision } from "./memory-policy.js";
 import { requestedName } from "../core/person-name.js";
+import { isFormatFailure, providerWaitMs } from "../core/backoff.js";
 
 const RECALL_CONFIDENCE = 0.5;
 const RECALL_LIMIT = 12;
 const RECALL_TERMS = 64;
 const FTS_CANDIDATES = 200;
 const BLOCK_USERS = 40;
+const MIN_BLOCK_USERS = 10;
 // One stretch of talk adds at most this many views to who she is.
 const MEMORY_VIEWS_PER_BLOCK = 2;
 const SENSITIVE = /密码|验证码|密钥|身份证|银行卡|api.?key|token/i;
@@ -696,7 +698,11 @@ export class MemoryManager {
   ) {
     if (this.busy.has(session)) return;
     if (!force && now - (this.lastAttempt.get(session) || 0) < 60000) return;
+    const backoff = this.mind?.backoff;
+    const backoffKey = `memory:${session}`;
+    if (!force && backoff && !backoff.ready(backoffKey, now)) return;
     this.busy.add(session);
+    let blockCursor = null;
     try {
       const db = this.repo.db;
       const cursor =
@@ -720,8 +726,16 @@ export class MemoryManager {
       const users = rows.filter((m) => m.role === "user");
       if (!users.length || (!force && !this.due(session, now).due)) return;
       this.lastAttempt.set(session, now);
+      blockCursor = cursor;
+      // A stretch the model could not turn into valid notes twice is tried
+      // in smaller pieces; the same input is not resent unchanged forever.
+      const failing = backoff?.state(backoffKey).meta || {};
+      const blockUsers =
+        failing.cursor === cursor && failing.blockUsers
+          ? failing.blockUsers
+          : BLOCK_USERS;
       // Her answers to the block's last messages belong with that block.
-      const next = users[BLOCK_USERS]?.seq ?? Number.MAX_SAFE_INTEGER;
+      const next = users[blockUsers]?.seq ?? Number.MAX_SAFE_INTEGER;
       const block = rows.filter((m) => m.seq < next);
       const last = block.at(-1).seq;
       const names = speakerNames(db, [session]);
@@ -877,12 +891,81 @@ export class MemoryManager {
         ).run(session, last);
         db.exec("COMMIT");
         this.lastAttempt.delete(session);
+        backoff?.succeed(backoffKey);
       } catch (e) {
         db.exec("ROLLBACK");
         throw e;
       }
+    } catch (error) {
+      if (backoff && blockCursor !== null)
+        this.#failed(backoffKey, blockCursor, session, error, now);
+      throw error;
     } finally {
       this.busy.delete(session);
     }
+  }
+  // A provider refusal or outage only waits. A block whose notes keep coming
+  // back malformed is halved, and the smallest block that still fails is set
+  // aside with its reason so the stretches after it can be remembered.
+  #failed(key, cursor, session, error, now) {
+    const backoff = this.mind.backoff;
+    if (!isFormatFailure(error)) {
+      backoff.fail(key, error, now, { minimumMs: providerWaitMs(error) });
+      return;
+    }
+    const old = backoff.state(key).meta || {};
+    const same = old.cursor === cursor;
+    const failures = (same ? old.formatFailures || 0 : 0) + 1;
+    const blockUsers = same && old.blockUsers ? old.blockUsers : BLOCK_USERS;
+    if (failures < 2) {
+      backoff.fail(key, error, now, {
+        meta: { cursor, formatFailures: failures, blockUsers },
+      });
+      return;
+    }
+    if (blockUsers > MIN_BLOCK_USERS) {
+      backoff.fail(key, error, now, {
+        meta: {
+          cursor,
+          formatFailures: 0,
+          blockUsers: Math.max(MIN_BLOCK_USERS, Math.floor(blockUsers / 2)),
+        },
+      });
+      return;
+    }
+    const db = this.repo.db;
+    const rows = this.repo
+      .eventsAfter(session, cursor, { limit: 200 })
+      .filter((m) => m.time <= now);
+    const users = rows.filter((m) => m.role === "user");
+    const next = users[blockUsers]?.seq ?? Number.MAX_SAFE_INTEGER;
+    const block = rows.filter((m) => m.seq < next);
+    if (!block.length) {
+      backoff.fail(key, error, now);
+      return;
+    }
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare("INSERT OR IGNORE INTO core_stages VALUES (?,?,?,?,?,?)").run(
+        randomUUID(),
+        session,
+        block[0].seq,
+        block.at(-1).seq,
+        now,
+        JSON.stringify({
+          summary: "",
+          facts: [],
+          skipped: text(error.message, 200),
+        }),
+      );
+      db.prepare(
+        "INSERT INTO core_cursors VALUES (?,?) ON CONFLICT(session_id) DO UPDATE SET seq=excluded.seq",
+      ).run(session, block.at(-1).seq);
+      db.exec("COMMIT");
+    } catch (writeError) {
+      db.exec("ROLLBACK");
+      throw writeError;
+    }
+    backoff.succeed(key);
   }
 }

@@ -509,6 +509,34 @@ export class Tasks {
       this.db.exec("RELEASE arrange_task");
     }
   }
+  // The earliest start at or after `startAt` that does not overlap anything
+  // at least as important. `acceptable` can reject a start, such as one that
+  // falls while she sleeps. Returns null when nothing fits within a week.
+  freeStart(
+    id,
+    startAt,
+    durationMinutes,
+    now = this.time.now(),
+    { acceptable = () => true, step = 15 * 60000 } = {},
+  ) {
+    const task = this.get(id);
+    if (!task) return null;
+    const length = durationMinutes * 60000;
+    const blocking = this.slots(now).filter(
+      (slot) => slot.id !== id && slot.priority >= task.priority,
+    );
+    let start = Math.max(now, startAt);
+    const limit = now + 7 * 86400000;
+    for (let guard = 0; guard < 2000 && start <= limit; guard++) {
+      const overlap = blocking.find(
+        (slot) => slot.startAt < start + length && slot.endAt > start,
+      );
+      if (overlap) start = overlap.endAt;
+      else if (!acceptable(start)) start += step;
+      else return start;
+    }
+    return null;
+  }
   slots(now = this.time.now()) {
     return this.db
       .prepare(

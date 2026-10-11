@@ -22,6 +22,7 @@ import { innerView } from "./view.js";
 import { Senses } from "./senses.js";
 import { Observations } from "./observations.js";
 import { clamp, dayKey, parse, text } from "./util.js";
+import { Backoff } from "../core/backoff.js";
 
 // The wish a day's snapshot says she was living. Older snapshots did not
 // store it; those fall back to her own-life threads from that day.
@@ -91,6 +92,7 @@ export class Mind {
     this.db = repo.db;
     this.store = repo.store;
     migrateMind(this.db, this.store);
+    this.backoff = new Backoff(this.db);
     this.db.exec(
       "CREATE INDEX IF NOT EXISTS core_events_time ON core_events(time)",
     );

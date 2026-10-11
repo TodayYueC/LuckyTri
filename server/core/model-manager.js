@@ -54,6 +54,26 @@ const CIRCUIT_FAILURES = 3;
 const CIRCUIT_BASE_MS = 30000;
 const CIRCUIT_MAX_MS = 120000;
 const FALLBACK_STATUS = new Set([401, 402, 403, 404, ...RETRYABLE_STATUS]);
+// A bad key, an account without credit, a refused tier or a missing model will
+// not fix itself in a minute. Such a profile leaves the backup list for hours
+// instead of being asked, and billed for a failure, on every step.
+const UNAVAILABLE_STATUS = new Set([401, 402, 403, 404]);
+export const UNAVAILABLE_MS = 6 * 3600000;
+// Her own life and upkeep wait behind the conversation in front of her.
+export const BACKGROUND_STAGES = new Set([
+  "memory",
+  "summary",
+  "reflection",
+  "expression",
+  "expression_novelty",
+  "expression_grounding",
+  "daily",
+  "weekly",
+  "plugin",
+]);
+const BACKGROUND_RATE_PAUSE_MS = 60000;
+export const stagePriority = (stage) =>
+  BACKGROUND_STAGES.has(stage) ? "background" : "foreground";
 
 export function defaultModel(s) {
   return {
@@ -781,9 +801,20 @@ export function isTransientModelFailure(error) {
   if (RETRYABLE_STATUS.has(Number(error.status))) return true;
   return isTransientNetworkError(error) || isTimeoutError(error);
 }
+// A refusal about the account rather than this request. A 403 can also be a
+// content decision about one message, which must not take the model away.
+export function accountRefusal(error) {
+  const status = Number(error?.status);
+  if (!UNAVAILABLE_STATUS.has(status)) return false;
+  if (status === 401 || status === 402) return true;
+  return /tier|quota|balance|credit|fund|余额|额度|permission|not allowed|access|subscription|model.{0,20}(?:not|does not) exist|not found|不存在|无权/i.test(
+    String(error?.detail || error?.message || ""),
+  );
+}
 export function shouldFallback(error) {
   if (!error || error instanceof SyntaxError) return false;
   if (error.circuitOpen || error.timeout || error.networkFailure) return true;
+  if (error.unavailable) return true;
   if (FALLBACK_STATUS.has(Number(error.status))) return true;
   return isTransientNetworkError(error) || isTimeoutError(error);
 }
@@ -808,15 +839,20 @@ export function withFallback(models, fallback) {
         );
       } catch (error) {
         let last = error;
+        // Background work tries one backup at most; a failing afternoon of
+        // upkeep must not walk the whole library on every attempt.
+        let hops = BACKGROUND_STAGES.has(stage) ? 1 : chain.length;
         for (const next of chain) {
           if (
             !next ||
             next.id === profile?.id ||
             stage === "test" ||
             !shouldFallback(last) ||
-            (images?.length && !next.vision)
+            (images?.length && !next.vision) ||
+            models.available?.(next) === false
           )
             continue;
+          if (hops-- <= 0) break;
           trace?.steps?.push(
             `主模型 ${profile?.label || profile?.model} 请求失败（${String(last.message || "").slice(0, 120)}），这一步改用备用模型 ${next.label || next.model}`,
           );
@@ -850,7 +886,49 @@ export class ModelManager {
     this.maxConcurrent = Math.max(1, Number(maxConcurrent) || 3);
     this.requestLanes = new Map();
     this.originCooldowns = new Map();
+    this.backgroundPauses = new Map();
     this.circuits = new Map();
+    this.unavailable = new Map();
+  }
+  healthKey(profile) {
+    let origin = "";
+    try {
+      origin = new URL(profile.baseUrl).origin;
+    } catch {
+      origin = String(profile.baseUrl || "");
+    }
+    const key = String(profile.apiKey || "");
+    // A changed key or address is a new attempt, not the same refusal.
+    return `${origin}|${profile.model}|${key.length}:${key.slice(-6)}`;
+  }
+  available(profile, now = Date.now()) {
+    const state = this.unavailable.get(this.healthKey(profile));
+    if (!state) return true;
+    if (state.until <= now) {
+      this.unavailable.delete(this.healthKey(profile));
+      return true;
+    }
+    return false;
+  }
+  markUnavailable(profile, error, now = Date.now()) {
+    this.unavailable.set(this.healthKey(profile), {
+      until: now + UNAVAILABLE_MS,
+      status: Number(error.status) || null,
+      reason: String(error.message || "").slice(0, 200),
+      label: profile.label || profile.model,
+    });
+  }
+  health(now = Date.now()) {
+    return [...this.unavailable.entries()]
+      .filter(([, state]) => state.until > now)
+      .map(([key, state]) => ({ key, ...state }));
+  }
+  pauseBackground(endpoint, delayMs) {
+    const key = new URL(endpoint).origin;
+    this.backgroundPauses.set(
+      key,
+      Math.max(this.backgroundPauses.get(key) || 0, Date.now() + delayMs),
+    );
   }
   deferOrigin(endpoint, delayMs) {
     const key = new URL(endpoint).origin;
@@ -861,16 +939,40 @@ export class ModelManager {
         Math.max(this.originCooldowns.get(key) || 0, Date.now() + delay),
       );
   }
-  async withRequestSlot(endpoint, request) {
+  // One lane per gateway. The conversation goes first; background work may
+  // hold all but one slot, so a reply never waits behind her own afternoon.
+  // `lane` separates request kinds that should not queue behind each other.
+  async withRequestSlot(
+    endpoint,
+    request,
+    { priority = "foreground", lane: laneName = "" } = {},
+  ) {
     const key = new URL(endpoint).origin;
-    let lane = this.requestLanes.get(key);
+    const background = priority === "background";
+    if (background)
+      while (true) {
+        const remaining = (this.backgroundPauses.get(key) || 0) - Date.now();
+        if (remaining <= 0) break;
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
+    const laneKey = laneName ? `${key}#${laneName}` : key;
+    let lane = this.requestLanes.get(laneKey);
     if (!lane) {
-      lane = { active: 0, waiting: [] };
-      this.requestLanes.set(key, lane);
+      lane = { active: 0, background: 0, waiting: [], waitingBackground: [] };
+      this.requestLanes.set(laneKey, lane);
     }
-    if (lane.active >= this.maxConcurrent)
-      await new Promise((resolve) => lane.waiting.push(resolve));
-    else lane.active++;
+    const backgroundLimit = Math.max(1, this.maxConcurrent - 1);
+    const free = () =>
+      lane.active < this.maxConcurrent &&
+      (!background ||
+        (lane.background < backgroundLimit && !lane.waiting.length));
+    if (free()) {
+      lane.active++;
+      if (background) lane.background++;
+    } else
+      await new Promise((resolve) =>
+        (background ? lane.waitingBackground : lane.waiting).push(resolve),
+      );
     try {
       while (true) {
         const blockedUntil = this.originCooldowns.get(key) || 0;
@@ -884,11 +986,19 @@ export class ModelManager {
       return await request();
     } finally {
       lane.active--;
+      if (background) lane.background--;
       const next = lane.waiting.shift();
       if (next) {
         lane.active++;
         next();
-      } else if (!lane.active) this.requestLanes.delete(key);
+      } else if (
+        lane.waitingBackground.length &&
+        lane.background < backgroundLimit
+      ) {
+        lane.active++;
+        lane.background++;
+        lane.waitingBackground.shift()();
+      } else if (!lane.active) this.requestLanes.delete(laneKey);
     }
   }
   // Consecutive failures of one model on one gateway pause further requests
@@ -999,6 +1109,18 @@ export class ModelManager {
     );
     const key = profile.apiKey || process.env.LLM_API_KEY;
     if (!key) throw Error("模型尚未配置 API Key");
+    if (stage !== "test" && !this.available(profile)) {
+      const state = this.unavailable.get(this.healthKey(profile));
+      const label = profile.label || profile.model;
+      const minutes = Math.ceil((state.until - Date.now()) / 60000);
+      throw Object.assign(
+        new Error(
+          `${label} 暂时不可用（${state.reason}），约 ${minutes} 分钟后再试`,
+        ),
+        { unavailable: true, status: state?.status ?? null },
+      );
+    }
+    const priority = stagePriority(stage);
     const outputCap = options.fullOutput
       ? profile.maxOutputTokens
       : outputLimit(profile, stage);
@@ -1051,32 +1173,45 @@ export class ModelManager {
       try {
         raw = await withTransientRequestRetry(
           () =>
-            this.withRequestSlot(endpoint, async () => {
-              const started = Date.now();
-              let r;
-              try {
-                r = await this.fetcher(endpoint, {
-                  method: "POST",
-                  headers,
-                  body: payload,
-                  signal: AbortSignal.timeout(profile.timeoutMs),
-                });
-              } catch (error) {
-                if (error && typeof error === "object")
+            this.withRequestSlot(
+              endpoint,
+              async () => {
+                const started = Date.now();
+                let r;
+                try {
+                  r = await this.fetcher(endpoint, {
+                    method: "POST",
+                    headers,
+                    body: payload,
+                    signal: AbortSignal.timeout(profile.timeoutMs),
+                  });
+                } catch (error) {
+                  if (error && typeof error === "object")
+                    error.attemptElapsed = Date.now() - started;
+                  throw error;
+                }
+                if (!r.ok) {
+                  const error = await httpError(r);
                   error.attemptElapsed = Date.now() - started;
-                throw error;
-              }
-              if (!r.ok) {
-                const error = await httpError(r);
-                error.attemptElapsed = Date.now() - started;
-                if (error.retryableRequest)
-                  this.deferOrigin(endpoint, error.retryDelayMs);
-                throw error;
-              }
-              return await r.json();
-            }),
+                  if (error.retryableRequest)
+                    this.deferOrigin(endpoint, error.retryDelayMs);
+                  if (error.status === 429)
+                    this.pauseBackground(
+                      endpoint,
+                      Math.max(
+                        BACKGROUND_RATE_PAUSE_MS,
+                        error.retryDelayMs * 4,
+                      ),
+                    );
+                  throw error;
+                }
+                return await r.json();
+              },
+              { priority },
+            ),
           {
-            retries: 3,
+            // A rate-limited gateway is not hammered by her own upkeep.
+            retries: priority === "background" ? 1 : 3,
             onRetry: (count, error, waitMs) =>
               this.noteRetry(entry, endpoint, count, error, waitMs),
           },
@@ -1084,6 +1219,8 @@ export class ModelManager {
       } catch (error) {
         if (guarded && isAvailabilityFailure(error))
           this.recordFailure(circuit);
+        if (guarded && accountRefusal(error))
+          this.markUnavailable(profile, error);
         throw requestFailure(error, entry, profile);
       }
       if (guarded) this.recordSuccess(circuit);

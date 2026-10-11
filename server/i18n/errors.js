@@ -487,6 +487,7 @@ export const ERRORS = {
   时间安排无效: "The time plan is invalid",
   "所选时间与已有安排重叠，需要重新选定":
     "The chosen time overlaps an existing plan; choose again",
+  一周内没有空出的时间段: "No free time slot within a week",
   事项已变化: "The item has changed",
   任务不存在: "The task does not exist",
   "这条记录已合并，请调整唯一任务":
@@ -554,6 +555,10 @@ export const ERROR_PATTERNS = [
   [
     "模型服务网络连接失败（{0}，已自动重试）",
     "The connection to the model service failed ({0}); it was retried automatically",
+  ],
+  [
+    "{0} 暂时不可用（{1}），约 {2} 分钟后再试",
+    "{0} is unavailable for now ({1}); trying again in about {2} minutes",
   ],
   [
     "这个模型服务连续失败，已暂停请求，约 {0} 秒后自动恢复",

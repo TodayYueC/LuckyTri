@@ -9,7 +9,18 @@ import {
 } from "./time/availability.js";
 import { rhythmPhase } from "./nature.js";
 import { isExecutable, pluginAvailable, withActivities } from "./time/kinds.js";
+import { providerWaitMs } from "../core/backoff.js";
 const MINUTE = 60000;
+// A task that came back without a plan waits longer each time. Asking again
+// every ten minutes spent hundreds of calls a day on the same answer.
+export const DAY_PLAN_SCHEDULE = [
+  10 * MINUTE,
+  30 * MINUTE,
+  2 * 60 * MINUTE,
+  6 * 60 * MINUTE,
+  12 * 60 * MINUTE,
+];
+const planKey = (id) => `day-plan:${id}`;
 
 export function chosenSlot(value, life, now, requestedAt = now) {
   const at = value.startAt
@@ -126,7 +137,9 @@ export class DayPlanner {
         (t) =>
           (!primary || t.priority > primary.priority) &&
           this.needs(t, now) &&
-          (state.requested || now - (attempts[t.id] || 0) >= 10 * MINUTE),
+          (state.requested ||
+            (now - (attempts[t.id] || 0) >= 10 * MINUTE &&
+              life.mind.backoff.ready(planKey(t.id), now))),
       )
       .sort((a, b) => time.tasks.score(b, now) - time.tasks.score(a, now));
     const task = tasks.find((t) => !unsupportedAction(t)) || tasks[0];
@@ -155,7 +168,8 @@ export class DayPlanner {
         trace = life.repo.trace("__mind__", "activity"),
         runId = life.run("day-plan", "想具体做什么、几点开始和做多久");
       let status = "error",
-        reason = "";
+        reason = "",
+        failure = null;
       try {
         const projects = time.works
           .projects({ limit: 20 })
@@ -275,11 +289,34 @@ export class DayPlanner {
           const project = projects.find(
             (p) => p.id === answer.projectId && p.kind === activity,
           );
+          // The chosen time may already be taken. Move to the next free
+          // stretch she is awake for, instead of asking the model again.
+          const wanted = Math.max(slot.startAt, task.ready_at);
+          const startAt = time.tasks.freeStart(
+            task.id,
+            wanted,
+            slot.durationMinutes,
+            life.now(),
+            {
+              acceptable: (at) =>
+                rhythmPhase(
+                  life.mind.nature.current(at),
+                  at,
+                  life.mind.timeZone(),
+                ).key !== "asleep",
+            },
+          );
+          if (startAt === null) throw Error("一周内没有空出的时间段");
+          if (startAt !== wanted)
+            slot.reason = text(
+              `${slot.reason}（原定时间已有安排，顺延到 ${localClock(startAt, life.mind.timeZone()).local}）`,
+              240,
+            );
           time.tasks.arrange(
             task.id,
             {
               ...slot,
-              startAt: Math.max(slot.startAt, task.ready_at),
+              startAt,
               activity,
               title:
                 task.kind === "promise" && task.activity !== "unknown"
@@ -296,8 +333,20 @@ export class DayPlanner {
       } catch (error) {
         reason = text(error.message, 160);
         trace.error = reason;
+        failure = error;
         return { status: "error", reason };
       } finally {
+        if (status === "planned") life.mind.backoff.succeed(planKey(task.id));
+        else if (["waiting", "resting", "error"].includes(status))
+          life.mind.backoff.fail(
+            planKey(task.id),
+            failure || reason || status,
+            life.now(),
+            {
+              schedule: DAY_PLAN_SCHEDULE,
+              minimumMs: providerWaitMs(failure),
+            },
+          );
         this.working = false;
         life.chat.finishQuietly(
           trace,

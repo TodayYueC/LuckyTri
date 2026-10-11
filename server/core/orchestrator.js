@@ -496,9 +496,10 @@ export class ChatSystem {
     if (
       policy.memory &&
       this.store.settings().memoryEnabled !== false &&
-      memory.due(session, now).due &&
       !memory.busy.has(session) &&
-      now - (memory.lastAttempt.get(session) || 0) >= 60000
+      now - (memory.lastAttempt.get(session) || 0) >= 60000 &&
+      this.mind.backoff.ready(`memory:${session}`, now) &&
+      memory.due(session, now).due
     ) {
       const t = this.repo.trace(session, "memory");
       memory
