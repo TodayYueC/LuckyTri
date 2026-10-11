@@ -86,19 +86,30 @@ const BASIS_LABEL = {
   hearsay: "转述，未经本人确认",
 };
 
-function speakerQueries(rows) {
+// One query per speaker. A follow-up that leans on an earlier line (see
+// cue.js) is asked together with that line.
+export function speakerQueries(rows) {
   const groups = new Map();
   for (const row of rows || []) {
     if (row?.role === "assistant") continue;
     const id = String(row?.userId ?? row?.speaker ?? "");
-    const texts = groups.get(id) || [];
-    if (row?.text) texts.push(String(row.text));
-    groups.set(id, texts);
+    const group = groups.get(id) || { texts: [], context: [] };
+    if (row?.text) group.texts.push(String(row.text));
+    if (row?.context) group.context.push(String(row.context));
+    groups.set(id, group);
   }
   return [...groups.entries()]
-    .map(([speaker, texts]) => ({ speaker, text: texts.join(" ").trim() }))
-    .filter((q) => q.text && !/^\[(?:图片|表情|媒体)\]+$/.test(q.text));
+    .map(([speaker, { texts, context }]) => {
+      const text = texts.join(" ").trim();
+      const before = [...new Set(context)].join(" ").trim();
+      return {
+        speaker,
+        text: before && text && !MEDIA.test(text) ? `${before} ${text}` : text,
+      };
+    })
+    .filter((q) => q.text && !MEDIA.test(q.text));
 }
+const MEDIA = /^\[(?:图片|表情|媒体)\]+$/;
 
 // One way to remember, for every kind of memory: words, meaning and the
 // people involved find candidates; what may not surface here is removed

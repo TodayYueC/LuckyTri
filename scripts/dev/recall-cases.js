@@ -464,3 +464,55 @@ export const CASES = [
     expect: ["f30"],
   }),
 ];
+
+// Follow-ups that lean on a line said a moment before by the same speaker.
+// The follow-up alone carries little meaning; `context` is what the room
+// holds just before it. Measured with and without recall context.
+const x = (id, speaker, context, text, rule) => ({
+  id,
+  category: "follow_up",
+  session: "group:1",
+  speaker,
+  context,
+  text,
+  ...rule,
+});
+export const CONTEXT_CASES = [
+  x("x1", "10001", ["今天终于去面了那家公司"], "唉，估计没戏", {
+    expect: ["f1"],
+  }),
+  x("x2", "10002", ["周六的课又换老师了"], "新的这个太快了跟不上", {
+    expect: ["f6"],
+  }),
+  x("x3", "10003", ["今天去报名点做了现场确认"], "压力好大", {
+    expect: ["f10"],
+  }),
+  x("x4", "10005", ["今天称了一下体重"], "唉，白忍了一周", {
+    expect: ["f18"],
+  }),
+  x("x5", "10006", ["关卡编辑器终于写完了"], "明天开始画美术", {
+    expect: ["f20"],
+  }),
+  x("x6", "10004", ["周末又去水库了"], "空手回来的，白坐一天", {
+    expect: ["f16"],
+  }),
+  x("x7", "10001", ["团子今天又不吃饭"], "要不要带去看看", {
+    expect: ["f2"],
+  }),
+  x("x8", "10002", ["膝盖又开始疼了"], "那周末还能去踢球吗", {
+    expect: ["f25"],
+  }),
+  x("x9", "10003", ["可乐今天在家把沙发咬坏了"], "气死我了", {
+    expect: ["f26"],
+  }),
+  x("x10", "10004", ["学生今天考试成绩出来了"], "一半没及格", {
+    expect: ["f14"],
+  }),
+  x("x11", "10002", ["今天天气真好"], "是啊", { none: true }),
+  x("x12", "10005", ["哈哈哈哈"], "笑死我了", { none: true }),
+  x("x13", "10006", ["刚吃完饭"], "好撑", { none: true }),
+  x("x14", "10001", ["我最近在学钢琴"], "手好酸", {
+    none: true,
+    forbid: ["f6"],
+  }),
+];

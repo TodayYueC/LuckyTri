@@ -19,7 +19,13 @@ import { createStore } from "../../server/storage/store.js";
 import { ChatSystem } from "../../server/core/orchestrator.js";
 import { saveEmbeddingProfile } from "../../server/knowledge/embedding-profile.js";
 import { fakeEmbedder } from "../../tests/helpers/fake-embedder.js";
-import { CASES, FACTS, PEOPLE } from "./recall-cases.js";
+import {
+  CASES as BASE_CASES,
+  CONTEXT_CASES,
+  FACTS,
+  PEOPLE,
+} from "./recall-cases.js";
+import { withRecallContext } from "../../server/mind/recall/cue.js";
 
 const DAY = 86400000;
 const args = process.argv.slice(2);
@@ -28,6 +34,9 @@ const option = (name, fallback) => {
   return at === -1 ? fallback : args[at + 1];
 };
 const fake = args.includes("--fake");
+// --no-context asks follow-ups without the line before them (the old way).
+const useContext = !args.includes("--no-context");
+const CASES = [...BASE_CASES, ...CONTEXT_CASES];
 // Any OpenAI-compatible endpoint without a saved profile, e.g. a local model
 // server used for offline benchmarking: --base-url http://127.0.0.1:8811/v1
 const baseUrl = option("--base-url", "");
@@ -76,9 +85,7 @@ else if (baseUrl) {
     batchSize: 10,
   };
 }
-profile.dimensions = Number(
-  option("--dimensions", fake || baseUrl ? 0 : 1024),
-);
+profile.dimensions = Number(option("--dimensions", fake || baseUrl ? 0 : 1024));
 saveEmbeddingProfile(repo, profile);
 system.mind.embedding.backgroundInterval = fake || baseUrl ? 0 : 1500;
 if (fake || baseUrl) system.mind.embedding.tokensPerMinute = 0;
@@ -220,14 +227,24 @@ for (const [name, run] of Object.entries(METHODS)) {
     byCategory: {},
   };
   for (const item of CASES) {
+    const row = {
+      seq: 100,
+      time: now,
+      role: "user",
+      userId: item.speaker,
+      text: item.text,
+      name: PEOPLE[item.speaker],
+    };
+    const before = (item.context || []).map((text, i) => ({
+      seq: 90 + i,
+      time: now - 120000 + i * 1000,
+      role: "user",
+      userId: item.speaker,
+      text,
+    }));
     const q = {
       ...item,
-      row: {
-        role: "user",
-        userId: item.speaker,
-        text: item.text,
-        name: PEOPLE[item.speaker],
-      },
+      row: useContext ? withRecallContext([row], [...before, row])[0] : row,
     };
     const t = performance.now();
     const got = (await run(q)).map((id) => keyOf.get(id) || id);

@@ -52,7 +52,11 @@ function recallQuery(rows) {
   const seen = new Set();
   for (const row of [...rows].reverse()) {
     if (row.role === "assistant") continue;
-    for (const term of lexicalTerms(row.text || ""))
+    // The line a short follow-up leans on comes after its own words, so a
+    // long context never crowds the follow-up out of the term budget.
+    for (const term of lexicalTerms(
+      [row.text, row.context].filter(Boolean).join(" "),
+    ))
       if (!seen.has(term)) {
         seen.add(term);
         terms.push(term);
@@ -133,7 +137,10 @@ export class MemoryManager {
       const id = String(row.userId || "");
       if (!id) continue;
       const terms = saidBy.get(id) || new Set();
-      for (const term of lexicalTerms(row.text || "")) terms.add(term);
+      for (const term of lexicalTerms(
+        [row.context, row.text].filter(Boolean).join(" "),
+      ))
+        terms.add(term);
       saidBy.set(id, terms);
     }
     const oneSpeakerOverlap = (content) => {

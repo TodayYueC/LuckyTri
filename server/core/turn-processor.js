@@ -2,6 +2,7 @@ import { parseSessionKey } from "../channels/session-key.js";
 import { initiativeContext, initiativeSnapshot } from "./initiative-context.js";
 import { withFallback } from "./model-manager.js";
 import { activityRecallCue } from "../mind/time/activity-recall.js";
+import { withRecallContext } from "../mind/recall/cue.js";
 import { replyPrompt, prompts } from "./persona-manager.js";
 import { buildContext, perceive } from "./context-builder.js";
 import {
@@ -323,12 +324,14 @@ export class TurnProcessor {
           /* An unparseable destination has no person to infer. */
         }
       }
+      // A short follow-up is recalled together with the line it leans on.
+      const recallBatch = withRecallContext(batch, resolved);
       lap("perceive");
       // Replays exclude mutable memory so later corrections cannot leak into
       // the past; her inner state is folded as of the replayed moment.
       const memories =
         policy.memory && !replay && !ownInitiative
-          ? await this.owner.mind.recall.memories(session, batch, now, {
+          ? await this.owner.mind.recall.memories(session, recallBatch, now, {
               people,
               touch: live,
               forSpeech: true,
@@ -371,7 +374,7 @@ export class TurnProcessor {
       lap("summaries");
       const meant =
         !replay && !ownInitiative
-          ? await this.owner.mind.recall.relatedOwn(session, batch, now)
+          ? await this.owner.mind.recall.relatedOwn(session, recallBatch, now)
           : null;
       const view = this.owner.mind.view({
         session: preview?.viewSession || session,
@@ -405,7 +408,7 @@ export class TurnProcessor {
       if (policy.memory && !replay && !ownInitiative) {
         const recollections = await this.owner.mind.recall.recollect(
           session,
-          batch,
+          recallBatch,
           now,
           { people },
         );
@@ -485,7 +488,7 @@ export class TurnProcessor {
       if (!replay)
         snapshot.topics = this.owner.topics.recent(session, watermark, now);
       if (!ownInitiative) {
-        await this.addWorkingMemory(session, snapshot, batch, now, {
+        await this.addWorkingMemory(session, snapshot, recallBatch, now, {
           replay,
           zone: policy.timeZone,
         });
