@@ -1,6 +1,6 @@
 import { ftsTokens } from "../../knowledge/retrieval.js";
 import { dot, textHash } from "../../core/embedding.js";
-import { KINDS, SOURCES } from "./sources.js";
+import { KINDS, MESSAGE_DAYS, SOURCES } from "./sources.js";
 
 const toBlob = (vector) =>
   Buffer.from(vector.buffer, vector.byteOffset, vector.byteLength);
@@ -164,6 +164,14 @@ export class RecallStore {
           latest = Math.max(latest, Number(row.__changed) || 0);
         }
       }
+      // Messages older than the window leave the index; the words stay in
+      // core_events as the record they always were.
+      for (const { id } of this.db
+        .prepare(
+          `SELECT id FROM mind_index WHERE kind='message' AND happened<=(SELECT MAX(time) FROM core_events)-?`,
+        )
+        .all(MESSAGE_DAYS * 86400000))
+        this.remove(id);
       const KIND_OF = {
         self: "self",
         meeting: "meeting",
@@ -239,7 +247,7 @@ export class RecallStore {
          WHERE (v.item_id IS NULL OR v.text_hash!=i.text_hash) AND i.status!='candidate'
          AND i.kind IN (${kinds.map((k) => `'${k.replace(/[^a-z]/g, "")}'`).join(",")})
          ORDER BY CASE i.kind WHEN 'fact' THEN 0 WHEN 'episode' THEN 1 WHEN 'anticipation' THEN 2
-           WHEN 'self' THEN 3 WHEN 'thought' THEN 4 WHEN 'diary' THEN 5 WHEN 'period' THEN 6 ELSE 7 END,
+           WHEN 'self' THEN 3 WHEN 'thought' THEN 4 WHEN 'diary' THEN 5 WHEN 'period' THEN 6 WHEN 'message' THEN 7 ELSE 8 END,
            i.updated DESC LIMIT ?`,
       )
       .all(profile, limit);

@@ -17,6 +17,8 @@ import {
 } from "./vision-manager.js";
 import { normalizeTurn, takeTurn } from "./turn.js";
 import { RECOLLECTION_NOTE } from "../mind/recall/index.js";
+import { workingMemory } from "./working-memory.js";
+import { localClock } from "./conversation-cues.js";
 import {
   initiativeAudience,
   originSummary,
@@ -51,6 +53,72 @@ function isFormatError(error) {
 export class TurnProcessor {
   constructor(owner) {
     this.owner = owner;
+  }
+  // What this conversation is holding now, and older lines of it that the
+  // current words reach by meaning when vectors cover the room's messages.
+  async addWorkingMemory(session, snapshot, batch, now, { replay, zone }) {
+    const fresh = new Set(snapshot.batchIds || []);
+    const before = Math.min(...(snapshot.batchIds || [Infinity]));
+    const earlier = (snapshot.messages || []).filter(
+      (m) => m.role === "assistant" && !fresh.has(m.id) && m.id < before,
+    );
+    const previousTalk =
+      earlier.at(-1)?.time ??
+      this.owner.repo.db
+        .prepare(
+          "SELECT MAX(time) t FROM core_events WHERE session_id=? AND role='assistant' AND seq<? AND COALESCE(json_extract(payload,'$.simulated'),0)=0",
+        )
+        .get(
+          session,
+          Number.isFinite(before) ? before : Number.MAX_SAFE_INTEGER,
+        )?.t ??
+      null;
+    const working = workingMemory({
+      messages: snapshot.messages || [],
+      batchIds: snapshot.batchIds || [],
+      now,
+      zone,
+      previousTalk,
+    });
+    if (working) snapshot.working = working;
+    if (replay || !snapshot.historyStart) return;
+    const kept = new Set((snapshot.messages || []).map((m) => m.id));
+    const older = await this.owner.mind.recall.olderMessages(
+      session,
+      batch,
+      now,
+      { before: snapshot.historyStart, exclude: kept },
+    );
+    if (!older) return;
+    if (!older.length) {
+      delete snapshot.recalled;
+      return;
+    }
+    const rows = this.owner.repo.db
+      .prepare(
+        `SELECT seq,time,role,payload FROM core_events WHERE seq IN (${older.map(() => "?").join(",")}) ORDER BY seq`,
+      )
+      .all(...older);
+    snapshot.recalled = {
+      note: "同一个聊天里更早、和现在说的事意思相关的原文，不是本轮新消息。",
+      messages: rows.map((row) => {
+        const message = JSON.parse(row.payload);
+        return {
+          id: row.seq,
+          speaker: row.role === "assistant" ? "self" : message.userId,
+          name:
+            row.role === "assistant"
+              ? undefined
+              : this.owner.mind.bonds.name(message.userId) || message.name,
+          role: row.role,
+          localTime: localClock(row.time, zone).local,
+          text:
+            String(message.text || "").length > 300
+              ? `${String(message.text).slice(0, 300)}…`
+              : message.text,
+        };
+      }),
+    };
   }
   async process(
     session,
@@ -396,6 +464,13 @@ export class TurnProcessor {
       let show = planned.show.slice();
       if (!replay)
         snapshot.topics = this.owner.topics.recent(session, watermark, now);
+      if (!ownInitiative) {
+        await this.addWorkingMemory(session, snapshot, batch, now, {
+          replay,
+          zone: policy.timeZone,
+        });
+        lap("working");
+      }
       snapshot.unavailableImages = [
         ...media.unavailable,
         ...loaded.unavailable,

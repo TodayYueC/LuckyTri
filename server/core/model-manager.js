@@ -511,6 +511,7 @@ const REUSABLE_KEYS = ["memories", "knowledge"];
 const VOLATILE_KEYS = [
   "quoted",
   "recalled",
+  "working",
   "speakers",
   "watermark",
   "batchIds",

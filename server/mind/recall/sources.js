@@ -177,4 +177,42 @@ export const SOURCES = {
   },
 };
 
+// Raw messages are evidence, not memories: they are searchable for a month
+// so an older line of the same conversation can be found by meaning, then
+// leave the index. The window is measured from the newest event, not the
+// wall clock, so a replay or a test sees the same index.
+export const MESSAGE_DAYS = 30;
+const recent = `time>(SELECT MAX(time) FROM core_events)-${MESSAGE_DAYS * 86400000}`;
+SOURCES.message = {
+  changed: "time",
+  select: `SELECT seq,session_id,time,role,payload FROM core_events
+    WHERE role IN ('user','assistant') AND ${recent}
+    AND COALESCE(json_extract(payload,'$.simulated'),0)=0
+    AND json_extract(payload,'$.artifact') IS NULL
+    AND seq NOT IN (SELECT seq FROM mind_unlived)`,
+  one: `SELECT seq,session_id,time,role,payload FROM core_events
+    WHERE seq=? AND role IN ('user','assistant') AND ${recent}
+    AND COALESCE(json_extract(payload,'$.simulated'),0)=0
+    AND json_extract(payload,'$.artifact') IS NULL
+    AND seq NOT IN (SELECT seq FROM mind_unlived)`,
+  map: (row) => {
+    const message = parse(row.payload, {});
+    const words = String(message.text || "");
+    return item("message", row.seq, {
+      session_id: row.session_id,
+      discretion: /private/.test(row.session_id) ? "private" : "open",
+      basis: "witnessed",
+      happened: row.time,
+      weight: 0.3,
+      text:
+        /^\[(?:图片|表情|媒体)\]+$/.test(words) || words.length < 2
+          ? ""
+          : words,
+      people: row.role === "user" ? [message.userId] : [],
+    });
+  },
+};
+
 export const KINDS = Object.keys(SOURCES);
+// Kinds that are memories proper; raw messages are searched only on purpose.
+export const MEMORY_KINDS = KINDS.filter((kind) => kind !== "message");

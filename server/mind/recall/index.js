@@ -5,7 +5,7 @@ import { agoLabel } from "../clock.js";
 import { isPrivateSession } from "../memory.js";
 import { DAY, clamp, parse, similar } from "../util.js";
 import { RecallStore } from "./store.js";
-import { KINDS } from "./sources.js";
+import { MEMORY_KINDS } from "./sources.js";
 
 // Unrelated sentences from the configured model sit near 0.5, paraphrases of
 // one fact near 0.9, and a statement and its opposite also near 0.85. So a
@@ -165,7 +165,7 @@ export class Recall {
   // Share of searchable items that have a vector for the active profile.
   // Below the threshold (a new model, a fresh database) facts are recalled by
   // words as before, so a half-built index never hides what she knows.
-  coverage(now = Date.now(), kinds = KINDS) {
+  coverage(now = Date.now(), kinds = MEMORY_KINDS) {
     const profile = this.profile();
     if (!profile) return 0;
     const key = `${profile}|${kinds.join(",")}`;
@@ -273,13 +273,15 @@ export class Recall {
     people = [],
     now = Date.now(),
     purpose = "turn",
-    kinds = KINDS,
+    kinds = MEMORY_KINDS,
     limit = 8,
     rank = "features",
     vectors,
     lexicalOnly = false,
     includeStatuses = ["active"],
     profileFacts = 2,
+    sessions = null,
+    allowId = () => true,
   }) {
     this.ensure(now);
     const allow = this.#permit(session, now);
@@ -301,7 +303,8 @@ export class Recall {
     const sem = new Map();
     const cos = new Map();
     if (mode === "hybrid") {
-      const filter = (id) => kindSet.has(id.slice(0, id.indexOf(":")));
+      const filter = (id) =>
+        kindSet.has(id.slice(0, id.indexOf(":"))) && allowId(id);
       queryVectors.forEach((vector) => {
         const hits = this.store.nearest(profile, vector, {
           limit: 60,
@@ -345,6 +348,8 @@ export class Recall {
         (row) =>
           kindSet.has(row.kind) &&
           includeStatuses.includes(row.status) &&
+          (!sessions || sessions.includes(row.session_id)) &&
+          allowId(row.id) &&
           allow(row),
       );
     // Overlapping character pairs: "我考研复试" and "考研复试" share words,
@@ -552,6 +557,76 @@ export class Recall {
       });
     }
     return out;
+  }
+  // A message as it arrives: indexed at once, and its vector made while the
+  // batch is still gathering, so the turn's recall finds it in the cache.
+  async arrive(seq, now = Date.now()) {
+    const profile = this.profile();
+    if (!profile || !this.embedding.available(now)) return false;
+    this.store.sync("message", seq);
+    const row = this.store.get(`message:${seq}`);
+    if (!row) return false;
+    try {
+      const [vector] = await this.embedding.embed([row.text], {
+        purpose: "query",
+        session: row.session_id,
+      });
+      return this.store.saveVector(row.id, profile, row.text_hash, vector, now);
+    } catch {
+      return false;
+    }
+  }
+  // Older lines of this same conversation that the current words reach by
+  // meaning, for when the recent window does not hold them. Null means the
+  // message vectors are not ready and the word-based recall stays.
+  async olderMessages(
+    session,
+    rows,
+    now = Date.now(),
+    { before = 0, exclude = new Set(), limit = 8 } = {},
+  ) {
+    if (
+      !this.profile() ||
+      !this.embedding.available(now) ||
+      this.coverage(now, ["message"]) < HYBRID_COVERAGE
+    )
+      return null;
+    const scopes = this.mind.memory.scopes(session);
+    // Only this conversation's lines take part in the ranking; a copy of the
+    // same words in another room would otherwise flatten the comparison.
+    const here = new Set(
+      this.db
+        .prepare(
+          `SELECT id FROM mind_index WHERE kind='message' AND session_id IN (${scopes.map(() => "?").join(",")})`,
+        )
+        .all(...scopes)
+        .map((row) => row.id),
+    );
+    const result = await this.search({
+      session,
+      rows,
+      now,
+      kinds: ["message"],
+      limit: limit * 4,
+      profileFacts: 0,
+      sessions: scopes,
+      // The lines being answered would always be their own best match.
+      allowId: (id) =>
+        here.has(id) &&
+        Number(id.slice(8)) < before &&
+        !exclude.has(Number(id.slice(8))),
+    });
+    const seqs = result.items
+      .filter(
+        (item) =>
+          (item.meant || item.worded) &&
+          scopes.includes(item.row.session_id) &&
+          Number(item.row.ref) < before &&
+          !exclude.has(Number(item.row.ref)),
+      )
+      .slice(0, limit)
+      .map((item) => Number(item.row.ref));
+    return seqs.sort((a, b) => a - b);
   }
   // Affairs that this moment brings back, told as they went and as they
   // stand: an open thread whose follow-up came due for someone present, and

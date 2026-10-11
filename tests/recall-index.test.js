@@ -214,6 +214,40 @@ test("再次说起同一件事加强记忆而不是重复写入；对不上的�
   );
 });
 
+test("同一聊天里更早的原文按意思找回，别的聊天和窗口内的消息不算", async (t) => {
+  const { w } = vectorWorld(t);
+  w.open("group:1");
+  w.open("group:2");
+  const old = w.say("group:1", "10001", "我家猫咪最近不吃东西");
+  w.say("group:2", "10001", "我家猫咪最近不吃东西");
+  w.say("group:1", "10002", "周末去爬山吗");
+  w.advance(HOUR);
+  const recent = w.say("group:1", "10003", "团子今天好点了吗");
+  await w.mind.recall.prepare(w.now() + 1000);
+  const seqs = await w.mind.recall.olderMessages(
+    "group:1",
+    [{ role: "user", userId: "10003", text: recent.text }],
+    w.now() + 1000,
+    { before: recent.seq },
+  );
+  assert.deepEqual(seqs, [old.seq]);
+});
+
+test("新消息到达时就建好向量，回合检索命中缓存", async (t) => {
+  const { w, calls } = vectorWorld(t);
+  w.open("group:1");
+  await w.mind.recall.prepare(w.now());
+  const said = w.say("group:1", "10001", "今天面试终于结束了");
+  w.advance(1000);
+  assert.equal(await w.mind.recall.arrive(said.seq, w.now()), true);
+  const before = calls.length;
+  await w.mind.recall.vectorsFor(
+    [{ speaker: "10001", text: "今天面试终于结束了" }],
+    { session: "group:1" },
+  );
+  assert.equal(calls.length, before, "同一句话的查询向量来自缓存");
+});
+
 test("撤销的相遇不再能被检索到", async (t) => {
   const { w } = vectorWorld(t);
   w.open("group:1");
