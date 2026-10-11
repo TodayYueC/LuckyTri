@@ -35,6 +35,7 @@ export const SELF_KINDS = {
   intention: "想做的事",
   care: "放在心上",
   curiosity: "好奇",
+  lesson: "以后",
 };
 const STEP = 0.15;
 const NEW_CAP = 0.35;
@@ -360,6 +361,24 @@ export class Self {
     // Memory consolidation only records what she herself said. A wish with
     // no message is hers to form in solitude, not for the summarizer to add.
     if (origin === "memory" && !sources.length) return { rejected: "缺少来源" };
+    if (kind === "lesson" && action !== "close") {
+      const outside = externalEvidence(this.db, sources, time);
+      if (!outside.length) return { rejected: "教训需要模型之外的经历" };
+      const spent = new Set(
+        this.db
+          .prepare(
+            "SELECT sources FROM mind_self WHERE kind='lesson' AND thread NOT IN (SELECT target_id FROM mind_revocations WHERE target_kind='self')",
+          )
+          .all()
+          .flatMap((row) =>
+            evidenceRoots(this.db, parse(row.sources, []), time),
+          ),
+      );
+      if (outside.every((source) => spent.has(source)))
+        return { rejected: "这段经历已经写成过教训" };
+      if (outside.length < 2 && action === "new")
+        input = { ...input, strength: 0.2 };
+    }
     if (
       content &&
       this.revokedContents().some((old) => similar(old, content, 0.7))
@@ -429,6 +448,16 @@ export class Self {
         ...this.days(kept, time, { external: lasting }),
       ]),
     ].slice(-60);
+    const lessonRoots = evidenceRoots(
+      this.db,
+      [
+        ...kept,
+        ...(prior
+          ? this.history(prior.thread).flatMap((row) => row.sources || [])
+          : []),
+      ],
+      time,
+    );
     let strength;
     let status;
     if (action === "close") {
@@ -444,21 +473,31 @@ export class Self {
         ? clamp(prior.strength + clamp(wanted - prior.strength, -STEP, STEP))
         : prior.strength;
       status =
-        prior.kind === "trait" && (days.length < 2 || strength < 0.35)
+        (prior?.kind || kind) === "trait" &&
+        (days.length < 2 || strength < 0.35)
           ? "emerging"
-          : "active";
+          : (prior?.kind || kind) === "lesson" && lessonRoots.length < 2
+            ? "emerging"
+            : "active";
     } else {
       strength = Math.min(
         kind === "trait" ? TRAIT_CAP : NEW_CAP,
         clamp(input?.strength ?? 0.25),
       );
-      status = kind === "trait" ? "emerging" : "active";
+      status =
+        kind === "trait" || (kind === "lesson" && lessonRoots.length < 2)
+          ? "emerging"
+          : "active";
     }
     const id = randomUUID();
     const home = this.#home(spoken, input?.session);
+    const subject =
+      kind === "lesson" || prior?.kind === "lesson"
+        ? text(input?.subject, 40) || prior?.subject || null
+        : prior?.subject || null;
     this.db
       .prepare(
-        "INSERT INTO mind_self(id,thread,created,kind,content,strength,status,sources,days,origin,session_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO mind_self(id,thread,created,kind,content,strength,status,sources,days,origin,session_id,subject) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
       )
       .run(
         id,
@@ -472,6 +511,7 @@ export class Self {
         JSON.stringify(days),
         origin,
         home,
+        subject,
       );
     this.mind.recall?.sync("self", prior?.thread || id);
     return { id, thread: prior?.thread || id, action };

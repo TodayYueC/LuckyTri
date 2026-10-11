@@ -87,6 +87,7 @@ export function migrateMind(db, store) {
   addColumn("mind_meetings", "will_people", "TEXT NOT NULL DEFAULT '[]'");
   addColumn("mind_meetings", "reason", "TEXT NOT NULL DEFAULT ''");
   addColumn("mind_anticipations", "activity", "TEXT NOT NULL DEFAULT ''");
+  addColumn("mind_self", "subject", "TEXT");
   db.prepare(
     "UPDATE mind_runs SET status='interrupted',finished=? WHERE status='running'",
   ).run(Date.now());

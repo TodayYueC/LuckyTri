@@ -30,6 +30,7 @@ const FACT_STATUS = {
   confirmed: "active",
   superseded: "superseded",
   candidate: "candidate",
+  archived: "archived",
 };
 
 export const SOURCES = {
@@ -94,7 +95,8 @@ export const SOURCES = {
         status: row.status === "closed" ? "closed" : "active",
         happened: row.created,
         weight: row.strength,
-        text: row.content,
+        text: [row.content, row.subject].filter(Boolean).join(" "),
+        people: row.subject ? [String(row.subject)] : [],
       }),
   },
   thought: {

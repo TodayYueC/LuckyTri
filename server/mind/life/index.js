@@ -580,6 +580,12 @@ export class Life {
         fromWish: this.mind.meetings.wishAway({ now }),
         quiet: this.quietView(now),
         ahead: this.mind.anticipations.due({ now, limit: 5 }),
+        followUps: this.mind.episodes.due(now, 4).map((row) => ({
+          ref: `p:${row.thread_id}`,
+          session: row.session_id,
+          title: row.title,
+          status: row.status,
+        })),
         thoughts: thoughts.map((t) => ({
           id: t.id,
           kind: THOUGHT_KINDS[t.kind],

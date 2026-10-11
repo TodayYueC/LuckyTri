@@ -393,6 +393,12 @@ export class MemoryManager {
     this.mind?.recall?.sync("fact", id);
     this.repo.store.revision++;
   }
+  // Her own forgetting leaves the record and hides it from ordinary recall.
+  // A person's request to delete still removes the source, the index and the vector.
+  archive(id) {
+    this.update(id, { status: "archived" });
+    return { id, status: "archived" };
+  }
   // Withdrawal leaves a tombstone, so a later consolidation cannot bring the
   // same belief back.
   revoke(id, reason = "") {

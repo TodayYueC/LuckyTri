@@ -12,6 +12,7 @@ export const THREAD_HALF_LIFE = {
   care: 30,
   intention: 30,
   curiosity: 21,
+  lesson: 120,
 };
 export const THOUGHT_HALF_LIFE = {
   unfinished: 21,

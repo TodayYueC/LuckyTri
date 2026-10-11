@@ -57,6 +57,17 @@ export class Episodes {
       )
       .slice(0, limit);
   }
+  due(now = Date.now(), limit = 4) {
+    return this.db
+      .prepare(
+        `SELECT e.* FROM mind_episodes e JOIN (
+           SELECT thread_id,MAX(created) last FROM mind_episodes WHERE created<=? GROUP BY thread_id
+         ) l ON l.thread_id=e.thread_id AND l.last=e.created
+         WHERE e.status='open' AND e.follow_up_at>0 AND e.follow_up_at<=?
+         ORDER BY e.follow_up_at LIMIT ?`,
+      )
+      .all(now, now, limit);
+  }
   // Open threads offered to the consolidation model so a new step can
   // continue or resolve one instead of starting a duplicate.
   candidates(session, block, now = Date.now()) {

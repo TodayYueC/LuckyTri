@@ -150,3 +150,7 @@ public/                     构建后的工作室（app/）与教程页
 - 构建后的工作室提交在 `public/app/`，改动前端后运行 `npm run build:ui`。
 - 教程页由 `npm run docs:build` 从 `docs/zh/guide.md` 与 `docs/en/guide.md` 生成。
 - 运行时数据、备份、报告和密钥永远只在本机，不进入仓库。
+
+## 认知与记忆
+
+理解、回忆、情景、教训和主动跟进的数据流写在 [认知](cognition.md)。检索索引是派生数据，情景和自我线索仍然只追加。

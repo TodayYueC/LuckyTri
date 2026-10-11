@@ -76,6 +76,24 @@ export class Initiative {
       thoughts: mind.thoughts
         .open({ session, now, limit: 3 })
         .map((t) => ({ ref: `t:${t.id}`, content: text(t.content, 160) })),
+      lessons: mind.self
+        .latest(now)
+        .filter((row) => {
+          if (row.kind !== "lesson" || row.status === "closed") return false;
+          if (!row.subject) return true;
+          const seen = this.db
+            .prepare(
+              "SELECT 1 FROM core_events WHERE session_id=? AND role='user' AND payload LIKE ? LIMIT 1",
+            )
+            .get(session, `%"userId":"${row.subject}"%`);
+          return !!seen;
+        })
+        .slice(0, 3)
+        .map((row) => ({
+          content: text(row.content, 120),
+          subject: row.subject || null,
+          established: row.status === "active",
+        })),
     };
   }
   contacts(now = this.life.now(), { ready = false, limit = 5 } = {}) {

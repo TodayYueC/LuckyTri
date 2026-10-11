@@ -347,6 +347,9 @@ export const ERRORS = {
   类型无效: "The type is invalid",
   内容无效: "The content is invalid",
   缺少来源: "A source is missing",
+  教训需要模型之外的经历:
+    "A lesson needs experience that did not come from the model",
+  这段经历已经写成过教训: "This experience was already written as a lesson",
   日期无效: "The date is invalid",
   日期不在合理范围: "The date is outside a sensible range",
   与撤销过的内容相同: "Same as something already undone",
@@ -491,6 +494,7 @@ export const ERRORS = {
   向量模型未启用: "The embedding model is not enabled",
   向量服务暂停中: "The embedding service is paused after repeated failures",
   向量接口格式无效: "The embedding request format is invalid",
+  "检索内容应为 1–500 字": "The text to recall from should be 1–500 characters",
   事项已变化: "The item has changed",
   任务不存在: "The task does not exist",
   "这条记录已合并，请调整唯一任务":

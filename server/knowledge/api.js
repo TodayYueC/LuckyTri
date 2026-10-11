@@ -114,6 +114,12 @@ export function mountKnowledge(app, system) {
       res.json({ ok: true, ...result });
     }),
   );
+  app.post(
+    "/api/core/memories/:id/archive",
+    wrap((req, res) => {
+      res.json(system.memory.archive(String(req.params.id)));
+    }),
+  );
   app.get(
     "/api/core/memory-summary",
     wrap((req, res) => {
