@@ -839,6 +839,21 @@ export class Meetings {
       )
       .all(...ids);
   }
+  #quietMeetings() {
+    if (this.cache?.quiet) return this.cache.quiet;
+    const rows = this.db
+      .prepare(
+        "SELECT session_id, sources, created FROM mind_meetings WHERE discretion IN ('private','secret')",
+      )
+      .all()
+      .map((row) => ({
+        session_id: row.session_id,
+        created: row.created,
+        ids: messageSeqs(parse(row.sources, [])),
+      }));
+    if (this.cache) this.cache.quiet = rows;
+    return rows;
+  }
   // A message that belonged to a meeting she was asked to keep stays with
   // that conversation, even when the later note does not repeat the words.
   #quietSessions(seqs) {
@@ -853,12 +868,8 @@ export class Meetings {
     );
     const requested = new Set(seqs);
     const rooms = [];
-    for (const row of this.db
-      .prepare(
-        "SELECT session_id, sources, created FROM mind_meetings WHERE discretion IN ('private','secret')",
-      )
-      .all()) {
-      const ids = messageSeqs(parse(row.sources, []));
+    for (const row of this.#quietMeetings()) {
+      const ids = row.ids;
       if (
         ids.some((id) => {
           if (!requested.has(id)) return false;
@@ -877,7 +888,29 @@ export class Meetings {
   }
   // Private rooms a citation rests on. Empty means the words are hers, or
   // they came from somewhere she can speak of openly.
+  // One synchronous read of her mind asks the same provenance questions
+  // thousands of times. Inside `memo` the database cannot change, so each
+  // answer is computed once for that read and then forgotten.
+  memo(read) {
+    if (this.cache) return read();
+    this.cache = { roots: new Map(), sayings: new Map() };
+    try {
+      return read();
+    } finally {
+      this.cache = null;
+    }
+  }
   privateRoots(sources, before = Date.now()) {
+    if (!this.cache) return this.#privateRoots(sources, before);
+    const key = `${before}|${typeof sources === "string" ? sources : JSON.stringify(sources ?? [])}`;
+    let rooms = this.cache.roots.get(key);
+    if (!rooms) {
+      rooms = this.#privateRoots(sources, before);
+      this.cache.roots.set(key, rooms);
+    }
+    return [...rooms];
+  }
+  #privateRoots(sources, before) {
     const cited = Array.isArray(sources) ? sources : parse(sources, []);
     const refs = [
       ...new Set([
@@ -934,6 +967,15 @@ export class Meetings {
   // Wording she learned in private, or was asked to keep. `exceptSession` is
   // where she may still say it.
   privateSayings(exceptSession = "") {
+    if (!this.cache) return this.#privateSayings(exceptSession);
+    let out = this.cache.sayings.get(exceptSession);
+    if (!out) {
+      out = this.#privateSayings(exceptSession);
+      this.cache.sayings.set(exceptSession, out);
+    }
+    return out;
+  }
+  #privateSayings(exceptSession) {
     const out = [];
     const keep = (content, sessionId) => {
       if (!content || (exceptSession && sessionId === exceptSession)) return;

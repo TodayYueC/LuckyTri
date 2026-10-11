@@ -301,7 +301,12 @@ export class KnowledgeManager {
     );
     const queries = saidBy(rows).slice(0, 8);
     let vectors = [];
-    if (profile.embedding && queries.length) {
+    // Nothing on the shelf has a vector: embedding the question would only
+    // add a network round trip before every reply.
+    const searchable = !!this.repo.db
+      .prepare("SELECT 1 FROM core_chunks WHERE embedding IS NOT NULL LIMIT 1")
+      .get();
+    if (profile.embedding && queries.length && searchable) {
       try {
         vectors = await embedBatches(
           this.models,

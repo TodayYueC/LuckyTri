@@ -105,6 +105,15 @@ export class TurnProcessor {
       session,
       replay ? "replay" : preview ? "preview" : simulatedTurn ? "demo" : "live",
     );
+    // Where the wait before the first model call goes, phase by phase.
+    let phaseAt = performance.now();
+    const lap = (name) => {
+      const at = performance.now();
+      if (trace.timings)
+        trace.timings[name] =
+          (trace.timings[name] || 0) + Math.round(at - phaseAt);
+      phaseAt = at;
+    };
     const policy = this.owner.policy(preview?.viewSession || session);
     const state = this.owner.sessionState(session);
     const clearEpoch = this.owner.clearEpoch.get(session) || 0;
@@ -173,8 +182,10 @@ export class TurnProcessor {
         batch = gate.rows.length ? gate.rows : batch;
         watermark = Math.max(watermark, batch.at(-1).seq);
       }
+      lap("gate");
       if (!replay && !preview)
         await this.owner.restoreQuotes(session, batch, trace);
+      lap("quotes");
       const prompt = prompts(this.owner.repo);
       const now = clock();
       const hasKey =
@@ -228,6 +239,7 @@ export class TurnProcessor {
           /* An unparseable destination has no person to infer. */
         }
       }
+      lap("perceive");
       // Replays exclude mutable memory so later corrections cannot leak into
       // the past; her inner state is folded as of the replayed moment.
       const memories =
@@ -238,11 +250,13 @@ export class TurnProcessor {
               forSpeech: true,
             })
           : [];
+      lap("memory");
       const knowledge = ownInitiative
         ? []
         : replay
           ? this.owner.knowledge.retrieve(session, batch, now)
           : await this.owner.knowledge.retrieveWithEmbed(session, batch, now);
+      lap("knowledge");
       const summaryView =
         !ownInitiative && !simulatedTurn && policy.compaction !== false
           ? this.owner.compactor.forPrompt(session, {
@@ -270,6 +284,7 @@ export class TurnProcessor {
                   "未核实的阶段线索，不是人物事实；冲突时以原文和记忆为准",
               }))
           : [];
+      lap("summaries");
       const view = this.owner.mind.view({
         session: preview?.viewSession || session,
         kind: privateChat ? "private" : "group",
@@ -290,12 +305,15 @@ export class TurnProcessor {
         excludedSpeakers: botSpeakers,
       });
       if (activityCue !== cues)
-        view.inner.currentLife = this.owner.mind.time.view({
-          session: preview?.viewSession || session,
-          now,
-          cue: cues,
-          activityCue,
-        });
+        view.inner.currentLife = this.owner.mind.meetings.memo(() =>
+          this.owner.mind.time.view({
+            session: preview?.viewSession || session,
+            now,
+            cue: cues,
+            activityCue,
+          }),
+        );
+      lap("view");
       const snapshot = ownInitiative
         ? initiativeSnapshot(session, window, nature, now, policy.timeZone)
         : buildContext(
@@ -325,6 +343,7 @@ export class TurnProcessor {
         snapshot.self = view.self;
         snapshot.inner = view.inner;
       }
+      lap("context");
       const visionModel = model.vision
         ? model
         : this.owner.fallbackFor(null, model).find((item) => item.vision) ||
@@ -447,6 +466,7 @@ export class TurnProcessor {
         if (offered.length) snapshot.canDo = offered;
       }
       const generationImages = model.vision ? show : [];
+      lap("vision");
       if (!replay && !preview) {
         const rounds = this.owner.repo.db
           .prepare(
@@ -492,6 +512,7 @@ export class TurnProcessor {
         );
         return finish("stale", "读房间时又有新话，并入下一批");
       }
+      lap("checks");
       let turn;
       try {
         turn = normalizeTurn(

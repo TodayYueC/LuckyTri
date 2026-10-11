@@ -122,7 +122,7 @@ export class Mind {
     return this.repo.config("life", {})?.timeZone || "Asia/Shanghai";
   }
   view(options) {
-    return innerView(this, options);
+    return this.meetings.memo(() => innerView(this, options));
   }
   // The whole system is one body she can read: what is connected, and
   // whether each plugin is on. The studio shows the same state.

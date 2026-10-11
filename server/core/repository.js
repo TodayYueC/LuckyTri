@@ -284,6 +284,7 @@ export class Repository {
       started: Date.now(),
       calls: [],
       steps: [],
+      timings: {},
     };
   }
   finish(trace, status) {

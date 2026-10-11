@@ -509,14 +509,9 @@ export class Continuity {
       if (!words.length || words.every((w) => w.text.length < 4)) continue;
       if (recallIntent(words.map((m) => ({ role: "user", text: m.text }))))
         continue;
-      const trace = row.trace_id
-        ? this.db
-            .prepare(
-              "SELECT json_extract(data,'$.decision.targetMessageIds') targets FROM core_traces WHERE id=?",
-            )
-            .get(row.trace_id)
-        : null;
-      const targets = parse(trace?.targets, []);
+      // The delivered reply records whom it answered. Reading that back from
+      // the call log meant parsing megabytes of JSON per remembered meeting.
+      const targets = [];
       const seqs = words.map((w) => Number(w.ref.slice(2)));
       const delivered = row.trace_id
         ? this.db
