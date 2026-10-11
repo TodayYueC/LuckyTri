@@ -642,6 +642,7 @@ export class Recall {
         ...(m.discretion === "private" && !local
           ? { discretion: "私下知道的，不要当众说出口，也不要说出从哪听来" }
           : {}),
+        ...memory.conflictNote(m, session, now, forSpeech),
       });
     }
     return out;

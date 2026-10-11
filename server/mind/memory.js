@@ -277,8 +277,40 @@ export class MemoryManager {
         ...(m.discretion === "private" && !local
           ? { discretion: "私下知道的，不要当众说出口，也不要说出从哪听来" }
           : {}),
+        ...this.conflictNote(m, session, cutoff, forSpeech),
       };
     });
+  }
+  // Two statements marked as not fitting together, both still held: when one
+  // comes back, she sees the other beside it, with when and where she heard
+  // it, instead of taking either for settled.
+  conflictNote(m, session, now = Date.now(), forSpeech = false) {
+    const ref = `fact:${m.id}`;
+    const other = this.repo.db
+      .prepare(
+        `SELECT m.* FROM mind_links l JOIN core_memories m
+           ON 'fact:' || m.id = CASE WHEN l.from_id=? THEN l.to_id ELSE l.from_id END
+         WHERE l.relation='conflicts' AND (l.from_id=? OR l.to_id=?)
+           AND m.status='confirmed' AND (m.expires IS NULL OR m.expires>?)
+         ORDER BY m.created DESC LIMIT 1`,
+      )
+      .get(ref, ref, ref, now);
+    if (!other) return {};
+    const allowed = this.permission(other, session, now);
+    if (!allowed.recall) return {};
+    if (forSpeech && !allowed.disclose)
+      return { conflictsWith: "另有一条对不上的说法（受限，不在这里复述）" };
+    const age = now - Number(other.created || now);
+    const where =
+      this.scopes(session).includes(other.session_id) ||
+      other.session_id === "__shared__"
+        ? "这里"
+        : isPrivateSession(other.session_id)
+          ? "私聊里"
+          : "别的群里";
+    return {
+      conflictsWith: `另一个对不上的说法：「${String(other.content).slice(0, 60)}」（${age >= DAY ? `${agoLabel(age)}，` : ""}${where}听到的；哪个现在成立还不确定）`,
+    };
   }
   secretsOutside(session) {
     return this.#outside(session, "secret");
