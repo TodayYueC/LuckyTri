@@ -16,20 +16,25 @@ export const EMBEDDING_DEFAULTS = {
 };
 export const EMBEDDING_PROTOCOLS = new Set(["openai", "multimodal"]);
 
-// What to use when only an API key is given. 1024 dimensions and the batched
-// OpenAI-style endpoint matched the configured vision embedding model; the
-// Ark host uses that model name. Any other chat address is reused as-is.
-export function suggestEmbedding(chat = {}) {
-  const base = String(chat.baseUrl || "")
+// Defaults when the user gives an address and a key. 1024 dimensions and the
+// batched OpenAI-style endpoint matched doubao-embedding-vision; that model
+// name is used only when the address is Volcengine Ark.
+export function suggestEmbedding(chat = {}, address = "") {
+  const given = String(address || "")
     .trim()
     .replace(/\/$/, "");
+  const chatBase = String(chat.baseUrl || "")
+    .trim()
+    .replace(/\/$/, "");
+  const base = given || chatBase;
   const ark = /volces\.com|volcengine/i.test(base);
   return {
     protocol: "openai",
     dimensions: 1024,
     batchSize: 10,
     timeoutMs: 90000,
-    baseUrl: ark ? "https://ark.cn-beijing.volces.com/api/v3" : base,
+    baseUrl:
+      given || (ark ? "https://ark.cn-beijing.volces.com/api/v3" : chatBase),
     model: ark ? "doubao-embedding-vision" : String(chat.embeddingModel || ""),
   };
 }

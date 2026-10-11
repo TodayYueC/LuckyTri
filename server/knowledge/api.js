@@ -39,11 +39,13 @@ export function mountKnowledge(app, system) {
       } catch {
         chat = {};
       }
-      const suggested = suggestEmbedding(chat);
-      const body = { ...suggested, ...req.body };
+      const suggested = suggestEmbedding(chat, req.body?.baseUrl);
+      const body = { ...req.body };
       if (!body.baseUrl) body.baseUrl = suggested.baseUrl;
       if (!body.model) body.model = suggested.model;
+      if (!body.protocol) body.protocol = suggested.protocol;
       if (!body.dimensions) body.dimensions = suggested.dimensions;
+      if (!body.batchSize) body.batchSize = suggested.batchSize;
       res.json(saveEmbeddingProfile(repo, body));
     }),
   );

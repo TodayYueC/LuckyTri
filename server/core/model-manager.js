@@ -1373,6 +1373,8 @@ export class ModelManager {
         : await send(texts);
     } catch (error) {
       if (isAvailabilityFailure(error)) this.recordFailure(circuit);
+      // A provider's 401 is a bad vector key, not a signed-out studio.
+      if (error?.status === 401 || error?.status === 403) error.status = 400;
       throw requestFailure(error, {}, { timeoutMs });
     }
     this.recordSuccess(circuit);

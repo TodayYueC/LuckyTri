@@ -81,13 +81,16 @@ async function request(
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (r.status === 401) {
+  const data = await r.json().catch(() => ({}));
+  // Only a missing studio session should open the login gate. A vector
+  // service refusing its own key also answers 401, and treating that as
+  // "please sign in again" reopens the gate on every retry.
+  if (r.status === 401 && data.error === "请先登录管理台") {
     requireLogin();
     await waitForAccess();
     clearReads();
     return request(path, method, body);
   }
-  const data = await r.json().catch(() => ({}));
   if (!r.ok) throw Error(data.error || t("请求失败"));
   if (method !== "GET") clearReads();
   return data;

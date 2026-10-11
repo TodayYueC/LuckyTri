@@ -66,7 +66,7 @@ onMounted(load);
     <p class="muted">
       {{
         t(
-          "只需要填写向量服务的密钥。地址、模型和维度会按对话服务自动选择。不启用或没有密钥时，对话和关键词回忆照常进行，只是没有按意思检索。",
+          "填写向量服务的请求地址和密钥。模型名可以留空：火山方舟地址会用 doubao-embedding-vision，维度和接口有默认值。不启用或连不上时，对话和关键词回忆照常进行。",
         )
       }}
     </p>
@@ -75,6 +75,7 @@ onMounted(load);
     </p>
     <form
       v-if="loaded"
+      autocomplete="off"
       @submit.prevent="save"
       @input="dirty = true"
       @change="dirty = true"
@@ -88,12 +89,37 @@ onMounted(load);
       >
       <div class="fields">
         <label
+          >{{ t("请求地址")
+          }}<input
+            v-model="draft.baseUrl"
+            name="embeddingBaseUrl"
+            type="url"
+            inputmode="url"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="https://example.com/v1"
+            :required="draft.enabled"
+        /></label>
+        <label
+          >{{ t("模型名称")
+          }}<input
+            v-model="draft.model"
+            name="embeddingModelName"
+            autocomplete="off"
+            spellcheck="false"
+            :placeholder="t('可留空，按地址选择')"
+        /></label>
+        <label
           >{{ t("向量服务密钥")
           }}<input
             v-model="draft.apiKey"
             name="embeddingApiKey"
-            type="password"
-            autocomplete="new-password"
+            type="text"
+            class="secret"
+            autocomplete="off"
+            spellcheck="false"
+            data-1p-ignore
+            data-lpignore="true"
             :placeholder="
               draft.hasApiKey ? t('已保存，留空保留') : t('填写向量服务密钥')
             "
@@ -102,18 +128,6 @@ onMounted(load);
       <details>
         <summary>{{ t("自动选择的细节") }}</summary>
         <div class="fields">
-          <label
-            >{{ t("API 地址")
-            }}<input
-              v-model="draft.baseUrl"
-              name="embeddingBaseUrl"
-              type="url"
-              placeholder="https://example.com/v1"
-          /></label>
-          <label
-            >{{ t("模型名称")
-            }}<input v-model="draft.model" name="embeddingModelName"
-          /></label>
           <label
             >{{ t("向量维度（0 表示自动）")
             }}<input
@@ -164,6 +178,9 @@ onMounted(load);
 <style scoped>
 .embedding-profile {
   min-width: 0;
+}
+.secret {
+  -webkit-text-security: disc;
 }
 .fields {
   display: grid;
