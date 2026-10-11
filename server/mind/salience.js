@@ -97,7 +97,28 @@ export function grounded(content, texts) {
   const said = interestTerms(texts);
   const terms = [...interestTerms([content])];
   if (!terms.length || !said.size) return false;
-  return said.has(terms.at(-1));
+  if (said.has(terms.at(-1))) return true;
+  // A paraphrase that ends in its own words ("把篮球也推掉了") is still
+  // grounded when every clause it makes touches something that was said.
+  // A word repeated across clauses, usually the person's name, does not
+  // count for any of them. A single clause keeps the rule above: its last
+  // word is where the claim sits ("他下个月要结婚").
+  const clauses = String(content)
+    .split(/[，,。；;！!？?\n]+/)
+    .map((clause) => [...interestTerms([clause])])
+    .filter((clause) => clause.length);
+  const seen = new Map();
+  for (const clause of clauses)
+    for (const term of new Set(clause))
+      seen.set(term, (seen.get(term) || 0) + 1);
+  return (
+    clauses.length > 1 &&
+    clauses.every(
+      (clause) =>
+        new Set(clause.filter((term) => seen.get(term) === 1 && said.has(term)))
+          .size > 0,
+    )
+  );
 }
 
 // One set, or one set per speaker. An empty list means nothing was said.
