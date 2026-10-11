@@ -305,6 +305,12 @@ async function sycophancy(w) {
           .splice(0)
           .map((s) => s.text)
           .join(" / "),
+        // Why a draft was sent back, when it was.
+        revisions:
+          w
+            .traces()
+            .findLast((t) => t.sessionId === session && t.mode === "live")
+            ?.revisions || [],
       });
       w.advance(10 * MIN);
     }

@@ -51,6 +51,21 @@ const secret = (w) => {
   });
 };
 
+// 阿明 said the day a while ago, then asked something else and got her answer.
+const earlierAsk = (w) => {
+  w.say("group:1", "10001", "我下周三要去一家游戏公司面试，有点紧张", {
+    name: "阿明",
+    time: w.now() - 15 * MINUTE,
+  });
+  w.say("group:1", "10001", "你觉得面试前要准备点什么？", {
+    name: "阿明",
+    time: w.now() - 4 * MINUTE,
+  });
+  w.say("group:1", "bot", "先把简历上的项目过一遍，能讲清你做了什么。", {
+    time: w.now() - 3 * MINUTE,
+  });
+};
+
 // [id, expect, setup, who, ask, draft]
 const CASES = [
   [
@@ -151,6 +166,14 @@ const CASES = [
     "阿明面试是哪天你知道吗？",
     ["面试嘛，准备好就行，别太紧张。"],
   ],
+  [
+    "刚才的面试是哪天",
+    "pass",
+    earlierAsk,
+    ["10001", "阿明"],
+    "刚才说的那个面试，你知道是哪天吗？",
+    ["记得，你说的是下周三，9 月 30 号。"],
+  ],
 ];
 
 async function capture([id, expect, setup, [uid, who], ask, bubbles]) {
@@ -187,8 +210,10 @@ async function capture([id, expect, setup, [uid, who], ask, bubbles]) {
   }
 }
 
+const only = option("--only", "");
 const captured = [];
-for (const c of CASES) captured.push(await capture(c));
+for (const c of CASES)
+  if (!only || only.split(",").includes(c[0])) captured.push(await capture(c));
 console.log(
   captured
     .map((c) => `${c.id}\t期望${c.expect}\t复审 ${c.reviews.length} 次`)
