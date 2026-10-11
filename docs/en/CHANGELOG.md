@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- A bare “you got it wrong” about a fact is no longer treated as a repair that must admit fault; only meta-critique of how she speaks (robotic, repetitive, unnatural) takes that path, and even then she checks whether she actually did.
 - Older related lines pulled in from outside the chat window are deduplicated and capped at five, so eight near-identical old rows no longer fill the prompt.
 - When someone claims she got a fact wrong without evidence, restating her own recent basis is no longer treated as empty rephrasing and rewritten twice; the turn payload also drops the humanMessages field that duplicated exchange.current.
 - When two statements about someone do not fit together and neither is settled, recalling one now shows the other beside it, with when and where she heard it, instead of taking either for fact. A restricted one is only noted, not repeated.

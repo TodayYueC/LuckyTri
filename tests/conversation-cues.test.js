@@ -351,3 +351,19 @@ test("自己发起的话不是补答历史的嗯，保留完整的新念头", ()
     [],
   );
 });
+
+test("事实争议上的「你搞错了」不是 repair；表达方式批评仍是", () => {
+  const decision = { action: "REPLY", targetMessageIds: [1] };
+  const fact = {
+    persona: {},
+    messages: [{ id: 1, role: "user", text: "你搞错了，小周弟弟今年不高考" }],
+  };
+  assert.notEqual(replyFocus(fact, decision).kind, "repair");
+  assert.equal(replyFocus(fact, decision).kind, "respond");
+  const meta = {
+    persona: {},
+    messages: [{ id: 1, role: "user", text: "你这话好人不机，太不自然了" }],
+  };
+  assert.equal(replyFocus(meta, decision).kind, "repair");
+  assert.match(replyFocus(meta, decision).instruction, /表达方式|确有问题/);
+});

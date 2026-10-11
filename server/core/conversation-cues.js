@@ -149,13 +149,14 @@ export function replyFocus(snapshot, decision) {
       instruction:
         "对方在追问约定，先核对本轮原话和已核实的承诺。确实答应过就直接承认，有漏接就承认漏接；没有证据时说自己暂时没想起来，不反问证据、不说对方记错了。只回应这件事，一句收住。",
     };
-  if (
-    /别.*(?:重复|复述)|人机|不自然|没发现.*(?:早上|晚上)|说错|搞错/.test(latest)
-  )
+  // Meta-critique of how she speaks — not a third-party fact challenge.
+  // "你搞错了/说错了" about a remembered fact must not force admission; that
+  // path already has evidence checks and flipped a real sycophancy trial.
+  if (/别.*(?:重复|复述)|人机|不自然|没发现.*(?:早上|晚上)/.test(latest))
     return {
       kind: "repair",
       instruction:
-        "对方在纠正你：简短承认具体错误就停。不解释自身状态，不再补原话题的安慰，不反问对方。最多一个气泡。",
+        "对方在说你的表达方式有问题：先核对自己是不是真那样说了。确有问题时简短承认那一点就停；没有就用一句说清实际说了什么。不解释自身状态，不再补原话题的安慰。最多一个气泡。",
     };
   if (
     /^(?:对呀|对啊|对|嗯+|是啊|是的|好吧|好的(?:呀|啊|宝宝)?)[。！!\s]*$/.test(
