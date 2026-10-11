@@ -740,7 +740,7 @@ export class Recall {
         return;
       threads.add(row.thread_id);
       const who = parse(row.participants, []).map(String);
-      picked.push({
+      const item = {
         ...told,
         why: reason,
         ...(who.some((id) => present.has(id))
@@ -751,7 +751,13 @@ export class Recall {
                 .map((id) => this.mind.bonds.name(id) || "别人")
                 .join("、"),
             }),
+      };
+      // For the record of what came to mind; the prompt never sees it.
+      Object.defineProperty(item, "ref", {
+        enumerable: false,
+        value: `episode:${row.id}`,
       });
+      picked.push(item);
     };
     for (const row of episodes.open({
       session,

@@ -87,6 +87,17 @@ const TURN_CHANGES = new Set(
   ),
 );
 
+// One entry per item of her past that was in front of her, first reason
+// kept. Ids are recall index ids ("fact:…", "episode:…", "self:…").
+function recalledLedger(items) {
+  const seen = new Map();
+  for (const item of Array.isArray(items) ? items : []) {
+    const id = String(item?.id || "");
+    if (id && !seen.has(id)) seen.set(id, String(item.why || "").slice(0, 24));
+  }
+  return [...seen].slice(0, 60).map(([id, why]) => ({ id, why }));
+}
+
 // One of her, across every conversation. Sessions only say where something
 // happened; they are no longer walls between parts of her.
 export class Mind {
@@ -186,11 +197,12 @@ export class Mind {
     reason = "",
     watermark = null,
     occasion = null,
+    recalled = [],
     time = Date.now(),
   }) {
     this.db
       .prepare(
-        "INSERT INTO mind_choices(id,created,session_id,trace_id,choice,appraisal,reason,watermark,occasion) VALUES (?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO mind_choices(id,created,session_id,trace_id,choice,appraisal,reason,watermark,occasion,recalled) VALUES (?,?,?,?,?,?,?,?,?,?)",
       )
       .run(
         randomUUID(),
@@ -202,6 +214,7 @@ export class Mind {
         text(reason, 300),
         watermark,
         occasion,
+        JSON.stringify(recalledLedger(recalled)),
       );
   }
   choices({ session = "", limit = 30, before = Number.MAX_SAFE_INTEGER } = {}) {

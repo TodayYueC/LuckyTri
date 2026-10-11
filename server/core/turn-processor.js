@@ -405,6 +405,7 @@ export class TurnProcessor {
             activityCue,
           }),
         );
+      let recollected = [];
       if (policy.memory && !replay && !ownInitiative) {
         const recollections = await this.owner.mind.recall.recollect(
           session,
@@ -412,6 +413,7 @@ export class TurnProcessor {
           now,
           { people },
         );
+        recollected = recollections;
         if (recollections.length)
           view.inner.recollections = {
             note: RECOLLECTION_NOTE,
@@ -719,6 +721,7 @@ export class TurnProcessor {
           reason: choice === turn.choice ? turn.reason : "没发出去",
           watermark,
           occasion: occasion?.type || null,
+          recalled: whatCameToMind(memories, recollected, view, trace),
           time: now,
         });
       };
@@ -799,5 +802,23 @@ export class TurnProcessor {
           // Background upkeep must never turn a finished turn into an error.
         }
     }
+  }
+}
+
+// The past that was in front of her this turn, for the permanent record next
+// to her choice. A failure here must never cost the turn.
+function whatCameToMind(memories, recollected, view, trace) {
+  try {
+    return [
+      ...(memories || []).map((m) => ({
+        id: `fact:${m.id}`,
+        why: m.whySelected,
+      })),
+      ...(recollected || []).map((r) => ({ id: r.ref, why: r.why })),
+      ...(view?.recalled || []),
+    ];
+  } catch (error) {
+    trace?.steps?.push(`没能记下这轮想起了什么：${error.message}`);
+    return [];
   }
 }

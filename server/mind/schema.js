@@ -88,6 +88,9 @@ export function migrateMind(db, store) {
   addColumn("mind_meetings", "reason", "TEXT NOT NULL DEFAULT ''");
   addColumn("mind_anticipations", "activity", "TEXT NOT NULL DEFAULT ''");
   addColumn("mind_self", "subject", "TEXT");
+  // What came to mind when she chose: index ids of the past put in front of
+  // her for that turn. Kept for good, unlike the turn's trace.
+  addColumn("mind_choices", "recalled", "TEXT NOT NULL DEFAULT '[]'");
   db.prepare(
     "UPDATE mind_runs SET status='interrupted',finished=? WHERE status='running'",
   ).run(Date.now());

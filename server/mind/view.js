@@ -153,18 +153,20 @@ export function innerView(
         { cues, limit: 2, requireOverlap: true },
       );
   const shownLiving = living && carries(living) ? living : null;
+  const remindedSelf = mind.self
+    .reminded({ before: now, now, cues, limit: 2 })
+    .filter(carries);
+  const remindedThoughts = mind.thoughts
+    .reminded({ now, cues, session, limit: 1 })
+    .filter((t) => mind.meetings.sayable(t.content, session));
   const reminded = [
-    ...mind.self
-      .reminded({ before: now, now, cues, limit: 2 })
-      .filter(carries)
-      .map((t) => `${SELF_KINDS[t.kind]}：${text(t.content, 80)}${FORGOTTEN}`),
-    ...mind.thoughts
-      .reminded({ now, cues, session, limit: 1 })
-      .filter((t) => mind.meetings.sayable(t.content, session))
-      .map(
-        (t) =>
-          `${elapsedLabel(t.created, now, mind.timeZone())}想到：${text(t.content, 110)}${FORGOTTEN}`,
-      ),
+    ...remindedSelf.map(
+      (t) => `${SELF_KINDS[t.kind]}：${text(t.content, 80)}${FORGOTTEN}`,
+    ),
+    ...remindedThoughts.map(
+      (t) =>
+        `${elapsedLabel(t.created, now, mind.timeZone())}想到：${text(t.content, 110)}${FORGOTTEN}`,
+    ),
     ...mind.meetings
       .reminded({ session, now, cues, limit: 1 })
       .filter((line) => mind.meetings.sayable(line, session))
@@ -286,9 +288,12 @@ export function innerView(
   const heard = feedback(mind, session, now);
   const continuity = mind.continuity.recall({ session, people, cue, now });
   const justLived = mind.continuity.justLived({ session, people, now });
-  const expecting = mind.anticipations
-    .upcoming({ now, people, session, limit: 3 })
-    .map((a) => a.text);
+  const upcoming = mind.anticipations.upcoming({
+    now,
+    people,
+    session,
+    limit: 3,
+  });
   const withWhom = mind.meetings.recall({
     session,
     people,
@@ -332,15 +337,16 @@ export function innerView(
   const withLines = withWhom.filter(
     (line) => !fixedReplyHabit(line) && mind.meetings.sayable(line, session),
   );
-  const expectingLines = expecting.filter((line) =>
-    mind.meetings.sayable(line, session),
+  const expectingShown = upcoming.filter((a) =>
+    mind.meetings.sayable(a.text, session),
   );
+  const expectingLines = expectingShown.map((a) => a.text);
   const senses = mind.senses?.lines({ kind, now }) || [];
   const body = (mind.body?.({ kind, now }) || [])
     .map((line) => text(line, 80))
     .filter(Boolean)
     .slice(0, 8);
-  return boundMindContext({
+  const view = boundMindContext({
     self,
     affect: cause ? affect : { ...affect, cause: "" },
     inner: {
@@ -379,4 +385,38 @@ export function innerView(
       ...(body.length ? { body } : {}),
     },
   });
+  // Which of her past made it into this view after the allowance, for the
+  // record of what came to mind. Not part of what the model reads.
+  const shown = (owner, key, ids) =>
+    ids.slice(0, Array.isArray(owner?.[key]) ? owner[key].length : 0);
+  Object.defineProperty(view, "recalled", {
+    enumerable: false,
+    value: [
+      ...shown(
+        view.self,
+        "threads",
+        visibleThreads.map((t) => `self:${t.thread}`),
+      ).map((id) => ({ id, why: "core" })),
+      ...shown(
+        view.inner,
+        "relatedSelf",
+        relatedSelf.map((t) => `self:${t.thread}`),
+      ).map((id) => ({ id, why: meant ? "semantic" : "lexical" })),
+      ...shown(
+        view.inner,
+        "onMind",
+        thoughts.map((t) => `thought:${t.id}`),
+      ).map((id) => ({ id, why: "on_mind" })),
+      ...shown(view.inner, "reminded", [
+        ...remindedSelf.map((t) => `self:${t.thread}`),
+        ...remindedThoughts.map((t) => `thought:${t.id}`),
+      ]).map((id) => ({ id, why: "reminded" })),
+      ...shown(
+        view.inner,
+        "expecting",
+        expectingShown.map((a) => `anticipation:${a.id}`),
+      ).map((id) => ({ id, why: "expecting" })),
+    ],
+  });
+  return view;
 }
