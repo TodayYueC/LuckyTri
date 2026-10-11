@@ -4,6 +4,8 @@ import {
   conversationGrounding,
   groundingIssues,
   fixedReplyHabit,
+  claimChallenged,
+  requestedRepeat,
 } from "../server/core/conversation-grounding.js";
 import { maxBubbles, normalizeTurn } from "../server/core/turn.js";
 import { relevantContext } from "../server/mind/context-selection.js";
@@ -772,4 +774,57 @@ test("大规模边界矩阵：确认循环不依赖昵称、群号或标点，�
       }
     }
   assert.equal(cases, 2000);
+});
+
+test("被人说记错了时，复述自己刚说过的依据不算换词重复", () => {
+  const recent = "阿杰下个月十五号搬家";
+  const restated = "没记岔。阿杰自己发的原话是「我下个月十五号搬家」。";
+  const base = {
+    sessionId: "group:1",
+    batchIds: [5],
+    messages: [
+      {
+        id: 1,
+        role: "user",
+        speaker: "10005",
+        text: "我下个月十五号搬家",
+      },
+      { id: 2, role: "assistant", speaker: "self", text: recent },
+      {
+        id: 3,
+        role: "user",
+        speaker: "10002",
+        text: "今天天气不错",
+      },
+      { id: 4, role: "assistant", speaker: "self", text: "是挺好的。" },
+      {
+        id: 5,
+        role: "user",
+        speaker: "10099",
+        text: "@她 不是吧，阿杰没说要搬家，你记岔了",
+      },
+    ],
+  };
+  assert.equal(claimChallenged(base), true);
+  assert.equal(requestedRepeat(base), false);
+  assert.deepEqual(groundingIssues([restated], base), []);
+  // Same restatement without a challenge must still be caught.
+  const idle = {
+    ...base,
+    messages: base.messages.map((m) =>
+      m.id === 5 ? { ...m, text: "@她 周末有空吗" } : m,
+    ),
+  };
+  assert.equal(claimChallenged(idle), false);
+  assert.ok(
+    groundingIssues([restated], idle).some((x) => /大部分相同/.test(x)),
+  );
+});
+
+test("claimChallenged 不把普通不对当成质疑记忆", () => {
+  const s = {
+    batchIds: [1],
+    messages: [{ id: 1, role: "user", speaker: "a", text: "这道菜不对口味" }],
+  };
+  assert.equal(claimChallenged(s), false);
 });

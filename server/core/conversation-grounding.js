@@ -255,6 +255,21 @@ export function requestedRepeat(snapshot) {
   );
 }
 
+// Someone is saying she got a fact wrong, without bringing new evidence of
+// their own. Restating what she already said (or the person's own words) is
+// the right answer then, not empty chatter — so the echo check must let it
+// through. Narrow cues only; ordinary "不对" about taste or plans stays out.
+export function claimChallenged(snapshot) {
+  return (snapshot.messages || []).some(
+    (m) =>
+      (snapshot.batchIds || []).includes(m.id) &&
+      m.role === "user" &&
+      /(?:你|您)?(?:记错|搞错|记岔|弄错|说错)了|不是吧.{0,12}(?:你|她)|(?:才不是|根本不是|根本没有).{0,20}(?:你记|你说)|你.{0,6}(?:记错|搞错|记岔|弄错)/.test(
+        m.text || "",
+      ),
+  );
+}
+
 export function groundingIssues(bubbles, snapshot) {
   const recent = recentOwnMessages(snapshot, 6);
   const issues = [];
@@ -513,7 +528,7 @@ export function groundingIssues(bubbles, snapshot) {
       recent.some((m) => echoesRecentWording(line, m.text))
     ) {
       // A requested quote, calculation or factual repeat remains legitimate.
-      if (!requestedRepeat(snapshot))
+      if (!requestedRepeat(snapshot) && !claimChallenged(snapshot))
         issues.push(
           "与近期自己的话大部分相同，只换词或追加收尾；回应本轮具体新内容，没有新内容就收住",
         );
