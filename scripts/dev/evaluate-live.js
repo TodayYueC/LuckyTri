@@ -378,6 +378,7 @@ async function latency(w) {
   }
   // One consolidation and one stretch of solitude, timed the same way.
   const background = {};
+  const memoryTrace = { calls: [], steps: [] };
   for (const [key, run] of [
     [
       "memory",
@@ -386,7 +387,7 @@ async function latency(w) {
           "group:1",
           w.system.models.profile(),
           prompts(w.system.repo).memory,
-          { calls: [], steps: [] },
+          memoryTrace,
           { force: true, now: w.now() },
         ),
     ],
@@ -395,14 +396,20 @@ async function latency(w) {
     const before = w.requests.length;
     const started = Date.now();
     let status = "";
+    let stack;
     try {
-      status = JSON.stringify(await run()).slice(0, 200);
+      // consolidate() answers nothing when it is done.
+      status = String(JSON.stringify(await run()) ?? "ok").slice(0, 200);
     } catch (error) {
       status = `error: ${error.message}`;
+      stack = String(error.stack || "")
+        .split("\n")
+        .slice(0, 8);
     }
     background[key] = {
       wallMs: Date.now() - started,
       status,
+      ...(stack ? { stack, raw: memoryTrace.calls.map((c) => c.raw) } : {}),
       requests: w.requests.slice(before).map((r) => ({
         path: r.path,
         ms: r.ms,
@@ -416,6 +423,8 @@ async function latency(w) {
     status: t.status,
     elapsed: t.elapsed,
     timings: t.timings,
+    revisions: t.revisions || [],
+    steps: (t.steps || []).slice(-12),
     calls: (t.calls || []).map((c) => ({
       stage: c.stage,
       offset: c.started - t.started,
