@@ -9,7 +9,7 @@ import { interestTerms } from "../attention.js";
 export const CONTEXT_GAP_MS = 10 * 60000;
 const CONTEXT_CHARS = 120;
 // Fewer distinct character pairs than this and a line is a follow-up.
-export const THIN_TERMS = 8;
+export const THIN_TERMS = 6;
 
 const words = (row) => String(row?.text || "").trim();
 const media = (text) => /^\[(?:图片|表情|媒体)\]+$/.test(text);
