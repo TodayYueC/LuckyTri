@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { evidenceRoots } from "../../server/mind/evidence.js";
+import { aftermathOf, describeAftermath } from "../../server/mind/aftermath.js";
 
 const DAY = 86400000;
 // Kinds that may begin without a source (see SELF_ORIGINATED in self.js).
@@ -55,6 +56,8 @@ const quantile = (values, q) => {
   return sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
 };
 const days = (ms) => (ms == null ? null : Math.round((ms / DAY) * 10) / 10);
+// The day in Asia/Shanghai, where her life is lived.
+const localDay = (ms) => new Date(ms + 8 * 3600000).toISOString().slice(0, 10);
 const share = (part, whole) =>
   whole ? Math.round((part / whole) * 1000) / 10 : null;
 
@@ -510,6 +513,99 @@ export function auditLife(db, { now } = {}) {
     }
   });
 
+  // What came after each choice: the stored record, or (on a database from
+  // before it was kept) the same rule read on the spot without writing.
+  const afterwards = (put) => {
+    if (!has.has("core_events"))
+      return put("选择与后果的对照", null, "没有消息记录，无法对照");
+    const stored = columns("mind_choices").has("after");
+    const rows = all(
+      `SELECT id,created,session_id,choice,watermark${stored ? ",after" : ""} FROM mind_choices ORDER BY created DESC LIMIT 3000`,
+    );
+    let covered = 0;
+    let derived = 0;
+    let broken = 0;
+    const spoke = { n: 0, answered: 0, corrected: 0, feedback: 0 };
+    const silent = { n: 0, called: 0 };
+    const samples = { answered: [], unanswered: [], corrected: [], called: [] };
+    const textOf = db.prepare("SELECT payload FROM core_events WHERE seq=?");
+    const said = (ref) => {
+      try {
+        const m = JSON.parse(
+          textOf.get(Number(String(ref).slice(2)))?.payload || "{}",
+        );
+        return String(m.text || "").slice(0, 40);
+      } catch {
+        return "";
+      }
+    };
+    for (const row of rows) {
+      let after = stored && row.after ? parse(row.after) : null;
+      if (!after) {
+        after = aftermathOf(db, row, at);
+        if (after) derived++;
+      }
+      if (!after) continue;
+      covered++;
+      for (const ref of after.refs || [])
+        if (!found("m", String(ref).slice(2))) broken++;
+      const day = localDay(row.created);
+      if (after.spoke) {
+        spoke.n++;
+        if (after.answered) spoke.answered++;
+        if (after.corrected) spoke.corrected++;
+        if (after.feedback?.length) spoke.feedback++;
+        const bucket = after.corrected
+          ? "corrected"
+          : after.answered
+            ? "answered"
+            : "unanswered";
+        if (samples[bucket].length < 3)
+          samples[bucket].push(
+            `${day} ${describeAftermath(after)}${after.corrected ? `「${said(after.refs?.[0])}」` : ""}`,
+          );
+      } else {
+        silent.n++;
+        if (after.calledAgain) {
+          silent.called++;
+          if (samples.called.length < 3)
+            samples.called.push(`${day} ${describeAftermath(after)}`);
+        }
+      }
+    }
+    if (broken) problems.push(`有 ${broken} 条“后来”引用的消息已不存在`);
+    put(
+      "选择与后果的对照",
+      rows.length ? `${share(covered, rows.length)}%` : null,
+      `${covered}/${rows.length}（其中 ${derived} 条是体检时按同一规则现算的，未写入）；窗口未关的不算`,
+    );
+    const pct = (a, b) => (b ? `${share(a, b)}%` : null);
+    put(
+      "开口后有人接话的比例",
+      pct(spoke.answered, spoke.n),
+      `${spoke.answered}/${spoke.n}；只认回复她或叫她的消息`,
+    );
+    put(
+      "开口后可能被纠正的比例",
+      pct(spoke.corrected, spoke.n),
+      `${spoke.corrected}/${spoke.n}；按说法规则识别，只是提示`,
+    );
+    put(
+      "沉默后又被叫到的比例",
+      pct(silent.called, silent.n),
+      `${silent.called}/${silent.n}`,
+    );
+    put("有管理台反馈的回复", spoke.feedback, "");
+    for (const [key, label] of [
+      ["answered", "抽样：有人接话"],
+      ["unanswered", "抽样：没人接话"],
+      ["corrected", "抽样：可能被纠正（附原话，供人工核对规则）"],
+      ["called", "抽样：沉默后又被叫"],
+    ])
+      if (samples[key].length)
+        put(label, samples[key].length, samples[key].join(" / "));
+  };
+
   section("judgement", "判断与选择", "三", (put) => {
     if (!has.has("mind_choices")) return put("选择", null, "没有 mind_choices");
     const rows = all("SELECT choice,reason FROM mind_choices");
@@ -532,11 +628,7 @@ export function auditLife(db, { now } = {}) {
         : `${share(vague, rows.length)}%`,
       `${vague}/${rows.length}`,
     );
-    put(
-      "选择与后果的对照",
-      0,
-      "目前选择没有记录后果，这一项为路线图第 3 轮预留",
-    );
+    afterwards(put);
   });
 
   section("inner", "持续运转的内在世界", "四", (put) => {

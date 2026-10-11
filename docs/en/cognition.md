@@ -21,6 +21,8 @@ When the embedding service is down, recall falls back to full text, structured l
 
 `DATABASE_VERSION` is 5. `mind_index`, `mind_index_fts`, `mind_vectors` and `mind_roots` (what each record ultimately rests on, worked out from the sources it already cites) are derived and can be rebuilt. `mind_episodes` is append-only: a status change is a new row in the same `thread_id`. `mind_self` gained a `lesson` kind and a `subject`. A lesson must cite experience that did not come from the model. The same experience is used once. Two independent pieces move it from `emerging` to `active`. A counterexample revises it downward.
 
+`mind_choices.after` records what happened after a choice: whether anyone replied to her or called her and how many minutes later, the tone cues of those replies, a "不是 / 记错了" said to her (marked only as "maybe corrected"), whether someone called her again after she kept quiet, and the owner's feedback on that reply, with the message ids. The window closes at her next choice in the same room, after two hours, or after twenty messages, and the maintenance timer writes it a page at a time. It is derived from the record only, never from a model, and can be cleared and computed again. It is an experience, not a score, and is never summed into a reward.
+
 A fact can be archived. Archiving only removes it from ordinary recall. When a person asks for deletion, the source, the index row and the vector are removed together.
 
 ## Embeddings

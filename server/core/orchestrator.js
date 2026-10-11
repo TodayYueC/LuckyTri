@@ -1,3 +1,4 @@
+import { settleAftermath } from "../mind/aftermath.js";
 import { randomUUID } from "node:crypto";
 import { Repository } from "./repository.js";
 import {
@@ -567,6 +568,8 @@ export class ChatSystem {
       // the newest rows itself.
       recall.fillRoots(500);
       recall.pruneProfiles(now);
+      // What happened after her choices, once each window has closed.
+      settleAftermath(this.mind.db, { now, limit: 200 });
     } catch (error) {
       this.recallError = error.message;
     }

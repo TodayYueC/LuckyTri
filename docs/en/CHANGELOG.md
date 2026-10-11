@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- What happened after each choice is recorded: whether anyone answered her, a possible correction, whether she was called again after keeping quiet, and the owner's feedback, with the messages. Derived from the record without a model; turn input is unchanged. The audit reports it with samples.
+- Bringing back her own notes with an affair is stricter: a single shared word that is not in the affair's title no longer counts. Notes and plans enter the recall index as soon as they are written.
 - When an affair comes back to her, so does what she made of it: her note then and later, or an intention about it, at most two lines. Links come from the sources she already keeps, with no model call; private thoughts stay out of groups.
 - Times over a week ago are no longer all "a long time ago": a week ago, two or three weeks ago, over a month ago, a few months ago, over a year ago.
 - Revocations are stamped on her own clock, on the same timeline as the rest of her life.

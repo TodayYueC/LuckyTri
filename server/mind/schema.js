@@ -1,3 +1,4 @@
+import { migrateAftermath } from "./aftermath.js";
 import { randomUUID } from "node:crypto";
 import { NATURE_DEFAULTS, NATURE_FIELDS } from "./nature.js";
 import { evidence, parse } from "./util.js";
@@ -91,6 +92,7 @@ export function migrateMind(db, store) {
   // What came to mind when she chose: index ids of the past put in front of
   // her for that turn. Kept for good, unlike the turn's trace.
   addColumn("mind_choices", "recalled", "TEXT NOT NULL DEFAULT '[]'");
+  migrateAftermath(addColumn);
   db.prepare(
     "UPDATE mind_runs SET status='interrupted',finished=? WHERE status='running'",
   ).run(Date.now());

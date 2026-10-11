@@ -6,12 +6,14 @@
 //
 // The scripted model answers every stage with fixed text, so the numbers
 // measure the mechanisms (what gets kept, linked, recalled, taken back),
-// never how well a real model lives through them. A real-model run needs a
-// key and is not part of this script yet.
+// never how well a real model lives through them. Real-model probes are in
+// evaluate-live.js.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { scriptedLife } from "../../tests/helpers/life-scenario.js";
+import { world, HOUR, MINUTE } from "../../tests/helpers/world.js";
+import { settleAftermath } from "../../server/mind/aftermath.js";
 import { auditLife } from "./audit-life.js";
 
 const metric = (audit, label) =>
@@ -105,8 +107,9 @@ export async function probeTraits() {
       "选择与后果的对照",
       null,
       metric(audit, "选择与后果的对照").value,
-      "已知缺口：选择没有后果字段，路线图第 3 轮",
+      metric(audit, "选择与后果的对照").note,
     );
+    for (const p of await aftermathProbes()) probes.push(p);
     probe(
       "六",
       "手记被修正时旧版本保留，形成修正链",
@@ -131,6 +134,61 @@ export async function probeTraits() {
   } finally {
     w.close();
   }
+}
+
+// Two small scenes of their own, so the main scripted life (and every probe
+// already measured on it) stays exactly as it was.
+async function aftermathProbes() {
+  const out = [];
+  const w = world();
+  try {
+    w.open("group:1");
+    const asked = w.say("group:1", "10001", "@她 周五要开会对吧？", {
+      mentioned: true,
+    });
+    w.answers.turn = {
+      appraisal: "他在问我",
+      choice: "speak",
+      reason: "提醒他开会",
+      targetMessageIds: [asked.seq],
+      bubbles: ["对呀，周五下午三点"],
+    };
+    await w.hear("group:1", asked);
+    w.advance(MINUTE);
+    w.say("group:1", "10001", "不是周五啦，是下周一", { replyToBot: true });
+    w.advance(3 * HOUR);
+    w.answers.turn = { choice: "silent", reason: "在聊别的" };
+    const quiet = w.say("group:1", "10002", "@她 你觉得呢？", {
+      mentioned: true,
+    });
+    await w.hear("group:1", quiet);
+    w.advance(5 * MINUTE);
+    const again = w.say("group:1", "10002", "@她 人呢？", { mentioned: true });
+    await w.hear("group:1", again);
+    w.advance(3 * HOUR);
+    settleAftermath(w.store.db, { now: w.now() });
+    const after = w.store.db
+      .prepare("SELECT after FROM mind_choices ORDER BY created")
+      .all()
+      .map((r) => (r.after ? JSON.parse(r.after) : null));
+    out.push({
+      trait: "三",
+      name: "她说错一件事、被纠正后，后果被记下",
+      pass: after[0]?.corrected === "maybe" && after[0]?.refs?.length === 1,
+      value: after[0] ? JSON.stringify(after[0]) : "—",
+      note: "单独的小场景",
+    });
+    out.push({
+      trait: "三",
+      name: "她沉默之后被再叫一次，后果被记下",
+      pass: after[1]?.calledAgain === true,
+      value: after[1] ? JSON.stringify(after[1]) : "—",
+      note: "单独的小场景",
+    });
+  } finally {
+    w.close();
+  }
+  return out;
 }
 
 export function renderProbes(probes) {
