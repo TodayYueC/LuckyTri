@@ -109,9 +109,21 @@ for (let day = 0; day < DAYS; day++) {
       added: full - JSON.stringify(stripped).length,
       lines: mine.length,
       ageDays: day - back.day,
+      parts: partSizes(call.data),
     });
   }
   w.advance(18 * HOUR - 6 * HOUR - 60000);
+}
+function partSizes(data) {
+  const out = {};
+  const add = (prefix, value) => {
+    for (const [key, v] of Object.entries(value || {}))
+      out[prefix + key] = JSON.stringify(v ?? null).length;
+  };
+  add("context.", { ...data?.context, inner: undefined });
+  add("inner.", data?.context?.inner);
+  add("exchange.", data?.exchange);
+  return out;
 }
 const q = (values, p) => {
   const sorted = [...values].sort((a, b) => a - b);
@@ -150,6 +162,24 @@ console.log(
           0.5,
         ),
       },
+      turnInputParts: Object.fromEntries(
+        [...new Set(rows.flatMap((r) => Object.keys(r.parts)))]
+          .map((key) => [
+            key,
+            {
+              first20p50: q(
+                rows.slice(0, 20).map((r) => r.parts[key] || 0),
+                0.5,
+              ),
+              last20p50: q(
+                tail.map((r) => r.parts[key] || 0),
+                0.5,
+              ),
+            },
+          ])
+          .filter(([, v]) => v.last20p50 >= 200 || v.first20p50 >= 200)
+          .sort((a, b) => b[1].last20p50 - a[1].last20p50),
+      ),
       turnPrepMs: {
         first20p50: Math.round(
           q(

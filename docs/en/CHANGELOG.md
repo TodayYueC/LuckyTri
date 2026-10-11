@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- When someone claims she got a fact wrong without evidence, restating her own recent basis is no longer treated as empty rephrasing and rewritten twice; the turn payload also drops the humanMessages field that duplicated exchange.current.
 - When two statements about someone do not fit together and neither is settled, recalling one now shows the other beside it, with when and where she heard it, instead of taking either for fact. A restricted one is only noted, not repeated.
 - The check of whether a reply answers the person who asked now sees that person’s own earlier words on the same thing (at most two), so a correct answer to “that interview I mentioned, which day was it” is no longer taken for invention and rewritten again and again.
 - Faster, cheaper replies: the review step that asks “did the reply answer the person who asked” no longer uses hidden reasoning (same accuracy on the review probe, about 93% fewer output tokens for that check); the main review keeps its configured effort, because without it an unsupported change of mind slipped through. On Volcengine, “no thinking” and mechanical stages now really disable thinking instead of using minimal reasoning; models that cannot (GLM) keep the old setting, and a model that refuses is asked again with minimal reasoning.
