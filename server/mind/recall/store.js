@@ -305,6 +305,27 @@ export class RecallStore {
       )
       .get(profile);
   }
+  // Vectors are derived data kept per embedding profile. After a model
+  // change the old profile's rows would stay forever, doubling the table
+  // with every switch. The active profile and the most recent other one (a
+  // way back without paying to embed everything again) are kept; older
+  // profiles are dropped. Returns how many rows were removed.
+  pruneProfiles(active, { keepOthers = 1 } = {}) {
+    if (!active) return 0;
+    const others = this.db
+      .prepare(
+        "SELECT profile,MAX(created) last FROM mind_vectors WHERE profile!=? GROUP BY profile ORDER BY last DESC",
+      )
+      .all(active)
+      .slice(keepOthers);
+    let removed = 0;
+    for (const { profile } of others)
+      removed += Number(
+        this.db.prepare("DELETE FROM mind_vectors WHERE profile=?").run(profile)
+          .changes,
+      );
+    return removed;
+  }
   // A vector is stored only if the words it was made from are still current.
   saveVector(id, profile, hash, vector, now) {
     const current = this.db

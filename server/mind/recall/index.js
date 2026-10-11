@@ -225,6 +225,15 @@ export class Recall {
     });
     return saved;
   }
+  // Old profiles' vectors go only once the active one covers what she
+  // remembers, so a half-built index never leaves her with neither.
+  pruneProfiles(now = Date.now()) {
+    const profile = this.profile();
+    if (!profile || this.coverage(now) < HYBRID_COVERAGE) return 0;
+    if (this.prunedAt && now - this.prunedAt < 6 * 3600000) return 0;
+    this.prunedAt = now;
+    return this.store.pruneProfiles(profile);
+  }
   status() {
     const profile = this.profile();
     return {

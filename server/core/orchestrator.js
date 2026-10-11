@@ -561,6 +561,7 @@ export class ChatSystem {
     const recall = this.mind.recall;
     try {
       recall.ensure(now);
+      recall.pruneProfiles(now);
     } catch (error) {
       this.recallError = error.message;
     }

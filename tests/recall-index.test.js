@@ -391,3 +391,32 @@ test("混合检索与词面检索一致：锁定的事始终在心里，被问�
   );
   assert.ok(!elsewhere.some((m) => m.id === pinned));
 });
+
+test("换过向量模型后，只留当前和最近一套旧向量；当前那套没建好前什么都不删", async (t) => {
+  const { w } = vectorWorld(t);
+  w.open("group:1");
+  const recall = w.mind.recall;
+  fact(w, "10001", "养了一只叫团子的猫");
+  fact(w, "10002", "周末喜欢去钓鱼");
+  const db = w.store.db;
+  const add = db.prepare(
+    "INSERT INTO mind_vectors(item_id,profile,text_hash,dim,vector,created) SELECT id,?,text_hash,2,?,? FROM mind_index",
+  );
+  const blob = Buffer.from(new Float32Array([1, 0]).buffer);
+  add.run("old-a", blob, 1000);
+  add.run("old-b", blob, 2000);
+  const count = (profile) =>
+    db
+      .prepare("SELECT COUNT(*) n FROM mind_vectors WHERE profile=?")
+      .get(profile).n;
+  // The active profile has no vectors yet: keep everything.
+  assert.equal(recall.pruneProfiles(w.now()), 0);
+  assert.ok(count("old-a") > 0);
+  await recall.prepare(w.now());
+  recall.prunedAt = 0;
+  const removed = recall.pruneProfiles(w.now());
+  assert.ok(removed > 0);
+  assert.equal(count("old-a"), 0, "更早的一套删掉");
+  assert.ok(count("old-b") > 0, "最近的一套旧向量留着，换回来不必重算");
+  assert.ok(count(recall.profile()) > 0);
+});
