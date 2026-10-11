@@ -435,10 +435,18 @@ export class ReplyDelivery {
             },
             trace,
           );
+        // Whether the reply answers the person who asked is a plain reading
+        // question. Measured on the review probe, it is as accurate without
+        // hidden reasoning and no longer the slowest call of the turn; the
+        // main review above keeps the configured effort (without it, an
+        // unsupported change of mind slipped through). Only a model that
+        // itself offers "none" is asked this way.
         const readerCheck =
           questions.length > 0 &&
           ask(
-            model,
+            model.reasoningEfforts?.includes?.("none")
+              ? { ...model, reasoningEffort: "none" }
+              : model,
             "validation",
             readerCheckPrompt(turn),
             {

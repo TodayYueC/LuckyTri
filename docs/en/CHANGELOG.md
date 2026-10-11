@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Faster, cheaper replies: the review step that asks “did the reply answer the person who asked” no longer uses hidden reasoning (same accuracy on the review probe, about 93% fewer output tokens for that check); the main review keeps its configured effort, because without it an unsupported change of mind slipped through. On Volcengine, “no thinking” and mechanical stages now really disable thinking instead of using minimal reasoning; models that cannot (GLM) keep the old setting, and a model that refuses is asked again with minimal reasoning.
+- Memory consolidation no longer drops an episode that is reworded but has a source for every clause (e.g. “pushed weekend basketball off too”); a one-clause note still has to end in words that were said.
 - What happened after each choice is recorded: whether anyone answered her, a possible correction, whether she was called again after keeping quiet, and the owner's feedback, with the messages. Derived from the record without a model; turn input is unchanged. The audit reports it with samples.
 - Bringing back her own notes with an affair is stricter: a single shared word that is not in the affair's title no longer counts. Notes and plans enter the recall index as soon as they are written.
 - When an affair comes back to her, so does what she made of it: her note then and later, or an intention about it, at most two lines. Links come from the sources she already keeps, with no model call; private thoughts stay out of groups.
