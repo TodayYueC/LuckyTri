@@ -5,6 +5,7 @@ export default {
   "正在检查新程序…": "Checking the new program...",
   "正在保存当下并停止实例…": "Saving the current state and stopping...",
   "正在保留更新前的校验备份…": "Saving a verified backup before updating...",
+  "正在整理并校验记忆与数据…": "Migrating and verifying memories and data...",
   "正在切换版本并重启…": "Switching versions and restarting...",
   "正在确认新实例就绪…": "Checking that the new instance is ready...",
   "正在恢复原版本和数据…": "Restoring the previous version and data...",

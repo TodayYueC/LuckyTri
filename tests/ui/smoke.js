@@ -27,6 +27,9 @@ const server = spawn(process.execPath, ["server/index.js"], {
   },
   stdio: "pipe",
 });
+let serverOutput = "";
+server.stdout.on("data", (chunk) => (serverOutput += chunk.toString()));
+server.stderr.on("data", (chunk) => (serverOutput += chunk.toString()));
 let browser;
 try {
   await new Promise((resolve, reject) => {
@@ -811,6 +814,10 @@ try {
   console.log(
     "PASS: Vue studio, channel session keys, simulation via ChatSystem, knowledge, OneBot, replay lab",
   );
+} catch (error) {
+  if (serverOutput)
+    console.error("UI smoke server output before failure:\n" + serverOutput);
+  throw error;
 } finally {
   if (browser) await browser.close();
   server.kill();

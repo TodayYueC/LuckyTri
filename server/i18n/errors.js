@@ -34,6 +34,23 @@ export const ERRORS = {
     "The update did not complete. The original program and data were retained. Check the runtime log before trying again.",
   "自动恢复未完成，更新前的校验备份已保留，请查看运行日志并手动恢复。":
     "Automatic recovery did not complete. The verified pre-update backup was retained. Check the runtime log and recover manually.",
+  "缺少候选版本的数据迁移器，已停止更新":
+    "The candidate release has no data migrator. The update was stopped.",
+  迁移目标不是现有的绝对路径数据库文件:
+    "The migration target must be an existing database at an absolute path",
+  迁移目标版本与候选程序不一致:
+    "The migration target version does not match the candidate release",
+  迁移目标数据库与更新前备份不匹配:
+    "The migration database does not match the pre-update backup",
+  数据库未迁移到候选版本要求的结构:
+    "The database was not migrated to the schema required by the candidate release",
+  迁移后数据库身份发生变化: "The database identity changed during migration",
+  "迁移后的数据库仍有未关闭的 SQLite 事务":
+    "The migrated database still has an open SQLite transaction",
+  "旧数据库仍被占用，无法安全切换":
+    "The old database is still in use and cannot be switched safely",
+  "数据库仍有未关闭的 SQLite 事务文件，请重试更新":
+    "SQLite transaction files are still open. Try the update again.",
   修改机会需要明确的记录与原因:
     "An edit opportunity needs an explicit record and reason",
   修改机会记录无效: "Invalid edit opportunity record",
@@ -553,6 +570,12 @@ export const ERRORS = {
 // Messages that carry a value. `{0}`, `{1}` are filled with what the code put
 // in; the values are passed through the dictionaries again.
 export const ERROR_PATTERNS = [
+  ["记忆索引重建失败：{0}", "Memory index rebuild failed: {0}"],
+  ["迁移后缺少原数据表：{0}", "The migration is missing original table: {0}"],
+  [
+    "迁移后 {0} 记录数减少（{1} → {2}），已停止更新",
+    "The migration reduced {0} rows ({1} → {2}); the update was stopped",
+  ],
   ["删除失败（{0}）", "Removal failed ({0})"],
   [
     "向量维度不一致：接口返回 {0} 维，应为 {1} 维",

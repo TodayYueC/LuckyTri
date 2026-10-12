@@ -72,9 +72,10 @@ function command(args, { cwd, env = process.env, timeout = 600000, log } = {}) {
       stdio: fd === null ? "ignore" : ["ignore", fd, fd],
     });
     if (fd !== null) closeSync(fd);
+    let timedOut = false;
     const timer = setTimeout(() => {
+      timedOut = true;
       child.kill();
-      reject(Error("更新步骤超时"));
     }, timeout);
     child.once("error", (e) => {
       clearTimeout(timer);
@@ -82,7 +83,8 @@ function command(args, { cwd, env = process.env, timeout = 600000, log } = {}) {
     });
     child.once("exit", (code) => {
       clearTimeout(timer);
-      code === 0 ? resolve() : reject(Error("更新程序校验失败"));
+      if (timedOut) reject(Error("更新步骤超时"));
+      else code === 0 ? resolve() : reject(Error("更新程序校验失败"));
     });
   });
 }
@@ -121,6 +123,23 @@ export function updateExecution(paths) {
         timeout: 30000,
         log: paths.log,
       });
+    },
+    async migrate(root, database, { previous, version, databaseId }) {
+      await command(
+        [
+          join(root, "scripts", "migrate-instance.js"),
+          database,
+          previous || "",
+          version,
+          databaseId || "",
+        ],
+        {
+          cwd: paths.home,
+          env: installEnvironment(process.env),
+          timeout: 3600000,
+          log: paths.log,
+        },
+      );
     },
     async stop(pid) {
       if (!processAlive(pid)) return;

@@ -159,13 +159,39 @@ export function migrateKnowledge(db) {
     ).run(Date.now(), Date.now());
   mergeLegacyMemories(db);
   if (
-    !db.prepare("SELECT id FROM core_config WHERE id='memory-fts-v1'").get()
+    !db.prepare("SELECT id FROM core_config WHERE id='memory-fts-v2'").get()
   ) {
-    for (const m of db.prepare("SELECT id,content FROM core_memories").all())
-      indexMemory(db, m.id, m.content);
-    db.prepare("INSERT INTO core_config(id,value) VALUES (?,?)").run(
-      "memory-fts-v1",
-      JSON.stringify({ time: Date.now() }),
-    );
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.exec("DELETE FROM core_memory_fts");
+      for (const m of db.prepare("SELECT id,content FROM core_memories").all())
+        indexMemory(db, m.id, m.content);
+      db.prepare("INSERT INTO core_config(id,value) VALUES (?,?)").run(
+        "memory-fts-v2",
+        JSON.stringify({ time: Date.now() }),
+      );
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+  if (!db.prepare("SELECT id FROM core_config WHERE id='chunk-fts-v1'").get()) {
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.exec("DELETE FROM core_chunk_fts");
+      for (const chunk of db
+        .prepare("SELECT id,text FROM core_chunks ORDER BY rowid")
+        .iterate())
+        indexChunk(db, chunk.id, chunk.text);
+      db.prepare("INSERT INTO core_config(id,value) VALUES (?,?)").run(
+        "chunk-fts-v1",
+        JSON.stringify({ time: Date.now() }),
+      );
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
   }
 }

@@ -95,7 +95,7 @@ The full design is in [Her life](docs/en/her-life.md) and [Architecture and exte
 
 Recent work focuses on continuity and clearer conversation. Account-based recognition links public encounters across groups and private chats. Relationships, forms of address, her own views and private promises retain their sources and visibility boundaries. An ordinary greeting need not bring back unfinished tasks or demonstrate how much she remembers.
 
-**1.1.2 update:** Embedding dimension 0 uses the model's own length. For doubao-embedding-vision that is 2048, and it is no longer forced to 1024. See the [changelog](docs/en/CHANGELOG.md).
+**1.2.0 update:** Instance updates now back up and verify the database before migrating legacy memories and indexes; a failed check restores the previous release and data. See the [changelog](docs/en/CHANGELOG.md).
 
 | Area                     | What it does today                                                                                                                                                                    |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
