@@ -76,7 +76,7 @@ export function createBackupScheduler({
       if (!due) return false;
       const child = start(process.execPath, [SCRIPT, "--auto"], {
         env: {
-          ...env,
+          ...withoutCredentials(env),
           LUCKYTRI_HOME: runtimePaths(env).home,
           DB_PATH: source,
           BACKUP_DIR: directory,
@@ -93,8 +93,10 @@ export function createBackupScheduler({
         /* Not every platform lets a process lower another's priority. */
       }
       let output = "";
-      child.stdout?.on("data", (chunk) => (output += chunk));
-      child.stderr?.on("data", (chunk) => (output += chunk));
+      // Only the tail is reported; a chatty child cannot grow this forever.
+      const keep = (chunk) => (output = (output + chunk).slice(-4000));
+      child.stdout?.on("data", keep);
+      child.stderr?.on("data", keep);
       const done = (code, error) => {
         if (running !== child) return;
         running = null;
@@ -128,4 +130,14 @@ export function createBackupScheduler({
       }
     },
   };
+}
+
+// Copying a file needs no model or channel credentials; the child does not
+// receive them.
+export function withoutCredentials(env) {
+  return Object.fromEntries(
+    Object.entries(env || {}).filter(
+      ([name]) => !/(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|COOKIE)/i.test(name),
+    ),
+  );
 }

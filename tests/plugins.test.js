@@ -265,3 +265,45 @@ test("a plugin process cannot read the repository, start a process, or fetch", a
     }
   }
 });
+
+test("a zip entry that inflates past the limit is refused before it fills memory", async () => {
+  const { deflateRawSync } = await import("node:zlib");
+  const { readZip } = await import("../server/plugins/zip.js");
+  const name = Buffer.from("big.txt");
+  const data = deflateRawSync(Buffer.alloc(70 * 1024 * 1024));
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(8, 8);
+  local.writeUInt32LE(data.length, 18);
+  local.writeUInt32LE(10, 22); // the header lies about its size
+  local.writeUInt16LE(name.length, 26);
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt16LE(8, 10);
+  central.writeUInt32LE(data.length, 20);
+  central.writeUInt32LE(10, 24);
+  central.writeUInt16LE(name.length, 28);
+  central.writeUInt32LE(0, 42);
+  const at = local.length + name.length + data.length;
+  const cd = Buffer.concat([central, name]);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(cd.length, 12);
+  end.writeUInt32LE(at, 16);
+  const zip = Buffer.concat([local, name, data, cd, end]);
+  assert.throws(() => readZip(zip), /过大/);
+});
+
+test("the backup child process does not inherit credentials", async () => {
+  const { withoutCredentials } =
+    await import("../server/storage/backup-scheduler.js");
+  const env = withoutCredentials({
+    PATH: "/bin",
+    LLM_API_KEY: "x",
+    QQ_TOKEN: "y",
+    BACKUP_KEEP: "3",
+  });
+  assert.deepEqual(Object.keys(env).sort(), ["BACKUP_KEEP", "PATH"]);
+});

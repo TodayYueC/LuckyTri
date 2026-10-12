@@ -1,6 +1,6 @@
 import { inflateRawSync } from "node:zlib";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join, normalize } from "node:path";
+import { dirname, join, normalize, resolve, sep } from "node:path";
 
 const MAX_FILES = 200;
 const MAX_BYTES = 60 * 1024 * 1024;
@@ -76,8 +76,21 @@ export function readZip(buffer) {
       buffer.readUInt16LE(local + 26) +
       buffer.readUInt16LE(local + 28);
     const compressed = buffer.subarray(dataAt, dataAt + compressedSize);
-    const bytes =
-      method === 0 ? Buffer.from(compressed) : inflateRawSync(compressed);
+    // The size a stranger's header declares is not trusted: inflation itself
+    // stops at what is still allowed, so one entry cannot exhaust memory.
+    let bytes;
+    try {
+      bytes =
+        method === 0
+          ? Buffer.from(compressed)
+          : inflateRawSync(compressed, {
+              maxOutputLength: MAX_BYTES - total + 1,
+            });
+    } catch (error) {
+      if (error?.code === "ERR_BUFFER_TOO_LARGE")
+        throw new Error("压缩包解压后过大");
+      throw new Error("压缩包无法读取");
+    }
     if (size && bytes.length !== size) throw new Error("压缩包内容不完整");
     total += bytes.length;
     if (total > MAX_BYTES) throw new Error("压缩包解压后过大");
@@ -105,7 +118,8 @@ export function writeTree(dir, files) {
       dir,
       ...normalize(file.name).split(/[\\/]/).filter(Boolean),
     );
-    if (!target.startsWith(dir)) throw new Error("压缩包路径无效");
+    const root = resolve(dir) + sep;
+    if (!resolve(target).startsWith(root)) throw new Error("压缩包路径无效");
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, file.bytes);
   }
