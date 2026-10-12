@@ -1175,7 +1175,7 @@ test("unrelated latest summaries do not define a new exchange, while address agr
   assert.equal(snapshot.summaries.length, 1);
 });
 
-test("correction review sees the actual preceding answer, without importing other people's replies or future words", () => {
+test("correction review sees what the asker saw before speaking, without future words", () => {
   const snapshot = {
     sessionId: "group:1",
     batchIds: [6],
@@ -1224,9 +1224,11 @@ test("correction review sees the actual preceding answer, without importing othe
     targetMessageIds: [6],
     understanding: { kind: "correction" },
   });
+  // What the asker saw before speaking, others' lines included; nothing
+  // said after the question.
   assert.deepEqual(
     questions[0].precedingExchange.map((row) => row.id),
-    [1, 2],
+    [1, 2, 3, 4],
   );
   assert.equal(questions[0].precedingExchange[1].text, "健康的是公司吧。");
   snapshot.messages[1].text = "早九晚九，确实很健康。";
@@ -1237,13 +1239,14 @@ test("correction review sees the actual preceding answer, without importing othe
     })[0].precedingExchange[1].text,
     "早九晚九，确实很健康。",
   );
+  // A line older than ten minutes is no longer what the asker just saw.
   snapshot.messages[1].time = -10 * 60000;
-  assert.equal(
+  assert.deepEqual(
     readerQuestions(snapshot, {
       choice: "speak",
       understanding: { kind: "correction" },
-    })[0].precedingExchange,
-    undefined,
+    })[0].precedingExchange.map((row) => row.id),
+    [1, 3, 4],
   );
 });
 

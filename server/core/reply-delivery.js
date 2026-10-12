@@ -1,4 +1,7 @@
 import { replyFocus } from "./conversation-cues.js";
+
+// How long a finished reply may wait for its reviews.
+export const DEEP_CHECK_DEADLINE_MS = 40000;
 import { replyPrompt } from "./persona-manager.js";
 import { generate } from "./response-generator.js";
 import {
@@ -342,6 +345,22 @@ export class ReplyDelivery {
       return needed;
     };
     const deepCheck = async (response) => {
+      // The reply is already written; these checks only decide whether it
+      // goes out as it is. A stalled call used to hold a finished reply for
+      // minutes (one network timeout plus its retry took 187 s). Past the
+      // deadline a check counts as unavailable, the same as a failed one.
+      const deadline =
+        Date.now() + (policy.deepCheckDeadlineMs ?? DEEP_CHECK_DEADLINE_MS);
+      let timer;
+      const late = new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(Error("复审超过截止时间")),
+          Math.max(0, deadline - Date.now()),
+        );
+        timer.unref?.();
+      });
+      late.catch(() => {});
+      const within = (pending) => Promise.race([pending, late]);
       // The checks below do not depend on one another's answers, only on
       // the order in which their verdicts count. They are asked together and
       // read in that order: a reply that needs two or three reviews waits
@@ -457,13 +476,13 @@ export class ReplyDelivery {
             trace,
           );
         if (livedCheck) {
-          const lived = await livedCheck;
+          const lived = await within(livedCheck);
           if (lived.ok !== true)
             return [
               `主动消息声称的新行动尚无实际活动记录支持：${lived.reason || "没有核实该行动"}`,
             ];
         }
-        const checked = await review;
+        const checked = await within(review);
         if (typeof checked.ok !== "boolean" || !Array.isArray(checked.issues)) {
           trace.steps.push("回复复审结果格式异常，已按本地校验继续");
           return snapshot.initiative
@@ -471,14 +490,14 @@ export class ReplyDelivery {
             : [];
         }
         if (checked.ok && intentCheck) {
-          const intent = await intentCheck;
+          const intent = await within(intentCheck);
           if (intent.ok === false && Array.isArray(intent.issues))
             return intent.issues.map(
               (issue) => `第三方解释尚未被本人确认：${issue}`,
             );
         }
         if (checked.ok && readerCheck) {
-          const reader = await readerCheck;
+          const reader = await within(readerCheck);
           if (reader.ok === false && Array.isArray(reader.issues))
             return reader.issues.map(
               (issue) => `给提问者的解释仍没说清：${issue}`,
@@ -500,6 +519,8 @@ export class ReplyDelivery {
         return snapshot.initiative
           ? ["主动消息的事实与内容核对暂未完成，草稿保留，稍后重新决定"]
           : [];
+      } finally {
+        clearTimeout(timer);
       }
     };
     if (outdated()) return staleExit();

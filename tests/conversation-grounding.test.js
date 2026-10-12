@@ -1,4 +1,5 @@
 import test from "node:test";
+import { BOT_GUIDE, CREATIVE_GUIDE } from "../server/core/dialogue-contract.js";
 import assert from "node:assert/strict";
 import {
   conversationGrounding,
@@ -258,24 +259,21 @@ test("观察和事实压缩不继承社交口吻或生活愿望，聊天保留�
     /描述别人的项目、计划和经历时紧贴原话/,
   );
   assert.match(
-    replyPrompt(nature, PROMPTS, "turn"),
+    `${CREATIVE_GUIDE}\n${BOT_GUIDE}`,
     /若眼前给了具体动作或场景，就先用自己的普通话说清这段发生了什么/,
   );
   assert.match(
-    replyPrompt(nature, PROMPTS, "turn"),
+    `${CREATIVE_GUIDE}\n${BOT_GUIDE}`,
     /用自己的普通话说清这段发生了什么/,
   );
-  assert.match(replyPrompt(nature, PROMPTS, "turn"), /说过两轮后先停/);
-  assert.match(
-    replyPrompt(nature, PROMPTS, "turn"),
-    /聊小说或作者自己的稿子时/,
-  );
+  assert.match(`${CREATIVE_GUIDE}\n${BOT_GUIDE}`, /说过两轮后先停/);
+  assert.match(`${CREATIVE_GUIDE}\n${BOT_GUIDE}`, /聊小说或作者自己的稿子时/);
   assert.match(
     replyPrompt(nature, PROMPTS, "turn"),
     /明确说“不知道就说不知道”[^；]+简短承认不知道并停下/,
   );
   assert.match(
-    replyPrompt(nature, PROMPTS, "turn"),
+    `${CREATIVE_GUIDE}\n${BOT_GUIDE}`,
     /对方提议新写一部作品时，按独立新作品理解/,
   );
   assert.match(
@@ -287,14 +285,18 @@ test("观察和事实压缩不继承社交口吻或生活愿望，聊天保留�
     /承认纠正时只说清自己实际弄错的那一点/,
   );
   assert.match(
-    replyPrompt(nature, PROMPTS, "turn"),
+    `${CREATIVE_GUIDE}\n${BOT_GUIDE}`,
     /一件事没有发生，不代表另一件事也没发生/,
   );
-  assert.match(
-    replyPrompt(nature, PROMPTS, "turn"),
-    /片段本身就是可以回答的问题/,
-  );
+  assert.match(`${CREATIVE_GUIDE}\n${BOT_GUIDE}`, /片段本身就是可以回答的问题/);
   assert.match(replyPrompt(nature, PROMPTS, "turn"), /通常只写一个气泡/);
+  // Writing and bot-conversation rules come with the turn input only when
+  // the conversation is about those things.
+  assert.doesNotMatch(
+    replyPrompt(nature, PROMPTS, "turn"),
+    /聊小说或作者自己的稿子时/,
+  );
+  assert.doesNotMatch(replyPrompt(nature, PROMPTS, "turn"), /说过两轮后先停/);
   const review = replyPrompt(nature, PROMPTS, "validation");
   assert.match(review, /独立的聊天回复审查者/);
   assert.match(review, /连续追问时看清这轮新问的维度/);

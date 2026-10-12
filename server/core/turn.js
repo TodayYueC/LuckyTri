@@ -11,6 +11,8 @@ import {
   explicitStop,
 } from "./dialogue-context.js";
 import { readerQuestions } from "./reader-check.js";
+import { chatRegister, conversationNeeds } from "./register.js";
+import { BOT_GUIDE, CREATIVE_GUIDE } from "./dialogue-contract.js";
 import {
   botExchange,
   CONTRIBUTION_CHECK,
@@ -154,6 +156,7 @@ export async function takeTurn(
     ...(extra.pressure ? { pressure: extra.pressure } : {}),
     ...(recallWording(snapshot) ? { guidance: recallWording(snapshot) } : {}),
     ...(!initiating ? { exchange: currentExchange(snapshot) } : {}),
+    ...turnGuides(snapshot, initiating),
   };
   let raw = await models.call(
     profile,
@@ -555,4 +558,20 @@ export function wordingNotes(turn, snapshot) {
   return [replyFocus(snapshot, turn).instruction, recallWording(snapshot)]
     .filter(Boolean)
     .join("\n");
+}
+
+// Data a reply turn adds about the room: how people here type, and the
+// writing or bot-conversation guidance only when the conversation is about
+// those things.
+function turnGuides(snapshot, initiating) {
+  const latest = (snapshot.messages || []).findLast((m) =>
+    Number.isFinite(m.time),
+  )?.time;
+  const register = initiating ? null : chatRegister(snapshot, latest);
+  const needs = conversationNeeds(snapshot);
+  return {
+    ...(register ? { register } : {}),
+    ...(needs.creative ? { creativeGuide: CREATIVE_GUIDE } : {}),
+    ...(needs.bots ? { botGuide: BOT_GUIDE } : {}),
+  };
 }
