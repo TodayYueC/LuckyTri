@@ -168,9 +168,15 @@ export function buildContext(
     content: m.content,
     type: m.type,
     confidence: m.confidence,
-    ...(m.source && m.source !== "这里" ? { source: m.source } : {}),
+    // Where she heard it, "here" included: with no place she may take an
+    // open record from this room for something she never saw.
+    ...(m.source
+      ? { source: m.source === "这里" ? "就在这里" : m.source }
+      : {}),
     ...(m.when ? { when: m.when } : {}),
     ...(m.discretion ? { discretion: m.discretion } : {}),
+    ...(m.conflictsWith ? { conflictsWith: m.conflictsWith } : {}),
+    ...(m.changedFrom ? { changedFrom: m.changedFrom } : {}),
     whySelected: m.whySelected || "retrieved",
   }));
   const packedKnowledge = knowledge.map((k) => ({
