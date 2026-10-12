@@ -54,3 +54,9 @@ Thumbs.db
 # docs/brand belong in the repository; loose files in docs/ stay local.
 /docs/*.md
 /docs/log/
+
+# Self-reminder charters (vision, evolution) stay local, not tracked
+/docs/zh/vision.md
+/docs/en/vision.md
+/docs/zh/evolution.md
+/docs/en/evolution.md

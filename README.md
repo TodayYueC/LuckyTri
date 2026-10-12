@@ -19,7 +19,6 @@
   <a href="docs/zh/connect.md">连接 QQ</a> ·
   <a href="docs/zh/her-life.md">她的一生</a> ·
   <a href="docs/zh/architecture.md">架构</a> ·
-  <a href="docs/zh/vision.md">终极愿景</a> ·
   <a href="docs/zh/CHANGELOG.md">版本记录</a> ·
   <a href=".github/SECURITY.md">安全说明</a>
 </p>
@@ -216,7 +215,6 @@ npm start
 | [上手教程](docs/zh/guide.md)            | 从启动到让她参与第一个会话                         |
 | [连接 QQ](docs/zh/connect.md)           | 两种连接方式的对比、步骤与差异                     |
 | [她的一生](docs/zh/her-life.md)         | 统一心智的设计：作息、独处、日记、回顾、分寸与底线 |
-| [终极愿景](docs/zh/vision.md)           | 最高指导原则：她的判断终将来自自己的经历与选择     |
 | [架构与扩展点](docs/zh/architecture.md) | 代码分层，以及如何新增通道、心智模块、页面与翻译   |
 | [时间、行动与作品](docs/zh/time.md)     | 她自己的活动、待办、作品与分享                     |
 | [聊天口吻](docs/zh/chat-style.md)       | 她怎么说话，发出前做哪些检查                       |

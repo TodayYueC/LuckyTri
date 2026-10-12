@@ -23,7 +23,7 @@
 - Revocations are stamped on her own clock, on the same timeline as the rest of her life.
 - Each turn records what came to her mind (facts, episodes, self threads, thoughts, promises) in the choice record, kept for good and never sent to the model; turn input stays byte-for-byte the same. The database only gains one column, so older versions still open it.
 - New `npm run audit:life -- --db <backup>`: a read-only check-up of a backup that reports on the integrity and continuity of her life record. New `npm run evaluate:traits`: trait probes with the scripted model.
-- New [Ultimate vision](vision.md) document; the evolution charter sits under it.
+- New Ultimate vision document; the evolution charter sits under it.
 - Embeddings no longer default to doubao: any OpenAI-compatible `/embeddings` endpoint works with an address, a model name and a key, and Volcengine Ark (including Agent Plan) is one preset. With dimension 0 every model keeps its own length; doubao-embedding-vision stays at 2048 as in 1.1.2, so existing vectors are not rebuilt. In a recall comparison with real vectors 1024 was slightly worse, so it is no longer the default. Vectors returned as base64, the different ways services say a batch is too big, and a 413 without a limit are all handled.
 
 ## 1.1.2 — 2026-10-11

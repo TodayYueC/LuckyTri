@@ -4,7 +4,7 @@
 
 This document is for anyone who wants to read, change or extend LuckyTri. It answers three questions: how the code is layered, how a message travels through her life, and where to start when you want to add something.
 
-Every design here serves the [final vision](vision.md#the-final-vision): she is still made of code and models, but her judgments should not have to find their answers only in the original design; they should come more and more from her own experience and choices.
+Every design here serves the final vision: she is still made of code and models, but her judgments should not have to find their answers only in the original design; they should come more and more from her own experience and choices.
 
 ## One picture
 
@@ -155,4 +155,4 @@ Nothing above the core changes. The connection option in settings and the readin
 
 ## Cognition and memory
 
-How understanding, recall, episodes, lessons and follow-ups fit together is in [Cognition](cognition.md). The recall index is derived. Episodes and self threads stay append-only. Long-term directions and how changes are evaluated are in the [Ultimate vision](vision.md) and the [Evolution charter](evolution.md) under it.
+How understanding, recall, episodes, lessons and follow-ups fit together is in [Cognition](cognition.md). The recall index is derived. Episodes and self threads stay append-only.
