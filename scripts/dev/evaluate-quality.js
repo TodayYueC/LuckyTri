@@ -277,6 +277,11 @@ async function run(scene) {
     wallMs,
     error,
     revisions: trace?.revisions || [],
+    // How often the reader check let a reply through that reached the main
+    // meaning but not every side point (it would have been rewritten before).
+    readerPassed: (trace?.steps || []).filter((step) =>
+      String(step).startsWith("读者核对：主要意思已接到"),
+    ),
     calls,
     prompt: w.requests
       .slice(before)
