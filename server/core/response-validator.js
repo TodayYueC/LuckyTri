@@ -592,7 +592,11 @@ export function deniesPrivateKnowledge(bubbles, snapshot) {
   } catch {
     return false;
   }
-  if (!inner.includes(PRIVATELY_KNOWN)) return false;
+  if (
+    !inner.includes(PRIVATELY_KNOWN) &&
+    !inner.includes('"maySayAloud":false')
+  )
+    return false;
   return (bubbles || []).some((line) =>
     /不知道|没听说|没听过|(没|不曾)(跟|和|对)我(说|提|讲)|没提过/.test(line),
   );

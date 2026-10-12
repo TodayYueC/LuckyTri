@@ -336,5 +336,11 @@ test("keeping a private thing is not the same as claiming not to know it", async
     false,
   );
   assert.equal(deniesPrivateKnowledge(["不知道"], { inner: {} }), false);
+  const told = {
+    inner: {
+      continuity: { people: [{ privateOrigin: true, maySayAloud: false }] },
+    },
+  };
+  assert.equal(deniesPrivateKnowledge(["真没跟我说过"], told), true);
   assert.match(PRIVATELY_KNOWN, /不装作不知道/);
 });
