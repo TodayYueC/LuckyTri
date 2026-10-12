@@ -297,6 +297,12 @@ test("she types one piece of text; a blank line is where she presses send", asyn
   // A line break is Enter; only a list stays in one message.
   assert.deepEqual(saidMessages("1. 早起\n2. 通勤"), ["1. 早起\n2. 通勤"]);
   assert.deepEqual(saidMessages("好\n那就周六"), ["好", "那就周六"]);
+  // A line that only continues the last thought goes out with it.
+  assert.deepEqual(saidMessages("梗是烂了点\n但你能拿来开玩笑就行\n周六见"), [
+    "梗是烂了点，但你能拿来开玩笑就行",
+    "周六见",
+  ]);
+  assert.deepEqual(saidMessages("我觉得，\n还是周六"), ["我觉得，还是周六"]);
   assert.deepEqual(withSaidMessages({ choice: "silent", say: "" }).bubbles, []);
   // An older reply shape is left as it is.
   assert.deepEqual(withSaidMessages({ bubbles: ["a", "b"] }).bubbles, [

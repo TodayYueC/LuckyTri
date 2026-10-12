@@ -620,7 +620,22 @@ export function typedSends(text) {
     .filter(Boolean);
   if (lines.length < 2) return lines;
   const item = /^(?:[-*•·]|\d+[.)、．]|[（(]?\d+[)）])\s*/u;
-  return lines.filter((line) => item.test(line)).length >= 2
-    ? [lines.join("\n")]
-    : lines;
+  if (lines.filter((line) => item.test(line)).length >= 2)
+    return [lines.join("\n")];
+  // A line left mid-sentence, or one that only continues the last, was not
+  // a separate send: the thought goes out as one message.
+  const sends = [];
+  for (const line of lines) {
+    const last = sends.at(-1);
+    if (
+      last &&
+      (/[，、：:,]$/u.test(last) ||
+        /^(?:[，、；;]|但|但是|不过|而且|所以|因为|然后|就是|或者|要是|如果|反正)/u.test(
+          line,
+        ))
+    )
+      sends[sends.length - 1] = joinBubbleParts([last, line]);
+    else sends.push(line);
+  }
+  return sends;
 }
