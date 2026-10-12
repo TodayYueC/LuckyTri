@@ -16,6 +16,7 @@ const progress: Record<string, string> = localized({
   checking: N_("正在检查新程序…"),
   stopping: N_("正在保存当下并停止实例…"),
   backup: N_("正在保留更新前的校验备份…"),
+  migrating: N_("正在整理并校验记忆与数据…"),
   restarting: N_("正在切换版本并重启…"),
   verifying: N_("正在确认新实例就绪…"),
   restoring: N_("正在恢复原版本和数据…"),

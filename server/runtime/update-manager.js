@@ -17,6 +17,7 @@ const ACTIVE = new Set([
   "checking",
   "stopping",
   "backup",
+  "migrating",
   "restarting",
   "verifying",
   "restoring",
@@ -76,7 +77,9 @@ export class InstanceUpdater {
       job = writeUpdateJob(this.paths.home, {
         ...job,
         status: "error",
-        error: ["queued", "downloading", "checking"].includes(job.status)
+        error: ["queued", "downloading", "checking", "migrating"].includes(
+          job.status,
+        )
           ? UPDATE_FAILED
           : UPDATE_RECOVERY_FAILED,
         finished: this.now(),

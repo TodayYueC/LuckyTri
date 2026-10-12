@@ -31,6 +31,7 @@ const RECALL_INTENT_FACTS = 5;
 const PINNED_LIMIT = 3;
 const CATCH_UP_EVERY = 60000;
 export const HYBRID_COVERAGE = 0.8;
+export const RECALL_INDEX_VERSION = 2;
 
 // How long each kind stays fresh when nothing touches it, in days. Facts and
 // her own long views barely age; an encounter is mostly about its moment.
@@ -130,7 +131,8 @@ export class Recall {
   // the old word search for facts.
   ensure(now = Date.now()) {
     const state = this.mind.repo.config("recall-sync", null);
-    if (!state) {
+    const version = this.mind.repo.config("recall-index-version", 0);
+    if (!state || version !== RECALL_INDEX_VERSION) {
       if (this.building) return null;
       this.building = this.store
         .rebuild()
@@ -139,10 +141,16 @@ export class Recall {
             at: result.latest,
             built: now,
           });
+          this.mind.repo.saveConfig(
+            "recall-index-version",
+            RECALL_INDEX_VERSION,
+          );
+          this.lastError = "";
           return result;
         })
         .catch((error) => {
           this.lastError = error.message;
+          return null;
         })
         .finally(() => {
           this.building = null;
@@ -166,6 +174,7 @@ export class Recall {
       return fillRoots(this.db, limit, options);
     } catch (error) {
       this.lastError = error.message;
+      if (options.strict) throw error;
       return 0;
     }
   }
@@ -191,9 +200,11 @@ export class Recall {
   // For scripts, tests and the studio; the server does this a little at a
   // time in its maintenance tick.
   async prepare(now = Date.now(), { vectors = true } = {}) {
+    this.lastError = "";
     this.checkedAt = 0;
     this.ensure(now);
     if (this.building) await this.building;
+    if (this.lastError) throw Error(`记忆索引重建失败：${this.lastError}`);
     this.checkedAt = 0;
     this.ensure(now);
     let total = 0;

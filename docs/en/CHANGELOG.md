@@ -2,7 +2,9 @@
 
 # Changelog
 
-## Unreleased
+## 1.2.0 — 2026-10-13
+
+- Instance updates now run a versioned memory migration: make and verify a full snapshot, upgrade the database with the candidate release, merge legacy memory records, and rebuild full-text and experience-link indexes. Persistent row counts are checked table by table before switching versions. A failed migration restores the snapshot and restarts the previous release. Chat memories are not sent to a model, and existing vectors are not regenerated.
 
 - The review prompt drops a duplicated “admitting fault scores no points” clause so that idea is stated once, trimming prompt bloat.
 - The check of whether a reply answers the asker now treats “I don’t eat / have no body” as a real answer to “what did you eat”, not as dodging the question.

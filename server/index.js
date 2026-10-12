@@ -15,6 +15,8 @@ import { openSync, closeSync } from "node:fs";
 import { join } from "node:path";
 import { UpdateChecker } from "./studio/updates.js";
 import { InstanceUpdater } from "./runtime/update-manager.js";
+import { migrateReleaseData } from "./runtime/data-migration.js";
+import { VERSION } from "./version.js";
 
 claimServer();
 process.on("exit", clearStarting);
@@ -32,6 +34,7 @@ const chatSystem = new ChatSystem(store, channel.send, {
   fetchQuoted: (message) => channel.fetchQuoted(message),
   fetchImage: (file, sessionId) => channel.fetchImage(file, sessionId),
 });
+await migrateReleaseData(chatSystem.mind, { version: VERSION });
 const life = new Life(chatSystem, {
   online: () => channel.online(),
   canReach: (session) => channel.canReach(session),

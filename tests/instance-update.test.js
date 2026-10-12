@@ -86,6 +86,13 @@ function fixture(t) {
   const deps = {
     install,
     check: async () => events.push("check"),
+    migrate: async (_root, database, details) => {
+      assert.notEqual(database, paths.database);
+      assert.ok(existsSync(database));
+      assert.equal(details.version, "1.0.4");
+      assert.ok(details.databaseId);
+      events.push("migrate");
+    },
     stop: async (pid) => events.push(`stop:${pid}`),
     claim: () => {
       events.push("claim");
@@ -110,6 +117,7 @@ test("update stages before stopping, keeps a verified snapshot and launches the 
     "check",
     "stop:123",
     "claim",
+    "migrate",
     "start:new",
     "health:456:1.0.4",
     "release",
@@ -136,6 +144,46 @@ test("update stages before stopping, keeps a verified snapshot and launches the 
     readdirSync(f.paths.backups).filter((p) => p.endsWith(".db.json")).length,
     1,
   );
+});
+test("failed memory migration restores the verified snapshot before restarting the old version", async (t) => {
+  const f = fixture(t);
+  f.deps.migrate = async (_root, database) => {
+    const db = new DatabaseSync(database);
+    db.prepare(
+      "UPDATE settings SET value=json_set(value,'$.name','partial migration') WHERE id=1",
+    ).run();
+    db.close();
+    const live = new DatabaseSync(f.paths.database, { readOnly: true });
+    assert.equal(
+      JSON.parse(
+        live.prepare("SELECT value FROM settings WHERE id=1").get().value,
+      ).name,
+      "Rina",
+    );
+    live.close();
+    throw Error("migration failed after a partial write");
+  };
+  const result = await performUpdate(f.paths, f.id, f.deps);
+  assert.equal(result.status, "error");
+  assert.equal(result.failedStage, "migrating");
+  assert.equal(result.restored, true);
+  assert.equal(result.childPid, 789);
+  assert.equal(readActive(f.paths.home), null);
+  const db = new DatabaseSync(f.paths.database);
+  assert.equal(
+    JSON.parse(db.prepare("SELECT value FROM settings WHERE id=1").get().value)
+      .name,
+    "Rina",
+  );
+  assert.equal(
+    db.prepare("SELECT COUNT(*) n FROM mind_relationships").get().n,
+    1,
+  );
+  db.close();
+  assert.ok(existsSync(`${f.paths.database}.update-failed-${f.id}`));
+  assert.ok(existsSync(`${f.paths.database}.update-failed-${f.id}.migration`));
+  assert.ok(f.events.includes("start:old"));
+  assert.ok(!f.events.includes("start:new"));
 });
 test("download or validation failure leaves the live instance, pointer and database alone", async (t) => {
   for (const phase of ["install", "check"]) {
