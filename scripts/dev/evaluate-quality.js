@@ -122,6 +122,18 @@ async function run(scene) {
       });
     return seqs;
   };
+  for (const other of scene.otherSessions || []) {
+    const where = chat(
+      other.kind === "group" ? "group" : `private:${other.with}`,
+    );
+    open(where, other.with);
+    writeLines(
+      where,
+      other.kind === "group" ? "group" : "private",
+      other.history || [],
+    );
+  }
+  const lines = writeLines(session, scene.kind, scene.history || []);
   const ids = [];
   const saidSeqs = [];
   for (const m of scene.memories || []) {
@@ -131,7 +143,22 @@ async function run(scene) {
     let source = null;
     const [saidUid, saidWho] = m.saidBy ? person(m.saidBy[0]) : [uid, who];
     const saidText = m.saidBy ? m.saidBy[1] : m.said;
-    if (saidText) {
+    const already = saidText
+      ? w.system.repo.db
+          .prepare(
+            "SELECT id AS seq FROM messages WHERE session_id=? AND user_id=? AND text=? ORDER BY id LIMIT 1",
+          )
+          .get(where, saidUid, fill(saidText))
+      : null;
+    if (saidText && already) {
+      saidSeqs.push({ who: m.who, seq: already.seq });
+      source = {
+        id: already.seq,
+        text: saidText,
+        speaker: saidUid,
+        certainty: saidUid === uid ? "self_report" : "reported",
+      };
+    } else if (saidText) {
       const e = w.say(where, saidUid, fill(saidText), {
         name: saidWho,
         time: at(m.minutesBefore),
@@ -164,18 +191,6 @@ async function run(scene) {
         "INSERT OR IGNORE INTO mind_links(from_id,to_id,relation,created,sources) VALUES (?,?,'conflicts',?,?)",
       )
       .run(`fact:${ids[j]}`, `fact:${ids[i]}`, now, "[]");
-  for (const other of scene.otherSessions || []) {
-    const where = chat(
-      other.kind === "group" ? "group" : `private:${other.with}`,
-    );
-    open(where, other.with);
-    writeLines(
-      where,
-      other.kind === "group" ? "group" : "private",
-      other.history || [],
-    );
-  }
-  const lines = writeLines(session, scene.kind, scene.history || []);
   for (const v of scene.self || []) {
     const line = lines.get(v.fromLine);
     const cited = line?.who === "me" ? line : null;
