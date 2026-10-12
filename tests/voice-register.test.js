@@ -324,6 +324,10 @@ test("her own recent typing, not the room's, reaches her as ownVoice", async () 
     ownTyping(mind, "group:1", Date.now()),
     /常见约 \d+ 字，句末常不带句号/,
   );
+  // An old reply typed a sentence per line counts as the lines it was.
+  rows.length = 0;
+  rows.push(...Array(4).fill("这个我觉得要分两头看\n先歇一歇\n明天再想"));
+  assert.match(ownTyping(mind, "group:1", Date.now()), /常见约 4 字/);
 });
 
 test("keeping a private thing is not the same as claiming not to know it", async () => {

@@ -405,7 +405,10 @@ export function ownTyping(mind, session, now) {
           `SELECT text FROM messages WHERE role='assistant' AND is_demo=0 AND time<=? AND time>? ${where} ORDER BY id DESC LIMIT 40`,
         )
         .all(now + 60000, now - 14 * 86400000, ...args)
-        .map((row) => String(row.text || "").trim())
+        // An older reply laid out a sentence per line was several sends in
+        // one message; each line is counted as the message it would be now.
+        .flatMap((row) => String(row.text || "").split(/\n+/))
+        .map((t) => t.trim())
         .filter((t) => t && !/^\[/.test(t));
     let lines = pick("AND session_id=?", session);
     if (lines.length < 4) lines = pick("");
