@@ -14,7 +14,7 @@ import {
   recentOwnMessages,
   routineSocialReply,
 } from "./conversation-grounding.js";
-import { joinBubbleParts } from "./turn.js";
+import { joinBubbleParts, typedSends } from "./turn.js";
 const norm = (s) => s.toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
 export function wrongIdentityClaim(text, snapshot) {
   const name = snapshot.persona?.name;
@@ -198,7 +198,7 @@ export function normalizeResponse(result, decision, fallback = "嗯") {
       }
   bubbles = bubbles
     .filter((x) => typeof x === "string")
-    .map((x) => oneTypedMessage(x.trim()))
+    .flatMap((x) => typedSends(x.trim()))
     .filter(Boolean);
   if (bubbles.length > maxBubbles)
     bubbles =

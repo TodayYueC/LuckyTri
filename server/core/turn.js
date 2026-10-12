@@ -600,7 +600,7 @@ function turnGuides(snapshot) {
 export function saidMessages(text) {
   return String(text)
     .split(/\n[ \t\u3000]*\n+/)
-    .map((part) => part.trim())
+    .flatMap((part) => typedSends(part.trim()))
     .filter(Boolean);
 }
 
@@ -609,4 +609,18 @@ export function withSaidMessages(raw) {
     return raw;
   const { say, ...rest } = raw;
   return { ...rest, bubbles: saidMessages(say) };
+}
+
+// In a chat box, Enter sends. A line break she typed is a message she sent;
+// only a list stays together in one message.
+export function typedSends(text) {
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length < 2) return lines;
+  const item = /^(?:[-*•·]|\d+[.)、．]|[（(]?\d+[)）])\s*/u;
+  return lines.filter((line) => item.test(line)).length >= 2
+    ? [lines.join("\n")]
+    : lines;
 }

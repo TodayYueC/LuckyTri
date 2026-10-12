@@ -294,8 +294,9 @@ test("she types one piece of text; a blank line is where she presses send", asyn
     "恭喜！",
     "奶茶我记下了",
   ]);
-  // A single line break stays inside one message, e.g. a short list.
+  // A line break is Enter; only a list stays in one message.
   assert.deepEqual(saidMessages("1. 早起\n2. 通勤"), ["1. 早起\n2. 通勤"]);
+  assert.deepEqual(saidMessages("好\n那就周六"), ["好", "那就周六"]);
   assert.deepEqual(withSaidMessages({ choice: "silent", say: "" }).bubbles, []);
   // An older reply shape is left as it is.
   assert.deepEqual(withSaidMessages({ bubbles: ["a", "b"] }).bubbles, [
@@ -304,7 +305,7 @@ test("she types one piece of text; a blank line is where she presses send", asyn
   ]);
   const { DIALOGUE_TASK } = await import("../server/core/dialogue-contract.js");
   assert.match(DIALOGUE_TASK, /"say":"实际说的话"/);
-  assert.match(DIALOGUE_TASK, /按一次发送就是一条消息/);
+  assert.match(DIALOGUE_TASK, /换行就是按了发送/);
 });
 
 test("her own recent typing, not the room's, reaches her as ownVoice", async () => {
@@ -418,5 +419,11 @@ test("one message is one typed line; only a list keeps its line breaks", async (
     { bubbles: ["在\n说累就说累"] },
     { maxBubbles: 2 },
   );
-  assert.deepEqual(r.bubbles, ["在，说累就说累"]);
+  // A typed line break is Enter: its own message, capped by her limit.
+  assert.deepEqual(r.bubbles, ["在", "说累就说累"]);
+  const capped = normalizeResponse(
+    { bubbles: ["好。\n那就周六。\n别迟到"] },
+    { maxBubbles: 2 },
+  );
+  assert.deepEqual(capped.bubbles, ["好。", "那就周六。别迟到"]);
 });
