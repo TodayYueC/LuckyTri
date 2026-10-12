@@ -30,13 +30,13 @@ const only = option("--only", "")?.split(",").filter(Boolean) || [];
 const [shard, shards] = option("--shard", "1/1").split("/").map(Number);
 // --sample 2 writes <id>~2.json: an extra draw for the objective majority.
 const sample = Number(option("--sample", "1"));
-// --mood 烦:0.8:-0.6:被放鸽子:30 replaces each scene's mood, so the same
+// --mood 烦:0.8:-0.6:被放鸽子:30[:arousal] replaces each scene's mood, so the same
 // scene can be replayed under different feelings (feeling:intensity:valence
 // [:cause[:minutesBefore]]).
 const moodOverride = (() => {
   const raw = option("--mood", "");
   if (!raw) return null;
-  const [feeling, intensity, valence, cause = "", before = "30"] =
+  const [feeling, intensity, valence, cause = "", before = "30", arousal] =
     raw.split(":");
   return {
     feeling,
@@ -44,6 +44,7 @@ const moodOverride = (() => {
     valence: Number(valence),
     cause,
     minutesBefore: Number(before),
+    ...(arousal ? { arousal: Number(arousal) } : {}),
   };
 })();
 const MIN = 60000;
@@ -187,6 +188,7 @@ async function run(scene) {
       feeling: scene.mood.feeling,
       intensity: scene.mood.intensity,
       valence: scene.mood.valence,
+      arousal: scene.mood.arousal,
       cause: scene.mood.cause || "",
       session,
       time: at(scene.mood.minutesBefore ?? 60),
@@ -294,6 +296,18 @@ for (const scene of list) {
   for (let attempt = 1; !result; attempt++) {
     try {
       result = await run(scene);
+      // A turn lost to the network is not her choice to stay quiet; it says
+      // nothing about her, so the scene is drawn again (at most twice).
+      if (
+        attempt <= 2 &&
+        result.calls?.some((c) => c.stage === "turn" && c.error)
+      ) {
+        console.error(
+          `${scene.id}\t网络失败，重跑：${result.calls.find((c) => c.error).error.slice(0, 60)}`,
+        );
+        result = null;
+        continue;
+      }
     } catch (e) {
       if (attempt >= 8) throw e;
       console.error(

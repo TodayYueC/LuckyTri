@@ -394,7 +394,7 @@ function feltStrength(lingering = 0) {
 // How she herself has been typing lately: her own habit, read from what she
 // actually sent (here first, then anywhere), never from how others type. It
 // lets the voice she has grown carry on instead of being re-derived from the
-// initial design each turn. Too few of her own messages means no habit yet.
+// initial design each turn. Fewer than four of her own messages means no habit yet.
 export function ownTyping(mind, session, now) {
   try {
     const pick = (where, ...args) =>
@@ -406,8 +406,8 @@ export function ownTyping(mind, session, now) {
         .map((row) => String(row.text || "").trim())
         .filter((t) => t && !/^\[/.test(t));
     let lines = pick("AND session_id=?", session);
-    if (lines.length < 6) lines = pick("");
-    if (lines.length < 6) return "";
+    if (lines.length < 4) lines = pick("");
+    if (lines.length < 4) return "";
     const lengths = lines
       .map((t) => Array.from(t).length)
       .sort((a, b) => a - b);
