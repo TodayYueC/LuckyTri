@@ -116,14 +116,14 @@ Discretion follows the source, and the rule runs through every module:
 
 ## The weight of time
 
-| Item                 | How it fades                                                                                                                                                                                                                                                                                                                                                                  |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Self threads         | After the last touch by new experience, a grace of 3 lived days, then half-life decay: traits 180 days, opinions and habits 90, likes 60, things kept in mind and wants 30, curiosities 21; traits with evidence over 5 or more days fade twice as slowly. "Opinions" picked from one chat by night sorting fade over 21 days and only count if she says them again elsewhere |
-| Notes                | Still kept in mind 21 days, re-understood 14, thought of later or remembered after a long absence 10; a review date she set makes a note surface again for a while                                                                                                                                                                                                            |
-| Meaning of a meeting | Half-life of 21 lived days                                                                                                                                                                                                                                                                                                                                                    |
-| Memory               | An unimportant memory (importance below 0.6), not locked, not recalled for 45 lived days returns only when actually talked about or when the person is speaking; when a new fact overturns an old one, the old memory is marked "superseded" and its versions kept                                                                                                            |
-| Bonds                | After more than two weeks without contact, closeness falls with a 60-day half-life to half of its best (never below acquaintance), familiarity with a 120-day half-life to 60%; the first contact after a long absence wins back half                                                                                                                                         |
-| Lately               | A weighted average of each lived day's mood over the last two weeks moves the baseline she returns to within ±0.12                                                                                                                                                                                                                                                            |
+| Item | How it fades |
+| --- | --- |
+| Self threads | After the last touch by new experience, a grace of 3 lived days, then half-life decay: traits 180 days, opinions and habits 90, likes 60, things kept in mind and wants 30, curiosities 21; traits with evidence over 5 or more days fade twice as slowly. "Opinions" picked from one chat by night sorting fade over 21 days and only count if she says them again elsewhere |
+| Notes | Still kept in mind 21 days, re-understood 14, thought of later or remembered after a long absence 10; a review date she set makes a note surface again for a while |
+| Meaning of a meeting | Half-life of 21 lived days |
+| Memory | An unimportant memory (importance below 0.6), not locked, not recalled for 45 lived days returns only when actually talked about or when the person is speaking; when a new fact overturns an old one, the old memory is marked "superseded" and its versions kept |
+| Bonds | After more than two weeks without contact, closeness falls with a 60-day half-life to half of its best (never below acquaintance), familiarity with a 120-day half-life to 60%; the first contact after a long absence wins back half |
+| Lately | A weighted average of each lived day's mood over the last two weeks moves the baseline she returns to within ±0.12 |
 
 Anything with weight below 0.12 fades from mind but is never deleted: mentioning it again is a "return", never a second entry. The core threads (the strongest two) are never crowded out however quiet. The half-lives and thresholds are fixed constants (`server/mind/salience.js`) and only decide what is on her mind now.
 
@@ -144,21 +144,21 @@ Hard-coded: credentials such as passwords, keys and verification codes never ent
 
 ## Token management
 
-| Measure                      | Effect                                                                                                                                     |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Attention glance             | Most ordinary group chat calls no model; unread messages are read together at the next close look                                          |
-| One turn call                | Understanding, feeling, choosing and wording in one call; speaking in a group saves a call                                                 |
-| Built-in prompts sent once   | Unmodified system and generation instructions are not resent; saved old built-in prompts are treated as the new ones                       |
-| Memory only what is relevant | Only what is relevant or about those present, at most 12                                                                                   |
-| Cache-friendly layout        | Nature in the system prompt, `self` in the prefix, `inner` and this turn's data at the end                                                 |
-| Fading is computed locally   | Salience, absence and "lately" are computed locally and cost no tokens                                                                     |
-| Layered autobiography        | The diary carries only "my journey so far" and the current chapter and a review only the period's diaries, so input does not grow with age |
-| Night sorting                | Done once for sessions with piled-up messages; what is already remembered is not written again                                             |
-| Solitude is not wasted       | A solitude interrupted by a new conversation keeps the understanding already formed                                                        |
-| Narrow review                | Only for confessions, corrections, crises or complex groups; skipped when the budget is tight                                              |
-| Merged solitude              | One solitude looks over all sessions, instead of one call per session                                                                      |
-| Daily shares                 | An optional daily cap; solitude, diary and review, and memory tidying each have a share; chat comes first                                  |
-| Ledger                       | Every call is booked by purpose (chat / solitude / tidying), visible under "TA → Now"                                                      |
+| Measure | Effect |
+| --- | --- |
+| Attention glance | Most ordinary group chat calls no model; unread messages are read together at the next close look |
+| One turn call | Understanding, feeling, choosing and wording in one call; speaking in a group saves a call |
+| Built-in prompts sent once | Unmodified system and generation instructions are not resent; saved old built-in prompts are treated as the new ones |
+| Memory only what is relevant | Only what is relevant or about those present, at most 12 |
+| Cache-friendly layout | Nature in the system prompt, `self` in the prefix, `inner` and this turn's data at the end |
+| Fading is computed locally | Salience, absence and "lately" are computed locally and cost no tokens |
+| Layered autobiography | The diary carries only "my journey so far" and the current chapter and a review only the period's diaries, so input does not grow with age |
+| Night sorting | Done once for sessions with piled-up messages; what is already remembered is not written again |
+| Solitude is not wasted | A solitude interrupted by a new conversation keeps the understanding already formed |
+| Narrow review | Only for confessions, corrections, crises or complex groups; skipped when the budget is tight |
+| Merged solitude | One solitude looks over all sessions, instead of one call per session |
+| Daily shares | An optional daily cap; solitude, diary and review, and memory tidying each have a share; chat comes first |
+| Ledger | Every call is booked by purpose (chat / solitude / tidying), visible under "TA → Now" |
 
 ## Data
 

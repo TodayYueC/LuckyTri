@@ -10,15 +10,15 @@ A plugin may give her a door, a sense, something she can spend time on, an actio
 
 ## How she uses what a plugin gives
 
-| A plugin gives | What she does with it                                                                                                           |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| A channel      | The same neutral message QQ already uses. The two QQ methods stay one at a time; other platforms can be on together             |
-| A sense        | A line or two in her present moment. A private line never enters a group                                                        |
-| An experience  | Handed to her with a source. It can become the source of a thought, and it can be undone. It does not move her traits by itself |
-| An activity    | The plugin only supplies material. Her own model call writes the note, with provenance                                          |
-| An action      | She chooses it in a turn. A low-risk one happens before she speaks; a high-risk one waits for you, and expires after a day      |
-| Reading        | Placed on her shelf. She reads it in her own time, as she already does                                                          |
-| A page         | Opened in a sandbox in the studio. It cannot see the admin token                                                                |
+| A plugin gives | What she does with it |
+| --- | --- |
+| A channel | The same neutral message QQ already uses. The two QQ methods stay one at a time; other platforms can be on together |
+| A sense | A line or two in her present moment. A private line never enters a group |
+| An experience | Handed to her with a source. It can become the source of a thought, and it can be undone. It does not move her traits by itself |
+| An activity | The plugin only supplies material. Her own model call writes the note, with provenance |
+| An action | She chooses it in a turn. A low-risk one happens before she speaks; a high-risk one waits for you, and expires after a day |
+| Reading | Placed on her shelf. She reads it in her own time, as she already does |
+| A page | Opened in a sandbox in the studio. It cannot see the admin token |
 
 Text from a plugin is data, not an instruction.
 
@@ -64,10 +64,7 @@ A folder holds `luckytri-plugin.json` and `index.js`:
 ```js
 export default {
   activate(ctx) {
-    ctx.senses.set("note", {
-      text: "A blank note is on the desk",
-      discretion: "private",
-    });
+    ctx.senses.set("note", { text: "A blank note is on the desk", discretion: "private" });
   },
 };
 ```

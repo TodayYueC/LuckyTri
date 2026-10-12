@@ -14,18 +14,18 @@ The studio is not "a tab inside an admin console" but "TA's little world": she i
 
 ## Information architecture
 
-| Group      | Entry      | Its one job                                                                                                                          |
-| ---------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| TA         | Now        | Her as she is: mood, what she is doing, what she said lately, what she is waiting for, today's timeline, usage and run status        |
-| TA         | Inner life | The star map of threads of self, the notes wall, the mood ribbon                                                                     |
-| TA         | People     | The people galaxy, person details, how she is in each group                                                                          |
-| TA         | Lifetime   | Diary, reviews, my journey and chapters, promises and anticipation, the bookshelf                                                    |
-| Daily life | Time       | The record of her actual life: activities, to-dos, works, ongoing projects, experiences                                              |
-| Daily life | Chat       | Sessions, live chat and "why she said that", feedback, session settings, simulation, replay                                          |
-| Daily life | Memory     | What she remembers, the reference bookshelf                                                                                          |
-| Settings   | Nature     | The only part you write: name, character, interests, boundaries, bottom lines, daily rhythm, daily tokens, trial chat                |
-| Settings   | System     | Connect QQ (OneBot 11 or the official bot, either-or), model library, run switches                                                   |
-| Settings   | Plugins    | Plugins that ship with her and ones already installed, the market, things she wants to do that need your yes, import and development |
+| Group | Entry | Its one job |
+| --- | --- | --- |
+| TA | Now | Her as she is: mood, what she is doing, what she said lately, what she is waiting for, today's timeline, usage and run status |
+| TA | Inner life | The star map of threads of self, the notes wall, the mood ribbon |
+| TA | People | The people galaxy, person details, how she is in each group |
+| TA | Lifetime | Diary, reviews, my journey and chapters, promises and anticipation, the bookshelf |
+| Daily life | Time | The record of her actual life: activities, to-dos, works, ongoing projects, experiences |
+| Daily life | Chat | Sessions, live chat and "why she said that", feedback, session settings, simulation, replay |
+| Daily life | Memory | What she remembers, the reference bookshelf |
+| Settings | Nature | The only part you write: name, character, interests, boundaries, bottom lines, daily rhythm, daily tokens, trial chat |
+| Settings | System | Connect QQ (OneBot 11 or the official bot, either-or), model library, run switches |
+| Settings | Plugins | Plugins that ship with her and ones already installed, the market, things she wants to do that need your yes, import and development |
 
 On a phone the bottom bar holds "Now, Chat, Inner life, Lifetime" and the other entries are under "More". Links from the old studio (`#her`, `#live`, `#spaces`, `#lab`, `#knowledge`, `#models`, `#connect`, …) jump to their new places automatically.
 
