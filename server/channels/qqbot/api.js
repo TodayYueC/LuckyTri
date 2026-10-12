@@ -19,11 +19,6 @@ export class QQBotError extends Error {
   }
 }
 
-// An answer that never arrived is different from an answer that said no: the
-// first leaves delivery unknown and must not be retried automatically.
-export const isUncertain = (error) =>
-  error instanceof QQBotError ? error.uncertain === true : false;
-
 function readable(body, status) {
   const text =
     body?.message || body?.msg || body?.error_description || body?.error || "";

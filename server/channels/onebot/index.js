@@ -129,11 +129,11 @@ export function createOneBotChannel(
     });
   };
 
-  const send = async (m, text) => {
+  const send = async (m, text, options) => {
     if (m.simulated) return { message_id: "sim" };
     const result = await rpc(
       onebot.sendAction(m),
-      onebot.sendParams(m, text),
+      onebot.sendParams(m, text, options),
       10000,
     );
     if (result?.message_id != null) {

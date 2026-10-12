@@ -12,6 +12,7 @@ import {
 } from "./response-validator.js";
 import { deliver, sleep } from "./message-scheduler.js";
 import { leaks } from "../mind/guard.js";
+import { isGroupSession } from "../channels/session-key.js";
 import { interestTerms } from "../mind/attention.js";
 import {
   bubblePreference,
@@ -703,6 +704,7 @@ export class ReplyDelivery {
       isCurrent,
       {
         now: this.owner.now,
+        quote: buriedTarget(batch, turn.targetMessageIds, session),
         prepareBubble: (line) =>
           this.owner.mind.time.reconcile(
             { bubbles: [line] },
@@ -735,4 +737,20 @@ export class ReplyDelivery {
     }
     return finish(trace.sent.length ? "sent" : "cancelled", turn.reason);
   }
+}
+
+// In a group, when several other people have spoken since the one message
+// she is answering, the reply would read as aimed at the latest line. Point
+// at it the way a person would long-press "reply". Only a single target, only
+// a real platform id, and never in a private chat, where order is obvious.
+export function buriedTarget(batch, targetIds, session) {
+  if (!isGroupSession(session)) return "";
+  const targets = Array.isArray(targetIds) ? targetIds : [];
+  if (targets.length !== 1) return "";
+  const at = batch.findIndex((m) => m.id === targets[0]);
+  if (at < 0 || !batch[at].platformId) return "";
+  const after = batch
+    .slice(at + 1)
+    .filter((m) => m.userId !== batch[at].userId);
+  return after.length >= 3 ? String(batch[at].platformId) : "";
 }

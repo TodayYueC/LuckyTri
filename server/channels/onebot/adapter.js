@@ -126,10 +126,13 @@ export const onebot = {
       ? "send_group_msg"
       : "send_private_msg";
   },
-  sendParams(message, text) {
+  sendParams(message, text, options) {
     const parsed = parseSessionKey(message.sessionId);
+    const reply = /^\d+$/.test(String(options?.replyTo || ""))
+      ? [{ type: "reply", data: { id: String(options.replyTo) } }]
+      : [];
     return {
-      message: [{ type: "text", data: { text } }],
+      message: [...reply, { type: "text", data: { text } }],
       [parsed.kind === "group" ? "group_id" : "user_id"]:
         parsed.kind === "group"
           ? Number(message.raw?.group_id ?? parsed.nativeId)

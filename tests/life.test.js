@@ -208,7 +208,8 @@ test("她不在时的说话方式，回来后也不当成这个地方的样子",
       "user",
     );
   const back = w.mind.view({ session: "group:1", kind: "group", now: w.now() });
-  assert.match(back.inner.room, /常见句长约/);
+  // Her voice comes from her own state, never from how the room types.
+  assert.equal(back.inner.room, undefined);
 });
 
 test("关掉时被叫到，不算她当时在场", async (t) => {

@@ -30,6 +30,22 @@ const only = option("--only", "")?.split(",").filter(Boolean) || [];
 const [shard, shards] = option("--shard", "1/1").split("/").map(Number);
 // --sample 2 writes <id>~2.json: an extra draw for the objective majority.
 const sample = Number(option("--sample", "1"));
+// --mood 烦:0.8:-0.6:被放鸽子:30 replaces each scene's mood, so the same
+// scene can be replayed under different feelings (feeling:intensity:valence
+// [:cause[:minutesBefore]]).
+const moodOverride = (() => {
+  const raw = option("--mood", "");
+  if (!raw) return null;
+  const [feeling, intensity, valence, cause = "", before = "30"] =
+    raw.split(":");
+  return {
+    feeling,
+    intensity: Number(intensity),
+    valence: Number(valence),
+    cause,
+    minutesBefore: Number(before),
+  };
+})();
 const MIN = 60000;
 const { scenes, person, VERSION } = await loadSet(
   option("--set", "quality-v1"),
@@ -165,6 +181,7 @@ async function run(scene) {
     );
     if (r?.rejected) rejected.push({ self: v.content, reason: r.rejected });
   }
+  if (moodOverride) scene = { ...scene, mood: moodOverride };
   if (scene.mood) {
     const r = w.mind.affect.feel({
       feeling: scene.mood.feeling,

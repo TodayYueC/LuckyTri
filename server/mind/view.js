@@ -1,4 +1,3 @@
-import { summarizeGroupStyle } from "../core/group-style.js";
 import { relevantContext, boundMindContext } from "./context-selection.js";
 import { interestTerms } from "./attention.js";
 import { agoLabel, elapsedLabel } from "./clock.js";
@@ -39,44 +38,6 @@ const FEEDBACK = {
   too_meme: "梗太多",
   natural: "挺自然",
 };
-
-// The way a room talks is read as of `now`, not as of the wall clock: a replay
-// or a test that moves the clock must see the room as it was at that moment.
-function groupStyle(mind, session, now) {
-  try {
-    const rows = mind.db
-      .prepare(
-        "SELECT * FROM (SELECT * FROM messages WHERE session_id=? AND is_demo=0 AND time<=? ORDER BY id DESC LIMIT 200) ORDER BY id",
-      )
-      .all(session, now + 60000);
-    const ids = rows.map((row) => row.event_id).filter(Boolean);
-    const bots = new Set(
-      mind.relationships
-        .context({ room: session, now, limit: 100 })
-        .known.filter((p) => p.kind === "bot")
-        .map((p) => String(p.subjectId)),
-    );
-    const away = ids.length
-      ? new Set(
-          mind.db
-            .prepare(
-              `SELECT e.event_id FROM core_events e JOIN mind_unlived u ON u.seq=e.seq WHERE e.event_id IN (${ids.map(() => "?").join(",")})`,
-            )
-            .all(...ids)
-            .map((row) => row.event_id),
-        )
-      : new Set();
-    const profile = summarizeGroupStyle(
-      rows.filter(
-        (row) => !away.has(row.event_id) && !bots.has(String(row.user_id)),
-      ),
-      now,
-    );
-    return profile.ready ? profile.summary : "";
-  } catch {
-    return "";
-  }
-}
 
 function feedback(mind, session, now) {
   return mind.db
@@ -186,7 +147,6 @@ export function innerView(
   const read = mind.reading
     .recent({ now, limit: 2 })
     .filter((r) => r.created > now - 7 * DAY);
-  const room = kind === "group" ? groupStyle(mind, session, now) : "";
   const spoken = (value) =>
     value && mind.meetings.sayable(value, session) ? value : "";
   const self = {
@@ -346,13 +306,15 @@ export function innerView(
     .map((line) => text(line, 80))
     .filter(Boolean)
     .slice(0, 8);
+  const ownVoice = ownTyping(mind, session, now);
   const view = boundMindContext({
     self,
     affect: cause ? affect : { ...affect, cause: "" },
     inner: {
       currentLife: mind.time.view({ session, now, cue, activityCue }),
-      state: `${affect.phaseLabel}，精力${affect.energyLabel}，心情${affect.mood}${cause ? `（${cause}）` : ""}${affect.lately ? `，${affect.lately}` : ""}`,
+      state: `${affect.phaseLabel}，精力${affect.energyLabel}，心情${affect.mood}${feltStrength(affect.lingering)}${cause ? `（${cause}）` : ""}${affect.lately ? `，${affect.lately}` : ""}`,
       selfKnown,
+      ...(ownVoice ? { ownVoice } : {}),
       ...(persons.length ? { people: persons } : {}),
       ...(relationships.known.length ? { relationships } : {}),
       ...(continuity ? { continuity } : {}),
@@ -379,7 +341,6 @@ export function innerView(
       ...(will ? { will } : {}),
       ...(stood.length ? { stood } : {}),
       ...(reminded.length ? { reminded } : {}),
-      ...(room ? { room } : {}),
       ...(heard.length ? { heard } : {}),
       ...(senses.length ? { senses } : {}),
       ...(body.length ? { body } : {}),
@@ -419,4 +380,41 @@ export function innerView(
     ],
   });
   return view;
+}
+
+// Whether the latest feeling is still strong or already fading. It decays
+// with time (affect.js), so what happened earlier keeps colouring how she
+// speaks for a while and then lets go.
+function feltStrength(lingering = 0) {
+  if (lingering >= 0.5) return "，还挺明显";
+  if (lingering >= 0.25) return "，淡了些";
+  return "";
+}
+
+// How she herself has been typing lately: her own habit, read from what she
+// actually sent (here first, then anywhere), never from how others type. It
+// lets the voice she has grown carry on instead of being re-derived from the
+// initial design each turn. Too few of her own messages means no habit yet.
+export function ownTyping(mind, session, now) {
+  try {
+    const pick = (where, ...args) =>
+      mind.db
+        .prepare(
+          `SELECT text FROM messages WHERE role='assistant' AND is_demo=0 AND time<=? AND time>? ${where} ORDER BY id DESC LIMIT 40`,
+        )
+        .all(now + 60000, now - 14 * 86400000, ...args)
+        .map((row) => String(row.text || "").trim())
+        .filter((t) => t && !/^\[/.test(t));
+    let lines = pick("AND session_id=?", session);
+    if (lines.length < 6) lines = pick("");
+    if (lines.length < 6) return "";
+    const lengths = lines
+      .map((t) => Array.from(t).length)
+      .sort((a, b) => a - b);
+    const median = lengths[Math.floor(lengths.length / 2)];
+    const stops = lines.filter((t) => /[。.]$/.test(t)).length / lines.length;
+    return `你最近自己发的一条消息常见约 ${median} 字${stops < 0.25 ? "，句末常不带句号" : ""}`;
+  } catch {
+    return "";
+  }
 }

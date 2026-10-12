@@ -11,7 +11,7 @@ import {
   explicitStop,
 } from "./dialogue-context.js";
 import { readerQuestions } from "./reader-check.js";
-import { chatRegister, conversationNeeds } from "./register.js";
+import { conversationNeeds } from "./conversation-needs.js";
 import { BOT_GUIDE, CREATIVE_GUIDE } from "./dialogue-contract.js";
 import {
   botExchange,
@@ -158,7 +158,7 @@ export async function takeTurn(
     ...(extra.pressure ? { pressure: extra.pressure } : {}),
     ...(recallWording(snapshot) ? { guidance: recallWording(snapshot) } : {}),
     ...(!initiating ? { exchange: currentExchange(snapshot) } : {}),
-    ...turnGuides(snapshot, initiating),
+    ...turnGuides(snapshot),
   };
   let raw = await models.call(
     profile,
@@ -168,6 +168,7 @@ export async function takeTurn(
     trace,
     images,
   );
+  raw = withSaidMessages(raw);
   const words = (
     Array.isArray(raw?.bubbles) ? raw.bubbles : [raw?.bubbles]
   ).filter((word) => typeof word === "string");
@@ -240,18 +241,20 @@ export async function takeTurn(
       if (review.hasContribution === false && review.shouldRepair === true) {
         trace?.steps?.push("新问题或新段落被上一稿漏接，按当前内容重新想一次");
         try {
-          const repaired = await models.call(
-            profile,
-            "turn",
-            `${turnSystem}\n${CONTRIBUTION_REPAIR}`,
-            {
-              ...turnInput,
-              contributionRepair: {
-                previousReply: raw.bubbles || [],
+          const repaired = withSaidMessages(
+            await models.call(
+              profile,
+              "turn",
+              `${turnSystem}\n${CONTRIBUTION_REPAIR}`,
+              {
+                ...turnInput,
+                contributionRepair: {
+                  previousReply: raw.bubbles || [],
+                },
               },
-            },
-            trace,
-            images,
+              trace,
+              images,
+            ),
           );
           const repairedExchange = botExchange(snapshot, repaired);
           if (
@@ -443,6 +446,11 @@ export function normalizeTurn(raw, snapshot, trace, { speech } = {}) {
     !crisis &&
     !snapshot.initiative &&
     (grounding.botLoop ||
+      // She read the other AI's line as a goodbye herself; answering a
+      // goodbye from a bot only starts another round of goodbyes.
+      (raw.understanding?.kind === "closing" &&
+        grounding.botOnlyTail >= 3 &&
+        !batch.some((m) => m.relation === "direct")) ||
       (raw.contribution?.kind === "none" &&
         !raw.act &&
         !raw.share &&
@@ -570,18 +578,31 @@ export function wordingNotes(turn, snapshot) {
     .join("\n");
 }
 
-// Data a reply turn adds about the room: how people here type, and the
-// writing or bot-conversation guidance only when the conversation is about
-// those things.
-function turnGuides(snapshot, initiating) {
-  const latest = (snapshot.messages || []).findLast((m) =>
-    Number.isFinite(m.time),
-  )?.time;
-  const register = initiating ? null : chatRegister(snapshot, latest);
+// Writing or bot-conversation guidance, only when the conversation is about
+// those things. How the room types is deliberately not given: her voice comes
+// from her own state and past words, not from imitating the people here.
+function turnGuides(snapshot) {
   const needs = conversationNeeds(snapshot);
   return {
-    ...(register ? { register } : {}),
     ...(needs.creative ? { creativeGuide: CREATIVE_GUIDE } : {}),
     ...(needs.bots ? { botGuide: BOT_GUIDE } : {}),
   };
+}
+
+// She writes what she would type as one piece of text; a blank line is where
+// she would press send and start another message. Writing one message is the
+// natural default of typing, so how many she sends is a choice she makes,
+// not a list she is handed to fill. An older reply with "bubbles" still works.
+export function saidMessages(text) {
+  return String(text)
+    .split(/\n[ \t\u3000]*\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+export function withSaidMessages(raw) {
+  if (!raw || typeof raw !== "object" || typeof raw.say !== "string")
+    return raw;
+  const { say, ...rest } = raw;
+  return { ...rest, bubbles: saidMessages(say) };
 }

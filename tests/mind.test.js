@@ -5290,9 +5290,9 @@ test("被问到是谁时，心和选择属于自己，经历仍然不能编造",
   assert.match(PROMPTS.turn, /不要靠装成某一种人/);
   assert.doesNotMatch(PROMPTS.turn, /像真实的人一样/);
   assert.match(PROMPTS.system, /慢慢成为自己/);
-  assert.match(PROMPTS.turn, /inner\.room/);
+  assert.doesNotMatch(PROMPTS.turn, /inner\.room/);
   assert.match(PROMPTS.generation, /self\.livingFor/);
-  assert.match(PROMPTS.generation, /inner\.room/);
+  assert.doesNotMatch(PROMPTS.generation, /inner\.room/);
   assert.doesNotMatch(PROMPTS.generation, /参考当前群友的句长/);
   assert.match(PROMPTS.daily, /g:ID/);
   assert.match(PROMPTS.reflection, /g:ID/);

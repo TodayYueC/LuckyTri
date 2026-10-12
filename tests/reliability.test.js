@@ -898,3 +898,14 @@ test("模型输入去掉空字段、内部字段和重复的毫秒时间", () =>
   });
   assert.deepEqual(payload.recalled, {});
 });
+
+test("a model request stuck past its limit is ended even if the socket ignores the abort", async () => {
+  const { hardDeadline } = await import("../server/core/model-manager.js");
+  const started = Date.now();
+  await assert.rejects(
+    hardDeadline(() => new Promise(() => {}), 30, 20),
+    (error) => error.name === "TimeoutError",
+  );
+  assert(Date.now() - started < 1000);
+  assert.equal(await hardDeadline(async () => "ok", 1000), "ok");
+});

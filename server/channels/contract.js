@@ -11,7 +11,11 @@
 //   start()              begin accepting or opening the connection for the
 //                        current settings; safe to call again after a change
 //   stop()               drop the connection and stop timers; safe to repeat
-//   send(message, text)  deliver one bubble; resolves { message_id }
+//   send(message, text, options)  deliver one bubble; resolves { message_id }.
+//                        options.replyTo, when present, is the platform id of
+//                        the message this bubble answers; a channel with the
+//                        quote capability may show it as a quote, any other
+//                        channel ignores it
 //   fetchQuoted(message) the message that `message.replyId` points to, or null
 //   fetchImage(file)     a fresh URL or bytes for an expired image, or null
 //   fetchMedia(file, type)  optional: a voice or file the same way, or null

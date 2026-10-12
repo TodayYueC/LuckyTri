@@ -245,6 +245,8 @@ export class Affect {
       phaseLabel: phase.label,
       clock: phase.clock,
       since: last?.created || null,
+      // How strongly the latest feeling is still with her (0–1, decaying).
+      lingering: Math.round(residual * 100) / 100,
       talkedRecently: talked,
       baseline: Math.round(base.valence * 100) / 100,
       lately: lately.label,

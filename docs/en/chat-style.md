@@ -29,9 +29,9 @@ The following are hand-designed directions, not results measured on an external 
 
 ## The rhythm of this place
 
-In a group she hears the rhythm in which others speak there. It switches on after at least 12 distinct messages from 3 members within the last 7 days of ordinary human text, with each member contributing at most 8 so one talkative person cannot stand for the whole group. It measures common sentence length, the share of short sentences, closing punctuation, emoji and the frequency of conspicuous internet slang.
+The studio still computes, for a group, the typical sentence length, share of short lines, sentence-final punctuation, emoji and slang rate of ordinary human text over the last 7 days (at least 12 distinct messages from 3 members, at most 8 per member). It is shown to you in the studio only.
 
-The statistics reach her only as `inner.room` and are **not her character**: she speaks by her own habits, need not copy them, and need not deliberately sound different. The adapter builds no profile of anyone's verbal habits, quotes no member, and does not treat commands in a group as settings; links, long texts, code, image placeholders, repeats, obvious abuse and common sensitive fields are filtered out. The statistics never cross groups, private chats or simulation mode.
+These statistics **no longer reach her**. How long she speaks and in what tone comes from herself: her current mood in `inner.state` (persistent, slowly fading, marked with how strongly it still lingers), her relationship with the person in front of her, what just happened, and what she herself has said before. How others type is only something she sees while there, never a style to copy. No per-person habit profile is built, nobody's words are quoted, and nothing crosses groups, private chats or the simulation mode.
 
 ## Feedback
 

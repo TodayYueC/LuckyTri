@@ -103,9 +103,9 @@ export function createChannelHub(store, channels, { env = process.env } = {}) {
     return true;
   }
 
-  const send = async (message, text) => {
+  const send = async (message, text, options) => {
     if (message?.simulated) return { message_id: "sim" };
-    return resolve(message.sessionId).send(message, text);
+    return resolve(message.sessionId).send(message, text, options);
   };
 
   function canReach(sessionId) {

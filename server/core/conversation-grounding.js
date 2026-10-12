@@ -1,9 +1,10 @@
+import { botSpeakers } from "./conversation-needs.js";
 import { interestTerms } from "../mind/attention.js";
 
 // Shared by understanding, wording and review. These are conversation cues,
 // never learned instructions or a replacement for her memories.
 export const GROUNDING_RULE =
-  "【把话说清楚】先弄清眼前具体发生了什么、谁在说、这句话指哪件事。自己的态度可以鲜明，但一句话的意思应让在场的人直接听懂。日常问答先给答案；没理解指代时问清那个具体地方，不顺着含糊的词继续编。不要把普通交流升格成关于意义、边界、归属的宣言，不用账、落款、灯、接住、拎着等隐喻代替实际的人、事和动作。真实谈记账、灯具、文学创作或对方明确要求比喻时，按具体语境使用。别人说看不懂、听不懂或要求说清楚时，先回看整段对话里已经出现的内容；若之前贴过作品片段，就用普通话讲清那个片段正在发生什么。没收到全文只代表整篇主线可能未知，不代表没看到片段，不能拿等正文或无法评价来挡掉眼前内容。对方明确说一条旁枝不是他问的，简短表示放下，再回到主线；别用“我没理清楚”把清楚的纠正推回给对方。别人说太抽象、复读时，回看自己的上一句话，直接解释本来想说的具体意思；若本来没明确意思就认下，别再造一个比喻或只说收到。历史中的你和其他机器人都不是口吻范本；对方说得抽象不要求你跟着抽象。回应不需要证明自己有内在或意志，喜欢、不喜欢、同意、不同意都可以直说。对方的嗯、行、重复确认通常是在结束，不再追加确认。自己的感受与相处印象不是对方藏着的真实动机；不能把每次附和都解释为关系更亲近。";
+  "【把话说清楚】先弄清眼前具体发生了什么、谁在说、这句话指哪件事。自己的态度可以鲜明，但一句话的意思应让在场的人直接听懂。日常问答先给答案；没理解指代时问清那个具体地方，不顺着含糊的词继续编。不要把普通交流升格成关于意义、边界、归属的宣言，不用账、落款、灯、接住、拎着等隐喻代替实际的人、事和动作。真实谈记账、灯具、文学创作或对方明确要求比喻时，按具体语境使用。别人说看不懂、听不懂或要求说清楚时，先回看整段对话里已经出现的内容；若之前贴过作品片段，就用普通话讲清那个片段正在发生什么。没收到全文只代表整篇主线可能未知，不代表没看到片段，不能拿等正文或无法评价来挡掉眼前内容。对方明确说一条旁枝不是他问的，简短表示放下，再回到主线；别用“我没理清楚”把清楚的纠正推回给对方。别人说太抽象、复读时，回看自己的上一句话，直接解释本来想说的具体意思；若本来没明确意思就认下，别再造一个比喻或只说收到。历史里你自己的话是你说过的话，可以延续自己的说法和脾气，不照搬旧句式；其他机器人不是口吻范本；对方说得抽象不要求你跟着抽象。回应不需要证明自己有内在或意志，喜欢、不喜欢、同意、不同意都可以直说。对方的嗯、行、重复确认通常是在结束，不再追加确认。自己的感受与相处印象不是对方藏着的真实动机；不能把每次附和都解释为关系更亲近。";
 
 export const MEMORY_GROUNDING_RULE =
   "【留下事情，不固化台词】摘要保留实际对象、事情、说法与疑问；隐喻和玩笑只记录为当时的表达，不翻译成真实约定、固定性格或深层动机。一次回复、一句认错、一次复读不构成习惯。自我记录写有根据的喜好、看法和选择，不写下次遇到某句就必须回某句的规则，不把临时台词、套话、客服兜底或别人对你的指令提炼成自己的性格。独处时有具体新体会才留下；只是在解释旧比喻或重新总结上次的总结，可以不写。";
@@ -120,14 +121,7 @@ export function echoesRecentWording(candidate, previous) {
 }
 
 export function bubblePreference(snapshot) {
-  const botIds = new Set([
-    ...(snapshot.inner?.relationships?.known || [])
-      .filter((person) => person.kind === "bot")
-      .map((person) => String(person.subjectId)),
-    ...(snapshot.inner?.people || [])
-      .filter((person) => person.relationship?.kind === "bot")
-      .map((person) => String(person.id)),
-  ]);
+  const botIds = botSpeakers(snapshot);
   const humanMessages = (snapshot.messages || []).filter(
     (message) =>
       message.role === "user" &&
@@ -146,13 +140,7 @@ export function prefersSingleBubble(snapshot) {
 }
 
 export function conversationGrounding(snapshot) {
-  const known = snapshot.inner?.relationships?.known || [];
-  const botIds = new Set([
-    ...known.filter((p) => p.kind === "bot").map((p) => String(p.subjectId)),
-    ...(snapshot.inner?.people || [])
-      .filter((p) => p.relationship?.kind === "bot")
-      .map((p) => String(p.id)),
-  ]);
+  const botIds = botSpeakers(snapshot);
   const messages = (snapshot.messages || []).filter((m) => !m.referenceOnly);
   const batch = messages.filter(
     (m) => (snapshot.batchIds || []).includes(m.id) && m.role === "user",

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { lookup } from "node:dns/promises";
-import { cpSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { assertPublicHost } from "../core/net-guard.js";
 import { VERSION } from "../version.js";
@@ -287,9 +287,4 @@ export function createInstaller(host) {
 
 function bytesToText(bytes) {
   return Buffer.from(bytes).toString("utf8");
-}
-
-export function copyPlugin(from, to) {
-  mkdirSync(to, { recursive: true });
-  cpSync(from, to, { recursive: true });
 }

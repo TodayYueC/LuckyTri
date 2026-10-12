@@ -75,7 +75,7 @@ test("参考仅限当前群、当前模式；私聊无群画像", () => {
   assert.equal(store.groupStyle("private:10001", 0), null);
   store.db.close();
 });
-test("这个群的说话节奏只是房间里的事实，不写进她的样子，也不包含任何人的原话", () => {
+test("群里别人的打字统计只留在工作室，不进她的状态，也不包含任何人的原话", () => {
   const store = createStore(":memory:");
   const system = new ChatSystem(store, async () => ({}));
   const insert = store.db.prepare(
@@ -85,9 +85,8 @@ test("这个群的说话节奏只是房间里的事实，不写进她的样子�
     insert.run("group:12345", row.user_id, row.text, row.time, "user", 0);
   const view = system.mind.view({ session: "group:12345", kind: "group" });
   assert.equal(view.self.here, undefined);
-  assert.match(view.inner.room, /常见句长约/);
-  assert.doesNotMatch(JSON.stringify(view.self), /常见句长/);
-  assert(!rows.some((row) => view.inner.room.includes(row.text)));
+  assert.equal(view.inner.room, undefined);
+  assert.doesNotMatch(JSON.stringify(view), /常见句长/);
   const privateView = system.mind.view({
     session: "private:10001",
     kind: "private",

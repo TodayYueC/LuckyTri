@@ -15,7 +15,6 @@ import { fillRoots, mineFor } from "./roots.js";
 // line and a fact: there, the right fact scored 0.42-0.65 and the best wrong
 // one 0.39-0.58 on the benchmark, yet the right one ranked first 40 of 49
 // times. Thresholds below are set from evaluate-recall.js --analyze.
-export const RELATED = 0.62;
 export const NEAR_DUPLICATE = 0.95;
 export const COSINE_FLOOR = 0.4;
 export const MIN_SPREAD = 0.05;

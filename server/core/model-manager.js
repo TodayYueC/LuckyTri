@@ -1197,12 +1197,16 @@ export class ModelManager {
                 const started = Date.now();
                 let r;
                 try {
-                  r = await this.fetcher(endpoint, {
-                    method: "POST",
-                    headers,
-                    body: payload,
-                    signal: AbortSignal.timeout(profile.timeoutMs),
-                  });
+                  r = await hardDeadline(
+                    (signal) =>
+                      this.fetcher(endpoint, {
+                        method: "POST",
+                        headers,
+                        body: payload,
+                        signal,
+                      }),
+                    profile.timeoutMs,
+                  );
                 } catch (error) {
                   if (error && typeof error === "object")
                     error.attemptElapsed = Date.now() - started;
@@ -1480,4 +1484,26 @@ function decodeBase64Vector(value) {
     bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length),
   );
   return Array.from(floats);
+}
+
+// The abort signal is the normal way a slow request ends. A socket stuck in a
+// read has been seen to outlive it by minutes (one eval turn waited 459 s
+// against a 120 s limit), so the wait itself is also bounded: past the limit
+// plus a short grace the request counts as timed out, whatever the socket does.
+export function hardDeadline(start, timeoutMs, graceMs = 5000) {
+  const controller = new AbortController();
+  let timer;
+  const limit = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error("The operation was aborted due to timeout");
+      error.name = "TimeoutError";
+      controller.abort(error);
+      reject(error);
+    }, timeoutMs + graceMs);
+  });
+  const soft = AbortSignal.timeout(timeoutMs);
+  const signal = AbortSignal.any([soft, controller.signal]);
+  return Promise.race([start(signal), limit]).finally(() =>
+    clearTimeout(timer),
+  );
 }

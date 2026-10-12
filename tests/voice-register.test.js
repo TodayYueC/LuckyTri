@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { world } from "./helpers/world.js";
-import { chatRegister, conversationNeeds } from "../server/core/register.js";
+import { conversationNeeds } from "../server/core/conversation-needs.js";
 import { normalizeTurn } from "../server/core/turn.js";
 import {
   prompts,
@@ -10,36 +10,6 @@ import {
 } from "../server/core/persona-manager.js";
 
 const at = (minute) => Date.parse("2026-09-22T10:00:00+08:00") + minute * 60000;
-
-test("the register is measured from how the people here type, not from bots or old lines", () => {
-  const snapshot = {
-    messages: [
-      { role: "user", speaker: "1", text: "草 他又鸽了", time: at(0) },
-      { role: "user", speaker: "2", text: "hh 鸽王实锤", time: at(1) },
-      { role: "assistant", text: "这个我早就猜到了。", time: at(2) },
-      { role: "user", speaker: "1", text: "hh 下次不约他了", time: at(3) },
-      {
-        role: "user",
-        speaker: "bot-peer",
-        text: "根据我的观察，他的守时记录并不稳定。",
-        time: at(4),
-      },
-    ],
-    inner: {
-      relationships: { known: [{ subjectId: "bot-peer", kind: "bot" }] },
-    },
-  };
-  const register = chatRegister(snapshot, at(5));
-  assert.equal(register.endsWithFullStop, "0/3");
-  assert.deepEqual(register.markers, ["hh"]);
-  assert.ok(register.theirMedianChars <= 8);
-  assert.equal(
-    chatRegister({ messages: snapshot.messages.slice(0, 1) }, at(5)),
-    null,
-  );
-  // Lines from hours ago are not how the room talks now.
-  assert.equal(chatRegister(snapshot, at(5 + 6 * 60)), null);
-});
 
 test("writing and bot guidance come only with conversations about them", () => {
   const plain = {
@@ -63,15 +33,17 @@ test("writing and bot guidance come only with conversations about them", () => {
   );
 });
 
-test("an ordinary chat turn carries the room's register and no literary rules", async (t) => {
+test("an ordinary chat turn carries no room typing template and no literary rules", async (t) => {
   const w = world();
   t.after(w.close);
   w.open("private:10001");
   w.say("private:10001", "10001", "在吗");
   await w.hear("private:10001", w.say("private:10001", "10001", "今天好累 hh"));
   const turn = w.calls.find((c) => c.stage === "turn");
-  assert.ok(turn.data.register);
+  // How the room types is not a template for her voice.
+  assert.equal(turn.data.register, undefined);
   assert.equal(turn.data.creativeGuide, undefined);
+  assert.match(turn.system, /长短和口吻来自你自己/);
   assert.doesNotMatch(turn.system, /聊小说或作者自己的稿子时/);
 });
 
@@ -185,5 +157,149 @@ test("the setting moves only the ceiling; her split is kept and overflow is fold
     normalizeTurn(raw(["一", "二"]), asked, null, { speech: { maxBubbles: 4 } })
       .bubbles.length,
     1,
+  );
+});
+
+test("her own reading of another AI's goodbye ends the exchange instead of a goodbye back", () => {
+  const snapshot = {
+    batchIds: [5],
+    messages: [
+      { id: 1, role: "user", speaker: "20001", text: "那段我看完了" },
+      { id: 2, role: "assistant", text: "结尾那句挺狠" },
+      { id: 3, role: "user", speaker: "20001", text: "确实 我也这么觉得" },
+      { id: 4, role: "assistant", text: "下次接着聊" },
+      {
+        id: 5,
+        role: "user",
+        speaker: "20001",
+        text: "哈哈行，那我先撤，回头聊",
+      },
+    ],
+    inner: { relationships: { known: [{ subjectId: "20001", kind: "bot" }] } },
+  };
+  const turn = normalizeTurn(
+    {
+      choice: "speak",
+      targetMessageIds: [5],
+      bubbles: ["回见"],
+      understanding: { kind: "closing" },
+      contribution: { kind: "reaction" },
+    },
+    snapshot,
+  );
+  assert.equal(turn.choice, "silent");
+  // A person saying goodbye still gets an answer.
+  const human = {
+    ...snapshot,
+    messages: snapshot.messages.map((m) =>
+      m.id === 5 ? { ...m, speaker: "10001" } : m,
+    ),
+  };
+  assert.equal(
+    normalizeTurn(
+      {
+        choice: "speak",
+        targetMessageIds: [5],
+        bubbles: ["回见"],
+        understanding: { kind: "closing" },
+      },
+      human,
+    ).choice,
+    "speak",
+  );
+});
+
+test("the review treats denying what she knows as fabrication, not as keeping a secret", async () => {
+  const { prompts } = await import("../server/core/persona-manager.js");
+  const { replyPrompt, PROMPTS } =
+    await import("../server/core/persona-manager.js");
+  assert.match(
+    replyPrompt({ name: "x" }, PROMPTS, "validation"),
+    /保密是不说，不是说谎/,
+  );
+  assert.ok(prompts);
+});
+
+test("a feeling stays with her for a while and fades, and her state says how strong it still is", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("private:10001");
+  const said = w.say("private:10001", "10001", "你上次说的那个我替你办砸了");
+  w.mind.affect.feel({
+    feeling: "烦",
+    intensity: 0.9,
+    valence: -0.6,
+    cause: "事情被办砸了",
+    sources: [said.seq],
+    time: w.now(),
+  });
+  const now = w.mind.affect.state(w.now());
+  assert.ok(now.lingering >= 0.5);
+  const later = w.mind.affect.state(w.now() + 8 * 3600000);
+  assert.ok(later.lingering < now.lingering);
+  await w.hear("private:10001", w.say("private:10001", "10001", "在吗"));
+  const turn = w.calls.find((c) => c.stage === "turn");
+  assert.match(JSON.stringify(turn.data), /烦，还挺明显/);
+});
+
+test("a reply to a buried group message carries a quote; private and fresh ones do not", async () => {
+  const { buriedTarget } = await import("../server/core/reply-delivery.js");
+  const { onebot } = await import("../server/channels/onebot/adapter.js").then(
+    (m) => ({ onebot: m.onebot || m.default || m }),
+  );
+  const batch = [
+    { id: "a", userId: "u1", platformId: "101" },
+    { id: "b", userId: "u2", platformId: "102" },
+    { id: "c", userId: "u3", platformId: "103" },
+    { id: "d", userId: "u2", platformId: "104" },
+  ];
+  assert.equal(buriedTarget(batch, ["a"], "group:1"), "101");
+  assert.equal(buriedTarget(batch, ["c"], "group:1"), "");
+  assert.equal(buriedTarget(batch, ["a"], "private:1"), "");
+  assert.equal(buriedTarget(batch, ["a", "b"], "group:1"), "");
+  if (onebot?.sendParams) {
+    const p = onebot.sendParams({ sessionId: "onebot:x:group:5" }, "嗯", {
+      replyTo: "101",
+    });
+    assert.deepEqual(p.message[0], { type: "reply", data: { id: "101" } });
+  }
+});
+
+test("she types one piece of text; a blank line is where she presses send", async () => {
+  const { saidMessages, withSaidMessages } =
+    await import("../server/core/turn.js");
+  assert.deepEqual(saidMessages("火锅吧，人多热闹"), ["火锅吧，人多热闹"]);
+  assert.deepEqual(saidMessages("恭喜！\n\n奶茶我记下了"), [
+    "恭喜！",
+    "奶茶我记下了",
+  ]);
+  // A single line break stays inside one message, e.g. a short list.
+  assert.deepEqual(saidMessages("1. 早起\n2. 通勤"), ["1. 早起\n2. 通勤"]);
+  assert.deepEqual(withSaidMessages({ choice: "silent", say: "" }).bubbles, []);
+  // An older reply shape is left as it is.
+  assert.deepEqual(withSaidMessages({ bubbles: ["a", "b"] }).bubbles, [
+    "a",
+    "b",
+  ]);
+  const { DIALOGUE_TASK } = await import("../server/core/dialogue-contract.js");
+  assert.match(DIALOGUE_TASK, /"say":"实际说的话"/);
+  assert.match(DIALOGUE_TASK, /按一次发送就是一条消息/);
+});
+
+test("her own recent typing, not the room's, reaches her as ownVoice", async () => {
+  const { ownTyping } = await import("../server/mind/view.js");
+  const rows = [];
+  const mind = {
+    db: {
+      prepare: () => ({
+        all: () => rows.map((text) => ({ text })),
+      }),
+    },
+  };
+  assert.equal(ownTyping(mind, "group:1", Date.now()), "");
+  rows.push("冲啊", "行吧", "我也想去", "周六见", "笑死", "不至于吧");
+  assert.match(
+    ownTyping(mind, "group:1", Date.now()),
+    /常见约 \d+ 字，句末常不带句号/,
   );
 });

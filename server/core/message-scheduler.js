@@ -13,6 +13,9 @@ export async function deliver(
     random = Math.random,
     now = Date.now,
     prepareBubble = (line) => line,
+    // Platform id of an earlier message the first bubble answers, when the
+    // conversation has moved past it; the channel may show it as a quote.
+    quote = "",
   } = {},
 ) {
   const ids = bubbles.map((text, i) => {
@@ -42,7 +45,11 @@ export async function deliver(
         .prepare("UPDATE core_outbox SET status='sending',text=? WHERE id=?")
         .run(outgoing, ids[i]);
       try {
-        const result = await send(message, outgoing);
+        const result = await send(
+          message,
+          outgoing,
+          i === 0 && quote ? { replyTo: quote } : undefined,
+        );
         repo.db
           .prepare(
             "UPDATE core_outbox SET status='confirmed',platform_id=? WHERE id=?",

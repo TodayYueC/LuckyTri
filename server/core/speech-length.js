@@ -6,23 +6,21 @@ export const SPEECH_LENGTHS = {
   短句为主: {
     key: "short",
     tendency:
-      "短句优先：平时像在 QQ 里随手打字，一句话说一个意思；想说的不止一句时，可以分成几条接着发，也可以一句就停。条数和长短由你按此刻决定，不为凑条数拆句，也不为显得完整写成一段。",
+      "短句优先：像在 QQ 里随手打字，句子短、不写组织好的段落。说多少、分不分条，看你此刻想说几件事。",
     maxBubbles: 4,
   },
   自然: {
     key: "natural",
-    tendency:
-      "自然长短：跟着内容走，多数时候一两句，意思连贯的放在同一条里；条数和长短由你按此刻决定。",
+    tendency: "自然长短：跟着内容走，说多少、分不分条，看你此刻想说几件事。",
     maxBubbles: 3,
   },
   允许长段: {
     key: "long",
     tendency:
-      "允许长段：需要时可以在一条消息里把一段话说完整；闲聊时照样可以很短。条数和长短由你按此刻决定。",
+      "允许长段：需要时可以在一条消息里把一段话说完整，闲聊时照样可以很短。",
     maxBubbles: 3,
   },
 };
-export const SPEECH_LENGTH_OPTIONS = Object.keys(SPEECH_LENGTHS);
 // Labels a person may have typed before the setting became a choice.
 const SAVED_ALIASES = { 短句优先: "短句为主", 自然长短: "自然" };
 
