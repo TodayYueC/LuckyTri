@@ -289,7 +289,16 @@ test("观察和事实压缩不继承社交口吻或生活愿望，聊天保留�
     /一件事没有发生，不代表另一件事也没发生/,
   );
   assert.match(`${CREATIVE_GUIDE}\n${BOT_GUIDE}`, /片段本身就是可以回答的问题/);
-  assert.match(replyPrompt(nature, PROMPTS, "turn"), /通常只写一个气泡/);
+  // The owner's length setting reaches her as a tendency; the split stays hers.
+  assert.match(
+    replyPrompt(nature, PROMPTS, "turn"),
+    /【说话长度，主人设定的默认倾向】短句优先/,
+  );
+  assert.match(replyPrompt(nature, PROMPTS, "turn"), /不为凑条数拆句/);
+  assert.doesNotMatch(
+    replyPrompt(nature, PROMPTS, "turn"),
+    /通常只写一个气泡|默认把一轮回复写在一条消息里/,
+  );
   // Writing and bot-conversation rules come with the turn input only when
   // the conversation is about those things.
   assert.doesNotMatch(

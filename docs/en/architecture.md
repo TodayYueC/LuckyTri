@@ -4,6 +4,8 @@
 
 This document is for anyone who wants to read, change or extend LuckyTri. It answers three questions: how the code is layered, how a message travels through her life, and where to start when you want to add something.
 
+Every design here serves the [final vision](vision.md#the-final-vision): she is still made of code and models, but her judgments should not have to find their answers only in the original design; they should come more and more from her own experience and choices.
+
 ## One picture
 
 ```mermaid
@@ -136,13 +138,13 @@ Nothing above the core changes. The connection option in settings and the readin
 
 ## Test layout
 
-| Command | What it covers |
-| --- | --- |
-| `npm test` | All backend tests, including the deterministic "life simulation" |
-| `npm run test:clock` | The suite run with the real clock moved 60 days back and 400 days ahead |
-| `npm run test:ui` | Browser tests: smoke, the little world, navigation, time, performance, search, English interface |
-| `npm run format:check` | Prettier check |
-| `tests/repo-hygiene.test.js` | Repository hygiene: no keys, instance data, local paths or third-party connector names |
+| Command                      | What it covers                                                                                   |
+| ---------------------------- | ------------------------------------------------------------------------------------------------ |
+| `npm test`                   | All backend tests, including the deterministic "life simulation"                                 |
+| `npm run test:clock`         | The suite run with the real clock moved 60 days back and 400 days ahead                          |
+| `npm run test:ui`            | Browser tests: smoke, the little world, navigation, time, performance, search, English interface |
+| `npm run format:check`       | Prettier check                                                                                   |
+| `tests/repo-hygiene.test.js` | Repository hygiene: no keys, instance data, local paths or third-party connector names           |
 
 ## Conventions
 

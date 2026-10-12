@@ -43,9 +43,11 @@ const LEGACY = {
   SILENT: "silent",
 };
 
-export function maxBubbles(choice, snapshot) {
+// A ceiling on how many messages one turn may send, never a target. The
+// owner's length setting moves it; someone here asking for one message wins.
+export function maxBubbles(choice, snapshot, speech) {
   if (choice !== "speak") return 1;
-  return prefersSingleBubble(snapshot || {}) ? 1 : 3;
+  return prefersSingleBubble(snapshot || {}) ? 1 : speech?.maxBubbles || 3;
 }
 
 export function joinBubbleParts(parts) {
@@ -346,7 +348,7 @@ function liftMisplaced(raw, trace) {
   return out;
 }
 
-export function normalizeTurn(raw, snapshot, trace) {
+export function normalizeTurn(raw, snapshot, trace, { speech } = {}) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw))
     throw SyntaxError("回合输出不是 JSON 对象");
   const known = new Set((snapshot.messages || []).map((m) => m.id));
@@ -396,13 +398,21 @@ export function normalizeTurn(raw, snapshot, trace) {
       "这是一句完整回应，按正常发言保留，不为短反应标签改写原意",
     );
   }
-  const bubbleLimit = maxBubbles(choice, snapshot);
+  const bubbleLimit = maxBubbles(choice, snapshot, speech);
   if (bubbles.length > bubbleLimit) {
     if (choice === "speak" && bubbleLimit === 1) {
       bubbles = [joinBubbleParts(bubbles)];
       trace?.steps?.push("根据对方的偏好，把连续补充合成一条完整消息");
     } else {
-      bubbles = bubbles.slice(0, bubbleLimit);
+      // Fold the overflow into the last allowed message instead of losing
+      // what she meant to say.
+      bubbles =
+        choice === "speak"
+          ? [
+              ...bubbles.slice(0, bubbleLimit - 1),
+              joinBubbleParts(bubbles.slice(bubbleLimit - 1)),
+            ]
+          : bubbles.slice(0, bubbleLimit);
       trace?.steps?.push(
         choice === "react"
           ? "简短反应只留第一条气泡"

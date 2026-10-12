@@ -192,7 +192,7 @@ export function voiceGate(summary) {
 if (process.argv[1]?.endsWith("judge-voice.js")) {
   const baselineDir = resolve(option("--baseline", ""));
   const candidateDir = resolve(option("--candidate", ""));
-  const out = resolve(option("--out", "voice.json"));
+  const out = resolve(option("--out", "data/evaluations/voice.json"));
   const setName = option("--set", "quality-v1");
   const model = option("--model", "doubao-seed-2.1-pro");
   const only = option("--only", "").split(",").filter(Boolean);

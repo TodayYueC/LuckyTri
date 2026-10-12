@@ -60,6 +60,23 @@ const PROMPT_NAMES: Record<string, string> = localized({
 });
 
 const draft = ref<any>(null);
+// The saved value is kept as written. A wording typed before this became a
+// choice stays selectable, so opening the page never changes the setting.
+const LENGTHS = ["短句为主", "自然", "允许长段"];
+const lengthOptions = computed(() => {
+  const options = [
+    { value: "短句为主", label: t("短句优先") },
+    { value: "自然", label: t("自然") },
+    { value: "允许长段", label: t("允许长段") },
+  ];
+  const current = String(draft.value?.length ?? "");
+  return current && !LENGTHS.includes(current)
+    ? [
+        ...options,
+        { value: current, label: t("原来的写法：{v}", { v: current }) },
+      ]
+    : options;
+});
 const aliases = ref(String(studio.health.settings.aliases || ""));
 const versions = ref<any[]>([]);
 const editAllowance = ref<any>(null);
@@ -427,9 +444,20 @@ onUnmounted(() => {
                   :aria-label="facet.label"
                 />
               </div>
-              <label
-                >{{ t("说话长度") }}<input v-model="draft.length" name="length"
-              /></label>
+              <label>
+                {{ t("说话长度") }}
+                <Select
+                  v-model="draft.length"
+                  name="length"
+                  :aria-label="t('说话长度')"
+                  :options="lengthOptions"
+                />
+                <small>{{
+                  t(
+                    "只是默认倾向：分几条、每条多长，仍由 TA 按当时的情形决定。",
+                  )
+                }}</small>
+              </label>
             </fieldset>
 
             <fieldset class="rhythm-set">

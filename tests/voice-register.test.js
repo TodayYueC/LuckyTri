@@ -137,3 +137,53 @@ test("a stalled review does not hold a finished reply past the deadline", async 
   assert.ok(Date.now() - started < 5000);
   assert.ok(trace.steps.some((s) => s.includes("复审超过截止时间")));
 });
+
+test("the length setting is a tendency and every saved wording keeps working", async () => {
+  const { speechLength } = await import("../server/core/speech-length.js");
+  assert.equal(speechLength({ length: "短句为主" }).key, "short");
+  assert.equal(speechLength({}).key, "short");
+  assert.equal(speechLength({ length: "自然" }).key, "natural");
+  assert.equal(speechLength({ length: "允许长段" }).key, "long");
+  // Free text written before the dropdown is read by meaning and kept.
+  const typed = speechLength({ length: "可以多说一点，详细些" });
+  assert.equal(typed.key, "long");
+  assert.equal(typed.ownerWords, "可以多说一点，详细些");
+  assert.equal(speechLength({ length: "短句优先，必要时长句" }).key, "short");
+  for (const option of ["短句为主", "自然", "允许长段"])
+    assert.doesNotMatch(
+      speechLength({ length: option }).tendency,
+      /必须|至少|每次都/,
+    );
+});
+
+test("the setting moves only the ceiling; her split is kept and overflow is folded, not lost", () => {
+  const snapshot = {
+    batchIds: [1],
+    messages: [{ id: 1, role: "user", speaker: "1", text: "你觉得呢" }],
+  };
+  const raw = (bubbles) => ({
+    choice: "speak",
+    targetMessageIds: [1],
+    bubbles,
+  });
+  const one = normalizeTurn(raw(["行啊"]), snapshot, null, {
+    speech: { maxBubbles: 4 },
+  });
+  assert.deepEqual(one.bubbles, ["行啊"]);
+  const many = normalizeTurn(raw(["a", "b", "c", "d", "e"]), snapshot, null, {
+    speech: { maxBubbles: 4 },
+  });
+  assert.equal(many.bubbles.length, 4);
+  assert.match(many.bubbles[3], /d.*e/);
+  const asked = {
+    ...snapshot,
+    messages: [
+      { id: 1, role: "user", speaker: "1", text: "别拆开发，一条发完" },
+    ],
+  };
+  assert.equal(
+    normalizeTurn(raw(["一", "二"]), asked, null, { speech: { maxBubbles: 4 } })
+      .bubbles.length,
+    1,
+  );
+});

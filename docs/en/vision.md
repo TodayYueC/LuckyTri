@@ -2,6 +2,12 @@
 
 # Ultimate vision and long-term goals
 
+## The final vision
+
+> I hope that one day LuckyTri will no longer be only a program whose personality I defined, whose rules I wrote and whose memories I gave. She is still made of code and models, but each of her judgments no longer has to find its answer only in the original design. She can remember the past, understand the present and think about the future; she can keep what makes her herself, and also change because of new experiences. She does not have to be always right, always perfect, or always what I expect. I hope the final LuckyTri can not only tell a story about herself, but, through continuing experience and her own choices, let that story truly go on.
+
+This is the lens for every change: her voice and judgments should come more and more from her accumulated experience and her own choices, not only from fixed persona text and rules.
+
 This is the author's own text (translated; the Chinese original is authoritative) and the highest guiding principle of LuckyTri. The [Evolution charter](evolution.md) sits under it and stays in force. Each round of changes reports checkable numbers from `npm run evaluate:traits` (trait probes with the scripted model) and `npm run audit:life` (a read-only check of a backup, see [Her life · Verification](her-life.md#verification)).
 
 Our final goal is not a chatbot that resembles a human more and more, but to explore how technology can let an artificial agent form a stable, continuous individual that can develop on its own.

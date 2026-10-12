@@ -1,3 +1,4 @@
+import { speechLength } from "./speech-length.js";
 import { parseSessionKey } from "../channels/session-key.js";
 import { initiativeContext, initiativeSnapshot } from "./initiative-context.js";
 import { withFallback } from "./model-manager.js";
@@ -630,6 +631,7 @@ export class TurnProcessor {
         return finish("stale", "读房间时又有新话，并入下一批");
       }
       lap("checks");
+      const speech = speechLength(nature);
       let turn;
       try {
         turn = normalizeTurn(
@@ -652,6 +654,7 @@ export class TurnProcessor {
           ),
           snapshot,
           trace,
+          { speech },
         );
         if (generationImages.length)
           markVisionSeen(

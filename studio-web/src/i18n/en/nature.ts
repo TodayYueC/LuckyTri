@@ -80,6 +80,12 @@ export default {
   性格刻度: "Character scales",
   "{label}刻度": "{label} scale",
   说话长度: "Speech length",
+  短句优先: "Short sentences first",
+  自然: "Natural",
+  允许长段: "Long passages allowed",
+  "原来的写法：{v}": "As written before: {v}",
+  "只是默认倾向：分几条、每条多长，仍由 TA 按当时的情形决定。":
+    "Only a default tendency: how many messages and how long each one is are still TA's call in the moment.",
   作息: "Daily rhythm",
   "TA 会睡觉：睡着时不看群，被私聊或 @ 会等醒来再看（危机消息除外）":
     "TA sleeps: while asleep she does not read groups, and a private message or @-mention waits until she wakes (crisis messages excepted)",

@@ -5,7 +5,7 @@
 //   node scripts/dev/quality-blind-samples.js --judge <judge.json> --out <文件.md> \
 //     --names main,BotRina [--count 5] [--seed 13]
 import { readFileSync, writeFileSync } from "node:fs";
-import { scenes } from "./quality-set/v1.js";
+import { loadSet } from "./quality-sets.js";
 import { sceneText } from "./quality-scene-text.js";
 
 const args = process.argv.slice(2);
@@ -13,6 +13,13 @@ const option = (name, fallback) => {
   const at = args.indexOf(name);
   return at === -1 ? fallback : args[at + 1];
 };
+const scenes = (
+  await Promise.all(
+    option("--set", "quality-v1")
+      .split(",")
+      .map(async (name) => (await loadSet(name)).scenes),
+  )
+).flat();
 const { results } = JSON.parse(readFileSync(option("--judge"), "utf8"));
 const [baseName, candName] = option("--names", "基线,候选").split(",");
 const count = Number(option("--count", "5"));

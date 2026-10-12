@@ -203,7 +203,10 @@ export function normalizeResponse(result, decision, fallback = "嗯") {
     bubbles =
       maxBubbles === 1
         ? [joinBubbleParts(bubbles)]
-        : bubbles.slice(0, maxBubbles);
+        : [
+            ...bubbles.slice(0, maxBubbles - 1),
+            joinBubbleParts(bubbles.slice(maxBubbles - 1)),
+          ];
   if (!bubbles.length) bubbles = [fallback];
   return {
     ...(result && typeof result === "object" ? result : {}),

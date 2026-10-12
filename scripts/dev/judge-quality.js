@@ -7,7 +7,7 @@
 //     --out <文件.json> [--model doubao-seed-2.1-pro] [--only A1,B2] [--seed 13]
 import { readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
-import { scenes, VERSION } from "./quality-set/v1.js";
+import { loadSet } from "./quality-sets.js";
 import { combineOrders, gate, median } from "./quality-gate.js";
 import { sceneText } from "./quality-scene-text.js";
 
@@ -17,6 +17,7 @@ const option = (name, fallback) => {
   const at = args.indexOf(name);
   return at === -1 ? fallback : args[at + 1];
 };
+const { scenes, VERSION } = await loadSet(option("--set", "quality-v1"));
 const baselineDir = resolve(option("--baseline", ""));
 const candidateDir = resolve(option("--candidate", ""));
 const out = resolve(option("--out", "data/evaluations/quality/judge.json"));

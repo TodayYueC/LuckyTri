@@ -29,6 +29,10 @@ data/
 *.bundle
 reports/
 evaluations/
+# Evaluation outputs, judge transcripts and caches, wherever a script puts them
+scripts/dev/**/results/
+*.jsonl
+.cache/
 
 # Secrets stay on the machine; only the empty template is tracked
 .env

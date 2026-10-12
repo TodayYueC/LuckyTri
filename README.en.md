@@ -19,6 +19,7 @@
   <a href="docs/en/connect.md">Connect QQ</a> ·
   <a href="docs/en/her-life.md">Her life</a> ·
   <a href="docs/en/architecture.md">Architecture</a> ·
+  <a href="docs/en/vision.md">Vision</a> ·
   <a href="docs/en/CHANGELOG.md">Changelog</a> ·
   <a href=".github/SECURITY.md">Security</a>
 </p>
@@ -210,17 +211,18 @@ The database, chat records, model keys and backups live locally in the ignored `
 
 ## Documentation
 
-| Document                                                     | Contents                                                                      |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| [Getting started](docs/en/guide.md)                          | From launching to letting her join her first conversation                     |
-| [Connect QQ](docs/en/connect.md)                             | The two connection ways: comparison, steps and differences                    |
-| [Her life](docs/en/her-life.md)                              | The unified mind: rhythm, solitude, diary, review, tact and boundaries        |
-| [Architecture and extension points](docs/en/architecture.md) | Code layers, and how to add a channel, a mind module, a page or a translation |
-| [Time, activities and works](docs/en/time.md)                | Her own activities, plans, works and sharing                                  |
-| [Chat style](docs/en/chat-style.md)                          | How she speaks and the checks before sending                                  |
-| [Studio design](docs/en/webui.md)                            | Design and upkeep of "TA's little world"                                      |
-| [Backup and recovery](docs/en/recovery.md)                   | Backups, migrations, verification and restore                                 |
-| [Changelog](docs/en/CHANGELOG.md)                            | What changed in each version                                                  |
+| Document                                                     | Contents                                                                                           |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| [Getting started](docs/en/guide.md)                          | From launching to letting her join her first conversation                                          |
+| [Connect QQ](docs/en/connect.md)                             | The two connection ways: comparison, steps and differences                                         |
+| [Her life](docs/en/her-life.md)                              | The unified mind: rhythm, solitude, diary, review, tact and boundaries                             |
+| [Ultimate vision](docs/en/vision.md)                         | The highest guiding principle: her judgments come, in the end, from her own experience and choices |
+| [Architecture and extension points](docs/en/architecture.md) | Code layers, and how to add a channel, a mind module, a page or a translation                      |
+| [Time, activities and works](docs/en/time.md)                | Her own activities, plans, works and sharing                                                       |
+| [Chat style](docs/en/chat-style.md)                          | How she speaks and the checks before sending                                                       |
+| [Studio design](docs/en/webui.md)                            | Design and upkeep of "TA's little world"                                                           |
+| [Backup and recovery](docs/en/recovery.md)                   | Backups, migrations, verification and restore                                                      |
+| [Changelog](docs/en/CHANGELOG.md)                            | What changed in each version                                                                       |
 
 ## Development and tests
 

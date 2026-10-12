@@ -6,12 +6,17 @@
 // EMBEDDING_API_KEY). One JSON file per scene, so a run can be resumed and
 // split across processes:
 //
-//   node scripts/dev/evaluate-quality.js --arm botrina --out <目录> [--shard 1/4] [--only A1,B2]
+//   node scripts/dev/evaluate-quality.js --arm botrina --out <目录> [--set life-v1] [--shard 1/4] [--only A1,B2]
+//
+// life-v1 scenes also seed other chats, her own views (citing the line where
+// she said them), a lingering mood, things she is waiting for and bound bots,
+// all through the project's own interfaces. Anything those interfaces refuse
+// is recorded in result.seeding.rejected instead of being forced in.
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { liveWorld, spend } from "./live-world.js";
 import { persistReply } from "../../server/core/message-manager.js";
-import { scenes, person, VERSION } from "./quality-set/v1.js";
+import { loadSet } from "./quality-sets.js";
 import { objective } from "./quality-checks.js";
 
 const args = process.argv.slice(2);
@@ -26,6 +31,9 @@ const [shard, shards] = option("--shard", "1/1").split("/").map(Number);
 // --sample 2 writes <id>~2.json: an extra draw for the objective majority.
 const sample = Number(option("--sample", "1"));
 const MIN = 60000;
+const { scenes, person, VERSION } = await loadSet(
+  option("--set", "quality-v1"),
+);
 
 async function run(scene) {
   const w = await liveWorld({ start: scene.start });
@@ -36,19 +44,79 @@ async function run(scene) {
   w.open(session, scene.kind === "group" ? "朋友群" : scene.with);
   const now = w.now();
   const at = (minutes) => now - minutes * MIN;
+  const rejected = [];
+  // "group" and "private:<名字>" name chats in the scene; nothing means here.
+  const chat = (spec) => {
+    if (!spec) return session;
+    if (spec === "group") return "group:1";
+    const m = /^private:(.+)$/.exec(spec);
+    return m ? `private:${person(m[1])[0]}` : spec;
+  };
+  const opened = new Set([session]);
+  const open = (where, title) => {
+    if (opened.has(where)) return;
+    opened.add(where);
+    w.open(where, where === "group:1" ? "朋友群" : title || where);
+  };
+  for (const r of scene.relationships || []) {
+    const [uid, who] = person(r.who);
+    w.mind.relationships.save(
+      {
+        subjectId: uid,
+        name: who,
+        kind: r.kind || "human",
+        peerRole: r.peerRole || "朋友",
+        note: r.note || "",
+      },
+      at(r.minutesBefore ?? 30 * 24 * 60),
+    );
+  }
+  // Every seeded line, so her views can cite what she actually said.
+  let lastSeq = null;
+  const append = w.system.repo.append.bind(w.system.repo);
+  w.system.repo.append = (m) => (lastSeq = append(m));
+  let seeded = 0;
+  const writeLines = (where, kind, lines) => {
+    const seqs = new Map();
+    lines
+      .map((line, index) => ({ line, index }))
+      .sort((a, b) => b.line[0] - a.line[0])
+      .forEach(({ line: [minutes, who, text, extra = {}], index }) => {
+        if (who === "me")
+          persistReply(
+            w.system.repo,
+            { sessionId: where, kind, accountId: "99999" },
+            fill(text),
+            `seed-${++seeded}`,
+            at(minutes),
+          );
+        else {
+          const [uid, nick] = person(who);
+          w.say(where, uid, fill(text), {
+            name: nick,
+            time: at(minutes),
+            ...(extra.mention ? { mentioned: true } : {}),
+          });
+        }
+        seqs.set(index, { seq: lastSeq, who, minutes });
+      });
+    return seqs;
+  };
   const ids = [];
+  const saidSeqs = [];
   for (const m of scene.memories || []) {
-    const where = !m.session || m.session === "group" ? session : m.session;
-    if (where !== session) w.open(where, where);
+    const where = chat(m.session);
+    open(where, m.session);
     const [uid, who] = person(m.who);
     let source = null;
     const [saidUid, saidWho] = m.saidBy ? person(m.saidBy[0]) : [uid, who];
     const saidText = m.saidBy ? m.saidBy[1] : m.said;
     if (saidText) {
-      const e = w.say(where, saidUid, saidText, {
+      const e = w.say(where, saidUid, fill(saidText), {
         name: saidWho,
         time: at(m.minutesBefore),
       });
+      saidSeqs.push({ who: m.who, seq: e.seq });
       source = {
         id: e.seq,
         text: saidText,
@@ -76,27 +144,60 @@ async function run(scene) {
         "INSERT OR IGNORE INTO mind_links(from_id,to_id,relation,created,sources) VALUES (?,?,'conflicts',?,?)",
       )
       .run(`fact:${ids[j]}`, `fact:${ids[i]}`, now, "[]");
-  let seeded = 0;
-  for (const [minutes, who, text, extra = {}] of [
-    ...(scene.history || []),
-  ].sort((a, b) => b[0] - a[0])) {
-    if (who === "me")
-      persistReply(
-        w.system.repo,
-        { sessionId: session, kind: scene.kind, accountId: "99999" },
-        fill(text),
-        `seed-${++seeded}`,
-        at(minutes),
-      );
-    else {
-      const [uid, nick] = person(who);
-      w.say(session, uid, fill(text), {
-        name: nick,
-        time: at(minutes),
-        ...(extra.mention ? { mentioned: true } : {}),
-      });
-    }
+  for (const other of scene.otherSessions || []) {
+    const where = chat(
+      other.kind === "group" ? "group" : `private:${other.with}`,
+    );
+    open(where, other.with);
+    writeLines(
+      where,
+      other.kind === "group" ? "group" : "private",
+      other.history || [],
+    );
   }
+  const lines = writeLines(session, scene.kind, scene.history || []);
+  for (const v of scene.self || []) {
+    const line = lines.get(v.fromLine);
+    const cited = line?.who === "me" ? line : null;
+    const r = w.mind.self.propose(
+      { kind: v.kind, content: v.content, sources: cited ? [cited.seq] : [] },
+      { origin: "solitude", time: cited ? at(cited.minutes) + 1000 : at(60) },
+    );
+    if (r?.rejected) rejected.push({ self: v.content, reason: r.rejected });
+  }
+  if (scene.mood) {
+    const r = w.mind.affect.feel({
+      feeling: scene.mood.feeling,
+      intensity: scene.mood.intensity,
+      valence: scene.mood.valence,
+      cause: scene.mood.cause || "",
+      session,
+      time: at(scene.mood.minutesBefore ?? 60),
+    });
+    if (!r) rejected.push({ mood: scene.mood.feeling, reason: "未记录" });
+  }
+  for (const a of scene.anticipations || []) {
+    const [uid] = person(a.who);
+    // Cite the newest line from that person; a wait needs its source.
+    const from = [...lines.values()]
+      .filter((l) => l.who === a.who)
+      .sort((x, y) => x.minutes - y.minutes)[0];
+    const said = saidSeqs.find((s) => s.who === a.who);
+    const source = from?.seq || said?.seq;
+    const r = w.mind.anticipations.add({
+      kind: a.kind,
+      subject: uid,
+      session,
+      content: a.content,
+      due: a.due,
+      sources: source ? [source] : [],
+      origin: "memory",
+      time: from ? at(from.minutes) + 1000 : at(60),
+    });
+    if (r?.rejected)
+      rejected.push({ anticipation: a.content, reason: r.rejected });
+  }
+  w.system.repo.append = append;
   await w.mind.recall.prepare(now);
   const events = scene.final.map(([who, text, extra = {}], i, all) => {
     const [uid, nick] = person(who);
@@ -115,7 +216,8 @@ async function run(scene) {
     error = String(e?.message || e).slice(0, 200);
   }
   const wallMs = Date.now() - started;
-  const reply = w.sent.map((s) => s.text).join(" / ");
+  const bubbles = w.sent.map((s) => s.text);
+  const reply = bubbles.join(" / ");
   const trace = w
     .traces()
     .findLast((t) => t.sessionId === session && t.mode === "live");
@@ -137,6 +239,7 @@ async function run(scene) {
     id: scene.id,
     cat: scene.cat,
     reply,
+    bubbles,
     silent: !reply,
     choice: decision.choice || "",
     targets,
@@ -150,6 +253,7 @@ async function run(scene) {
       .map((r) => ({ systemChars: r.systemChars, promptChars: r.promptChars })),
     spend: spend(w.requests.slice(before)),
     seedSpend: spend(w.requests.slice(0, before)),
+    seeding: { rejected },
   };
   result.checks = objective(scene, result);
   w.close();
@@ -167,7 +271,20 @@ for (const scene of list) {
     sample > 1 ? `${scene.id}~${sample}.json` : `${scene.id}.json`,
   );
   if (existsSync(file)) continue;
-  const result = await run(scene);
+  // Seeding embeds every line; a rate-limited provider gets a few patient
+  // retries of the whole scene rather than a half-seeded world.
+  let result = null;
+  for (let attempt = 1; !result; attempt++) {
+    try {
+      result = await run(scene);
+    } catch (e) {
+      if (attempt >= 4) throw e;
+      console.error(
+        `${scene.id}\t重试 ${attempt}: ${String(e?.message || e).slice(0, 80)}`,
+      );
+      await new Promise((r) => setTimeout(r, 15000 * attempt));
+    }
+  }
   writeFileSync(file, JSON.stringify(result, null, 2));
   console.log(
     `${scene.id}\t${result.wallMs}ms\t${result.spend.requests}req\t${result.checks.passed}/${result.checks.total}\t${result.reply.slice(0, 60)}`,
