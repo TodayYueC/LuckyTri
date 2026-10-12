@@ -1,4 +1,4 @@
-import { PRIVATELY_KNOWN } from "./discretion.js";
+import { PRIVATELY_KNOWN, withheldMemory } from "./discretion.js";
 import { randomUUID } from "node:crypto";
 import {
   parseSessionKey,
@@ -262,7 +262,9 @@ export class MemoryManager {
         subject: m.subject,
         content:
           forSpeech && !this.permission(m, session, cutoff).disclose
-            ? "（关于此人的一条受限记忆；没有在这里复述具体内容的授权）"
+            ? withheldMemory(m.content, [
+                ...new Set([...saidBy.values()].flatMap((t) => [...t])),
+              ])
             : m.content,
         type: m.type,
         confidence: m.confidence,

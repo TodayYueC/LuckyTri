@@ -1,3 +1,5 @@
+import { lexicalTerms } from "../../knowledge/retrieval.js";
+import { PRIVATELY_KNOWN, withheldMemory } from "../discretion.js";
 import { interestTerms } from "../attention.js";
 import { dot } from "../../core/embedding.js";
 import { agoLabel } from "../clock.js";
@@ -609,7 +611,12 @@ export class Recall {
         subject: m.subject,
         content:
           forSpeech && !permission.disclose
-            ? "（关于此人的一条受限记忆；没有在这里复述具体内容的授权）"
+            ? withheldMemory(
+                m.content,
+                rows
+                  .filter((r) => r.role !== "assistant")
+                  .flatMap((r) => lexicalTerms(String(r.text || ""))),
+              )
             : m.content,
         type: m.type,
         confidence: m.confidence,
@@ -639,10 +646,22 @@ export class Recall {
             }
           : {}),
         ...(m.discretion === "private" && !local
-          ? { discretion: "私下知道的，不要当众说出口，也不要说出从哪听来" }
+          ? { discretion: PRIVATELY_KNOWN }
           : {}),
         ...memory.conflictNote(m, session, now, forSpeech),
       });
+    }
+    // Meaning search can miss a privately learned fact about someone who is
+    // not here, even when people here are saying its very words. The word
+    // path still finds it; it joins so that she knows what she knows.
+    if (forSpeech) {
+      const have = new Set(out.map((m) => m.id));
+      for (const m of memory.retrieve(session, rows, now, {
+        people,
+        touch: false,
+        forSpeech,
+      }))
+        if (m.discretion && !have.has(m.id) && out.length < limit) out.push(m);
     }
     return out;
   }

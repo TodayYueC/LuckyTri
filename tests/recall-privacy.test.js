@@ -42,7 +42,7 @@ test("按意思检索也守分寸：保密的不出私聊，私下的只作内�
   const hint = group.find((m) => m.id === quiet);
   assert.ok(hint, "私下知道的事可以想起");
   assert.match(hint.content, /受限记忆/);
-  assert.match(hint.discretion, /不要当众说出口/);
+  assert.match(hint.discretion, /当众不说内容/);
   w.mind.memory.setPermission(quiet, {
     session: "group:1",
     recall: true,

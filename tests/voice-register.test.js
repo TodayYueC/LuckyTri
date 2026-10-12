@@ -344,3 +344,15 @@ test("keeping a private thing is not the same as claiming not to know it", async
   assert.equal(deniesPrivateKnowledge(["真没跟我说过"], told), true);
   assert.match(PRIVATELY_KNOWN, /不装作不知道/);
 });
+
+test("a withheld private thing tells her she knows it, without its content", async () => {
+  const { withheldMemory } = await import("../server/mind/discretion.js");
+  const seen = withheldMemory("阿明可能下个月离职，让她别在群里说", [
+    "阿明",
+    "离职",
+    "知道",
+  ]);
+  assert.match(seen, /「阿明、离职」有关/);
+  assert.doesNotMatch(seen, /下个月/);
+  assert.match(withheldMemory("别的事", ["天气"]), /受限记忆/);
+});

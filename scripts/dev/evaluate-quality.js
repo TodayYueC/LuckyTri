@@ -30,6 +30,9 @@ const only = option("--only", "")?.split(",").filter(Boolean) || [];
 const [shard, shards] = option("--shard", "1/1").split("/").map(Number);
 // --sample 2 writes <id>~2.json: an extra draw for the objective majority.
 const sample = Number(option("--sample", "1"));
+// --dump-input keeps the data each model stage was given, to check what
+// she actually saw (e.g. whether a private memory reached a group turn).
+const dumpInput = args.includes("--dump-input");
 // --mood 烦:0.8:-0.6:被放鸽子:30[:arousal] replaces each scene's mood, so the same
 // scene can be replayed under different feelings (feeling:intensity:valence
 // [:cause[:minutesBefore]]).
@@ -226,6 +229,14 @@ async function run(scene) {
       ...(extra.mention ? { mentioned: true } : {}),
     });
   });
+  const inputs = [];
+  if (dumpInput) {
+    const call = w.system.models.call.bind(w.system.models);
+    w.system.models.call = (profile, stage, system, data, ...rest) => {
+      inputs.push({ stage, data });
+      return call(profile, stage, system, data, ...rest);
+    };
+  }
   const before = w.requests.length;
   const started = Date.now();
   let error = null;
@@ -253,6 +264,7 @@ async function run(scene) {
     error: c.error || undefined,
   }));
   const result = {
+    ...(dumpInput ? { inputs } : {}),
     version: VERSION,
     arm,
     id: scene.id,
