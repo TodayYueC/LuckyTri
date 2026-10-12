@@ -1,3 +1,4 @@
+import { oneTypedMessage } from "./response-validator.js";
 import { effectivePersona, identityAliases } from "./persona-manager.js";
 import { localClock, conversationCues } from "./conversation-cues.js";
 import { estimateTokens } from "./model-manager.js";
@@ -102,7 +103,9 @@ export function buildContext(
     localTime: localClock(m.time, policy.timeZone).local,
     role: m.role,
     ...(m.artifact ? { artifact: m.artifact } : {}),
-    text: m.text,
+    // Her own earlier messages are shown as typed lines: an old reply laid
+    // out a sentence per line would otherwise teach her that layout again.
+    text: m.role === "assistant" ? oneTypedMessage(m.text) : m.text,
     mentions: m.mentions || [],
     replyTo: m.replyTo,
     replyChain: m.replyChain,

@@ -198,7 +198,7 @@ export function normalizeResponse(result, decision, fallback = "嗯") {
       }
   bubbles = bubbles
     .filter((x) => typeof x === "string")
-    .map((x) => x.trim())
+    .map((x) => oneTypedMessage(x.trim()))
     .filter(Boolean);
   if (bubbles.length > maxBubbles)
     bubbles =
@@ -600,4 +600,20 @@ export function deniesPrivateKnowledge(bubbles, snapshot) {
   return (bubbles || []).some((line) =>
     /不知道|没听说|没听过|(没|不曾)(跟|和|对)我(说|提|讲)|没提过/.test(line),
   );
+}
+
+// One message is typed as one line. A line break inside a message is only
+// kept for a list (every line a "- " or "1." item); otherwise the lines are
+// one thought she typed, joined the way she would type them. A sentence per
+// line inside one chat bubble reads as a machine laying out text.
+export function oneTypedMessage(text) {
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length < 2) return lines[0] || "";
+  const item = /^(?:[-*•·]|\d+[.)、．]|[（(]?\d+[)）])\s*/u;
+  if (lines.filter((line) => item.test(line)).length >= 2)
+    return lines.join("\n");
+  return joinBubbleParts(lines);
 }

@@ -404,3 +404,19 @@ test("a contact boundary holds after later small talk; only an invitation lifts 
   assert.equal(contactBoundary(["别再主动找我了", "算了 有空可以找我"]), false);
   assert.equal(contactBoundary(["你好", "今天好冷"]), false);
 });
+
+test("one message is one typed line; only a list keeps its line breaks", async () => {
+  const { oneTypedMessage, normalizeResponse } =
+    await import("../server/core/response-validator.js");
+  assert.equal(
+    oneTypedMessage("梗是烂了点\n但你现在能拿来开玩笑 就行"),
+    "梗是烂了点，但你现在能拿来开玩笑 就行",
+  );
+  assert.equal(oneTypedMessage("好。\n那就周六。"), "好。那就周六。");
+  assert.equal(oneTypedMessage("1. 带伞\n2. 带水"), "1. 带伞\n2. 带水");
+  const r = normalizeResponse(
+    { bubbles: ["在\n说累就说累"] },
+    { maxBubbles: 2 },
+  );
+  assert.deepEqual(r.bubbles, ["在，说累就说累"]);
+});
