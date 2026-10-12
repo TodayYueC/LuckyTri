@@ -1,3 +1,4 @@
+import { PRIVATELY_KNOWN } from "../mind/discretion.js";
 import { replyFocus } from "./conversation-cues.js";
 
 // How long a finished reply may wait for its reviews.
@@ -166,6 +167,9 @@ export class ReplyDelivery {
       )
         ? ["在。"]
         : []),
+      // When what went wrong is that she holds someone's private thing, the
+      // honest short line is that she will not tell it here, not "I'm unsure".
+      ...(holdsPrivate(snapshot) ? ["这是别人私下的事，我不在这儿讲。"] : []),
       "这句我还没理清楚，先不乱说。",
       "我还没想明白。",
     ];
@@ -753,4 +757,20 @@ export function buriedTarget(batch, targetIds, session) {
     .slice(at + 1)
     .filter((m) => m.userId !== batch[at].userId);
   return after.length >= 3 ? String(batch[at].platformId) : "";
+}
+
+// Whether something learned in private, and touched by what is said here,
+// is in front of her this turn.
+export function holdsPrivate(snapshot) {
+  let seen = "";
+  try {
+    seen = JSON.stringify([snapshot?.memories || [], snapshot?.inner || {}]);
+  } catch {
+    return false;
+  }
+  // Only a private thing that what is being said here actually touches.
+  return (
+    (seen.includes(PRIVATELY_KNOWN) && seen.includes("和这里刚说到的「")) ||
+    seen.includes('"maySayAloud":false')
+  );
 }

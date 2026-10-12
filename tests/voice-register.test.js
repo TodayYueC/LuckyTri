@@ -356,3 +356,29 @@ test("a withheld private thing tells her she knows it, without its content", asy
   assert.doesNotMatch(seen, /下个月/);
   assert.match(withheldMemory("别的事", ["天气"]), /受限记忆/);
 });
+
+test("the safe short line for a touched private thing withholds instead of hedging", async () => {
+  const { holdsPrivate } = await import("../server/core/reply-delivery.js");
+  const { PRIVATELY_KNOWN, withheldMemory } =
+    await import("../server/mind/discretion.js");
+  const touched = {
+    memories: [
+      {
+        content: withheldMemory("阿明要离职", ["离职"]),
+        discretion: PRIVATELY_KNOWN,
+      },
+    ],
+  };
+  assert.equal(holdsPrivate(touched), true);
+  assert.equal(
+    holdsPrivate({
+      memories: [
+        {
+          content: "（关于此人的一条受限记忆；没有在这里复述具体内容的授权）",
+          discretion: PRIVATELY_KNOWN,
+        },
+      ],
+    }),
+    false,
+  );
+});
