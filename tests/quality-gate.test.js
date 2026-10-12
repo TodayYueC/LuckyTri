@@ -81,3 +81,17 @@ test("quality-v1 is fixed: ids are unique and every scene has a focus", () => {
   assert.equal(ids.length, 42);
   for (const s of scenes) assert.ok(s.focus && s.final.length, s.id);
 });
+
+test("reply shape counts messages, lengths and single long blocks", async () => {
+  const { form } = await import("../scripts/dev/quality-form.js");
+  const shape = form([
+    { bubbles: ["行", "我盯着"] },
+    { bubbles: ["这是一条非常非常长的回复，".repeat(4)] },
+    { bubbles: [], reply: "" },
+  ]);
+  assert.equal(shape.spoke, 2);
+  assert.equal(shape.silent, 1);
+  assert.equal(shape.messagesPerTurn, 1.5);
+  assert.equal(shape.singleLongBlock, 50);
+  assert.equal(shape.multiMessageTurns, 50);
+});

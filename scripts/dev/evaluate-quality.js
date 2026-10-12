@@ -278,11 +278,13 @@ for (const scene of list) {
     try {
       result = await run(scene);
     } catch (e) {
-      if (attempt >= 4) throw e;
+      if (attempt >= 8) throw e;
       console.error(
         `${scene.id}\t重试 ${attempt}: ${String(e?.message || e).slice(0, 80)}`,
       );
-      await new Promise((r) => setTimeout(r, 15000 * attempt));
+      await new Promise((r) =>
+        setTimeout(r, Math.min(120000, 30000 * attempt)),
+      );
     }
   }
   writeFileSync(file, JSON.stringify(result, null, 2));

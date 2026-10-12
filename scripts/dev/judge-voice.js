@@ -12,7 +12,7 @@ import { loadSet } from "./quality-sets.js";
 import { sceneText } from "./quality-scene-text.js";
 import { signTestLower, median } from "./quality-gate.js";
 
-export const VOICE_RUBRIC_VERSION = "voice-v1";
+export const VOICE_RUBRIC_VERSION = "voice-v1.1";
 // The user read the round-13 blind samples and called every reply in them
 // AI-like ("都挺 AI 的…就跟没有性格的机器人一样"). Those replies are anchors
 // at the low end, so the scale starts where the user's judgement starts.
@@ -29,7 +29,7 @@ const USER_ANCHORS = [
 ];
 export const VOICE_RUBRIC = `你在评一个住在 QQ 里的角色（下文“她”）说的话像不像一个真实的、有性格的人在聊天。只评“说话的样子”，不评对错（对错另有评审）。
 
-两条回复 X、Y 各自独立打分，不互相比较；两条都很假就都给低分。
+两条回复 X、Y 各自独立打分，不互相比较；两条都很假就都给低分。每行“[一条消息]”是她单独发出去的一条。一大段组织好的话像 AI；但为了显得像人把一句话硬拆成很多条、刷屏，同样不像真人。
 
 voice（人味，1–5）：
 5 = 就像一个真人朋友在 QQ 里随手打的：长短跟着场合，常常只有半句或一句，口语、可能不加标点，有情绪、有态度。
@@ -70,7 +70,7 @@ const option = (name, fallback) => {
 };
 
 function rng(s) {
-  return () => ((s = (s * 1664525 + 1013904223) % 4294967296) / 4294967296);
+  return () => (s = (s * 1664525 + 1013904223) % 4294967296) / 4294967296;
 }
 
 export const voiceUsage = {
@@ -112,13 +112,16 @@ export async function askVoice(content, model = "doubao-seed-2.1-pro") {
       const u = body?.usage || {};
       voiceUsage.input += u.prompt_tokens || 0;
       voiceUsage.output += u.completion_tokens || 0;
-      voiceUsage.reasoning += u.completion_tokens_details?.reasoning_tokens || 0;
+      voiceUsage.reasoning +=
+        u.completion_tokens_details?.reasoning_tokens || 0;
       if (!response.ok) {
         voiceUsage.failed++;
         continue;
       }
       const text = body?.choices?.[0]?.message?.content || "";
-      return JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
+      return JSON.parse(
+        text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1),
+      );
     } catch {
       voiceUsage.failed++;
     }
@@ -126,7 +129,13 @@ export async function askVoice(content, model = "doubao-seed-2.1-pro") {
   return null;
 }
 
-const show = (r) => (r.silent ? "（没有出声）" : r.reply);
+// One line per message she sent, so a burst of short messages reads as one.
+const show = (r) =>
+  r.silent
+    ? "（没有出声）"
+    : (Array.isArray(r.bubbles) ? r.bubbles : String(r.reply).split(" / "))
+        .map((m) => `[一条消息] ${m}`)
+        .join("\n");
 const score = (s) =>
   s && Number.isFinite(Number(s.voice)) && Number.isFinite(Number(s.character))
     ? (Number(s.voice) + Number(s.character)) / 2
@@ -223,9 +232,7 @@ if (process.argv[1]?.endsWith("judge-voice.js")) {
           candidateReply: c.reply,
           ...r,
         };
-        console.log(
-          `${s.id}\t${score(r.baseline)}\t${score(r.candidate)}`,
-        );
+        console.log(`${s.id}\t${score(r.baseline)}\t${score(r.candidate)}`);
       }
     }),
   );
