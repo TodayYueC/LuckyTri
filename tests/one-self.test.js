@@ -67,3 +67,21 @@ test("私下的原话不会带进另一个群", (t) => {
   });
   assert.doesNotMatch(JSON.stringify(view.inner), /南区三号楼/);
 });
+
+test("熬了一整夜的累会体现在精力上，不再显示有精神", (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1");
+  const now = w.now();
+  w.mind.affect.feel({
+    feeling: "累",
+    intensity: 0.7,
+    valence: -0.2,
+    arousal: 0.15,
+    cause: "熬了一整夜",
+    session: "group:1",
+    time: now - 30 * MINUTE,
+  });
+  const state = w.mind.affect.state(now);
+  assert.notEqual(state.energyLabel, "有精神");
+});

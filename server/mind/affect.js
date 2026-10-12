@@ -196,7 +196,7 @@ export class Affect {
       if (batchAt !== null && row.created !== batchAt) apply(batchAt);
       batchAt = row.created;
       batchV += row.valence * row.intensity;
-      batchA += (row.arousal - BASELINE.arousal) * row.intensity * 0.5;
+      batchA += (row.arousal - BASELINE.arousal) * row.intensity;
       last = row;
     }
     apply(batchAt);
@@ -213,7 +213,9 @@ export class Affect {
       .get(now - 2 * HOUR, now).n;
     const energy = clamp(
       phase.energy +
-        (arousal - BASELINE.arousal) * 0.3 -
+        // How worn or wound up she feels is part of her energy: a night up
+        // must not read as "有精神" (round-19 probe).
+        (arousal - BASELINE.arousal) * 0.6 -
         Math.min(0.2, talked * 0.006) -
         Math.min(
           0.12,
