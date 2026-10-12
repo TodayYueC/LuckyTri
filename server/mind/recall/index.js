@@ -241,10 +241,17 @@ export class Recall {
     if (!pending.length) return 0;
     // The opening of an item carries its meaning; the rest is detail that
     // costs tokens without moving the vector much.
-    const vectors = await this.embedding.embed(
-      pending.map((row) => row.text.slice(0, 300)),
-      { purpose: "document" },
-    );
+    let vectors;
+    try {
+      vectors = await this.embedding.embed(
+        pending.map((row) => row.text.slice(0, 300)),
+        { purpose: "document" },
+      );
+    } catch {
+      // A busy or failing service leaves them for later; recall falls back
+      // to words meanwhile instead of the caller failing.
+      return 0;
+    }
     let saved = 0;
     pending.forEach((row, i) => {
       if (

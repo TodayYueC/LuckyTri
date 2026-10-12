@@ -420,3 +420,14 @@ test("换过向量模型后，只留当前和最近一套旧向量；当前那�
   assert.ok(count("old-b") > 0, "最近的一套旧向量留着，换回来不必重算");
   assert.ok(count(recall.profile()) > 0);
 });
+
+test("向量服务繁忙时补向量返回 0，不让调用方失败", async (t) => {
+  const { w } = vectorWorld(t);
+  w.open("group:1");
+  fact(w, "10001", "养了一只叫团子的猫");
+  w.mind.recall.embedding.embed = async () => {
+    throw Object.assign(new Error("向量接口失败 HTTP 429"), { status: 429 });
+  };
+  assert.equal(await w.mind.recall.embedPending({ now: w.now() }), 0);
+  assert.equal(await w.mind.recall.prepare(w.now()), 0);
+});
