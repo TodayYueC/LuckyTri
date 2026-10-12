@@ -4,5 +4,6 @@ export async function loadSet(name = "quality-v1") {
   if (name === "life-v1") return import("./quality-set/life-v1.js");
   if (name === "life-v1.1") return import("./quality-set/life-v1.1.js");
   if (name === "life-v1.2") return import("./quality-set/life-v1.2.js");
+  if (name === "len-v1") return import("./quality-set/len-v1.js");
   throw Error(`未知评测集 ${name}`);
 }
