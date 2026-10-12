@@ -83,9 +83,9 @@ export class Initiative {
           if (!row.subject) return true;
           const seen = this.db
             .prepare(
-              "SELECT 1 FROM core_events WHERE session_id=? AND role='user' AND payload LIKE ? LIMIT 1",
+              "SELECT 1 FROM core_events WHERE session_id=? AND role='user' AND json_extract(payload,'$.userId')=? LIMIT 1",
             )
-            .get(session, `%"userId":"${row.subject}"%`);
+            .get(session, String(row.subject));
           return !!seen;
         })
         .slice(0, 3)
@@ -322,6 +322,15 @@ export class Initiative {
     }
     return material;
   }
+  recentUserWords(session, limit = 50) {
+    return this.db
+      .prepare(
+        "SELECT payload FROM core_events WHERE session_id=? AND role='user' AND seq NOT IN (SELECT seq FROM mind_unlived) AND COALESCE(json_extract(payload,'$.simulated'),0)=0 ORDER BY seq DESC LIMIT ?",
+      )
+      .all(session, limit)
+      .map((row) => parse(row.payload, {}).text || "")
+      .reverse();
+  }
   blocked(session, now, settings) {
     if (!session || !this.life.chat.enabled(session, { simulated: false }))
       return { reason: "会话不可用", permanent: true };
@@ -332,18 +341,10 @@ export class Initiative {
         reason: "对方没有开启主动消息，等对方来找她",
         retryAt: now + 6 * HOUR,
       };
-    const lastUser = this.db
-      .prepare(
-        "SELECT time,payload FROM core_events WHERE session_id=? AND role='user' AND seq NOT IN (SELECT seq FROM mind_unlived) AND COALESCE(json_extract(payload,'$.simulated'),0)=0 ORDER BY seq DESC LIMIT 1",
-      )
-      .get(session);
-    const words = parse(lastUser?.payload, {}).text || "";
-    // Explicit contact boundaries are different from “this message needs no reply”.
-    if (
-      /(?:别|不要|不用)再?(?:主动)?(?:给我发消息|找我|联系我|私聊我)|别再打扰我/.test(
-        words,
-      )
-    )
+    // Explicit contact boundaries are different from “this message needs no
+    // reply”. A boundary stays after the person goes on talking about other
+    // things; only their own later invitation lifts it.
+    if (contactBoundary(this.recentUserWords(session)))
       return { reason: "对方明确不想被主动联系", permanent: true };
     if (this.life.chat.queue.lanes.has(session))
       return { reason: "这段对话正在处理，稍后重新看看", retryAt: now + 60000 };
@@ -353,4 +354,18 @@ export class Initiative {
       return { reason: "刚主动说过，愿望仍保留", retryAt: sent + interval };
     return null;
   }
+}
+
+const BOUNDARY =
+  /(?:别|不要|不用)再?(?:主动)?(?:给我发消息|找我|联系我|私聊我)|别再打扰我/;
+const INVITATION =
+  /(?:可以|随时|有空|想聊)(?:就)?(?:主动)?(?:找我|联系我|私聊我|给我发消息)|(?:你|您)(?:可以|能)?主动(?:找|联系)我/;
+// Whether the latest word on being contacted, oldest first, is a boundary.
+export function contactBoundary(words) {
+  let held = false;
+  for (const said of words || []) {
+    if (INVITATION.test(said)) held = false;
+    else if (BOUNDARY.test(said)) held = true;
+  }
+  return held;
 }

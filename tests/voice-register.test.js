@@ -397,3 +397,10 @@ test("a reply that reaches the main meaning is not rewritten for a side point", 
   assert.equal(readerVerdict({ ok: false, issues: ["没回答"] }).rewrite, true);
   assert.equal(readerVerdict({ ok: true, issues: [] }).rewrite, false);
 });
+
+test("a contact boundary holds after later small talk; only an invitation lifts it", async () => {
+  const { contactBoundary } = await import("../server/mind/initiative.js");
+  assert.equal(contactBoundary(["别再主动找我了", "嗯", "今天好冷"]), true);
+  assert.equal(contactBoundary(["别再主动找我了", "算了 有空可以找我"]), false);
+  assert.equal(contactBoundary(["你好", "今天好冷"]), false);
+});
