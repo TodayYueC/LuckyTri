@@ -188,6 +188,27 @@ test("her own reading of another AI's goodbye ends the exchange instead of a goo
     snapshot,
   );
   assert.equal(turn.choice, "silent");
+  // A short bot-only tail (a person spoke just before) is no excuse either.
+  const short = {
+    ...snapshot,
+    messages: [
+      { id: 3, role: "user", speaker: "10001", text: "你们聊完没" },
+      { id: 4, role: "assistant", text: "客气，再谢收费" },
+      snapshot.messages[4],
+    ],
+  };
+  assert.equal(
+    normalizeTurn(
+      {
+        choice: "speak",
+        targetMessageIds: [5],
+        bubbles: ["嗯，回见"],
+        understanding: { kind: "closing" },
+      },
+      short,
+    ).choice,
+    "silent",
+  );
   // A person saying goodbye still gets an answer.
   const human = {
     ...snapshot,
@@ -302,4 +323,18 @@ test("her own recent typing, not the room's, reaches her as ownVoice", async () 
     ownTyping(mind, "group:1", Date.now()),
     /常见约 \d+ 字，句末常不带句号/,
   );
+});
+
+test("keeping a private thing is not the same as claiming not to know it", async () => {
+  const { deniesPrivateKnowledge } =
+    await import("../server/core/response-validator.js");
+  const { PRIVATELY_KNOWN } = await import("../server/mind/discretion.js");
+  const holding = { inner: { remembered: [{ discretion: PRIVATELY_KNOWN }] } };
+  assert.equal(deniesPrivateKnowledge(["不知道，他没跟我提过"], holding), true);
+  assert.equal(
+    deniesPrivateKnowledge(["这是他私聊的事，别在群里说"], holding),
+    false,
+  );
+  assert.equal(deniesPrivateKnowledge(["不知道"], { inner: {} }), false);
+  assert.match(PRIVATELY_KNOWN, /不装作不知道/);
 });

@@ -1,3 +1,4 @@
+import { PRIVATELY_KNOWN } from "../mind/discretion.js";
 import {
   conversationalIssues,
   openedUnprompted,
@@ -223,6 +224,10 @@ export function validateResponse(result, snapshot, decision, maxChars = 180) {
     snapshot.inner?.relationships,
   );
   issues.push(...groundingIssues(result.bubbles, snapshot));
+  if (deniesPrivateKnowledge(result.bubbles, snapshot))
+    issues.push(
+      "这件事你私下其实知道；保密是不说内容和来源，不是说自己不知道、没听说。改成不在这里讲，而不是否认知道",
+    );
   if (result.bubbles?.some((line) => wrongIdentityClaim(line, snapshot)))
     issues.push(
       "自称与当前实例名字不一致，使用本轮天性中的名字，不把另一位机器人或软件名称当成自己",
@@ -576,4 +581,19 @@ export function claimedUndoneAction(bubbles, snapshot) {
   )
     return "这句话说已经做完了，但这件事还没有完成";
   return "";
+}
+
+// She holds something learned in private and is being asked about it in
+// public. Saying she does not know would trade a secret for a lie.
+export function deniesPrivateKnowledge(bubbles, snapshot) {
+  let inner = "";
+  try {
+    inner = JSON.stringify(snapshot?.inner || {});
+  } catch {
+    return false;
+  }
+  if (!inner.includes(PRIVATELY_KNOWN)) return false;
+  return (bubbles || []).some((line) =>
+    /不知道|没听说|没听过|(没|不曾)(跟|和|对)我(说|提|讲)|没提过/.test(line),
+  );
 }

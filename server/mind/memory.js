@@ -1,3 +1,4 @@
+import { PRIVATELY_KNOWN } from "./discretion.js";
 import { randomUUID } from "node:crypto";
 import {
   parseSessionKey,
@@ -275,7 +276,7 @@ export class MemoryManager {
         // Old news may no longer be true; she should know how old it is.
         ...(age >= 7 * DAY ? { when: `${agoLabel(age)}知道的` } : {}),
         ...(m.discretion === "private" && !local
-          ? { discretion: "私下知道的，不要当众说出口，也不要说出从哪听来" }
+          ? { discretion: PRIVATELY_KNOWN }
           : {}),
         ...this.conflictNote(m, session, cutoff, forSpeech),
       };

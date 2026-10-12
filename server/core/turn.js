@@ -448,8 +448,12 @@ export function normalizeTurn(raw, snapshot, trace, { speech } = {}) {
     (grounding.botLoop ||
       // She read the other AI's line as a goodbye herself; answering a
       // goodbye from a bot only starts another round of goodbyes.
+      // Who is saying goodbye matters, not how long the bots have talked.
       (raw.understanding?.kind === "closing" &&
-        grounding.botOnlyTail >= 3 &&
+        grounding.botMessageIds.length > 0 &&
+        batch
+          .filter((m) => m.role === "user")
+          .every((m) => grounding.botMessageIds.includes(m.id)) &&
         !batch.some((m) => m.relation === "direct")) ||
       (raw.contribution?.kind === "none" &&
         !raw.act &&

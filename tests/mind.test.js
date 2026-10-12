@@ -2391,7 +2391,7 @@ test("记忆是一个人的记忆：公开的事在别处相关时想起，私�
   const elsewhere = memory.retrieve("group:2", rows, Date.now() + 1000);
   const by = (c) => elsewhere.find((m) => m.content === c);
   assert.equal(by("喜欢猫").source, "别的群里");
-  assert.match(by("最近在准备考研").discretion, /不要当众说出口/);
+  assert.match(by("最近在准备考研").discretion, /当众不说内容/);
   assert.equal(by("下个月要辞职跳槽去上海"), undefined, "秘密不会进入别的会话");
   const home = memory.retrieve("group:1", rows, Date.now() + 1000);
   assert.ok(home.some((m) => m.content.includes("辞职")));

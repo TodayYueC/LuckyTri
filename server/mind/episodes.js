@@ -1,3 +1,4 @@
+import { PRIVATELY_KNOWN } from "./discretion.js";
 import { randomUUID } from "node:crypto";
 import { applySpeakerNames } from "../core/speaker-names.js";
 import { elapsedLabel } from "./clock.js";
@@ -235,7 +236,7 @@ export class Episodes {
       updated: elapsedLabel(last.created, now, zone),
       ...(last.basis === "stated" ? { basis: "对方告诉你的" } : {}),
       ...(!local && isPrivateSession(last.session_id)
-        ? { discretion: "私下知道的，不要当众说出口，也不要说出从哪听来" }
+        ? { discretion: PRIVATELY_KNOWN }
         : {}),
     };
   }
