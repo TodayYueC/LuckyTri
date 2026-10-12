@@ -578,7 +578,21 @@ export class Recall {
       pinnedTaken++;
     }
     const ids = result.items.map((item) => item.row.ref);
-    if (!ids.length) return [];
+    // Meaning search can miss a privately learned fact about someone who is
+    // not here, even when people here are saying its very words. The word
+    // path still finds it; it joins so that she knows what she knows.
+    const withPrivate = (out) => {
+      if (!forSpeech) return out;
+      const have = new Set(out.map((m) => m.id));
+      for (const m of memory.retrieve(session, rows, now, {
+        people,
+        touch: false,
+        forSpeech,
+      }))
+        if (m.discretion && !have.has(m.id) && out.length < limit) out.push(m);
+      return out;
+    };
+    if (!ids.length) return withPrivate([]);
     const facts = new Map(
       this.db
         .prepare(
@@ -651,19 +665,7 @@ export class Recall {
         ...memory.conflictNote(m, session, now, forSpeech),
       });
     }
-    // Meaning search can miss a privately learned fact about someone who is
-    // not here, even when people here are saying its very words. The word
-    // path still finds it; it joins so that she knows what she knows.
-    if (forSpeech) {
-      const have = new Set(out.map((m) => m.id));
-      for (const m of memory.retrieve(session, rows, now, {
-        people,
-        touch: false,
-        forSpeech,
-      }))
-        if (m.discretion && !have.has(m.id) && out.length < limit) out.push(m);
-    }
-    return out;
+    return withPrivate(out);
   }
   // Her own threads and thoughts that what is being said reaches by meaning,
   // as index ids for her inner view. Null when vectors do not cover them, so
