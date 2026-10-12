@@ -9,6 +9,23 @@ import { saveEmbeddingProfile } from "../../server/knowledge/embedding-profile.j
 
 export const AGENT_PLAN = "https://ark.cn-beijing.volces.com/api/plan/v3";
 
+// Characters of instruction text (system/developer) or of all text a request
+// carries, for either the chat or the responses protocol.
+function promptChars(body, systemOnly) {
+  const text = (content) =>
+    typeof content === "string"
+      ? content.length
+      : Array.isArray(content)
+        ? content.reduce((n, part) => n + String(part?.text ?? "").length, 0)
+        : 0;
+  const items = body.messages || body.input || [];
+  let n = typeof body.instructions === "string" ? body.instructions.length : 0;
+  for (const item of Array.isArray(items) ? items : [])
+    if (!systemOnly || ["system", "developer"].includes(item?.role))
+      n += text(item?.content);
+  return n;
+}
+
 // Installed before ChatSystem is built: ModelManager keeps the fetch it
 // was given at construction.
 export function countRequests() {
@@ -24,7 +41,10 @@ export function countRequests() {
       model: "",
     };
     try {
-      entry.model = JSON.parse(options.body || "{}").model || "";
+      const body = JSON.parse(options.body || "{}");
+      entry.model = body.model || "";
+      entry.systemChars = promptChars(body, true);
+      entry.promptChars = promptChars(body, false);
     } catch {
       entry.model = "";
     }
