@@ -25,7 +25,9 @@ test("刚在另一个群说过的话，换个群她知道，但不被要求说�
   assert.equal(lived.lines[0].maySayAloud, false);
   assert.match(lived.note, /不要主动/);
   assert.match(view.inner.selfKnown.note, /同一个人/);
-  assert.match(view.inner.selfKnown.state, /心情/);
+  // Her mood is stated once, in inner.state, not repeated as a report item.
+  assert.match(view.inner.state, /心情/);
+  assert.equal(view.inner.selfKnown.state, undefined);
 });
 
 test("眼前就是刚才那个人时，接不接由她决定", (t) => {

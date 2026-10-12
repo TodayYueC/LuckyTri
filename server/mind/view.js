@@ -290,7 +290,9 @@ export function innerView(
     }));
   const selfKnown = {
     note: "你在每个地方都是同一个人。这是你现在的状态、心情和亲近的人，你知道，不必向眼前的人汇报。",
-    state: `${affect.phaseLabel}，精力${affect.energyLabel}，心情${affect.mood}${cause ? `（${cause}）` : ""}`,
+    // Her mood is said once, in inner.state, where it shapes how she talks.
+    // A second copy here sat under "not something to report" and read as a
+    // reason to keep it out of her voice (round-19 happy-mood probe).
     ...(shownLiving ? { livingFor: text(shownLiving.content, 80) } : {}),
     ...(closeTo.length ? { closeTo } : {}),
   };
