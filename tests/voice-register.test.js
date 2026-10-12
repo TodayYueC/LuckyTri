@@ -382,3 +382,18 @@ test("the safe short line for a touched private thing withholds instead of hedgi
     false,
   );
 });
+
+test("a reply that reaches the main meaning is not rewritten for a side point", async () => {
+  const { readerVerdict } = await import("../server/core/reader-check.js");
+  assert.equal(
+    readerVerdict({ ok: false, reached: "partial", issues: ["没提潜水"] })
+      .rewrite,
+    false,
+  );
+  assert.equal(
+    readerVerdict({ ok: false, reached: "missed", issues: ["没回答"] }).rewrite,
+    true,
+  );
+  assert.equal(readerVerdict({ ok: false, issues: ["没回答"] }).rewrite, true);
+  assert.equal(readerVerdict({ ok: true, issues: [] }).rewrite, false);
+});

@@ -137,7 +137,7 @@ kind=new_topic是主动消息的检查，收信人没有提出问题；清楚的
 “照顾一下我、说听得懂的话”是在请求清楚的交流，不要求回复另列照顾措施、安慰或保证。只问当前在聊什么时，说清讨论对象和内容就够了；只问故事梗概时才核对是否给了情节。没有提供的角色身份与关系不强求补齐，也不能为补齐而编造。
 先用普通话概括读者能从reply实际知道什么，再检查是否解答questions。对方要理解具体事情或故事，解释“我们在对稿、记账、互相认下”只说交流形式，仍没有具体内容；“站住、接上、对回去、那半句”没有说明对象时仍听不懂。说“你不用懂”也不是解释。自己确实没读到、没有人物情节可以坦白说不知道，不要求编一个故事。已经说明具体意思的普通短句可以通过，不要求故事完整、知识丰富、风趣或追加提问。
 问故事主线时，一个出场物件、几处意象或零散动作不能直接冒充主线；至少要让人知道发生了什么。只见到片段、不知道整体故事，可以直接说明，这仍是诚实的回答。不强求补造姓名、动机或完整情节，也不把对诗句的明确解读错当成必须提供故事梗概。
-输出 {"ok":true或false,"requestedMeaning":"对方这次的具体意思，主动消息则空","previousMeaning":"有precedingExchange时概括先前回答实际含义，否则空","receivedMeaning":"不补上下文，实际能理解的一句话","issues":["未说清的具体对象/漏答的具体问题/无依据改写先前说法，准确引用reply"]}。只挑实质问题，不做润色。`;
+输出 {"ok":true或false,"requestedMeaning":"对方这次的具体意思，主动消息则空","previousMeaning":"有precedingExchange时概括先前回答实际含义，否则空","receivedMeaning":"不补上下文，实际能理解的一句话","reached":"missed=对方的意思完全没被接到或被改换；partial=接到了主要意思，只是没逐条回应；answered","issues":["未说清的具体对象/漏答的具体问题/无依据改写先前说法，准确引用reply"]}。只挑实质问题，不做润色。`;
 
 const PROPOSAL_CHECK = `只核对回复有没有回应对方实际提出的可能性，不评文风，不要求接受提议。输出JSON。
 questions是实际原话，precedingExchange是已发生的聊天，replySpeaker是发言的她。先用requestedMeaning概括提议的参与者与要做的事，再用receivedMeaning概括回复实际考虑的事情，检查两者是否相同。已有安排不是新提议的边界。
@@ -156,3 +156,16 @@ export const INTENT_CHECK = `核对另一位机器人是否被当成某人的意
 只有本人原话确实支持，才可把claims认定为事实。humanWords只说“当个事办”时，另一人说“他指我的连载”仍是猜测；reply说“原来是这样”并顺着连载开始讨论，就是擅自确认。不能因猜测听来合理或加了一个后续问题而通过。claims的speaker/name也是当前回复对象；例如凛正在说话时，“你和凛”把同一个对象当成两人，也是对象错误。
 可以不回应这个猜测，可以等本人说清，可以明确保留不确定后单独聊另一人的作品；这不要求指责或反复提醒对方。检查实际回复，不核查整段历史或评价文风。
 输出JSON {"ok":true或false,"issues":["reply如何将未证实解释当成确认，引用原句"]}。`;
+
+// She decides how much to say: a reply that reaches what was meant but leaves
+// a side point is hers to send. Only a missed or changed meaning is rewritten.
+export function readerVerdict(reader) {
+  if (reader?.ok !== false || !Array.isArray(reader.issues))
+    return { rewrite: false };
+  if (reader.reached === "partial")
+    return {
+      rewrite: false,
+      note: `读者核对：主要意思已接到，未逐条回应的部分不重写（${reader.issues.join("；").slice(0, 80)}）`,
+    };
+  return { rewrite: true };
+}

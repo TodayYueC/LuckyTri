@@ -23,6 +23,7 @@ import { initiativeAudience } from "../mind/conversation-origin.js";
 import {
   readerQuestions,
   readerCheckPrompt,
+  readerVerdict,
   INTENT_CHECK,
 } from "./reader-check.js";
 import { currentExchange } from "./dialogue-context.js";
@@ -503,7 +504,9 @@ export class ReplyDelivery {
         }
         if (checked.ok && readerCheck) {
           const reader = await within(readerCheck);
-          if (reader.ok === false && Array.isArray(reader.issues))
+          const verdict = readerVerdict(reader);
+          if (verdict.note) trace.steps.push(verdict.note);
+          if (verdict.rewrite)
             return reader.issues.map(
               (issue) => `给提问者的解释仍没说清：${issue}`,
             );
