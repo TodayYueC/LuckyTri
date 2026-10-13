@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Select from "../../components/ui/Select.vue";
 import { t } from "../../i18n";
 import { computed, onMounted, ref } from "vue";
 import { api } from "../../api";
@@ -98,12 +99,15 @@ onMounted(load);
       </li>
     </ul>
     <form class="probe" @submit.prevent="run">
-      <select v-model="session" name="recallSession" required>
-        <option value="" disabled>{{ t("选择会话") }}</option>
-        <option v-for="s in sessions" :key="s.id" :value="s.id">
-          {{ s.name || s.id }}
-        </option>
-      </select>
+      <Select
+        v-model="session"
+        name="recallSession"
+        :aria-label="t('选择会话')"
+        :options="[
+          { value: '', label: t('选择会话'), disabled: true },
+          ...sessions.map((s: any) => ({ value: s.id, label: s.name || s.id })),
+        ]"
+      />
       <input
         v-model="text"
         name="recallText"

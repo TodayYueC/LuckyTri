@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Select from "../../components/ui/Select.vue";
 import { t, N_ } from "../../i18n";
 import { onMounted, reactive, ref } from "vue";
 import { api, toast } from "../../api";
@@ -148,13 +149,15 @@ onMounted(load);
           /></label>
           <label
             >{{ t("请求格式")
-            }}<select v-model="draft.protocol" name="embeddingProtocol">
-              <option value="openai">{{ t("OpenAI 兼容（可批量）") }}</option>
-              <option value="multimodal">
-                {{ t("方舟多模态接口（逐条）") }}
-              </option>
-            </select></label
-          >
+            }}<Select
+              v-model="draft.protocol"
+              name="embeddingProtocol"
+              :aria-label="t('请求格式')"
+              :options="[
+                { value: 'openai', label: t('OpenAI 兼容（可批量）') },
+                { value: 'multimodal', label: t('方舟多模态接口（逐条）') },
+              ]"
+          /></label>
         </div>
       </details>
       <div class="save-bar">

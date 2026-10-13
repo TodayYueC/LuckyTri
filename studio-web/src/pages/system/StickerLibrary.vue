@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import Toggle from "../../components/ui/Toggle.vue";
+import Select from "../../components/ui/Select.vue";
 import { t, locale } from "../../i18n";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { api, toast } from "../../api";
@@ -267,17 +269,22 @@ const statusLabel = (s: Sticker) =>
         :placeholder="t('搜索描述、标签、情绪…')"
         @input="load()"
       />
-      <select v-model="category" @change="load()">
-        <option value="">{{ t("全部分类") }}</option>
-        <option v-for="c in categories" :key="c.category" :value="c.category">
-          {{ c.category }} · {{ c.n }}
-        </option>
-      </select>
+      <Select
+        v-model="category"
+        :aria-label="t('全部分类')"
+        :options="[
+          { value: '', label: t('全部分类') },
+          ...categories.map((c: any) => ({
+            value: c.category,
+            label: `${c.category} · ${c.n}`,
+          })),
+        ]"
+        @update:model-value="load()"
+      />
       <input v-model="uploadCategory" :placeholder="t('上传到分类（可选）')" />
-      <label class="faint folder-cat"
-        ><input v-model="folderCategory" type="checkbox" />
-        {{ t("ZIP 里的文件夹名作分类") }}</label
-      >
+      <Toggle v-model="folderCategory" class="faint folder-cat">{{
+        t("ZIP 里的文件夹名作分类")
+      }}</Toggle>
       <small v-if="lastSummary" class="faint" data-testid="sticker-summary">{{
         t(
           "导入 {done} · 重复 {duplicates} · 跳过 {skipped} · 失败 {failed}",

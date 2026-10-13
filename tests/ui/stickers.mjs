@@ -75,7 +75,13 @@ try {
     ]),
   );
   await page.locator('input[type="file"]').setInputFiles([zipFile]);
-  await page.locator('[data-testid="sticker-summary"]').waitFor();
+  // The earlier batch already left a summary; wait for the archive's.
+  await page.waitForFunction(() =>
+    /重复 1/.test(
+      document.querySelector('[data-testid="sticker-summary"]')?.textContent ||
+        "",
+    ),
+  );
   assert.match(
     await page.locator('[data-testid="sticker-summary"]').innerText(),
     /2.*1.*1.*0/,
