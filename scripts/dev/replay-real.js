@@ -17,6 +17,7 @@ import {
 import { replyPrompt } from "../../server/core/persona-manager.js";
 import { ReplyDelivery } from "../../server/core/reply-delivery.js";
 import { speechLength } from "../../server/core/speech-length.js";
+import { PRIVATELY_KNOWN } from "../../server/mind/discretion.js";
 import { MODEL_CATALOG } from "../../server/core/model-presets.js";
 import { LinkReader } from "../../server/web/link-reader.js";
 const links = new LinkReader();
@@ -56,6 +57,14 @@ async function run(c) {
   const snapshot = structuredClone(c.snapshot);
   // Recorded before round 24: memories she may not disclose here were kept
   // as placeholders. Speech recall now leaves them out; replay the same way.
+  // Old discretion labels are read as today's wording.
+  (function relabel(o) {
+    if (!o || typeof o !== "object") return;
+    for (const k of Object.keys(o))
+      if (k === "discretion" && typeof o[k] === "string")
+        o[k] = PRIVATELY_KNOWN;
+      else relabel(o[k]);
+  })(snapshot);
   if (Array.isArray(snapshot.memories))
     snapshot.memories = snapshot.memories.filter(
       (m) => !/^（关于此人的/.test(String(m?.content || "")),
