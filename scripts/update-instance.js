@@ -5,6 +5,7 @@ import {
   writeFileSync,
   readFileSync,
   realpathSync,
+  writeSync,
 } from "node:fs";
 import { dirname, join, delimiter } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -23,6 +24,21 @@ import {
   writeUpdateJob,
 } from "../server/runtime/update-manager.js";
 import { updateRoot } from "../server/runtime/installation.js";
+import {
+  npmFailureCode,
+  updateError,
+} from "../server/runtime/update-errors.js";
+
+export function requireUpdateNode(version = process.versions.node) {
+  const [major, minor] = String(version).split(".").map(Number);
+  if (
+    !Number.isInteger(major) ||
+    !Number.isInteger(minor) ||
+    major < 24 ||
+    (major === 24 && minor < 5)
+  )
+    throw updateError("NODE_UNSUPPORTED");
+}
 
 export function installEnvironment(env) {
   const kept = {};
@@ -35,11 +51,11 @@ export function installEnvironment(env) {
       kept[key] = value;
   return kept;
 }
-export function findNpmCli(env = process.env) {
+export function findNpmCli(env = process.env, execPath = process.execPath) {
   const candidates = [
     env.npm_execpath,
-    join(dirname(process.execPath), "node_modules/npm/bin/npm-cli.js"),
-    join(dirname(process.execPath), "../lib/node_modules/npm/bin/npm-cli.js"),
+    join(dirname(execPath), "node_modules/npm/bin/npm-cli.js"),
+    join(dirname(execPath), "../lib/node_modules/npm/bin/npm-cli.js"),
     ...String(env.PATH || env.Path || "")
       .split(delimiter)
       .flatMap((dir) => [
@@ -60,31 +76,73 @@ export function findNpmCli(env = process.env) {
       /* Try the next native Node/npm installation location. */
     }
   }
-  throw Error("未找到 npm");
+  throw updateError("NPM_NOT_FOUND");
 }
-function command(args, { cwd, env = process.env, timeout = 600000, log } = {}) {
+export function runUpdateCommand(
+  args,
+  {
+    cwd,
+    env = process.env,
+    timeout = 600000,
+    log,
+    failureCode = "STEP_FAILED",
+    npmInstall = false,
+  } = {},
+) {
   return new Promise((resolve, reject) => {
     const fd = log ? openSync(log, "a", 0o600) : null;
-    const child = spawn(process.execPath, args, {
-      cwd,
-      env,
-      windowsHide: true,
-      stdio: fd === null ? "ignore" : ["ignore", fd, fd],
-    });
-    if (fd !== null) closeSync(fd);
-    let timedOut = false;
-    const timer = setTimeout(() => {
+    let timer,
+      child,
+      settled = false,
+      timedOut = false,
+      outputError,
+      tail = "";
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        if (fd !== null) closeSync(fd);
+      } catch (closeError) {
+        error ||= closeError;
+      }
+      if (error) reject(error);
+      else resolve();
+    };
+    try {
+      child = spawn(process.execPath, args, {
+        cwd,
+        env,
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      finish(error);
+      return;
+    }
+    const capture = (chunk) => {
+      if (settled) return;
+      tail = (tail + chunk.toString("utf8")).slice(-16384);
+      try {
+        if (fd !== null) writeSync(fd, chunk);
+      } catch (error) {
+        outputError = error;
+        // Wait for exit before rollback can rename a migration database.
+        child.kill("SIGKILL");
+      }
+    };
+    child.stdout.on("data", capture);
+    child.stderr.on("data", capture);
+    timer = setTimeout(() => {
       timedOut = true;
-      child.kill();
+      child.kill("SIGKILL");
     }, timeout);
-    child.once("error", (e) => {
-      clearTimeout(timer);
-      reject(e);
-    });
-    child.once("exit", (code) => {
-      clearTimeout(timer);
-      if (timedOut) reject(Error("更新步骤超时"));
-      else code === 0 ? resolve() : reject(Error("更新程序校验失败"));
+    child.once("error", finish);
+    child.once("close", (code) => {
+      if (outputError) finish(outputError);
+      else if (timedOut) finish(updateError("STEP_TIMEOUT"));
+      else if (code === 0) finish();
+      else finish(updateError(npmInstall ? npmFailureCode(tail) : failureCode));
     });
   });
 }
@@ -94,10 +152,11 @@ export function updateExecution(paths) {
   const pause = () => new Promise((r) => setTimeout(r, 250));
   return {
     async install(slot, version) {
+      requireUpdateNode();
       const cli = findNpmCli();
       const userconfig = join(updateRoot(paths.home), "install.npmrc");
       writeFileSync(userconfig, "", { mode: 0o600 });
-      await command(
+      await runUpdateCommand(
         [
           cli,
           "install",
@@ -112,20 +171,26 @@ export function updateExecution(paths) {
           "--engine-strict",
           `luckytri@${version}`,
         ],
-        { cwd: slot, env: installEnvironment(process.env), log: paths.log },
+        {
+          cwd: slot,
+          env: installEnvironment(process.env),
+          log: paths.log,
+          npmInstall: true,
+        },
       );
     },
     async check(root, version) {
       const script = `import fs from 'node:fs';import {createRequire} from 'node:module';const p=JSON.parse(fs.readFileSync(${JSON.stringify(join(root, "package.json"))},'utf8'));if(p.version!==${JSON.stringify(version)})process.exit(1);await import(${JSON.stringify(pathToFileURL(join(root, "server/app.js")).href)});const sharp=createRequire(${JSON.stringify(pathToFileURL(join(root, "package.json")).href)})('sharp');await sharp({create:{width:1,height:1,channels:3,background:'#fff'}}).png().toBuffer();`;
-      await command(["--input-type=module", "-e", script], {
+      await runUpdateCommand(["--input-type=module", "-e", script], {
         cwd: root,
         env: installEnvironment(process.env),
         timeout: 30000,
         log: paths.log,
+        failureCode: "PACKAGE_CHECK_FAILED",
       });
     },
     async migrate(root, database, { previous, version, databaseId }) {
-      await command(
+      await runUpdateCommand(
         [
           join(root, "scripts", "migrate-instance.js"),
           database,
@@ -138,6 +203,7 @@ export function updateExecution(paths) {
           env: installEnvironment(process.env),
           timeout: 3600000,
           log: paths.log,
+          failureCode: "MIGRATION_FAILED",
         },
       );
     },

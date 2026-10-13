@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>LuckyTri v1.2.1 · 使用教程</title>
+    <title>LuckyTri v1.2.2 · 使用教程</title>
     <style>
       * {
         box-sizing: border-box;
@@ -269,7 +269,7 @@
   <body>
     <header>
       <div>
-        <b>LuckyTri · 上手手册</b><small>TIME · MEMORY · CHOICE / v1.2.1</small>
+        <b>LuckyTri · 上手手册</b><small>TIME · MEMORY · CHOICE / v1.2.2</small>
       </div>
       <nav>
         <a href="/#setup">返回管理台</a
@@ -869,8 +869,20 @@ npm start
           <code>runtime/releases/</code>，源码和全局 npm
           安装保持原样；启动命令会选择已更新的程序。安装了同版本或更新版本的全局包或源码后，以该安装为准。天性页的剩余修改次数以服务端额度为准；本地维护额外授予的机会有独立记录，不清空原版本。
         </p>
+        <p>
+          服务器使用 systemd、PM2 等托管时，启动入口使用
+          <code>luckytri start --home /原实例目录</code>。1.2.0–1.2.1
+          的前台守护器可能在记忆迁移时提前启动旧实例，升级到修复版 1.2.2
+          应先备份并停止托管服务，手动执行
+          <code>npm install -g luckytri@1.2.2</code
+          >，再用原账号、原实例目录启动。不要删除数据或
+          <code>runtime/</code>；详细部署与故障说明见
+          <a href="npm-release.md#%E6%9C%8D%E5%8A%A1%E5%99%A8%E6%9B%B4%E6%96%B0"
+            >服务器更新</a
+          >。
+        </p>
       </article>
     </div>
-    <footer>LuckyTri · 让经历和选择彼此连贯。教程与 v1.2.1 界面同步。</footer>
+    <footer>LuckyTri · 让经历和选择彼此连贯。教程与 v1.2.2 界面同步。</footer>
   </body>
 </html>

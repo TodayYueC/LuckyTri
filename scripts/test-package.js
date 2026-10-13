@@ -201,7 +201,7 @@ const fileStamp = (file) => {
   const stat = statSync(file);
   return [stat.size, stat.mtimeMs, stat.ino];
 };
-let browser;
+let browser, updateForeground;
 let document;
 let memory;
 let configStamp;
@@ -482,9 +482,34 @@ try {
       { env },
     ),
   );
-  // Leave the previous service running: the upgraded CLI must switch it to
-  // the installed version automatically, with the same password and data.
-  cli(["--no-browser"]);
+  // Exercise the foreground supervisor used by service managers. A daemon-only
+  // test misses races when the old server exits during a long migration.
+  const foregroundRunner = join(sandbox, "foreground-runner.mjs");
+  writeFileSync(
+    foregroundRunner,
+    `process.on('message',message=>{if(message==='stop')process.emit('SIGTERM')});
+await import(${JSON.stringify(pathToFileURL(join(installed, "scripts/start-server.js")).href)});
+process.disconnect();`,
+  );
+  updateForeground = spawn(process.execPath, [foregroundRunner], {
+    cwd: caller,
+    env,
+    windowsHide: true,
+    stdio: ["ignore", "ignore", "ignore", "ipc"],
+  });
+  let updateReady = false;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    try {
+      await request("/api/service/status");
+      updateReady = true;
+      break;
+    } catch {
+      if (updateForeground.exitCode !== null)
+        throw Error("Foreground updater exited before readiness");
+    }
+  }
+  assert(updateReady, "foreground instance is ready before updating");
   console.log(
     "Checking the real staged updater, verified snapshot and automatic restart…",
   );
@@ -504,6 +529,9 @@ import {updateRoot} from ${JSON.stringify(pathToFileURL(join(installed, "server/
 const paths=prepareRuntime({initialize:false}),id=randomUUID();mkdirSync(updateRoot(paths.home),{recursive:true});
 writeUpdateJob(paths.home,{id,parent:${beforeUpdate},previous:${JSON.stringify(VERSION)},version:${JSON.stringify(upgradeVersion)},status:'queued',started:Date.now(),workerPid:process.pid});
 const deps=updateExecution(paths);
+// Leave migration visible for several supervisor polls so omitting that stage
+// deterministically triggers the premature restart regression.
+const migrate=deps.migrate;deps.migrate=async(...args)=>{await new Promise(r=>setTimeout(r,1000));return migrate(...args)};
 // Install only the isolated candidate tarball here. Production always selects
 // an exact checked version from the official public registry.
 const updateEnv=installEnvironment(process.env);updateEnv.npm_config_cache=${JSON.stringify(join(profile, "npm-cache"))};
@@ -530,6 +558,20 @@ console.log('PASS: staged install, stopped old instance, verified snapshot, heal
     afterUpdate.pid,
     "active release is reused without repeated restarts",
   );
+  assert.equal(
+    updateForeground.exitCode,
+    null,
+    "foreground supervisor stays alive throughout migration and adopts the replacement",
+  );
+  const adoptedExit = once(updateForeground, "exit", {
+    signal: AbortSignal.timeout(10000),
+  });
+  // Windows does not deliver POSIX signals to another Node process. IPC emits
+  // the same event locally, exercising the actual supervisor signal handler.
+  updateForeground.send("stop");
+  assert.equal((await adoptedExit)[0], 0);
+  updateForeground = null;
+  await assert.rejects(request("/api/service/status"));
   await verifyRetention(upgradeVersion);
   install(join(sandbox, upgrade.filename));
   assert.equal(cli(["--version"]).trim(), upgradeVersion);
@@ -612,6 +654,7 @@ console.log('PASS: staged install, stopped old instance, verified snapshot, heal
           "bundled plugins",
           "backup verification",
           "npm version upgrade",
+          "foreground supervised migration and replacement signal forwarding",
           "uninstall and reinstall",
           "all user data retained",
         ],
@@ -632,6 +675,7 @@ console.log('PASS: staged install, stopped old instance, verified snapshot, heal
       /* Identity checks prevent stopping another instance. */
     }
   }
+  if (updateForeground?.exitCode === null) updateForeground.kill();
   // Test artifacts remain in the temporary sandbox for diagnosis; no real
   // user files or global npm installation are removed by this check.
 }

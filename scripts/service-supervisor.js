@@ -1,17 +1,9 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { processAlive } from "../server/runtime/update-manager.js";
-
-const ACTIVE_UPDATE = new Set([
-  "queued",
-  "downloading",
-  "checking",
-  "stopping",
-  "backup",
-  "restarting",
-  "verifying",
-  "restoring",
-]);
+import {
+  processAlive,
+  isUpdateFinished,
+} from "../server/runtime/update-manager.js";
 
 function readJob(home) {
   try {
@@ -34,7 +26,10 @@ export async function updatedServerAfterExit(
   while (true) {
     const job = read();
     if (!job || job.parent !== parentPid) return { matched: false, pid: null };
-    if (!ACTIVE_UPDATE.has(job.status))
+    // This supervisor can outlive its installed release. A future worker may
+    // introduce stages this older process does not know; only explicit terminal
+    // states permit handover while the worker is still alive.
+    if (isUpdateFinished(job.status))
       return { matched: true, pid: alive(job.childPid) ? job.childPid : null };
     if (!alive(job.workerPid))
       return { matched: true, pid: alive(job.childPid) ? job.childPid : null };

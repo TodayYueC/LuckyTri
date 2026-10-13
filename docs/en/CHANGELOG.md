@@ -2,6 +2,16 @@
 
 # Changelog
 
+## 1.2.2 — 2026-10-13
+
+- Fix the foreground supervisor starting the old server prematurely during memory migration. It now waits until explicit success, failure or worker exit, including stages introduced by future releases.
+- Adopt the replacement PID and forward stop signals correctly. Record rollback PIDs before checking their health so the supervisor can retain control.
+- Preserve the interrupted stage and report recovery requirements. Installation, validation, backup, migration, startup and recovery failures expose actionable causes; raw errors remain in local logs.
+- Check Node.js/npm availability and distinguish network, certificate, permission, disk and timeout failures. Terminate timed-out subprocesses or subprocesses whose log writes fail before recovery proceeds.
+- Add real foreground upgrade and shutdown handover checks, retaining memory, chats, relationships, configuration, knowledge, logs, backups and plugin state. Update both READMEs and server deployment guidance.
+
+**Server upgrade note:** Clicking update in 1.2.0–1.2.1 still runs the installed old updater. Affected foreground-managed instances should back up and stop the service, manually run `npm install -g luckytri@1.2.2`, then restart with the same account and instance directory. Use `luckytri start --home /existing-instance` as the managed service entry point. Retain existing data and `runtime/`; see [server update guidance](npm-release.md).
+
 ## 1.2.1 — 2026-10-13
 
 - Fix message boundaries: a line break starts another message, while a list stays together; lines that continue the same thought are joined, within the turn's message limit.

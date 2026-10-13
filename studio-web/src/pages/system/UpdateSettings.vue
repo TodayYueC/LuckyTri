@@ -23,6 +23,17 @@ const progress: Record<string, string> = localized({
   done: N_("更新与重启已完成"),
   error: N_("更新未完成"),
 });
+const stages: Record<string, string> = localized({
+  queued: N_("准备更新"),
+  downloading: N_("下载新版本"),
+  checking: N_("检查新程序"),
+  stopping: N_("停止旧实例"),
+  backup: N_("保存校验备份"),
+  migrating: N_("迁移记忆与数据"),
+  restarting: N_("切换并重启"),
+  verifying: N_("检查新实例"),
+  restoring: N_("恢复原版本"),
+});
 function active(operation: any) {
   return operation && !["done", "error"].includes(operation.status);
 }
@@ -157,6 +168,21 @@ async function install() {
         <p v-if="state.operation?.error" class="error-text" role="alert">
           {{ state.operation.error }}
         </p>
+        <template v-if="state.operation?.status === 'error'">
+          <p v-if="stages[state.operation.failedStage]" class="error-text">
+            {{
+              t("失败阶段：{stage}", {
+                stage: stages[state.operation.failedStage],
+              })
+            }}
+          </p>
+          <p v-if="state.operation.detail" class="error-text">
+            {{ state.operation.detail }}
+          </p>
+          <p v-if="state.operation.recoveryDetail" class="error-text">
+            {{ state.operation.recoveryDetail }}
+          </p>
+        </template>
         <p v-if="state.operation?.restored" class="muted">
           {{ t("已恢复原版本和更新前的数据。") }}
         </p>

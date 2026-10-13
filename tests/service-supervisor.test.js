@@ -8,6 +8,8 @@ import {
 test("foreground supervisor waits for the update worker and follows its replacement", async () => {
   const jobs = [
     { parent: 41, workerPid: 72, status: "backup" },
+    { parent: 41, workerPid: 72, status: "migrating" },
+    { parent: 41, workerPid: 72, status: "migrating" },
     { parent: 41, workerPid: 72, status: "verifying", childPid: 99 },
     { parent: 41, workerPid: 72, status: "done", childPid: 99 },
   ];
@@ -18,7 +20,7 @@ test("foreground supervisor waits for the update worker and follows its replacem
     sleep: async (ms) => waits.push(ms),
   });
   assert.deepEqual(result, { matched: true, pid: 99 });
-  assert.deepEqual(waits, [250, 250]);
+  assert.deepEqual(waits, [250, 250, 250, 250]);
 });
 
 test("foreground supervisor distinguishes a normal stop from an interrupted update", async () => {
@@ -32,6 +34,22 @@ test("foreground supervisor distinguishes a normal stop from an interrupted upda
   });
   assert.deepEqual(noUpdate, { matched: false, pid: null });
   assert.deepEqual(interrupted, { matched: true, pid: null });
+});
+
+test("a supervisor from an older release waits through unfamiliar future update stages", async () => {
+  const jobs = [
+    { parent: 41, workerPid: 72, status: "future-migration-stage" },
+    { parent: 41, workerPid: 72, status: "future-check-stage", childPid: 99 },
+    { parent: 41, workerPid: 72, status: "done", childPid: 99 },
+  ];
+  let waits = 0;
+  const result = await updatedServerAfterExit("unused", 41, {
+    read: () => jobs.shift(),
+    alive: (pid) => pid === 72 || pid === 99,
+    sleep: async () => waits++,
+  });
+  assert.deepEqual(result, { matched: true, pid: 99 });
+  assert.equal(waits, 2);
 });
 
 test("replacement monitor returns once the process has stopped", async () => {

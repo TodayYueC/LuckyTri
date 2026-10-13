@@ -20,6 +20,7 @@ import {
   InstanceUpdater,
   readUpdateJob,
   writeUpdateJob,
+  UPDATE_RECOVERY_FAILED,
 } from "../server/runtime/update-manager.js";
 import { performUpdate } from "../server/runtime/update-execution.js";
 import {
@@ -46,6 +47,10 @@ test("obsolete runtime slots are removed in Unicode directories while selected v
   assert.equal(existsSync(updatePath(root, current)), true);
 });
 import { installEnvironment } from "../scripts/update-instance.js";
+import {
+  updateError,
+  UPDATE_FAILURES,
+} from "../server/runtime/update-errors.js";
 
 function fixture(t) {
   const home = mkdtempSync(join(tmpdir(), "luckytri-update-"));
@@ -286,6 +291,57 @@ test("manager admits only the checked release, coalesces clicks, and records det
     occupied: () => true,
   });
   await assert.rejects(occupied.install("1.0.4"), /备份正在进行/);
+});
+
+test("an interrupted migration requires recovery and keeps its failed stage visible", (t) => {
+  const f = fixture(t);
+  writeUpdateJob(f.paths.home, {
+    ...readUpdateJob(f.paths.home, f.id),
+    status: "migrating",
+    workerPid: 2147483647,
+  });
+  const updater = new InstanceUpdater({ paths: f.paths });
+  const state = updater.status();
+  assert.equal(state.status, "error");
+  assert.equal(state.error, UPDATE_RECOVERY_FAILED);
+  assert.equal(state.failedStage, "migrating");
+  assert.equal(state.failureCode, "UPDATE_INTERRUPTED");
+});
+
+test("a rejected install exposes the failure stage and safe reason before stopping the service", async (t) => {
+  const f = fixture(t);
+  f.deps.install = async () => {
+    throw updateError("NODE_UNSUPPORTED");
+  };
+  const result = await performUpdate(f.paths, f.id, f.deps);
+  assert.equal(result.failedStage, "downloading");
+  assert.equal(result.failureCode, "NODE_UNSUPPORTED");
+  assert.ok(!f.events.some((s) => s.startsWith("stop:")));
+  writeUpdateJob(f.paths.home, {
+    ...result,
+    detail: "private path /root/secret",
+  });
+  const state = new InstanceUpdater({ paths: f.paths }).status();
+  assert.equal(state.detail, UPDATE_FAILURES.NODE_UNSUPPORTED);
+  assert.doesNotMatch(JSON.stringify(state), /secret|\/root/);
+});
+
+test("recovery failures retain both the original stage and the recovery cause", async (t) => {
+  const f = fixture(t);
+  f.deps.health = async () => {
+    throw Error("new server failed");
+  };
+  f.deps.start = async (root) => {
+    if (root === f.paths.package)
+      throw Object.assign(Error("disk full"), { code: "ENOSPC" });
+    return 456;
+  };
+  const result = await performUpdate(f.paths, f.id, f.deps);
+  assert.equal(result.failedStage, "verifying");
+  assert.equal(result.failureCode, "START_FAILED");
+  assert.equal(result.recoveryCode, "DISK_FULL");
+  assert.equal(result.error, UPDATE_RECOVERY_FAILED);
+  assert.ok(readdirSync(f.paths.backups).some((file) => file.endsWith(".db")));
 });
 test("update paths and environment reject arbitrary code routing and inherited API/login secrets", (t) => {
   const f = fixture(t);

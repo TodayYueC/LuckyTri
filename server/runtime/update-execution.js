@@ -15,6 +15,7 @@ import {
 } from "./update-manager.js";
 import { backupDatabase } from "../../scripts/backup.js";
 import { restoreToNewFile, verifyArchive } from "../storage/archive.js";
+import { updateFailure } from "./update-errors.js";
 
 // Executed outside the server so a large verified snapshot does not stall the
 // WebUI. Dependencies are explicit for failure, restart and rollback tests.
@@ -105,12 +106,9 @@ export async function performUpdate(
     return job;
   } catch (error) {
     const failedStage = job.status;
-    job = { ...job, failedStage };
-    console.error(
-      "更新步骤未完成：",
-      failedStage,
-      error.code || error.cause?.code || "STEP_FAILED",
-    );
+    const failure = updateFailure(error, failedStage);
+    job = { ...job, failedStage, ...failure };
+    console.error("更新步骤未完成：", failedStage, failure.failureCode, error);
     if (!stopped) {
       save("error", { error: UPDATE_FAILED, finished: Date.now() });
       return job;
@@ -150,6 +148,7 @@ export async function performUpdate(
               `${paths.database}.update-failed-${id}.migration${suffix}`,
             );
       const restored = await start(paths.package);
+      save("restoring", { childPid: restored });
       await health(restored, job.previous);
       save("error", {
         error: UPDATE_FAILED,
@@ -157,8 +156,14 @@ export async function performUpdate(
         childPid: restored,
         finished: Date.now(),
       });
-    } catch {
-      save("error", { error: UPDATE_RECOVERY_FAILED, finished: Date.now() });
+    } catch (recoveryError) {
+      const recovery = updateFailure(recoveryError, "restoring");
+      console.error("更新恢复未完成：", recovery.failureCode, recoveryError);
+      save("error", {
+        error: UPDATE_RECOVERY_FAILED,
+        recoveryCode: recovery.failureCode,
+        finished: Date.now(),
+      });
     }
     return job;
   } finally {

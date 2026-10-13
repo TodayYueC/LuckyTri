@@ -139,9 +139,16 @@ try {
     status: "error",
     restored: true,
     error: "测试更新失败，已恢复",
+    failedStage: "migrating",
+    failureCode: "MIGRATION_FAILED",
+    detail: "记忆与数据迁移未通过校验，请查看运行日志。",
   };
   await page
     .getByText("已恢复原版本和更新前的数据。", { exact: true })
+    .waitFor();
+  await page.getByText("失败阶段：迁移记忆与数据", { exact: true }).waitFor();
+  await page
+    .getByText("记忆与数据迁移未通过校验，请查看运行日志。", { exact: true })
     .waitFor();
   assert.equal(installs, 1);
   assert.ok(

@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  updateError,
+  updateFailure,
+  UPDATE_FAILURES,
+} from "./update-errors.js";
+import {
   atomicJson,
   UPDATE_ID,
   updatePath,
@@ -11,7 +16,7 @@ export const UPDATE_FAILED =
   "更新未完成，原程序和数据已保留，请查看运行日志后重试。";
 export const UPDATE_RECOVERY_FAILED =
   "自动恢复未完成，更新前的校验备份已保留，请查看运行日志并手动恢复。";
-const ACTIVE = new Set([
+export const UPDATE_ACTIVE_STAGES = Object.freeze([
   "queued",
   "downloading",
   "checking",
@@ -22,6 +27,12 @@ const ACTIVE = new Set([
   "verifying",
   "restoring",
 ]);
+const ACTIVE = new Set(UPDATE_ACTIVE_STAGES);
+export const isUpdateActive = (stage) => ACTIVE.has(stage);
+export const isUpdateFinished = (stage) =>
+  stage === "done" || stage === "error";
+const beforeStop = (stage) =>
+  ["queued", "downloading", "checking"].includes(stage);
 export const processAlive = (pid) => {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
@@ -70,18 +81,17 @@ export class InstanceUpdater {
       return null;
     }
     if (
-      ACTIVE.has(job.status) &&
+      isUpdateActive(job.status) &&
       job.workerPid &&
       !processAlive(job.workerPid)
     ) {
+      const failedStage = job.status;
       job = writeUpdateJob(this.paths.home, {
         ...job,
         status: "error",
-        error: ["queued", "downloading", "checking", "migrating"].includes(
-          job.status,
-        )
-          ? UPDATE_FAILED
-          : UPDATE_RECOVERY_FAILED,
+        failedStage,
+        ...updateFailure(updateError("UPDATE_INTERRUPTED"), failedStage),
+        error: beforeStop(failedStage) ? UPDATE_FAILED : UPDATE_RECOVERY_FAILED,
         finished: this.now(),
       });
     }
@@ -95,10 +105,22 @@ export class InstanceUpdater {
       finished: job.finished,
       error: job.error || "",
       restored: !!job.restored,
+      ...(isUpdateActive(job.failedStage)
+        ? { failedStage: job.failedStage }
+        : {}),
+      ...(Object.hasOwn(UPDATE_FAILURES, job.failureCode)
+        ? {
+            failureCode: job.failureCode,
+            detail: UPDATE_FAILURES[job.failureCode],
+          }
+        : {}),
+      ...(Object.hasOwn(UPDATE_FAILURES, job.recoveryCode)
+        ? { recoveryDetail: UPDATE_FAILURES[job.recoveryCode] }
+        : {}),
     };
   }
   get busy() {
-    return this.starting || ACTIVE.has(this.status()?.status);
+    return this.starting || isUpdateActive(this.status()?.status);
   }
   async install(version) {
     if (this.busy) return this.status();

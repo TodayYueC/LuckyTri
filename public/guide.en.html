@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>LuckyTri v1.2.1 · Getting Started</title>
+    <title>LuckyTri v1.2.2 · Getting Started</title>
     <style>
       * {
         box-sizing: border-box;
@@ -269,7 +269,7 @@
   <body>
     <header>
       <div>
-        <b>LuckyTri · Handbook</b><small>TIME · MEMORY · CHOICE / v1.2.1</small>
+        <b>LuckyTri · Handbook</b><small>TIME · MEMORY · CHOICE / v1.2.2</small>
       </div>
       <nav>
         <a href="/#setup">Back to the studio</a
@@ -1061,11 +1061,22 @@ npm start
           allowance; locally granted extra opportunities are recorded without
           clearing history.
         </p>
+        <p>
+          For systemd or PM2 deployments, use
+          <code>luckytri start --home /existing-instance</code> as the managed
+          entry point. The 1.2.0–1.2.1 foreground supervisor may start the old
+          server prematurely during memory migration. Back up and stop the
+          managed service, manually install the fixed release with
+          <code>npm install -g luckytri@1.2.2</code>, then restart with the same
+          account and instance directory. Retain existing data and
+          <code>runtime/</code>; see
+          <a href="npm-release.md">server update guidance</a>.
+        </p>
       </article>
     </div>
     <footer>
       LuckyTri · so that experience and choice stay coherent. This guide matches
-      the v1.2.1 interface.
+      the v1.2.2 interface.
     </footer>
   </body>
 </html>

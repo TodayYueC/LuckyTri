@@ -34,6 +34,42 @@ export const ERRORS = {
     "The update did not complete. The original program and data were retained. Check the runtime log before trying again.",
   "自动恢复未完成，更新前的校验备份已保留，请查看运行日志并手动恢复。":
     "Automatic recovery did not complete. The verified pre-update backup was retained. Check the runtime log and recover manually.",
+  "Node.js 版本不满足新版本要求，请先升级 Node.js 后重试。":
+    "This Node.js version does not meet the new release requirements. Upgrade Node.js and try again.",
+  "当前服务找不到 npm，请安装 npm 并检查服务的 PATH 配置。":
+    "The service cannot find npm. Install npm and check the service PATH.",
+  "npm 暂时无法下载该版本或其运行依赖，请稍后重新检查更新。":
+    "npm cannot download this release or its runtime dependencies yet. Check for updates again later.",
+  "连接 npm 失败，请检查服务器的网络、DNS 和代理配置。":
+    "Cannot reach npm. Check the server network, DNS and proxy settings.",
+  "连接 npm 时证书校验失败，请检查服务器的证书和代理配置。":
+    "Certificate verification failed when connecting to npm. Check the server certificates and proxy settings.",
+  "npm 拒绝了下载请求，请检查服务器的网络或代理访问限制。":
+    "npm rejected the download request. Check network or proxy access restrictions.",
+  "磁盘空间不足，请为新程序、数据库快照和迁移副本留出空间。":
+    "There is not enough disk space for the new program, database snapshot and migration copy.",
+  "服务账号没有所需的读写权限，请检查实例和更新目录的权限。":
+    "The service account lacks read or write access. Check the instance and update directory permissions.",
+  "当前更新步骤超时，请检查运行日志后重试。":
+    "The update step timed out. Check the runtime log and try again.",
+  "新版本安装失败，旧实例仍在运行，请查看运行日志中的 npm 报错。":
+    "Installation failed while the previous instance remains running. Check the npm errors in the runtime log.",
+  "新程序或本机运行依赖校验失败，请查看运行日志。":
+    "The new program or its local runtime dependencies failed validation. Check the runtime log.",
+  "旧实例未能安全停止，请检查进程管理和实例端口。":
+    "The previous instance could not be stopped safely. Check process management and the instance port.",
+  "更新前的数据库快照未能完成或通过校验，请查看运行日志。":
+    "The pre-update database snapshot could not be completed or verified. Check the runtime log.",
+  "记忆与数据迁移未通过校验，请查看运行日志。":
+    "Memory and data migration failed validation. Check the runtime log.",
+  "新实例未能正常启动，请检查运行日志和端口占用。":
+    "The new instance could not start correctly. Check the runtime log and port usage.",
+  "更新进程意外退出，请检查服务管理器、进程退出记录和运行日志。":
+    "The update process exited unexpectedly. Check the service manager, process exit records and runtime log.",
+  "旧版本或数据库恢复未完成，请使用更新前的校验备份恢复。":
+    "The previous program or database could not be restored. Recover from the verified pre-update backup.",
+  "当前更新步骤未完成，请查看运行日志。":
+    "The update step did not complete. Check the runtime log.",
   "缺少候选版本的数据迁移器，已停止更新":
     "The candidate release has no data migrator. The update was stopped.",
   迁移目标不是现有的绝对路径数据库文件:

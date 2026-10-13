@@ -30,7 +30,12 @@ else console.log("未检测到系统代理，外部 API 请求将直连。");
 let currentPid;
 for (const signal of ["SIGINT", "SIGTERM"])
   process.on(signal, () => {
-    if (currentPid) process.kill(currentPid, signal);
+    if (currentPid)
+      try {
+        process.kill(currentPid, signal);
+      } catch (error) {
+        if (error.code !== "ESRCH") throw error;
+      }
   });
 
 async function start(root) {
@@ -71,6 +76,7 @@ try {
     } else {
       await waitForProcessExit(tracked.pid);
     }
+    currentPid = undefined;
 
     const update = await updatedServerAfterExit(paths.home, tracked.pid);
     if (!update.matched) break;
@@ -80,6 +86,7 @@ try {
       // after rollback). Keep this foreground process alive so systemd does not
       // kill that process or any still-running update work in the same cgroup.
       tracked = { pid: update.pid };
+      currentPid = update.pid;
       direct = false;
       continue;
     }

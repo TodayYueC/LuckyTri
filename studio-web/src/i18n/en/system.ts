@@ -1,5 +1,15 @@
 // English for the System section (models, embedding, search, runtime, page shell).
 export default {
+  准备更新: "Preparing the update",
+  下载新版本: "Downloading the new release",
+  检查新程序: "Checking the new program",
+  停止旧实例: "Stopping the previous instance",
+  保存校验备份: "Saving a verified backup",
+  迁移记忆与数据: "Migrating memories and data",
+  切换并重启: "Switching and restarting",
+  检查新实例: "Checking the new instance",
+  恢复原版本: "Restoring the previous release",
+  "失败阶段：{stage}": "Failed step: {stage}",
   更新已开始: "Update started",
   "正在下载新版本…": "Downloading the new version...",
   "正在检查新程序…": "Checking the new program...",
