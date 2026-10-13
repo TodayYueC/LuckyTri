@@ -2,6 +2,11 @@
 
 # Changelog
 
+## 1.2.4 — 2026-10-13
+
+- Import sticker ZIP archives in one batch, including nested folders and folder-based categories. Duplicates, hidden files, non-images and oversized images are skipped with a result summary. New stickers use the existing one-time analysis queue; archives are processed in memory.
+- Preserve a single top-level category directory instead of mistaking it for an archive wrapper, so a path such as `happy/a.png` keeps the `happy` category.
+
 ## 1.2.3 — 2026-10-13
 
 - Add a sticker library. Upload familiar stickers and let a vision model describe their image, text, emotion and fitting situations. She chooses one only when it fits, and remembers what using it with a particular person came to mean.

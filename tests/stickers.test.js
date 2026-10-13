@@ -343,3 +343,21 @@ test("a sticker ZIP imports every image, folders as categories, skips the rest",
   const evil = writeZip([{ name: "../x.png", bytes: red }]);
   await assert.rejects(importStickerZip(k.library, evil), /路径无效/);
 });
+
+test("a single top-level sticker category is not mistaken for an archive wrapper", async () => {
+  const { writeZip } = await import("../scripts/dev/zip-writer.js");
+  const { importStickerZip } = await import("../server/stickers/zip-import.js");
+  const { k } = kernel();
+  const zip = writeZip([
+    { name: "开心/a.png", bytes: await png("#f00") },
+    { name: "开心/deep/b.png", bytes: await png("#00f") },
+  ]);
+  const summary = await importStickerZip(k.library, zip, {
+    folderCategory: true,
+  });
+  assert.equal(summary.imported, 2);
+  assert.deepEqual(
+    k.library.categories().map((item) => item.category),
+    ["开心"],
+  );
+});

@@ -3,6 +3,15 @@ import { STICKER_MAX_BYTES } from "./library.js";
 
 const MIB = 1024 * 1024;
 const IMAGE = /\.(png|jpe?g|gif|webp)$/i;
+const ARCHIVE_ROOT =
+  /^(?:pack(?:age)?|stickers?(?:[-_ ]?pack)?|emojis?|images?|my[-_ ]stickers|我的表情|表情包|表情)$/i;
+
+function stripArchiveRoot(files) {
+  if (!files.length) return files;
+  const roots = new Set(files.map((file) => file.name.split("/")[0]));
+  if (roots.size !== 1 || !ARCHIVE_ROOT.test([...roots][0])) return files;
+  return stripRoot(files);
+}
 
 // Upload size of one sticker archive; STICKER_ZIP_MAX_MB overrides it.
 export function stickerZipLimitMb(env = process.env) {
@@ -25,7 +34,7 @@ export async function importStickerZip(
   if (!Buffer.isBuffer(buffer) || !buffer.length) throw Error("文件为空");
   if (buffer.length > limit) throw Error("压缩包过大");
   const summary = { imported: 0, duplicates: 0, skipped: [], failed: [] };
-  const files = stripRoot(
+  const files = stripArchiveRoot(
     readZip(buffer, {
       maxFiles: 5000,
       maxBytes: Math.max(limit * 2, 400 * MIB),
