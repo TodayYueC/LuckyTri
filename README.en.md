@@ -114,15 +114,18 @@ Recent work focuses on continuity and clearer conversation. Account-based recogn
 
 All of these are her own choice and only appear when the current connection can actually do them; what she did is written into her history.
 
-| Ability                                      | What it does                                                                                                                                                                                           |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| @ and quoted reply                           | @ someone in a group (at most two); quote a message when the topic has scrolled away or it must be clear which line is answered — chosen by her (the old "quote when buried" rule stays as a fallback) |
-| Poke                                         | Poke or poke back; being poked counts as being called, pokes between others do not disturb her. At most once per person per 10 minutes                                                                 |
-| Reactions                                    | Put one of ten reactions on a message, with or without words                                                                                                                                           |
-| Dice / rock-paper-scissors                   | Throw a die or play rps; incoming ones are understood too                                                                                                                                              |
-| Recall                                       | Only their own last message, within two minutes, when it was a mistake; at most twice an hour                                                                                                          |
-| Voice (optional)                             | See "Voice" below; whether a line is spoken is her call                                                                                                                                                |
-| Typing status, forwarded chats, files, music | Not in this round; see the changelog                                                                                                                                                                   |
+| Ability                    | What it does                                                                                                                                                                                           |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| @ and quoted reply         | @ someone in a group (at most two); quote a message when the topic has scrolled away or it must be clear which line is answered — chosen by her (the old "quote when buried" rule stays as a fallback) |
+| Poke                       | Poke or poke back; being poked counts as being called, pokes between others do not disturb her. At most once per person per 10 minutes                                                                 |
+| Reactions                  | Put one of ten reactions on a message, with or without words                                                                                                                                           |
+| Dice / rock-paper-scissors | Throw a die or play rps; incoming ones are understood too                                                                                                                                              |
+| Recall                     | Only their own last message, within two minutes, when it was a mistake; at most twice an hour                                                                                                          |
+| Voice (optional)           | See "Voice" below; whether a line is spoken is her call                                                                                                                                                |
+| Typing                     | In a private chat the other side sees "typing…" while she thinks (where the client supports it); not in groups                                                                                         |
+| Forwarded chats            | Incoming forwarded chats are unfolded and read (up to 40 lines); she can also forward a few messages from here (up to 20, twice an hour)                                                               |
+| Files                      | When something is long or a file is asked for, she can send what she wrote as a .md file (twice an hour)                                                                                               |
+| Music                      | A NetEase Cloud Music card when she wants to recommend a song or someone asks; a title and link when the client has no cards (some originals are not on NetEase for licensing reasons)                 |
 
 Poke and reactions rely on extension APIs of the OneBot implementation; when it refuses them, those actions are simply no longer offered.
 
@@ -142,7 +145,7 @@ Poke and reactions rely on extension APIs of the OneBot implementation; when it 
 
 - Two protocols: Volcengine speech v3 (Agent Plan preset `doubao-seed-tts-2.0`) and OpenAI-compatible `/audio/speech`. Set URL, key, speaker and "how the voice sounds" in "System → Voice", with a preview button.
 - **Off by default**, and it stays off without a working speech service. On only means "may": whether a line is spoken, and whether she sings when asked, follows her mood and wish, never forced. At most three voice messages per conversation per hour, 60 characters each; if synthesis fails the line is typed.
-- Understanding incoming voice messages (ASR) is not in this round.
+- **Hearing voice (ASR)**: under System → Voice → Hearing voice, choose Volcengine speech recognition (Agent Plan, `volc.seedasr.sauc.duration`), Volcengine flash file recognition, or OpenAI-compatible `/audio/transcriptions`; an empty recognition key falls back to the speech key. Off by default; when on, incoming voice is transcribed before she reads it, and shows as "[voice]" if that fails. Needs ffmpeg on the host.
 
 ### Settings and automatic updates
 
