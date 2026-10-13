@@ -40,7 +40,11 @@ function queueDescribe(system, id) {
   })();
 }
 
-const MEDIA_DEFAULTS = { visionMaxSide: 2048, visionMaxMB: 3 };
+const MEDIA_DEFAULTS = {
+  visionMaxSide: 2048,
+  visionMaxMB: 3,
+  visionSourceMaxMB: 20,
+};
 export function mediaSettings(repo) {
   return { ...MEDIA_DEFAULTS, ...(repo.config("media") || {}) };
 }
@@ -124,11 +128,21 @@ export function mountStickers(app, system) {
     wrap((req, res) => {
       const side = Number(req.body.visionMaxSide);
       const mb = Number(req.body.visionMaxMB);
+      const source = Number(
+        req.body.visionSourceMaxMB ??
+          mediaSettings(system.repo).visionSourceMaxMB,
+      );
+      if (!Number.isFinite(source) || source < 1 || source > 64)
+        throw Error("可接收的图片大小应在 1–64 MB 之间");
       if (!Number.isInteger(side) || side < 512 || side > 8192)
         throw Error("图片理解尺寸应在 512–8192 像素之间");
       if (!Number.isFinite(mb) || mb < 0.5 || mb > 4)
         throw Error("图片理解大小应在 0.5–4 MB 之间");
-      system.repo.saveConfig("media", { visionMaxSide: side, visionMaxMB: mb });
+      system.repo.saveConfig("media", {
+        visionMaxSide: side,
+        visionMaxMB: mb,
+        visionSourceMaxMB: source,
+      });
       res.json(mediaSettings(system.repo));
     }),
   );

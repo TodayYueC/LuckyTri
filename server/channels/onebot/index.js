@@ -6,7 +6,8 @@ import { defineChannel } from "../contract.js";
 import { parseSessionKey } from "../session-key.js";
 import { applyDirectoryNames } from "../../core/sessions.js";
 import { saveAccountNames } from "../../studio/display-names.js";
-import { visionImageLimits } from "../../core/image-preprocessor.js";
+import { ownerImageLimits } from "../../core/image-preprocessor.js";
+import { mediaSettings } from "../../stickers/api.js";
 
 const EVENT_MAX_BYTES = 1024 * 1024;
 const IMAGE_TIMEOUT_MS = 30000;
@@ -168,7 +169,9 @@ export function createOneBotChannel(
     // Only authenticated OneBot clients reach this server. get_image may carry
     // base64 rather than a URL, so its frame must fit the source-image budget.
     // Ordinary events still have the smaller independent limit below.
-    const imageBytes = visionImageLimits().maxSourceBytes;
+    const imageBytes = ownerImageLimits(
+      chatSystem?.repo ? mediaSettings(chatSystem.repo) : {},
+    ).maxSourceBytes;
     wss = new WebSocketServer({
       noServer: true,
       maxPayload: Math.ceil(imageBytes / 3) * 4 + EVENT_MAX_BYTES,

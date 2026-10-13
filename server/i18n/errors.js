@@ -7,6 +7,8 @@ export const ERRORS = {
     "Image understanding size must be between 512 and 8192 pixels",
   "图片理解大小应在 0.5–4 MB 之间":
     "Image understanding size must be between 0.5 and 4 MB",
+  "可接收的图片大小应在 1–64 MB 之间":
+    "The accepted image size must be between 1 and 64 MB",
   表情不存在: "The sticker does not exist",
   文件为空: "The file is empty",
   "表情超过 2MB，请压缩后再上传":

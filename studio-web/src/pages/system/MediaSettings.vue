@@ -7,6 +7,7 @@ import Toggle from "../../components/ui/Toggle.vue";
 
 const side = ref(2048);
 const mb = ref(3);
+const source = ref(20);
 const stickers = ref(true);
 const taggingModelId = ref("");
 onMounted(async () => {
@@ -14,6 +15,7 @@ onMounted(async () => {
     const media = await api("/core/media-settings");
     side.value = media.visionMaxSide;
     mb.value = media.visionMaxMB;
+    source.value = media.visionSourceMaxMB ?? 20;
     const s = await api("/core/stickers");
     stickers.value = s.settings.enabled !== false;
     taggingModelId.value = s.settings.taggingModelId || "";
@@ -26,6 +28,7 @@ async function save() {
     await api("/core/media-settings", "PUT", {
       visionMaxSide: Number(side.value),
       visionMaxMB: Number(mb.value),
+      visionSourceMaxMB: Number(source.value),
     });
     await api("/core/stickers-settings", "PUT", {
       enabled: stickers.value,
@@ -53,6 +56,19 @@ async function save() {
       </div>
     </div>
     <div class="fields">
+      <label
+        >{{ t("可接收的图片大小上限（MB）") }}
+        <input
+          v-model.number="source"
+          type="number"
+          min="1"
+          max="64"
+          step="1"
+        />
+        <small class="faint">{{
+          t("聊天里不超过这个大小的图片都会先缩小压缩再看。默认 20。")
+        }}</small>
+      </label>
       <label
         >{{ t("图片理解的最长边（像素）") }}
         <input

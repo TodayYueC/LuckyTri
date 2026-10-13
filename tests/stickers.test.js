@@ -241,3 +241,58 @@ test("choosing a sticker reads only stored meaning; no model is asked to look", 
   const offer = await k.candidates({ session: "g", text: "开心 喜欢你" });
   assert.equal(offer[0].id, s.id);
 });
+
+test("images up to 20 MB are accepted by default and shrunk for the model", async () => {
+  const { prepareVisionImage, visionImageLimits } =
+    await import("../server/core/image-preprocessor.js");
+  assert.equal(modelImageLimits({}).maxSourceBytes, 20 * 1024 * 1024);
+  assert.equal(visionImageLimits({}).maxSourceBytes, 20 * 1024 * 1024);
+  assert.equal(
+    modelImageLimits({ visionSourceMaxMB: 999 }).maxSourceBytes,
+    64 * 1024 * 1024,
+  );
+  const noisy = await sharp({
+    create: {
+      width: 1400,
+      height: 1400,
+      channels: 4,
+      noise: { type: "gaussian", mean: 128, sigma: 60 },
+    },
+  })
+    .png({ compressionLevel: 0 })
+    .toBuffer();
+  assert.ok(noisy.length > 7 * 1024 * 1024);
+  const limits = { ...visionImageLimits({}), ...modelImageLimits({}) };
+  const out = await prepareVisionImage(noisy, limits);
+  assert.ok(out.bytes.length <= 3 * 1024 * 1024);
+  // Past the owner's source limit the picture is refused with a reason,
+  // not a crash.
+  await assert.rejects(
+    prepareVisionImage(noisy, {
+      ...limits,
+      ...modelImageLimits({ visionSourceMaxMB: 1 }),
+    }),
+    /图片超过大小限制/,
+  );
+});
+
+test("an inbound @ is read: @her marks a call, @others become mentions", async () => {
+  const { normalize } = await import("../server/channels/onebot/adapter.js");
+  const event = normalize({
+    post_type: "message",
+    message_type: "group",
+    self_id: 99999,
+    user_id: 10001,
+    group_id: 123,
+    message_id: 7,
+    sender: { nickname: "阿明" },
+    message: [
+      { type: "at", data: { qq: "99999" } },
+      { type: "at", data: { qq: "10002" } },
+      { type: "text", data: { text: " 你俩评评理" } },
+    ],
+  });
+  assert.equal(event.mentioned, true);
+  assert.ok(event.mentions.map(String).includes("10002"));
+  assert.match(event.text, /^@我\[提及成员\]/);
+});

@@ -25,6 +25,9 @@ export default {
   图上的字: "Text in the picture",
   图片与表情: "Images and stickers",
   "图片理解的大小上限（MB）": "Image understanding size limit (MB)",
+  "可接收的图片大小上限（MB）": "Largest image accepted (MB)",
+  "聊天里不超过这个大小的图片都会先缩小压缩再看。默认 20。":
+    "Chat images up to this size are shrunk and compressed before being looked at. Default 20.",
   "图片理解的最长边（像素）": "Image understanding longest side (px)",
   "已上传 {done} 张，正在自动识别含义": "Uploaded {done}; describing them now",
   "已重新识别，稍后刷新查看": "Describing again; refresh shortly",

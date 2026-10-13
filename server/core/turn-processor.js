@@ -1,5 +1,5 @@
 import { mediaSettings } from "../stickers/api.js";
-import { modelImageLimits } from "./image-preprocessor.js";
+import { ownerImageLimits } from "./image-preprocessor.js";
 import { atCandidates, expressiveChannel } from "../stickers/offer.js";
 import { speechLength } from "./speech-length.js";
 import { parseSessionKey } from "../channels/session-key.js";
@@ -498,7 +498,7 @@ export class TurnProcessor {
         ? await this.owner.loadVisionImages(early.pending, {
             sessionId: snapshot.sessionId,
             fetchImage: this.owner.fetchImage,
-            imageLimits: modelImageLimits(mediaSettings(this.owner.repo)),
+            imageLimits: ownerImageLimits(mediaSettings(this.owner.repo)),
           })
         : { images: [], unavailable: [] };
       const planned = classifyLoaded(
