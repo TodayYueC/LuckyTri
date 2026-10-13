@@ -593,6 +593,15 @@ export class ReplyDelivery {
       // Only an action (a poke, a reaction, a die): no words to check.
       trace.response = { bubbles: [], actions: turn.actions };
       trace.sent = [];
+      if (
+        !response.bubbles.length &&
+        !turn.sticker &&
+        !turn.actions?.some((a) => !["reply", "voice"].includes(a.type)) &&
+        !turn.crisis?.clear
+      ) {
+        trace.steps.push("没有可说的句子了，本轮不说");
+        return finish("silent", "话被删光或不成立，不说了");
+      }
       if (c.replay) return finish("replayed", "隔离回放完成，未发送或写入记忆");
       if (c.preview) return finish("previewed", turn.reason);
       const done = await this.doActions(
@@ -1049,7 +1058,7 @@ export function announcesUnseen(bubbles, snapshot, images = []) {
   );
   if (asked) return false;
   return (bubbles || []).some((line) =>
-    /图.{0,8}(?:没读|读不|看不清|看不到|没看到|打不开|是空|空的|空标签)|(?:没读|读不)出(?:来|内容)|第[二三四五六七八九十\d]+张|[这那几三两]张.{0,4}(?:也|全|都)?(?:是)?空|(?:读|看)(?:不)?出画面|画面.{0,4}(?:读|看)不|没读出|读不出|(?:图|这张|那张|画面).{0,8}(?:看不明白|看不懂|没看懂|看不清|糊)|(?:看不明白|看不懂|没看懂).{0,4}(?:图|这张)|查无此图|看不看懂|图运|空壳|收到个空|图.{0,12}(?:断线|罢工|挂了)|断线.{0,4}图|我这(?:边)?.{0,8}断线|(?:图|管道).{0,6}瘫|看个摘要|图.{0,6}堵死|给我口述|全靠猜|谁读出来|照样空白|(?:这份|这张)?也是白的|没读到|看不懂也当收到|全吞了?|没救回来|救回来|废图|数废图|吞了|全灭|图床|撂挑子|文字复述|集体加班|集体罢工|一样是空|这边.{0,6}空|是空的|真断线|图.{0,12}断线|打字说|打字发|那张到底|你那张.{0,8}啥|到底是啥|没收到画面|剩个壳|只剩个壳|图通了|补看|文字补|集体发作|看不太真切|一张都没|表情包到我|赊着|没画面|也没画面|图道|塌方|集体塌|硬猜|重新发一?遍文字|(?:画面|图道|图床|图运).{0,10}(?:没|不|空|断|塌|挂|瘫|灭|白)|(?:没|不).{0,6}(?:画面|图道)|集体.{0,6}(?:断|塌|瘫|灭|发作|罢工)|文字频道/.test(
+    /图.{0,8}(?:没读|读不|看不清|看不到|没看到|打不开|是空|空的|空标签)|(?:没读|读不)出(?:来|内容)|第[二三四五六七八九十\d]+张|[这那几三两]张.{0,4}(?:也|全|都)?(?:是)?空|(?:读|看)(?:不)?出画面|画面.{0,4}(?:读|看)不|没读出|读不出|(?:图|这张|那张|画面).{0,8}(?:看不明白|看不懂|没看懂|看不清|糊)|(?:看不明白|看不懂|没看懂).{0,4}(?:图|这张)|查无此图|看不看懂|图运|空壳|收到个空|图.{0,12}(?:断线|罢工|挂了)|断线.{0,4}图|我这(?:边)?.{0,8}断线|(?:图|管道).{0,6}瘫|看个摘要|图.{0,6}堵死|给我口述|全靠猜|谁读出来|照样空白|(?:这份|这张)?也是白的|没读到|看不懂也当收到|全吞了?|没救回来|救回来|废图|数废图|吞了|全灭|图床|撂挑子|文字复述|集体加班|集体罢工|一样是空|这边.{0,6}空|是空的|真断线|图.{0,12}断线|打字说|打字发|那张到底|你那张.{0,8}啥|到底是啥|没收到画面|剩个壳|只剩个壳|图通了|补看|文字补|集体发作|看不太真切|一张都没|表情包到我|赊着|没画面|也没画面|图道|塌方|集体塌|硬猜|通道.{0,6}关|这通道|文字报|报个菜|重新发一?遍文字|(?:画面|图道|图床|图运).{0,10}(?:没|不|空|断|塌|挂|瘫|灭|白)|(?:没|不).{0,6}(?:画面|图道)|集体.{0,6}(?:断|塌|瘫|灭|发作|罢工)|文字频道/.test(
       line,
     ),
   );
@@ -1110,7 +1119,16 @@ export function trimmedSpeech(response, snapshot, images, trace) {
         .replace(/[，,](?:行|好|嗯)$/u, "");
     })
     .filter((line) => line && /[\p{L}\p{N}]/u.test(line));
-  if (!bubbles.length || bubbles.some(bad)) return response;
+  if (bubbles.some(bad)) return response;
+  // Image/ledger/secrecy cuts that leave nothing: do not put the bad
+  // draft back. An empty reply is silence in an undirected group.
+  if (!bubbles.length) {
+    if (response.bubbles.some((line) => unseen(line) || secretive(line))) {
+      trace?.steps?.push("宣布看不见图或故作保密的句子删光了，本轮不说");
+      return { ...response, bubbles: [] };
+    }
+    return response;
+  }
   trace?.steps?.push("删去宣布没看清图、记账或故作保密的半句，其余照原样");
   return { ...response, bubbles };
 }
