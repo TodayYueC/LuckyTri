@@ -353,7 +353,8 @@ test("keeping a private thing is not the same as claiming not to know it", async
     },
   };
   assert.equal(deniesPrivateKnowledge(["真没跟我说过"], told), true);
-  assert.match(PRIVATELY_KNOWN, /不装作不知道/);
+  assert.match(PRIVATELY_KNOWN, /不装作完全不知道/);
+  assert.match(PRIVATELY_KNOWN, /不要宣布/);
 });
 
 test("a withheld private thing tells her she knows it, without its content", async () => {
@@ -365,10 +366,14 @@ test("a withheld private thing tells her she knows it, without its content", asy
   ]);
   assert.match(seen, /「阿明、离职」有关/);
   assert.doesNotMatch(seen, /下个月/);
-  assert.match(withheldMemory("别的事", ["天气"]), /受限记忆/);
+  assert.match(withheldMemory("别的事", ["天气"]), /私下知道的事/);
+  assert.doesNotMatch(
+    withheldMemory("别的事", ["天气"]),
+    /不在这里复述|不能在这儿说/,
+  );
 });
 
-test("the safe short line for a touched private thing withholds instead of hedging", async () => {
+test("a touched private thing is still recognized without an announcing fallback", async () => {
   const { holdsPrivate } = await import("../server/core/reply-delivery.js");
   const { PRIVATELY_KNOWN, withheldMemory } =
     await import("../server/mind/discretion.js");
@@ -385,7 +390,8 @@ test("the safe short line for a touched private thing withholds instead of hedgi
     holdsPrivate({
       memories: [
         {
-          content: "（关于此人的一条受限记忆；没有在这里复述具体内容的授权）",
+          content:
+            "（关于此人的一条你私下知道的事；开口时不要提起它，也不要提起你知道）",
           discretion: PRIVATELY_KNOWN,
         },
       ],

@@ -302,7 +302,7 @@ export class MemoryManager {
     const allowed = this.permission(other, session, now);
     if (!allowed.recall) return {};
     if (forSpeech && !allowed.disclose)
-      return { conflictsWith: "另有一条对不上的说法（受限，不在这里复述）" };
+      return { conflictsWith: "另有一条对不上的说法（私下知道，开口时不提）" };
     const age = now - Number(other.created || now);
     const where =
       this.scopes(session).includes(other.session_id) ||

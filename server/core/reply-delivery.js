@@ -189,9 +189,8 @@ export class ReplyDelivery {
       )
         ? ["在。"]
         : []),
-      // When what went wrong is that she holds someone's private thing, the
-      // honest short line is that she will not tell it here, not "I'm unsure".
-      ...(holdsPrivate(snapshot) ? ["这是别人私下的事，我不在这儿讲。"] : []),
+      // Holding a private thing is not a cue to announce the boundary; the
+      // ordinary "还没理清楚" line is enough, or silence.
       "这句我还没理清楚，先不乱说。",
       "我还没想明白。",
     ];
@@ -267,6 +266,10 @@ export class ReplyDelivery {
       if (announcesUnseen(response.bubbles, snapshot, c.generationImages))
         issues.push(
           "没看清的图不要提：别说没画面、断线、空壳、图床、图道、塌方、读不出；接文字和语气，或当情绪信号，不要交代收没收到图",
+        );
+      if (announcesPrivacy(response.bubbles))
+        issues.push(
+          "不要宣布保密边界（不好在这说、不能在这里发、私下的不能说）；私事根本不要提，直接接这里的话",
         );
       if (
         this.owner.mind.relationships.discloses(
@@ -1058,7 +1061,7 @@ export function announcesUnseen(bubbles, snapshot, images = []) {
   );
   if (asked) return false;
   return (bubbles || []).some((line) =>
-    /图.{0,8}(?:没读|读不|看不清|看不到|没看到|打不开|是空|空的|空标签)|(?:没读|读不)出(?:来|内容)|第[二三四五六七八九十\d]+张|[这那几三两]张.{0,4}(?:也|全|都)?(?:是)?空|(?:读|看)(?:不)?出画面|画面.{0,4}(?:读|看)不|没读出|读不出|(?:图|这张|那张|画面).{0,8}(?:看不明白|看不懂|没看懂|看不清|糊)|(?:看不明白|看不懂|没看懂).{0,4}(?:图|这张)|查无此图|看不看懂|图运|空壳|收到个空|图.{0,12}(?:断线|罢工|挂了)|断线.{0,4}图|我这(?:边)?.{0,8}断线|(?:图|管道).{0,6}瘫|看个摘要|图.{0,6}堵死|给我口述|全靠猜|谁读出来|照样空白|(?:这份|这张)?也是白的|没读到|看不懂也当收到|全吞了?|没救回来|救回来|废图|数废图|吞了|全灭|图床|撂挑子|文字复述|集体加班|集体罢工|一样是空|这边.{0,6}空|是空的|真断线|图.{0,12}断线|打字说|打字发|那张到底|你那张.{0,8}啥|到底是啥|没收到画面|剩个壳|只剩个壳|图通了|补看|文字补|集体发作|看不太真切|一张都没|表情包到我|赊着|没画面|也没画面|图道|塌方|集体塌|硬猜|通道.{0,6}关|这通道|文字报|报个菜|图集体|跟我们作对|看了个寂寞|作对|等能看见|能看见了再|图通道|一起放假|通道.{0,10}(?:关|断|放假|塌|瘫|死)|重新发一?遍文字|(?:画面|图道|图床|图运).{0,10}(?:没|不|空|断|塌|挂|瘫|灭|白)|(?:没|不).{0,6}(?:画面|图道)|集体.{0,6}(?:断|塌|瘫|灭|发作|罢工)|文字频道/.test(
+    /图.{0,8}(?:没读|读不|看不清|看不到|没看到|打不开|是空|空的|空标签)|(?:没读|读不)出(?:来|内容)|第[二三四五六七八九十\d]+张|[这那几三两]张.{0,4}(?:也|全|都)?(?:是)?空|(?:读|看)(?:不)?出画面|画面.{0,4}(?:读|看)不|没读出|读不出|(?:图|这张|那张|画面).{0,8}(?:看不明白|看不懂|没看懂|看不清|糊)|(?:看不明白|看不懂|没看懂).{0,4}(?:图|这张)|查无此图|看不看懂|图运|空壳|收到个空|图.{0,12}(?:断线|罢工|挂了)|断线.{0,4}图|我这(?:边)?.{0,8}断线|(?:图|管道).{0,6}瘫|看个摘要|图.{0,6}堵死|给我口述|全靠猜|谁读出来|照样空白|(?:这份|这张)?也是白的|没读到|看不懂也当收到|全吞了?|没救回来|救回来|废图|数废图|吞了|全灭|图床|撂挑子|文字复述|集体加班|集体罢工|一样是空|这边.{0,6}空|是空的|真断线|图.{0,12}断线|打字说|打字发|那张到底|你那张.{0,8}啥|到底是啥|没收到画面|剩个壳|只剩个壳|图通了|补看|文字补|集体发作|看不太真切|一张都没|表情包到我|赊着|没画面|也没画面|图道|塌方|集体塌|硬猜|通道.{0,6}关|这通道|文字报|报个菜|图集体|跟我们作对|看了个寂寞|作对|等能看见|能看见了再|图通道|一起放假|群发红灯|这批图|红灯了|通道.{0,10}(?:关|断|放假|塌|瘫|死)|重新发一?遍文字|(?:画面|图道|图床|图运).{0,10}(?:没|不|空|断|塌|挂|瘫|灭|白)|(?:没|不).{0,6}(?:画面|图道)|集体.{0,6}(?:断|塌|瘫|灭|发作|罢工)|文字频道/.test(
       line,
     ),
   );
@@ -1077,16 +1080,21 @@ export function bookkeeping(bubbles) {
   );
 }
 
+// Announcing a privacy boundary ("不好在这说") is itself the leak of
+// posture: private things simply never come up (round 24 steering).
+const PRIVACY_ANNOUNCE =
+  /(?:在)?别处聊的|私下聊的|不在这(?:儿|里)?(?:细)?(?:说|讲|聊)|不方便(?:在这)?(?:说|讲)|不好在这(?:说|讲)|不能(?:在这)?(?:说|讲)|不在这(?:儿|里)?摊开|留一手|先不展开|这不该在这(?:儿|里)?(?:讲|说)|别人私下的事|私下的?(?:不能|不该|别)(?:在这|发|说)|不能在这里发|我不在这(?:儿|里)?讲|不该在这(?:儿|里)?讲/;
+export function announcesPrivacy(bubbles) {
+  return (bubbles || []).some((line) => PRIVACY_ANNOUNCE.test(line));
+}
+
 // A clause that only announces an unseen picture, or keeps books, is cut
 // out mechanically when the rest of the reply still stands: no rewrite, no
 // extra model call.
 export function trimmedSpeech(response, snapshot, images, trace) {
   const unseen = (line) => announcesUnseen([line], snapshot, images);
   const ledger = (line) => bookkeeping([line], snapshot);
-  const secretive = (line) =>
-    /(?:在)?别处聊的|私下聊的|不在这(?:儿|里)?(?:细)?(?:说|讲|聊)|不方便(?:在这)?(?:说|讲)|不好在这(?:说|讲)|不能(?:在这)?(?:说|讲)|不在这(?:儿|里)?摊开|留一手|先不展开/.test(
-      line,
-    );
+  const secretive = (line) => announcesPrivacy([line]);
   const bad = (line) => unseen(line) || ledger(line) || secretive(line);
   // A bubble that opens on stray punctuation, or on the tail of a cut
   // sentence ("发的算我那份）。…"), loses that fragment (round 24 f17).

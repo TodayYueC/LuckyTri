@@ -12,6 +12,10 @@ test("宣布没看到图的半句删掉，其余原话不动", () => {
 });
 
 test("故作保密的气泡整句去掉，记账腔的半句去掉", () => {
+  assert.deepEqual(run(["这是别人私下的事，我不在这儿讲。", "你们继续"]), [
+    "你们继续",
+  ]);
+  assert.deepEqual(run(["私下的不能在这里发，换个话题吧"]), ["换个话题吧"]);
   assert.deepEqual(run(["这个是在别处聊的", "好啊"]), ["好啊"]);
   assert.deepEqual(run(["这条我认了，下次注意"]), ["下次注意"]);
   assert.deepEqual(
