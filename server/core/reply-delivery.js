@@ -1,3 +1,4 @@
+import { typedAt } from "../stickers/offer.js";
 import { persistReply } from "./message-manager.js";
 import { PRIVATELY_KNOWN } from "../mind/discretion.js";
 import { replyFocus } from "./conversation-cues.js";
@@ -715,6 +716,10 @@ export class ReplyDelivery {
       this.owner.now(),
       snapshot.inner?.currentLife?.current,
     );
+    // A rewritten or generated reply may type an @ as text; it is made real.
+    const typed = typedAt(response.bubbles, turn.at || [], snapshot);
+    if (typed.bubbles.length)
+      response = { ...response, bubbles: typed.bubbles };
     trace.response = response;
     trace.sent = await deliver(
       this.owner.repo,
@@ -726,7 +731,7 @@ export class ReplyDelivery {
       {
         now: this.owner.now,
         quote: buriedTarget(batch, turn.targetMessageIds, session),
-        at: turn.at || [],
+        at: typed.at,
         prepareBubble: (line) =>
           this.owner.mind.time.reconcile(
             { bubbles: [line] },

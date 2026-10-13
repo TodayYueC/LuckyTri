@@ -81,3 +81,26 @@ export function expressionInput(snapshot) {
     },
   };
 }
+
+// "@小红" typed as text is not an @ on QQ. A name she wrote that way for
+// someone offered becomes a real @, and the typed copy is removed so the
+// message does not show the name twice.
+export function typedAt(bubbles, at, snapshot) {
+  const offered = snapshot.canAt || [];
+  const chosen = new Map(at.map((p) => [p.userId, p]));
+  const out = bubbles.map((line, i) => {
+    let text = line;
+    for (const p of offered) {
+      const mark = `@${p.name}`;
+      if (!p.name || !text.includes(mark)) continue;
+      if (i === 0 && chosen.size < 2) chosen.set(p.userId, p);
+      if (chosen.has(p.userId))
+        text = text
+          .split(mark)
+          .join("")
+          .replace(/^[\s，,]+/, "");
+    }
+    return text.trim();
+  });
+  return { bubbles: out.filter(Boolean), at: [...chosen.values()] };
+}

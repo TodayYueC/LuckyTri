@@ -203,3 +203,13 @@ test("a large photo is brought down to the owner's image size, not refused", asy
   assert.ok(out.bytes.length <= 1024 * 1024);
   assert.equal(modelImageLimits({ visionMaxSide: 99999 }).maxDimension, 8192);
 });
+
+test("a name typed as @ text becomes a real @ and is not shown twice", async () => {
+  const { typedAt } = await import("../server/stickers/offer.js");
+  const snapshot = { canAt: [{ userId: "10002", name: "小红" }] };
+  assert.deepEqual(typedAt(["@小红 老王在叫你"], [], snapshot), {
+    bubbles: ["老王在叫你"],
+    at: [{ userId: "10002", name: "小红" }],
+  });
+  assert.deepEqual(typedAt(["@阿明 在吗"], [], snapshot).at, []);
+});

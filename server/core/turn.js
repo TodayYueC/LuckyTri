@@ -1,4 +1,9 @@
-import { chosenAt, chosenSticker, expressionInput } from "../stickers/offer.js";
+import {
+  chosenAt,
+  chosenSticker,
+  expressionInput,
+  typedAt,
+} from "../stickers/offer.js";
 import { replyFocus } from "./conversation-cues.js";
 import { INITIATIVE_PROMPT } from "../mind/initiative.js";
 import { initiativeContext } from "./initiative-context.js";
@@ -566,9 +571,8 @@ export function normalizeTurn(raw, snapshot, trace, { speech } = {}) {
       .slice(0, 4),
     crisis: crisis ? { clear: true, messageIds: crisisIds } : { clear: false },
     act: botYield || stopped ? null : normalizeAct(raw.act, trace),
-    bubbles: bubbles.slice(0, bubbleLimit),
     maxBubbles: bubbleLimit,
-    ...expressionChoice(raw, snapshot, choice),
+    ...expressionChoice(raw, snapshot, choice, bubbles.slice(0, bubbleLimit)),
   };
 }
 
@@ -645,12 +649,17 @@ export function typedSends(text) {
 
 // A sticker and @s are part of what she chose, kept only when they point at
 // something she was actually offered this turn.
-function expressionChoice(raw, snapshot, choice) {
-  if (!["speak", "react"].includes(choice)) return {};
+function expressionChoice(raw, snapshot, choice, bubbles) {
+  if (!["speak", "react"].includes(choice)) return { bubbles };
   const sticker = chosenSticker(raw.sticker, snapshot);
-  const at = chosenAt(raw.at, snapshot, snapshot.sessionId);
+  const typed = typedAt(
+    bubbles,
+    chosenAt(raw.at, snapshot, snapshot.sessionId),
+    snapshot,
+  );
   return {
+    bubbles: typed.bubbles,
     ...(sticker ? { sticker } : {}),
-    ...(at.length ? { at } : {}),
+    ...(typed.at.length ? { at: typed.at } : {}),
   };
 }
