@@ -6,6 +6,7 @@ import {
   readFileSync,
   writeFileSync,
   rmSync,
+  realpathSync,
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -37,7 +38,7 @@ test("server runtime preflight rejects old Node and finds npm in standalone Unix
   writeFileSync(join(npmRoot, "package.json"), JSON.stringify({ name: "npm" }));
   const cli = join(npmRoot, "bin", "npm-cli.js");
   writeFileSync(cli, "");
-  assert.equal(findNpmCli({ PATH: "" }, node), cli);
+  assert.equal(findNpmCli({ PATH: "" }, node), realpathSync(cli));
 });
 
 test("real npm-style subprocess failures yield actionable codes and keep raw output local", async (t) => {
