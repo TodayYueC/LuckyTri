@@ -20,7 +20,7 @@ import {
   markVisionSeen,
   visionWindow,
 } from "./vision-manager.js";
-import { normalizeTurn, takeTurn } from "./turn.js";
+import { normalizeTurn, takeTurn, turnModel } from "./turn.js";
 import { RECOLLECTION_NOTE } from "../mind/recall/index.js";
 import { workingMemory } from "./working-memory.js";
 import { expressionStrategy } from "./expression-strategy.js";
@@ -610,6 +610,23 @@ export class TurnProcessor {
       }
       const generationImages = model.vision ? show : [];
       lap("vision");
+      // A link someone sent is read the way a person opens it: public pages
+      // only, a few seconds at most, cached. A failure is just "not opened".
+      if (!ownInitiative && policy.readLinks !== false && this.owner.links) {
+        try {
+          const links = await this.owner.links.forMessages(snapshot.batch);
+          if (links.length) {
+            snapshot.links = links;
+            trace.snapshot.links = links.map(({ excerpt: _e, ...l }) => l);
+            trace.steps.push(
+              `读了链接：${links.map((l) => (l.fetched ? l.title || l.site : `${l.site}（没打开）`)).join("、")}`,
+            );
+          }
+        } catch (error) {
+          trace.steps.push(`链接没有读成：${error.message}`);
+        }
+        lap("links");
+      }
       if (!replay && !preview) {
         const rounds = this.owner.repo.db
           .prepare(
@@ -662,7 +679,11 @@ export class TurnProcessor {
         turn = normalizeTurn(
           await takeTurn(
             models,
-            model,
+            turnModel(model, {
+              group: !privateChat,
+              direct: !!direct || !!occasion,
+              policy,
+            }),
             replyPrompt(
               nature,
               prompt,

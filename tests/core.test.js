@@ -1819,3 +1819,58 @@ test("图片字节不计入文本预算，调试记录不保存画面数据", as
   assert.equal(JSON.stringify(trace).includes(payload), false);
   store.db.close();
 });
+
+test("对方发的链接她会打开：回合看到网页内容，复审也看到同一份", async () => {
+  const { store } = setup();
+  store.save({ enabled: true, apiKey: "k" });
+  const session = "private:12345";
+  store.db
+    .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
+    .run(session, "测试", "private");
+  const seen = [];
+  const read = [];
+  const system = new ChatSystem(store, async () => ({ message_id: 1 }), {
+    linkReader: {
+      forMessages: async (messages) => {
+        read.push(messages.map((m) => m.text));
+        return [
+          {
+            messageId: 1,
+            url: "https://github.com/o/r",
+            site: "github.com",
+            fetched: true,
+            title: "o/r",
+            description: "游戏资源解包工具",
+            excerpt: "支持 PAK 解包",
+          },
+        ];
+      },
+    },
+    models: {
+      profile: () => defaultModel(store.settings()),
+      call: async (_profile, stage, _prompt, data) => {
+        seen.push({ stage, links: data.context?.links, guide: data.linkGuide });
+        if (stage === "validation") return { ok: true, issues: [] };
+        return {
+          choice: "speak",
+          say: "解包工具啊，PAK 都能拆",
+          targetMessageIds: [1],
+        };
+      },
+    },
+  });
+  system.repo.append(
+    msg(1, {
+      sessionId: session,
+      kind: "private",
+      text: "https://github.com/o/r 你看看",
+    }),
+  );
+  const trace = await system.process(session, system.repo.events(session));
+  assert.equal(trace.status, "sent");
+  assert.equal(read.length, 1);
+  const turn = seen.find((s) => s.stage === "turn");
+  assert.equal(turn.links[0].title, "o/r");
+  assert.match(turn.guide, /实际打开读到/);
+  assert(trace.steps.some((step) => /读了链接：o\/r/.test(step)));
+});

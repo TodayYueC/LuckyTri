@@ -254,6 +254,14 @@ export const ERRORS = {
     "Choose a session and enter a message and a valid user ID",
 
   // core
+  "只读取 http/https 链接": "Only http/https links are read",
+  这个地址不是公开网页: "This address is not a public web page",
+  跳转缺少目标: "The redirect has no target",
+  网页没有正常返回: "The page did not load normally",
+  不是网页文字内容: "This is not readable web text",
+  网页太大: "The page is too large",
+  网页读取超时: "Reading the page timed out",
+  跳转次数太多: "Too many redirects",
   "输入预算太小，无法容纳语境与人格":
     "The input budget is too small to hold the context and persona",
   "当前消息批次和引用链超过预算，请增加模型输入预算":

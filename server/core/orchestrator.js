@@ -33,6 +33,7 @@ import { TurnProcessor } from "./turn-processor.js";
 import { ReplyDelivery } from "./reply-delivery.js";
 import { Capabilities } from "./capabilities.js";
 import { Perceivers } from "./perceivers.js";
+import { LinkReader } from "../web/link-reader.js";
 
 export class ChatSystem {
   constructor(
@@ -45,6 +46,7 @@ export class ChatSystem {
       fetchQuoted,
       fetchImage,
       loadVisionImages: loadImages = loadVisionImages,
+      linkReader,
       now = Date.now,
     } = {},
   ) {
@@ -73,6 +75,7 @@ export class ChatSystem {
     this.topics = new TopicTracker(this.repo);
     this.capabilities = new Capabilities(this.repo, { now });
     this.perceivers = new Perceivers(this.repo.db);
+    this.links = linkReader || new LinkReader({ db: this.repo.db, now });
     this.send = send;
     this.localDemo = localDemo;
     this.fetchQuoted = fetchQuoted;

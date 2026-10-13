@@ -5,6 +5,7 @@ import { replyFocus } from "./conversation-cues.js";
 
 // How long a finished reply may wait for its reviews.
 export const DEEP_CHECK_DEADLINE_MS = 40000;
+export const GROUP_CHECK_DEADLINE_MS = 15000;
 import { replyPrompt } from "./persona-manager.js";
 import { generate } from "./response-generator.js";
 import {
@@ -366,8 +367,14 @@ export class ReplyDelivery {
       // goes out as it is. A stalled call used to hold a finished reply for
       // minutes (one network timeout plus its retry took 187 s). Past the
       // deadline a check counts as unavailable, the same as a failed one.
+      // In a group nobody called her in, a reply that waits half a minute
+      // for its review has already missed the moment.
       const deadline =
-        Date.now() + (policy.deepCheckDeadlineMs ?? DEEP_CHECK_DEADLINE_MS);
+        Date.now() +
+        (policy.deepCheckDeadlineMs ??
+          (!c.direct && !c.privateChat
+            ? GROUP_CHECK_DEADLINE_MS
+            : DEEP_CHECK_DEADLINE_MS));
       let timer;
       const late = new Promise((_, reject) => {
         timer = setTimeout(
@@ -568,7 +575,12 @@ export class ReplyDelivery {
       if (outdated()) return staleExit();
       issues = await deepCheck(response);
     }
-    const rewriteLimit = c.pressure >= 0.85 ? 1 : 2;
+    // One rewrite in a group she was not called in: if that still fails, she
+    // simply does not say it (below) instead of a third round of checks.
+    const rewriteLimit =
+      c.pressure >= 0.85 || (!c.direct && !c.privateChat && !turn.crisis?.clear)
+        ? 1
+        : 2;
     const repairConstraints = new Set();
     for (let attempt = 0; issues.length && attempt < rewriteLimit; attempt++) {
       (trace.revisions ||= []).push({
