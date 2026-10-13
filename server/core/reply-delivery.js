@@ -118,9 +118,11 @@ export class ReplyDelivery {
     // A group moment nobody called her into is rewritten and reviewed at the
     // same quick effort as its turn: the slow path missed the moment
     // (round 24 replays: group p90 over 50 s).
+    // Being called by name keeps the turn itself at full effort; checking
+    // and rewriting the words is a reading task and runs quick in any group.
     const quickModel = turnModel(model, {
       group: !c.privateChat,
-      direct: !!c.direct,
+      direct: policy.quickGroupReview === false ? !!c.direct : false,
       policy,
     });
     const targetUsers = new Set(
@@ -258,6 +260,10 @@ export class ReplyDelivery {
         issues.push("这句话说出了别人要求保密的事，不能在这里说");
       if (leaks(response.bubbles, privateFacts, alreadySaid).length)
         issues.push("这句话把私下知道的事说出来了，不能在这里说");
+      if (bookkeeping(response.bubbles, snapshot))
+        issues.push(
+          "别用记账、认账、验收、立此存照这类说法，像在办手续；直接说你的反应",
+        );
       if (announcesUnseen(response.bubbles, snapshot, c.generationImages))
         issues.push(
           "没看清的图不用宣布，也不数第几张；照着文字和语气接，或者不提图",
@@ -388,9 +394,7 @@ export class ReplyDelivery {
       const deadline =
         Date.now() +
         (policy.deepCheckDeadlineMs ??
-          (!c.direct && !c.privateChat
-            ? GROUP_CHECK_DEADLINE_MS
-            : DEEP_CHECK_DEADLINE_MS));
+          (!c.privateChat ? GROUP_CHECK_DEADLINE_MS : DEEP_CHECK_DEADLINE_MS));
       let timer;
       const late = new Promise((_, reject) => {
         timer = setTimeout(
@@ -439,8 +443,11 @@ export class ReplyDelivery {
             },
             trace,
           );
+        // In private a question to her is reviewed at full effort; in a group
+        // the moment matters more, and the anti-sycophancy gate is re-run
+        // for it (round 24).
         const review = ask(
-          quickModel,
+          c.direct && questions.length && c.privateChat ? model : quickModel,
           "validation",
           replyPrompt(nature, prompt, "validation"),
           {
@@ -549,11 +556,22 @@ export class ReplyDelivery {
           checked.issues,
           snapshot,
         );
-        return checked.ok || (checked.issues.length > 0 && !issues.length)
-          ? []
-          : issues.length
-            ? issues
-            : ["与天性或语境不一致"];
+        const found =
+          checked.ok || (checked.issues.length > 0 && !issues.length)
+            ? []
+            : issues.length
+              ? issues
+              : ["与天性或语境不一致"];
+        // The reviewer's own minimal repair, used in a group to save a
+        // rewrite and a second review (round 24 latency).
+        if (
+          found.length &&
+          Array.isArray(checked.fixed) &&
+          checked.fixed.length &&
+          checked.fixed.every((line) => typeof line === "string" && line.trim())
+        )
+          found.fixed = checked.fixed.map((line) => line.trim()).slice(0, 4);
+        return found;
       } catch (error) {
         trace.steps.push(
           `回复复审暂不可用，已按本地校验继续：${error.message}`,
@@ -605,6 +623,7 @@ export class ReplyDelivery {
           fallbackText,
         )
       : await makeResponse();
+    response = trimmedSpeech(response, snapshot, c.generationImages, trace);
     let issues = check(response);
     if (!issues.length && needsDeepCheck(response)) {
       if (outdated()) return staleExit();
@@ -616,6 +635,31 @@ export class ReplyDelivery {
       c.pressure >= 0.85 || (!c.direct && !c.privateChat && !turn.crisis?.clear)
         ? 1
         : 2;
+    // In a group, a minimal repair the reviewer already wrote is taken
+    // instead of a rewrite and second review, when it passes every local
+    // check and only removes or trims what she said.
+    if (issues.fixed && !c.privateChat && !turn.crisis?.clear) {
+      const original = response.bubbles.join("");
+      const repaired = trimmedSpeech(
+        { ...response, bubbles: issues.fixed },
+        snapshot,
+        c.generationImages,
+        trace,
+      );
+      if (
+        repaired.bubbles.join("").length <= original.length + 12 &&
+        !check(repaired).length
+      ) {
+        (trace.revisions ||= []).push({
+          draft: response.bubbles,
+          issues: [...issues],
+          repairedByReview: true,
+        });
+        response = repaired;
+        issues = [];
+        trace.steps.push("复审给出的最小修改通过本地校验，直接采用");
+      }
+    }
     const repairConstraints = new Set();
     for (let attempt = 0; issues.length && attempt < rewriteLimit; attempt++) {
       (trace.revisions ||= []).push({
@@ -630,6 +674,7 @@ export class ReplyDelivery {
         response,
         !snapshot.initiative && attempt === rewriteLimit - 1,
       );
+      response = trimmedSpeech(response, snapshot, c.generationImages, trace);
       issues = check(response);
       if (!issues.length && needsDeepCheck(response)) {
         if (outdated()) return staleExit();
@@ -988,8 +1033,69 @@ export function announcesUnseen(bubbles, snapshot, images = []) {
   );
   if (asked) return false;
   return (bubbles || []).some((line) =>
-    /图.{0,8}(?:没读|读不|看不清|看不到|没看到|打不开|是空|空的|空标签)|(?:没读|读不)出(?:来|内容)|第[二三四五六七八九十\d]+张|[这那几三两]张.{0,4}(?:也|全|都)?(?:是)?空|(?:读|看)(?:不)?出画面|画面.{0,4}(?:读|看)不/.test(
+    /图.{0,8}(?:没读|读不|看不清|看不到|没看到|打不开|是空|空的|空标签)|(?:没读|读不)出(?:来|内容)|第[二三四五六七八九十\d]+张|[这那几三两]张.{0,4}(?:也|全|都)?(?:是)?空|(?:读|看)(?:不)?出画面|画面.{0,4}(?:读|看)不|没读出|读不出|(?:图|这张|那张|画面).{0,8}(?:看不明白|看不懂|没看懂|看不清|糊)|(?:看不明白|看不懂|没看懂).{0,4}(?:图|这张)|查无此图|看不看懂|图运|空壳|收到个空|图.{0,6}(?:断线|罢工|挂了)|断线.{0,4}图|我这(?:边)?.{0,8}断线|(?:图|管道).{0,6}瘫|看个摘要|照样空白|(?:这份|这张)?也是白的|重新发一?遍文字/.test(
       line,
     ),
   );
+}
+
+// Bookkeeping words: settling, accepting and filing things away is never
+// how she talks.
+const LEDGER_ALWAYS =
+  /认账|记账|账目|账本|对账|算账|认了|认下|认领|这条我认|我认[。！!]?$|验收|并案|立此存照|存照|记一笔|按清白记|清白|结案|散庭|先领|领一半|记下了|记上了/;
+const LEDGER_ECHO = /账/;
+export function bookkeeping(bubbles) {
+  // Round 24 replays: even echoing the room's "账" joke kept the ledger
+  // tone going, so it is left to them.
+  return (bubbles || []).some(
+    (line) => LEDGER_ALWAYS.test(line) || LEDGER_ECHO.test(line),
+  );
+}
+
+// A clause that only announces an unseen picture, or keeps books, is cut
+// out mechanically when the rest of the reply still stands: no rewrite, no
+// extra model call.
+export function trimmedSpeech(response, snapshot, images, trace) {
+  const unseen = (line) => announcesUnseen([line], snapshot, images);
+  const ledger = (line) => bookkeeping([line], snapshot);
+  const secretive = (line) =>
+    /(?:在)?别处聊的|私下聊的|不在这(?:儿|里)(?:细)?(?:说|讲|聊)|不方便(?:在这)?(?:说|讲)|不能(?:在这)?(?:说|讲)|不在这(?:儿|里)?摊开|不摊开|留一手|先不展开/.test(
+      line,
+    );
+  const bad = (line) => unseen(line) || ledger(line) || secretive(line);
+  // A bubble that opens on stray punctuation, or on the tail of a cut
+  // sentence ("发的算我那份）。…"), loses that fragment (round 24 f17).
+  const tidy = (line) =>
+    line
+      .replace(/^[^（(）)]{2,16}[）)]。(?=\S)/u, "")
+      .replace(/^[\s，,。；;、]+/u, "");
+  if (response?.bubbles?.length) {
+    const cleaned = response.bubbles
+      .map((line) => (typeof line === "string" ? tidy(line) : line))
+      .filter((line) => typeof line !== "string" || /[\p{L}\p{N}]/u.test(line));
+    if (
+      cleaned.length &&
+      cleaned.some((line, i) => line !== response.bubbles[i])
+    ) {
+      trace?.steps?.push("去掉气泡开头的残句或标点");
+      response = { ...response, bubbles: cleaned };
+    }
+  }
+  if (!response?.bubbles?.some(bad)) return response;
+  const bubbles = response.bubbles
+    .map((line) => {
+      if (!bad(line)) return line;
+      // Hinting at a secret colours the whole line; the line goes.
+      if (secretive(line)) return "";
+      const parts = line.split(/(?<=[，,。！!？?；;])|(?<=—)(?!—)/u);
+      const kept = parts.filter((part) => !bad(part)).join("");
+      return kept
+        .replace(/^[\s，,。；;—]+|[\s，,；;—]+$/gu, "")
+        .replace(/^(?:不过|但是|但|而且|所以|然后)[，,]?/u, "")
+        .replace(/[，,](?:行|好|嗯)$/u, "");
+    })
+    .filter((line) => line && /[\p{L}\p{N}]/u.test(line));
+  if (!bubbles.length || bubbles.some(bad)) return response;
+  trace?.steps?.push("删去宣布没看清图、记账或故作保密的半句，其余照原样");
+  return { ...response, bubbles };
 }

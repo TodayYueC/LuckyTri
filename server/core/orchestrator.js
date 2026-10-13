@@ -1,3 +1,4 @@
+import { hearingOn, transcribe, voiceSettings } from "../voice/index.js";
 import { ActionLedger } from "../actions/index.js";
 import { Stickers } from "../stickers/index.js";
 import { settleAftermath } from "../mind/aftermath.js";
@@ -103,6 +104,13 @@ export class ChatSystem {
     );
     this.turnProcessor = new TurnProcessor(this);
     this.replyDelivery = new ReplyDelivery(this);
+  }
+  // How the channel hears a voice message, or null when that is off.
+  transcriber() {
+    const settings = voiceSettings(this.repo);
+    return hearingOn(settings)
+      ? (audio, format) => transcribe(settings, audio, format)
+      : null;
   }
   policy(session) {
     const {

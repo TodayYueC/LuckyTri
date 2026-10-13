@@ -59,9 +59,11 @@ const LEGACY = {
 // The owner can turn this off with policy.quickGroupTurns = false.
 export function turnModel(model, { group, direct, policy = {} } = {}) {
   if (!group || policy.quickGroupTurns === false) return model;
-  // Called by name she thinks at full effort: quick direct turns (replay f7)
-  // cut group p90 to 23 s but brought the ledger tone back (6/46).
-  if (direct && policy.quickDirectGroupTurns !== true) return model;
+  // Called by name in a group she now also answers at quick effort: with the
+  // local trims for bookkeeping, unseen images and hinted secrets, replays
+  // f11–f13 kept the quality of full effort at a lower p90. Set
+  // policy.quickDirectGroupTurns=false to think at full effort again.
+  if (direct && policy.quickDirectGroupTurns === false) return model;
   const efforts = model?.reasoningEfforts || [];
   const quick = ["low", "minimal"].find((effort) => efforts.includes(effort));
   if (!quick || !model.reasoningEffort || model.reasoningEffort === quick)

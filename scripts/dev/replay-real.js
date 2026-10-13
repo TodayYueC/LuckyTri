@@ -56,7 +56,13 @@ async function run(c) {
   const snapshot = structuredClone(c.snapshot);
   const ids = new Set(snapshot.batchIds || []);
   snapshot.batch ||= snapshot.messages.filter((m) => ids.has(m.id));
-  const { nature, prompts, policy } = c.config;
+  const { nature, prompts } = c.config;
+  // --policy key=value,... overrides the instance policy for an experiment.
+  const policy = { ...c.config.policy };
+  for (const pair of arg("--policy", "").split(",").filter(Boolean)) {
+    const [k, v] = pair.split("=");
+    policy[k] = v === "true" ? true : v === "false" ? false : v;
+  }
   // Same model and effort as production, through the evaluation account.
   const preset = MODEL_CATALOG.find(
     (m) => m.id === arg("--preset", "volcengine-agent-plan-glm-5.3-flash"),

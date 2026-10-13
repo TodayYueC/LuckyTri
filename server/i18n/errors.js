@@ -411,6 +411,12 @@ export const ERRORS = {
   "语音服务地址需要 https": "The speech service address must use https",
   语音合成没有返回声音: "Speech synthesis returned no audio",
   语音合成失败: "Speech synthesis failed",
+  语音识别失败: "Speech recognition failed",
+  "没有找到 ffmpeg，听不了语音":
+    "ffmpeg was not found, so voice messages cannot be heard",
+  语音转换失败: "Voice conversion failed",
+  语音识别超时: "Speech recognition timed out",
+  语音识别还没有配置: "Speech recognition is not configured yet",
   这个渠道做不了这个动作: "This channel cannot do that action",
   "这个动作 QQ 这边做不了": "QQ cannot do that action",
   压缩包无法读取: "The archive could not be read",
