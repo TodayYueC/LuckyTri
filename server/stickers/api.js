@@ -1,4 +1,5 @@
 import express from "express";
+import { importStickerZip, stickerZipLimitMb } from "./zip-import.js";
 
 // The owner's sticker library. Uploads arrive as raw bytes, one file per
 // request; everything else is JSON like the rest of the studio API.
@@ -19,10 +20,28 @@ export function mountStickerUpload(app, system) {
       }
     },
   );
+  app.post(
+    "/api/core/stickers/upload-zip",
+    express.raw({ type: "*/*", limit: `${stickerZipLimitMb()}mb` }),
+    async (req, res) => {
+      try {
+        res.json(
+          await importStickerZip(system.stickers.library, req.body, {
+            category: String(req.query.category || ""),
+            folderCategory: req.query.folderCategory === "1",
+            queue: (id) => queueDescribe(system, id),
+          }),
+        );
+      } catch (error) {
+        res.status(400).json({ error: error.message });
+      }
+    },
+  );
 }
 
 const queue = [];
 let running = false;
+let current = null; // the one being analysed right now still counts as pending
 function queueDescribe(system, id) {
   queue.push(id);
   if (running) return;
@@ -30,12 +49,14 @@ function queueDescribe(system, id) {
   (async () => {
     while (queue.length) {
       const next = queue.shift();
+      current = next;
       try {
         await system.stickers.describe(next, { force: true });
       } catch {
         // The item records its own failure; the owner can retry.
       }
     }
+    current = null;
     running = false;
   })();
 }
@@ -68,7 +89,7 @@ export function mountStickers(app, system) {
         }),
         categories: library.categories(),
         settings: system.stickers.settings(),
-        pending: queue.length,
+        pending: queue.length + (current ? 1 : 0),
       }),
     ),
   );

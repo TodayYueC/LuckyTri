@@ -27,6 +27,10 @@ const categories = ref<{ category: string; n: number }[]>([]);
 const q = ref("");
 const category = ref("");
 const uploadCategory = ref("");
+const folderCategory = ref(true);
+const lastSummary = ref<null | Record<string, number>>(null);
+const isZip = (file: File) =>
+  /\.zip$/i.test(file.name) || /zip/.test(file.type);
 const busy = ref("");
 const editing = ref<Sticker | null>(null);
 const draft = ref<any>({});
@@ -70,7 +74,41 @@ async function upload(files: FileList | File[] | null) {
   let done = 0;
   let failed = 0;
   await waitForAccess();
+  let duplicates = 0;
+  let skipped = 0;
   for (const file of list) {
+    if (isZip(file)) {
+      busy.value = t("正在导入压缩包 {name}", { name: file.name });
+      const params = new URLSearchParams({
+        folderCategory: folderCategory.value ? "1" : "0",
+      });
+      if (uploadCategory.value.trim())
+        params.set("category", uploadCategory.value.trim());
+      const response = await fetch(`/api/core/stickers/upload-zip?${params}`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/zip",
+          "X-LuckyTri-Locale": locale.value,
+        },
+        body: file,
+      });
+      if (response.status === 401) {
+        requireLogin();
+        break;
+      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        failed++;
+        toast(`${file.name}：${data.error || t("上传失败")}`, true);
+        continue;
+      }
+      done += data.imported;
+      duplicates += data.duplicates;
+      skipped += data.skipped.length;
+      failed += data.failed.length;
+      continue;
+    }
     busy.value = t("正在上传 {done}/{total}", { done, total: list.length });
     const params = new URLSearchParams({ name: file.name });
     if (uploadCategory.value.trim())
@@ -92,13 +130,17 @@ async function upload(files: FileList | File[] | null) {
     if (!response.ok) {
       failed++;
       toast(`${file.name}：${data.error || t("上传失败")}`, true);
-    } else done++;
+    } else if (data.duplicate) duplicates++;
+    else done++;
   }
   busy.value = "";
   toast(
     t("已上传 {done} 张，正在自动识别含义", { done }) +
+      (duplicates ? t("，{duplicates} 张重复已跳过", { duplicates }) : "") +
+      (skipped ? t("，{skipped} 个非图片或过大已跳过", { skipped }) : "") +
       (failed ? t("，{failed} 张未通过", { failed }) : ""),
   );
+  lastSummary.value = { done, duplicates, skipped, failed };
   if (fileInput.value) fileInput.value.value = "";
   await load();
   watchProgress();
@@ -185,12 +227,14 @@ const statusLabel = (s: Sticker) =>
       @drop="drop"
       @click="fileInput?.click()"
     >
-      <b>{{ busy || t("拖入或点击选择图片，可一次选多张") }}</b>
-      <small>{{ t("PNG、JPEG、GIF、WebP，每张不超过 2MB") }}</small>
+      <b>{{ busy || t("拖入或点击选择图片或 ZIP，可一次选多张") }}</b>
+      <small>{{
+        t("PNG、JPEG、GIF、WebP，每张不超过 2MB；ZIP 会自动解压导入")
+      }}</small>
       <input
         ref="fileInput"
         type="file"
-        accept="image/png,image/jpeg,image/gif,image/webp"
+        accept="image/png,image/jpeg,image/gif,image/webp,.zip,application/zip"
         multiple
         hidden
         @change="upload(($event.target as HTMLInputElement).files)"
@@ -210,6 +254,16 @@ const statusLabel = (s: Sticker) =>
         </option>
       </select>
       <input v-model="uploadCategory" :placeholder="t('上传到分类（可选）')" />
+      <label class="faint folder-cat"
+        ><input v-model="folderCategory" type="checkbox" />
+        {{ t("ZIP 里的文件夹名作分类") }}</label
+      >
+      <small v-if="lastSummary" class="faint" data-testid="sticker-summary">{{
+        t(
+          "导入 {done} · 重复 {duplicates} · 跳过 {skipped} · 失败 {failed}",
+          lastSummary,
+        )
+      }}</small>
       <small v-if="pending" class="faint" data-testid="sticker-progress">{{
         t("{n} 张识别中", { n: pending })
       }}</small>
@@ -298,6 +352,12 @@ const statusLabel = (s: Sticker) =>
 </template>
 
 <style scoped>
+.folder-cat {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  white-space: nowrap;
+}
 .stickers {
   display: grid;
   gap: 16px;

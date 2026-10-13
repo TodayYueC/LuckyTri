@@ -47,6 +47,7 @@ export function createApp({
         "/plugins/import/upload",
         "/storage/transfer/upload",
         "/core/stickers/upload",
+        "/core/stickers/upload-zip",
       ].includes(req.path)
     )
       return res.status(400).json({ error: "请提交 JSON 对象" });
