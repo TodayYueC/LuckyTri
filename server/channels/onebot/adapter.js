@@ -131,8 +131,32 @@ export const onebot = {
     const reply = /^\d+$/.test(String(options?.replyTo || ""))
       ? [{ type: "reply", data: { id: String(options.replyTo) } }]
       : [];
+    // A sticker goes as an image of its own, its bytes inline so the QQ client
+    // needs no path or URL on this machine.
+    const body = options?.image
+      ? [
+          {
+            type: "image",
+            data: {
+              file: `base64://${options.image.base64}`,
+              sub_type: options.image.sticker ? 1 : 0,
+              ...(options.image.summary
+                ? { summary: options.image.summary }
+                : {}),
+            },
+          },
+        ]
+      : [
+          ...(Array.isArray(options?.at) ? options.at : [])
+            .filter((id) => /^\d{5,12}$/.test(String(id)))
+            .flatMap((id) => [{ type: "at", data: { qq: String(id) } }]),
+          {
+            type: "text",
+            data: { text: options?.at?.length ? ` ${text}` : text },
+          },
+        ];
     return {
-      message: [...reply, { type: "text", data: { text } }],
+      message: [...reply, ...body],
       [parsed.kind === "group" ? "group_id" : "user_id"]:
         parsed.kind === "group"
           ? Number(message.raw?.group_id ?? parsed.nativeId)

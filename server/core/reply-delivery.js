@@ -1,3 +1,4 @@
+import { persistReply } from "./message-manager.js";
 import { PRIVATELY_KNOWN } from "../mind/discretion.js";
 import { replyFocus } from "./conversation-cues.js";
 
@@ -532,6 +533,19 @@ export class ReplyDelivery {
       }
     };
     if (outdated()) return staleExit();
+    if (!turn.bubbles.length && turn.sticker && !turn.crisis?.clear) {
+      // Only a sticker: nothing to check in words, it was chosen from hers.
+      trace.response = { bubbles: [], sticker: turn.sticker.ref };
+      trace.sent = [];
+      const sent = await this.sendSticker(
+        batch.at(-1) || c.anchor,
+        turn,
+        trace,
+        session,
+        isCurrent,
+      );
+      return finish(sent ? "sent" : "cancelled", turn.reason);
+    }
     let response = turn.bubbles.length
       ? normalizeResponse(
           { bubbles: turn.bubbles, reason: turn.reason },
@@ -712,6 +726,7 @@ export class ReplyDelivery {
       {
         now: this.owner.now,
         quote: buriedTarget(batch, turn.targetMessageIds, session),
+        at: turn.at || [],
         prepareBubble: (line) =>
           this.owner.mind.time.reconcile(
             { bubbles: [line] },
@@ -722,6 +737,14 @@ export class ReplyDelivery {
       },
     );
     if (!trace.sent.length && hasRelevantUpdate()) return staleExit();
+    if (trace.sent.length && turn.sticker)
+      await this.sendSticker(
+        batch.at(-1) || c.anchor,
+        turn,
+        trace,
+        session,
+        isCurrent,
+      );
     if (trace.sent.length && !c.simulatedTurn) {
       if (turn.share?.workId) {
         try {
@@ -743,6 +766,50 @@ export class ReplyDelivery {
       );
     }
     return finish(trace.sent.length ? "sent" : "cancelled", turn.reason);
+  }
+  // Her sticker, after her words. It is recorded as something she sent, and
+  // the use is kept to learn how it landed with this person.
+  async sendSticker(message, turn, trace, session, isCurrent) {
+    const owner = this.owner;
+    const image = owner.stickers?.library.image(turn.sticker.id);
+    if (!image || !isCurrent()) return false;
+    try {
+      await new Promise((r) => setTimeout(r, owner.stickerPause ?? 600));
+      const result = await owner.send(message, "", {
+        image: {
+          base64: Buffer.from(image.bytes).toString("base64"),
+          sticker: true,
+          summary: "[动画表情]",
+        },
+      });
+      const text = `[表情：${turn.sticker.looks}]`;
+      persistReply(
+        owner.repo,
+        {
+          ...message,
+          traceId: trace.id,
+          replyTargetIds: turn.targetMessageIds || [],
+        },
+        text,
+        result?.message_id,
+        owner.now(),
+      );
+      (trace.sent ||= []).push(text);
+      if (!message?.simulated) {
+        const target = (message && (message.userId ?? message.speaker)) || "";
+        owner.stickers.used({
+          stickerId: turn.sticker.id,
+          session,
+          userId: target,
+          topic: turn.topic || "",
+        });
+      }
+      trace.steps.push(`发了一张表情：${turn.sticker.looks}`);
+      return true;
+    } catch (error) {
+      trace.steps.push(`表情没有发出去：${error.message}`);
+      return false;
+    }
   }
 }
 

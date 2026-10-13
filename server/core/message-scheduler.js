@@ -16,6 +16,8 @@ export async function deliver(
     // Platform id of an earlier message the first bubble answers, when the
     // conversation has moved past it; the channel may show it as a quote.
     quote = "",
+    // People she chose to @, on her first message only, the way one types.
+    at = [],
   } = {},
 ) {
   const ids = bubbles.map((text, i) => {
@@ -45,10 +47,16 @@ export async function deliver(
         .prepare("UPDATE core_outbox SET status='sending',text=? WHERE id=?")
         .run(outgoing, ids[i]);
       try {
+        const first = i === 0 && (quote || at.length);
         const result = await send(
           message,
           outgoing,
-          i === 0 && quote ? { replyTo: quote } : undefined,
+          first
+            ? {
+                ...(quote ? { replyTo: quote } : {}),
+                ...(at.length ? { at: at.map((p) => p.userId) } : {}),
+              }
+            : undefined,
         );
         repo.db
           .prepare(
@@ -62,7 +70,9 @@ export async function deliver(
             traceId: trace.id,
             replyTargetIds: trace.decision?.targetMessageIds || [],
           },
-          outgoing,
+          i === 0 && at.length
+            ? `${at.map((p) => `@${p.name}`).join(" ")} ${outgoing}`
+            : outgoing,
           result?.message_id,
           now(),
         );

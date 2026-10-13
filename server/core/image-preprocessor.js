@@ -33,6 +33,26 @@ export function visionImageLimits(env = process.env) {
   };
 }
 
+// The owner's image-understanding size: the long side and the encoded size
+// a picture is brought down to before a model sees it. A big photo is shrunk
+// and re-encoded rather than refused; many providers reject large images or
+// time out on them.
+export function modelImageLimits({
+  visionMaxSide = 2048,
+  visionMaxMB = 3,
+} = {}) {
+  const side = Math.min(
+    8192,
+    Math.max(512, Math.floor(Number(visionMaxSide) || 2048)),
+  );
+  const mb = Math.min(4, Math.max(0.5, Number(visionMaxMB) || 3));
+  return {
+    maxDimension: side,
+    maxOutputPixels: side * side,
+    maxModelBytes: Math.floor(mb * MIB),
+  };
+}
+
 export function imageMime(bytes) {
   if (
     bytes.length >= 3 &&

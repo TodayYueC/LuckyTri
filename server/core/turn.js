@@ -1,3 +1,4 @@
+import { chosenAt, chosenSticker, expressionInput } from "../stickers/offer.js";
 import { replyFocus } from "./conversation-cues.js";
 import { INITIATIVE_PROMPT } from "../mind/initiative.js";
 import { initiativeContext } from "./initiative-context.js";
@@ -159,6 +160,7 @@ export async function takeTurn(
     ...(recallWording(snapshot) ? { guidance: recallWording(snapshot) } : {}),
     ...(!initiating ? { exchange: currentExchange(snapshot) } : {}),
     ...turnGuides(snapshot),
+    ...expressionInput(snapshot),
   };
   let raw = await models.call(
     profile,
@@ -566,6 +568,7 @@ export function normalizeTurn(raw, snapshot, trace, { speech } = {}) {
     act: botYield || stopped ? null : normalizeAct(raw.act, trace),
     bubbles: bubbles.slice(0, bubbleLimit),
     maxBubbles: bubbleLimit,
+    ...expressionChoice(raw, snapshot, choice),
   };
 }
 
@@ -638,4 +641,16 @@ export function typedSends(text) {
     else sends.push(line);
   }
   return sends;
+}
+
+// A sticker and @s are part of what she chose, kept only when they point at
+// something she was actually offered this turn.
+function expressionChoice(raw, snapshot, choice) {
+  if (!["speak", "react"].includes(choice)) return {};
+  const sticker = chosenSticker(raw.sticker, snapshot);
+  const at = chosenAt(raw.at, snapshot, snapshot.sessionId);
+  return {
+    ...(sticker ? { sticker } : {}),
+    ...(at.length ? { at } : {}),
+  };
 }

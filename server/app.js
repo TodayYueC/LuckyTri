@@ -1,3 +1,4 @@
+import { mountStickerUpload, mountStickers } from "./stickers/api.js";
 import express from "express";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -42,7 +43,11 @@ export function createApp({
     if (
       ["POST", "PATCH", "PUT"].includes(req.method) &&
       (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) &&
-      !["/plugins/import/upload", "/storage/transfer/upload"].includes(req.path)
+      ![
+        "/plugins/import/upload",
+        "/storage/transfer/upload",
+        "/core/stickers/upload",
+      ].includes(req.path)
     )
       return res.status(400).json({ error: "请提交 JSON 对象" });
     next();
@@ -61,6 +66,7 @@ export function createApp({
   app.use("/api", objectBody);
   mountUpdates(app, updates, runtime.updater);
   mountDataTransfer(app, runtime.transfer);
+  if (chatSystem?.stickers) mountStickerUpload(app, chatSystem);
   if (plugins) {
     app.post(
       "/api/plugins/import/upload",
@@ -74,6 +80,7 @@ export function createApp({
       },
     );
   }
+  if (chatSystem?.stickers) mountStickers(app, chatSystem);
   mountStudio(app, store, runtime, chatSystem);
   mountManagement(app, store, chatSystem);
   mountCore(app, chatSystem);
