@@ -54,6 +54,12 @@ function fakeOwner() {
 
 async function run(c) {
   const snapshot = structuredClone(c.snapshot);
+  // Recorded before round 24: memories she may not disclose here were kept
+  // as placeholders. Speech recall now leaves them out; replay the same way.
+  if (Array.isArray(snapshot.memories))
+    snapshot.memories = snapshot.memories.filter(
+      (m) => !/^（关于此人的/.test(String(m?.content || "")),
+    );
   const ids = new Set(snapshot.batchIds || []);
   snapshot.batch ||= snapshot.messages.filter((m) => ids.has(m.id));
   const { nature, prompts } = c.config;
@@ -85,7 +91,9 @@ async function run(c) {
       await withoutLinksIfFiltered(snapshot, trace, () =>
         takeTurn(
           models,
-          process.argv.includes("--quick")
+          // Same as production: group turns think at quick effort.
+          // --full-effort replays the configured effort instead.
+          !process.argv.includes("--full-effort")
             ? turnModel(model, {
                 group: c.session.startsWith("group:"),
                 direct: snapshot.batch.some((m) => m.relation === "direct"),
@@ -144,6 +152,13 @@ async function run(c) {
   out.calls = trace.calls.map(
     (x) => `${x.stage}:${Math.round((x.elapsed || 0) / 1000)}`,
   );
+  // Token use per call, to tell slow thinking from a slow endpoint.
+  out.usage = trace.calls.map((x) => ({
+    stage: x.stage,
+    bytes: x.requestBytes,
+    effort: x.request?.body?.reasoning?.effort,
+    ...(x.usage || {}),
+  }));
   return out;
 }
 

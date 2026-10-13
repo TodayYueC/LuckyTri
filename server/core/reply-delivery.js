@@ -1084,7 +1084,7 @@ export function bookkeeping(bubbles) {
 // Announcing a privacy boundary ("不好在这说") is itself the leak of
 // posture: private things simply never come up (round 24 steering).
 const PRIVACY_ANNOUNCE =
-  /不(?:好|方便|太适合|适合|能)在这(?:儿|里)?(?:说|讲|发)|不在这(?:儿|里)?(?:细)?(?:说|讲)|私下(?:聊)?的(?:事)?.{0,4}(?:不能|不该)|别处聊的/;
+  /不(?:好|方便|太适合|适合|能|该)在这(?:儿|里)?(?:说|讲|发)|不在这(?:儿|里)?(?:细)?(?:说|讲)|私下(?:聊)?的(?:事)?.{0,4}(?:不能|不该)|别处聊的/;
 export function announcesPrivacy(bubbles) {
   return (bubbles || []).some((line) => PRIVACY_ANNOUNCE.test(line));
 }
