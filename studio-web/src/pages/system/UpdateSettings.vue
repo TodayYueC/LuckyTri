@@ -4,6 +4,8 @@ import { t, N_, localized } from "../../i18n";
 import { api, toast } from "../../api";
 import { when } from "../../plates/mind";
 import { ask } from "../../dialog";
+import Toggle from "../../components/ui/Toggle.vue";
+import Select from "../../components/ui/Select.vue";
 
 const state = ref<any>(null);
 const busy = ref(false);
@@ -66,7 +68,7 @@ const labels: Record<string, string> = localized({
 });
 onMounted(async () => {
   try {
-    state.value = await api("/system/update");
+    adopt(await api("/system/update"));
     installing.value = !!active(state.value.operation);
     if (installing.value) poll = setTimeout(watchUpdate, 1800);
   } catch (error) {
@@ -82,6 +84,36 @@ async function check() {
     toast((error as Error).message, true);
   } finally {
     busy.value = false;
+  }
+}
+const auto = ref<any>({
+  enabled: false,
+  mode: "daily",
+  at: "04:00",
+  everyHours: 24,
+  install: "notify",
+  window: "",
+});
+const autoResults: Record<string, string> = localized({
+  current: N_("已是最新"),
+  available: N_("发现新版本，已提醒"),
+  started: N_("已开始自动更新"),
+  failed: N_("自动更新失败"),
+  "rolled-back": N_("更新失败，已恢复原版本"),
+  deferred: N_("一直没有合适时机，本次放弃"),
+  skipped: N_("该版本失败过，不再自动重试"),
+  "check-failed": N_("检查失败"),
+});
+function adopt(next: any) {
+  state.value = next;
+  if (next?.auto?.settings) auto.value = { ...next.auto.settings };
+}
+async function saveAuto() {
+  try {
+    adopt(await api("/system/update/auto", "POST", auto.value));
+    toast(t("自动更新设置已保存"));
+  } catch (error) {
+    toast((error as Error).message, true);
   }
 }
 async function install() {
@@ -186,6 +218,82 @@ async function install() {
         <p v-if="state.operation?.restored" class="muted">
           {{ t("已恢复原版本和更新前的数据。") }}
         </p>
+      </div>
+      <div v-if="state.auto" class="update-how stack tight auto-update">
+        <Toggle v-model="auto.enabled" name="auto-update" @change="saveAuto">
+          <b>{{ t("自动检查更新") }}</b>
+          <small>{{
+            t(
+              "默认关闭。到点检查；自动安装会等 TA 不在聊天、没有备份或迁移时再进行，失败自动恢复原版本。",
+            )
+          }}</small>
+        </Toggle>
+        <template v-if="auto.enabled">
+          <label>
+            {{ t("检查方式") }}
+            <Select
+              v-model="auto.mode"
+              :aria-label="t('检查方式')"
+              :options="[
+                { value: 'daily', label: t('每天固定时间') },
+                { value: 'interval', label: t('每隔一段时间') },
+              ]"
+              @update:model-value="saveAuto"
+            />
+          </label>
+          <label v-if="auto.mode === 'daily'">
+            {{ t("检查时间") }}
+            <input v-model="auto.at" type="time" @change="saveAuto" />
+          </label>
+          <label v-else>
+            {{ t("间隔") }}
+            <Select
+              v-model="auto.everyHours"
+              :aria-label="t('间隔')"
+              :options="
+                [6, 12, 24, 72].map((h) => ({
+                  value: h,
+                  label: t('{hours} 小时', { hours: h }),
+                }))
+              "
+              @update:model-value="saveAuto"
+            />
+          </label>
+          <label>
+            {{ t("发现新版本时") }}
+            <Select
+              v-model="auto.install"
+              :aria-label="t('发现新版本时')"
+              :disabled="state.installation !== 'npm'"
+              :options="[
+                { value: 'notify', label: t('只提醒') },
+                { value: 'auto', label: t('自动安全更新') },
+              ]"
+              @update:model-value="saveAuto"
+            />
+          </label>
+          <label>
+            {{ t("允许更新的时段（可空，如 02:00-06:00）") }}
+            <input
+              v-model="auto.window"
+              placeholder="02:00-06:00"
+              @change="saveAuto"
+            />
+          </label>
+          <p v-if="state.auto.waiting" class="muted" role="status">
+            {{
+              t("等待合适时机：{reason}", {
+                reason: state.auto.waiting.reason || "—",
+              })
+            }}
+          </p>
+          <ul v-if="state.auto.history.length" class="muted small-text">
+            <li v-for="h in state.auto.history.slice(0, 5)" :key="h.time">
+              {{ when(h.time) }} · {{ autoResults[h.result] || h.result }}
+              {{ h.to ? `· ${h.to}` : "" }}
+            </li>
+          </ul>
+        </template>
       </div>
       <nav class="update-links">
         <a :href="state.npmUrl" target="_blank" rel="noopener noreferrer">npm</a

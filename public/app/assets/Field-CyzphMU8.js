@@ -1,1 +1,0 @@
-import{Dt as e,Q as t,Tt as n,Y as r,Z as i,dt as a,pt as o,rt as s}from"./Empty-acQf57z2.js";var c={key:0},l=s({__name:`Field`,props:{label:{},hint:{},wide:{type:Boolean}},setup(s){return(l,u)=>(a(),t(`label`,{class:n({wide:s.wide})},[r(`span`,null,e(s.label),1),o(l.$slots,`default`),s.hint?(a(),t(`small`,c,e(s.hint),1)):i(``,!0)],2))}});export{l as t};

@@ -1,5 +1,30 @@
 // English for the System section (models, embedding, search, runtime, page shell).
 export default {
+  已是最新: "Up to date",
+  "发现新版本，已提醒": "New version found, notified",
+  已开始自动更新: "Automatic update started",
+  自动更新失败: "Automatic update failed",
+  "更新失败，已恢复原版本": "Update failed; the previous version was restored",
+  "一直没有合适时机，本次放弃": "No safe moment came; skipped this time",
+  "该版本失败过，不再自动重试":
+    "This version failed before; not retried automatically",
+  检查失败: "Check failed",
+  自动更新设置已保存: "Automatic update settings saved",
+  自动检查更新: "Check for updates automatically",
+  "默认关闭。到点检查；自动安装会等 TA 不在聊天、没有备份或迁移时再进行，失败自动恢复原版本。":
+    "Off by default. Checks at the set time; automatic install waits until they are not chatting and no backup or migration is running, and restores the previous version on failure.",
+  检查方式: "Schedule",
+  每天固定时间: "Daily at a set time",
+  每隔一段时间: "Every few hours",
+  检查时间: "Check time",
+  间隔: "Interval",
+  "{hours} 小时": "{hours} hours",
+  发现新版本时: "When a new version is found",
+  只提醒: "Notify only",
+  自动安全更新: "Update safely and automatically",
+  "允许更新的时段（可空，如 02:00-06:00）":
+    "Allowed update window (optional, e.g. 02:00-06:00)",
+  "等待合适时机：{reason}": "Waiting for a safe moment: {reason}",
   "拖入或点击选择图片或 ZIP，可一次选多张":
     "Drop or click to choose images or ZIP files; several at once",
   "PNG、JPEG、GIF、WebP，每张不超过 4MB；ZIP 会自动解压导入":

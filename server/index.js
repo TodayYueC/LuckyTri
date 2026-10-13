@@ -1,3 +1,4 @@
+import { AutoUpdater } from "./studio/auto-update.js";
 import { claimServer, clearStarting } from "./startup-lock.js";
 import { createStore } from "./storage/store.js";
 import { ChatSystem } from "./core/orchestrator.js";
@@ -151,6 +152,25 @@ function shutdown() {
   setTimeout(finish, 3000).unref();
 }
 
+// Off unless the owner turns it on; waits until she is not talking.
+const autoUpdate = new AutoUpdater({
+  repo: chatSystem.repo,
+  checker: updates,
+  updater,
+  occupied: () => backups.running || cleanup.running || transfer.busy,
+  talking: (quietMs) =>
+    chatSystem.queue.lanes.size > 0 ||
+    Number(
+      store.db
+        .prepare(
+          "SELECT MAX(time) t FROM core_outbox WHERE status IN ('pending','sending','confirmed')",
+        )
+        .get()?.t || 0,
+    ) >
+      Date.now() - quietMs,
+  zone: () => chatSystem.mind.timeZone(),
+});
+autoUpdate.observe(updater.status());
 const app = createApp({
   auth,
   store,
@@ -165,6 +185,7 @@ const app = createApp({
     cleanup,
     transfer,
     updater,
+    autoUpdate,
     shutdown,
   },
 });
@@ -190,6 +211,10 @@ function runMaintenance() {
   } catch (error) {
     console.error(`定时备份整理调度失败：${error.message}`);
   }
+  if (!updater.busy)
+    autoUpdate
+      .tick()
+      .catch((error) => console.error(`自动更新调度失败：${error.message}`));
   channel.refreshDirectory().catch(() => {});
 }
 runMaintenance();

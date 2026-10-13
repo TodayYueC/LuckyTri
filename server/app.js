@@ -65,7 +65,7 @@ export function createApp({
     res.status(401).json({ error: "请先登录管理台" });
   });
   app.use("/api", objectBody);
-  mountUpdates(app, updates, runtime.updater);
+  mountUpdates(app, updates, runtime.updater, runtime.autoUpdate);
   mountDataTransfer(app, runtime.transfer);
   if (chatSystem?.stickers) mountStickerUpload(app, chatSystem);
   if (plugins) {
