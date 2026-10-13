@@ -5,7 +5,7 @@
 // as X and Y, scored independently. Spends tokens; key only from LLM_API_KEY.
 //
 //   node scripts/dev/judge-voice.js --baseline <目录> --candidate <目录> --out <文件.json> \
-//     [--set quality-v1|life-v1] [--only A1,B2] [--seed 14] [--model doubao-seed-2.1-pro]
+//     [--set quality-v1|life-v1] [--only A1,B2] [--seed 14] [--model glm-5.3-flash]
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { loadSet } from "./quality-sets.js";
@@ -81,7 +81,7 @@ export const voiceUsage = {
   reasoning: 0,
   ms: 0,
 };
-export async function askVoice(content, model = "doubao-seed-2.1-pro") {
+export async function askVoice(content, model = "glm-5.3-flash") {
   for (let attempt = 0; attempt < 3; attempt++) {
     const started = Date.now();
     voiceUsage.requests++;
@@ -203,7 +203,7 @@ if (process.argv[1]?.endsWith("judge-voice.js")) {
   const candidateDir = resolve(option("--candidate", ""));
   const out = resolve(option("--out", "data/evaluations/voice.json"));
   const setName = option("--set", "quality-v1");
-  const model = option("--model", "doubao-seed-2.1-pro");
+  const model = option("--model", "glm-5.3-flash");
   const only = option("--only", "").split(",").filter(Boolean);
   const random = rng(Number(option("--seed", "14")));
   const concurrency = Number(option("--concurrency", "4"));
