@@ -110,6 +110,45 @@ Recent work focuses on continuity and clearer conversation. Account-based recogn
 | Data safety              | Automatic backups with an integrity and SHA-256 manifest; a snapshot before migrations; verify and restore into a new file                                                            |
 | Plugins                  | Channels, senses, activities, actions, reading and pages. Each plugin is a restricted process, and its permissions are accepted when it is enabled. See [Plugins](docs/en/plugins.md) |
 
+### More than typing
+
+All of these are her own choice and only appear when the current connection can actually do them; what she did is written into her history.
+
+| Ability                                      | What it does                                                                                                                                                                                           |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| @ and quoted reply                           | @ someone in a group (at most two); quote a message when the topic has scrolled away or it must be clear which line is answered — chosen by her (the old "quote when buried" rule stays as a fallback) |
+| Poke                                         | Poke or poke back; being poked counts as being called, pokes between others do not disturb her. At most once per person per 10 minutes                                                                 |
+| Reactions                                    | Put one of ten reactions on a message, with or without words                                                                                                                                           |
+| Dice / rock-paper-scissors                   | Throw a die or play rps; incoming ones are understood too                                                                                                                                              |
+| Recall                                       | Only their own last message, within two minutes, when it was a mistake; at most twice an hour                                                                                                          |
+| Voice (optional)                             | See "Voice" below; whether a line is spoken is her call                                                                                                                                                |
+| Typing status, forwarded chats, files, music | Not in this round; see the changelog                                                                                                                                                                   |
+
+Poke and reactions rely on extension APIs of the OneBot implementation; when it refuses them, those actions are simply no longer offered.
+
+### Sticker library
+
+- Per-sticker limit **4 MB** by default (`STICKER_MAX_MB`, up to 20).
+- **ZIP import** is streamed to disk and unpacked one entry at a time (memory holds one sticker); zip64, folder names as categories, duplicates, oversized and non-image entries skipped, upload and import progress; archive limit 1 GB by default (`STICKER_ZIP_MAX_MB`). A real 315 MB / 110-image archive imported in one go. Temporary files are removed on success, failure or next start.
+- Each sticker is **analysed once** (look, meaning, tags; a cheap vision model can be chosen) and then picked by context, mood and how it went with that person before; reactions become preferences, nothing is sent by count.
+- Behind a reverse proxy, raise the body size (e.g. nginx `client_max_body_size 1100m`) and timeouts.
+
+### Images and links
+
+- "System → Images & stickers" sets the **accepted image size limit** (1–64 MB, default 20) and the size sent for understanding; images over the limit or unreadable are answered from words and tone, without announcing "I can't see it" again and again.
+- **Link understanding**: public web links in messages are read (title, description, text excerpt; README for GitHub repos) with an 8 s timeout, 2 MB cap, 6 h cache and private/local addresses blocked. A page that did not open is said to be unopened.
+
+### Voice
+
+- Two protocols: Volcengine speech v3 (Agent Plan preset `doubao-seed-tts-2.0`) and OpenAI-compatible `/audio/speech`. Set URL, key, speaker and "how the voice sounds" in "System → Voice", with a preview button.
+- **Off by default**, and it stays off without a working speech service. On only means "may": whether a line is spoken, and whether she sings when asked, follows her mood and wish, never forced. At most three voice messages per conversation per hour, 60 characters each; if synthesis fails the line is typed.
+- Understanding incoming voice messages (ASR) is not in this round.
+
+### Settings and automatic updates
+
+- Dropdowns and switches across settings use one set of components, consistent in light and dark themes.
+- **Automatic updates** ("System → Version & updates"): off by default; daily at a set time or every 6/12/24/72 hours, optional allowed window; "notify only" or "update safely". An automatic install waits until she is not chatting and no backup, cleanup or migration runs, then uses the same verified flow as the manual update (checked backup → migrate → restart → health check → automatic rollback), never retries a version that failed, and keeps the last 20 entries. Source installs only notify.
+
 ## Quick start
 
 Requires Node.js 24.5+ and npm on Windows, macOS or Linux. Real replies also need a model service and API key of your own.
@@ -205,6 +244,7 @@ To continue an existing source instance, stop it first, then use `luckytri --hom
 | `LLM_API_KEY` | Optional; when set, takes precedence over the model key saved in the studio |
 | `EMBEDDING_API_KEY` | Optional; a separate key for the knowledge embedding service |
 | `BACKUP_INTERVAL_HOURS` / `BACKUP_KEEP` | Automatic backup interval (24 hours by default, `0` turns it off) and how many to keep (7 by default) |
+| `STICKER_MAX_MB` / `STICKER_ZIP_MAX_MB` | Per-sticker limit (default 4) and ZIP limit (default 1024), in MB |
 
 The database, chat records, model keys and backups live locally in the ignored `data/` directory and are excluded from the repository and npm package. When you use a remote model, the context needed for a response is sent to your configured provider. While running, the server makes one integrity-checked backup a day; backups share a disk with the database, so copy important ones elsewhere. Never commit `.env`, the database or logs. See [Security](.github/SECURITY.md) and [Backup and recovery](docs/en/recovery.md).
 

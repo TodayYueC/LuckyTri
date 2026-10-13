@@ -1,9 +1,9 @@
 // English for the System section (models, embedding, search, runtime, page shell).
 export default {
   语音: "Voice",
-  "TA 的声音": "Their voice",
+  "TA 的声音": "TA's voice",
   "配好语音服务后才能打开。打开只是“可以”：要不要用语音、要不要唱歌，由 TA 自己决定。":
-    'Can be turned on once a speech service is set up. On only means "may": whether to speak aloud or sing is their own choice.',
+    'Can be turned on once a speech service is set up. On only means "may": whether to speak aloud or sing is up to TA.',
   协议: "Protocol",
   "火山语音 v3（Agent Plan）": "Volcengine speech v3 (Agent Plan)",
   "OpenAI 兼容 /audio/speech": "OpenAI-compatible /audio/speech",
@@ -11,7 +11,7 @@ export default {
   "已保存，留空不变": "Saved; leave empty to keep",
   "资源 ID": "Resource ID",
   模型: "Model",
-  "TA 的音色": "Their voice (speaker)",
+  "TA 的音色": "TA's voice (speaker)",
   "声音的样子（可选）": "How the voice sounds (optional)",
   "例如：轻快、带点笑意": "e.g. light, a little smiling",
   "允许 TA 发语音": "Allow voice messages",
@@ -31,7 +31,7 @@ export default {
   自动更新设置已保存: "Automatic update settings saved",
   自动检查更新: "Check for updates automatically",
   "默认关闭。到点检查；自动安装会等 TA 不在聊天、没有备份或迁移时再进行，失败自动恢复原版本。":
-    "Off by default. Checks at the set time; automatic install waits until they are not chatting and no backup or migration is running, and restores the previous version on failure.",
+    "Off by default. Checks at the set time; automatic install waits until TA is not chatting and no backup or migration is running, and restores the previous version on failure.",
   检查方式: "Schedule",
   每天固定时间: "Daily at a set time",
   每隔一段时间: "Every few hours",
