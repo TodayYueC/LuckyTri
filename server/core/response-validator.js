@@ -594,7 +594,7 @@ export function deniesPrivateKnowledge(bubbles, snapshot) {
   }
   if (
     !inner.includes(PRIVATELY_KNOWN) &&
-    !inner.includes('"maySayAloud":false')
+    !inner.includes('"privateOrigin":true')
   )
     return false;
   return (bubbles || []).some((line) =>

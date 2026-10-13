@@ -5284,10 +5284,11 @@ test("被问到是谁时，心和选择属于自己，经历仍然不能编造",
   assert.match(compiled, /因为是 AI 所以没有心/);
   assert.match(PROMPTS.reflection, /只属于自己的小事/);
   assert.match(PROMPTS.reflection, /sources 可以为空/);
-  assert.match(PROMPTS.turn, /self\.livingFor/);
-  assert.match(PROMPTS.turn, /inner\.with/);
-  assert.match(PROMPTS.turn, /inner\.stood/);
-  assert.match(PROMPTS.turn, /不要靠装成某一种人/);
+  // Round 24: her reaction comes first; old self-rules and appraisal notes
+  // are no longer named to her as things to weigh every turn.
+  assert.match(PROMPTS.turn, /"felt"/);
+  assert.doesNotMatch(PROMPTS.turn, /inner\.stood/);
+  assert.match(PROMPTS.turn, /其他机器人是另一个人/);
   assert.doesNotMatch(PROMPTS.turn, /像真实的人一样/);
   assert.match(PROMPTS.system, /慢慢成为自己/);
   assert.doesNotMatch(PROMPTS.turn, /inner\.room/);
@@ -5301,7 +5302,6 @@ test("被问到是谁时，心和选择属于自己，经历仍然不能编造",
   assert.match(PROMPTS.daily, /yesterday\.livingFor/);
   assert.match(PROMPTS.reflection, /livingFor\.touched/);
   assert.match(PROMPTS.reflection, /livingFor\.also/);
-  assert.match(PROMPTS.turn, /另一件仍在过的愿望/);
   assert.match(PROMPTS.reflection, /quiet 是人还在你眼前/);
   assert.match(PROMPTS.weekly, /livingFor\.touched/);
   assert.match(PROMPTS.weekly, /livingFor\.also/);

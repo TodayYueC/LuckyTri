@@ -241,6 +241,10 @@ export class ReplyDelivery {
         issues.push("这句话说出了别人要求保密的事，不能在这里说");
       if (leaks(response.bubbles, privateFacts, alreadySaid).length)
         issues.push("这句话把私下知道的事说出来了，不能在这里说");
+      if (announcesUnseen(response.bubbles, snapshot, c.generationImages))
+        issues.push(
+          "没看清的图不用宣布，也不数第几张；照着文字和语气接，或者不提图",
+        );
       if (
         this.owner.mind.relationships.discloses(
           response.bubbles,
@@ -260,8 +264,14 @@ export class ReplyDelivery {
         (person) =>
           person.recentShared?.length || person.myPrivateIntentions?.length,
       );
+    // An open question in a group no longer sends every reply to a second
+    // model asking whether she answered all of it: that audit made her
+    // complete and flat (round 24 real logs). A question put to her, in
+    // private, or "what do you mean?" still gets it; facts, promises and care
+    // still go to review below.
     const deepCheckFor = (response, ignoreBotTail = false) =>
-      readerQuestions(snapshot, turn).length > 0 ||
+      (readerQuestions(snapshot, turn).length > 0 &&
+        (c.direct || c.privateChat || focus === "readability_repair")) ||
       (turn.contribution?.kind === "question" &&
         snapshot.messages
           .filter((m) => m.role === "assistant")
@@ -328,6 +338,8 @@ export class ReplyDelivery {
         )
       ) ||
       !!recentPrivateContinuity ||
+      // Reviews guard facts, promises and care, not how much she said: a
+      // long or undirected line alone no longer waits for a second model.
       (policy.deepCheck &&
         c.pressure < 0.85 &&
         (turn.crisis?.clear ||
@@ -338,10 +350,7 @@ export class ReplyDelivery {
             "promise_check",
             "clarify_claim",
             "basis_check",
-          ].includes(focus) ||
-          (!c.direct &&
-            (response.bubbles.join("").length > 60 ||
-              snapshot.batch.some((m) => m.relation === "unresolved")))));
+          ].includes(focus)));
     // A bot exchange whose reply the contribution review already found to
     // add something new does not need a second review for that same reason.
     const contributionReviewed =
@@ -844,8 +853,23 @@ export function holdsPrivate(snapshot) {
     return false;
   }
   // Only a private thing that what is being said here actually touches.
-  return (
-    (seen.includes(PRIVATELY_KNOWN) && seen.includes("和这里刚说到的「")) ||
-    seen.includes('"maySayAloud":false')
+  return seen.includes(PRIVATELY_KNOWN) && seen.includes("和这里刚说到的「");
+}
+
+// Saying "I couldn't read the picture" again and again became a ritual in
+// the group (round 24 real logs). When nobody asked about the pictures and
+// she has no view of them, the line is noise, not honesty.
+export function announcesUnseen(bubbles, snapshot, images = []) {
+  if (images?.length || snapshot?.vision) return false;
+  const asked = (snapshot?.batch || []).some((m) =>
+    /(?:看|读|识别)(?:不|没)(?:到|出|了)|看得到|看见了吗|能看|图呢|什么原因|为什么.{0,6}图/.test(
+      String(m.text || "").replace(/\[(?:图片|动画表情|表情|媒体)\]/g, ""),
+    ),
+  );
+  if (asked) return false;
+  return (bubbles || []).some((line) =>
+    /图.{0,8}(?:没读|读不|看不清|看不到|没看到|打不开|是空|空的|空标签)|(?:没读|读不)出(?:来|内容)|第[二三四五六七八九十\d]+张/.test(
+      line,
+    ),
   );
 }

@@ -139,7 +139,7 @@ export async function takeTurn(
     : snapshot.vision
       ? "本轮图片观察在 context.vision，只根据这些观察理解，不补充没写到的画面细节。"
       : snapshot.unavailableImages?.length
-        ? "本轮图片没有读取成功，不要编造画面内容。"
+        ? "这几张图你没看清。照着文字、语气和前后文接话就好，不用提图，也不描述画面；表情包当作对方的情绪。"
         : undefined;
   const turnSystem =
     extra.occasion && ["presence", "outreach"].includes(extra.occasion.type)
@@ -371,6 +371,11 @@ export function normalizeTurn(raw, snapshot, trace, { speech } = {}) {
   let targets = ids(raw.targetMessageIds).filter((id) => batchIds.has(id));
   if (ids(raw.targetMessageIds).length !== targets.length)
     trace?.steps?.push("已移除不属于本轮消息的回复目标");
+  // She answers what she most wants to, not everyone in the batch in turn.
+  if (targets.length > 2) {
+    targets = targets.slice(-2);
+    trace?.steps?.push("只接最想接的两条，不挨个点名");
+  }
   const batch = (snapshot.messages || []).filter((m) => batchIds.has(m.id));
   if (choice !== "silent" && !targets.length && batch.length) {
     const direct = batch.filter((m) => m.relation === "direct");
@@ -495,6 +500,12 @@ export function normalizeTurn(raw, snapshot, trace, { speech } = {}) {
       .slice(0, max);
   return {
     choice,
+    ...(typeof raw.felt === "string" && raw.felt.trim()
+      ? { felt: text(raw.felt, 120) }
+      : {}),
+    ...(typeof raw.want === "string" && raw.want.trim()
+      ? { want: text(raw.want, 80) }
+      : {}),
     share:
       !botYield &&
       !stopped &&

@@ -251,7 +251,8 @@ test("普通群聊由注意力决定细看还是扫一眼：扫一眼不花 toke
   second.seq = system.repo.append(second);
   const look = await system.process(session, [second]);
   assert.equal(look.status, "sent");
-  assert.deepEqual(stages, ["turn", "validation", "validation"]);
+  // An open question to the whole group is not audited for completeness.
+  assert.deepEqual(stages, ["turn"]);
   assert.deepEqual(look.snapshot.batchIds, [first.seq, second.seq]);
   assert.match(look.attention.reason, /在意/);
   assert.equal(system.mind.unread(session).length, 0);

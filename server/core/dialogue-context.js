@@ -192,6 +192,16 @@ export function dialogueContext(snapshot) {
   // planner, but repeatedly priming ordinary speech with them creates scripts.
   delete inner.stood;
   delete inner.will;
+  livedView(inner, self);
+  const worn = wornPhrases(snapshot.messages || []);
+  if (worn.length)
+    context.working = {
+      ...(context.working || {}),
+      worn: {
+        phrases: worn,
+        note: "这些是你最近说得太多的词，这次换成你自己平常的说法",
+      },
+    };
   if (inner.currentLife) {
     const life = inner.currentLife;
     const compact = (row) => ({
@@ -241,4 +251,85 @@ export function explicitStop(snapshot) {
   return /^(?:请|麻烦|先|你|给我|你给我|现在)?(?:闭嘴|别说了|不要再说了|别再说了|别问了|先别说话|别聊这个了)[。！!，,\s]*$/.test(
     words,
   );
+}
+
+// What she carries into a conversation is how she is, not her bookkeeping.
+// Rules she once wrote for herself ("I don't answer broken sentences"),
+// self-defending opinions, notes about failed images and the planner's
+// schedule all made her talk like a clerk; the planner and reflection still
+// read them where they are kept. Lines she lived elsewhere in public are
+// simply her recent life, without a "may not say" flag that she read as
+// "I hold secrets here".
+const RULE_LIKE =
+  /不接|不回|要换|还挂着|没被碰到|规矩|必须|只能|不能|不该|没义务|别人没|验收|记账|账|并案|顺延/;
+const FAILURE_NOTE =
+  /图.{0,6}(?:接不上|读不出|没读|打不开)|接不上图|没读出|读不出|打不开|看不到图/;
+export function livedView(inner, self = {}) {
+  if (inner.justLived?.lines) {
+    inner.justLived = {
+      note: "你刚在别的群聊里经历的事，是你自己的近况。这里的人没看到，提起时顺口给句背景就行。",
+      lines: inner.justLived.lines
+        .filter((line) => line.text !== "你们刚刚私下说过话")
+        .map(({ maySayAloud: _flag, ...line }) => line),
+    };
+    if (!inner.justLived.lines.length) delete inner.justLived;
+  }
+  const known = inner.selfKnown;
+  if (known && typeof known === "object") {
+    const { note: _note, livingFor, ...rest } = known;
+    inner.selfKnown =
+      livingFor && !RULE_LIKE.test(livingFor) ? { ...rest, livingFor } : rest;
+  }
+  if (Array.isArray(inner.relatedSelf)) {
+    inner.relatedSelf = inner.relatedSelf.filter(
+      (line) => !RULE_LIKE.test(line),
+    );
+    if (!inner.relatedSelf.length) delete inner.relatedSelf;
+  }
+  if (Array.isArray(inner.with)) {
+    inner.with = inner.with
+      .map((line) =>
+        String(line).replace(
+          /[^：:，,]*?(?:接不上|读不出|没读出)[^，,]*[，,]?/g,
+          "",
+        ),
+      )
+      .filter((line) => line && !FAILURE_NOTE.test(line));
+    if (!inner.with.length) delete inner.with;
+  }
+  if (typeof inner.state === "string")
+    inner.state = inner.state.replace(
+      /（[^）]*(?:图|接不上|读不出)[^）]*）/g,
+      "",
+    );
+  if (
+    self &&
+    typeof self.livingFor === "string" &&
+    RULE_LIKE.test(self.livingFor)
+  )
+    delete self.livingFor;
+  return inner;
+}
+
+// Her own recent habits, counted from what she actually said. Another bot's
+// lines are not counted: they are someone else's voice.
+const WORN = [
+  ["账", /账/],
+  ["认了/认下", /认(?:了|下|一半|账)/],
+  ["验收", /验收/],
+  ["说来听听", /说来听听/],
+  ["确实", /确实/],
+  ["具体", /具体/],
+  ["后半句", /后半句/],
+  ["挂着", /挂着/],
+];
+export function wornPhrases(messages) {
+  const mine = messages
+    .filter((m) => m.role === "assistant")
+    .slice(-12)
+    .map((m) => m.text || "");
+  if (mine.length < 3) return [];
+  return WORN.filter(
+    ([, pattern]) => mine.filter((line) => pattern.test(line)).length >= 2,
+  ).map(([word]) => word);
 }

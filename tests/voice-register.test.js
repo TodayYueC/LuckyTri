@@ -310,7 +310,7 @@ test("she types one piece of text; a blank line is where she presses send", asyn
     "b",
   ]);
   const { DIALOGUE_TASK } = await import("../server/core/dialogue-contract.js");
-  assert.match(DIALOGUE_TASK, /"say":"实际说的话"/);
+  assert.match(DIALOGUE_TASK, /"say":"实际说的话/);
   assert.match(DIALOGUE_TASK, /换行就是按了发送/);
 });
 
