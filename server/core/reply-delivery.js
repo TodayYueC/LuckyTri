@@ -7,6 +7,7 @@ import { replyFocus } from "./conversation-cues.js";
 export const DEEP_CHECK_DEADLINE_MS = 40000;
 export const GROUP_CHECK_DEADLINE_MS = 15000;
 import { replyPrompt } from "./persona-manager.js";
+import { actionLine, performActions } from "../actions/index.js";
 import { turnModel } from "./turn.js";
 import { generate } from "./response-generator.js";
 import {
@@ -559,6 +560,25 @@ export class ReplyDelivery {
       }
     };
     if (outdated()) return staleExit();
+    if (
+      !turn.bubbles.length &&
+      !turn.sticker &&
+      turn.actions?.some((a) => a.type !== "reply") &&
+      !turn.crisis?.clear
+    ) {
+      // Only an action (a poke, a reaction, a die): no words to check.
+      trace.response = { bubbles: [], actions: turn.actions };
+      trace.sent = [];
+      if (c.replay) return finish("replayed", "隔离回放完成，未发送或写入记忆");
+      if (c.preview) return finish("previewed", turn.reason);
+      const done = await this.doActions(
+        batch.at(-1) || c.anchor,
+        turn,
+        trace,
+        session,
+      );
+      return finish(done.length ? "sent" : "cancelled", turn.reason);
+    }
     if (!turn.bubbles.length && turn.sticker && !turn.crisis?.clear) {
       // Only a sticker: nothing to check in words, it was chosen from hers.
       trace.response = { bubbles: [], sticker: turn.sticker.ref };
@@ -754,7 +774,11 @@ export class ReplyDelivery {
       isCurrent,
       {
         now: this.owner.now,
-        quote: buriedTarget(batch, turn.targetMessageIds, session),
+        // Her own choice to quote comes first; the old buried-message rule
+        // stays as the fallback when she did not choose.
+        quote:
+          turn.actions?.find((a) => a.type === "reply")?.platformId ||
+          buriedTarget(batch, turn.targetMessageIds, session),
         at: typed.at,
         prepareBubble: (line) =>
           this.owner.mind.time.reconcile(
@@ -766,6 +790,8 @@ export class ReplyDelivery {
       },
     );
     if (!trace.sent.length && hasRelevantUpdate()) return staleExit();
+    if (trace.sent.length && turn.actions?.length)
+      await this.doActions(batch.at(-1) || c.anchor, turn, trace, session);
     if (trace.sent.length && turn.sticker)
       await this.sendSticker(
         batch.at(-1) || c.anchor,
@@ -795,6 +821,30 @@ export class ReplyDelivery {
       );
     }
     return finish(trace.sent.length ? "sent" : "cancelled", turn.reason);
+  }
+  // Her non-text actions, after her words; each is written into her own
+  // history so she remembers having done it.
+  async doActions(message, turn, trace, session) {
+    const done = await performActions(
+      this.owner,
+      message,
+      turn.actions,
+      trace,
+      session,
+    );
+    for (const action of done) {
+      const line = actionLine(action);
+      if (!line) continue;
+      persistReply(
+        this.owner.repo,
+        { ...message, traceId: trace.id, replyTargetIds: [] },
+        line,
+        "",
+        this.owner.now(),
+      );
+      (trace.sent ||= []).push(line);
+    }
+    return done;
   }
   // Her sticker, after her words. It is recorded as something she sent, and
   // the use is kept to learn how it landed with this person.

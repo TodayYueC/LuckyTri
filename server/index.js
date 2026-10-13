@@ -33,6 +33,8 @@ const channel = createChannelHub(
 const chatSystem = new ChatSystem(store, channel.send, {
   fetchQuoted: (message) => channel.fetchQuoted(message),
   fetchImage: (file, sessionId) => channel.fetchImage(file, sessionId),
+  perform: (message, action) => channel.perform(message, action),
+  actionsFor: (sessionId) => channel.actions(sessionId),
 });
 await migrateReleaseData(chatSystem.mind, { version: VERSION });
 const life = new Life(chatSystem, {

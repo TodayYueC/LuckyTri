@@ -1,3 +1,4 @@
+import { ActionLedger } from "../actions/index.js";
 import { Stickers } from "../stickers/index.js";
 import { settleAftermath } from "../mind/aftermath.js";
 import { randomUUID } from "node:crypto";
@@ -47,6 +48,8 @@ export class ChatSystem {
       fetchImage,
       loadVisionImages: loadImages = loadVisionImages,
       linkReader,
+      perform,
+      actionsFor,
       now = Date.now,
     } = {},
   ) {
@@ -77,6 +80,10 @@ export class ChatSystem {
     this.perceivers = new Perceivers(this.repo.db);
     this.links = linkReader || new LinkReader({ db: this.repo.db, now });
     this.send = send;
+    // Her non-text actions (poke, reactions, dice…), when the channel has them.
+    this.perform = perform;
+    this.actionsFor = actionsFor;
+    this.actions = new ActionLedger(this.repo.db, { now: () => this.now() });
     this.localDemo = localDemo;
     this.fetchQuoted = fetchQuoted;
     this.fetchImage = fetchImage;

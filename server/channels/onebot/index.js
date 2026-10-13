@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
 import { effectiveOneBotToken, authorizeOneBot } from "./token.js";
-import { onebot, normalize } from "./adapter.js";
+import { onebot, normalize, normalizePoke, actionCall } from "./adapter.js";
 import { defineChannel } from "../contract.js";
 import { parseSessionKey } from "../session-key.js";
 import { applyDirectoryNames } from "../../core/sessions.js";
@@ -205,6 +205,7 @@ export function createOneBotChannel(
           .catch(() => {});
       };
       pullNames();
+      refused.clear();
       ws.isAlive = true;
       ws.on("pong", () => (ws.isAlive = true));
       ws.on("message", async (raw) => {
@@ -244,7 +245,7 @@ export function createOneBotChannel(
                 );
             return;
           }
-          const m = normalize(event, { botMessageIds });
+          const m = normalize(event, { botMessageIds }) || normalizePoke(event);
           if (m) chatSystem.receive(m);
         } catch (err) {
           console.error("OneBot:", err.message);
@@ -320,8 +321,32 @@ export function createOneBotChannel(
     };
   }
 
+  // Poke and reactions are extensions some OneBot implementations add. They
+  // are offered until the connected one refuses them; a refused action is
+  // not offered again on that connection.
+  const refused = new Set();
+  function actions() {
+    if (!socket) return [];
+    return ["reply", "dice", "rps", "recall"]
+      .concat(["poke", "react"])
+      .filter((type) => !refused.has(type));
+  }
+  async function perform(message, action) {
+    if (message.simulated) return {};
+    const [name, params] = actionCall(message, action);
+    try {
+      return await rpc(name, params, 8000);
+    } catch (error) {
+      if (/not ?support|不支持|unknown|1404|not ?found/i.test(error.message))
+        refused.add(action.type);
+      throw error;
+    }
+  }
+
   return defineChannel({
     type: "onebot",
+    actions,
+    perform,
     capabilities: onebot.capabilities,
     attach,
     start,

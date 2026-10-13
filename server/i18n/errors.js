@@ -406,6 +406,8 @@ export const ERRORS = {
   插件网络主机无效: "A plugin network host is invalid",
   压缩包过大: "The archive is too large",
   上传中断: "The upload was interrupted",
+  这个渠道做不了这个动作: "This channel cannot do that action",
+  "这个动作 QQ 这边做不了": "QQ cannot do that action",
   压缩包无法读取: "The archive could not be read",
   压缩包文件过多: "The archive has too many files",
   压缩包不能加密: "The archive must not be encrypted",

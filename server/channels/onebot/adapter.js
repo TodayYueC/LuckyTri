@@ -196,6 +196,84 @@ export const onebot = {
   },
 };
 
+// Someone poking her is a way of calling her; poking between others is not.
+export function normalizePoke(event) {
+  if (
+    event?.post_type !== "notice" ||
+    !(event.notice_type === "notify" && event.sub_type === "poke") ||
+    String(event.target_id) !== String(event.self_id) ||
+    String(event.user_id) === String(event.self_id) ||
+    !/^\d+$/.test(String(event.user_id)) ||
+    !/^\d+$/.test(String(event.self_id))
+  )
+    return null;
+  const kind = event.group_id ? "group" : "private";
+  const nativeId = String(event.group_id || event.user_id);
+  const time = event.time ? event.time * 1000 : Date.now();
+  return {
+    sessionId: formatSessionKey({
+      channel: "onebot",
+      accountId: String(event.self_id),
+      kind,
+      nativeId,
+    }),
+    channel: "onebot",
+    accountId: String(event.self_id),
+    nativeId,
+    segments: [],
+    kind,
+    userId: String(event.user_id),
+    name: senderLabel(event.sender, event.user_id),
+    text: "[戳了戳你]",
+    poke: true,
+    mentioned: true,
+    replyToBot: false,
+    platformId: "",
+    time,
+    mentions: [],
+    replyId: "",
+    attachments: [],
+    media: { images: 0, stickers: 0, other: 0, count: 0, only: false },
+    eventId: `${event.self_id}:poke:${nativeId}:${event.user_id}:${time}`,
+    raw: event,
+  };
+}
+
+// One of her non-text actions as an OneBot call. Poke and reactions are
+// extensions of some implementations; dice, rps and recall are OneBot 11.
+export function actionCall(message, action) {
+  const parsed = parseSessionKey(message.sessionId);
+  const group = parsed.kind === "group";
+  const where = group
+    ? { group_id: Number(parsed.nativeId) }
+    : { user_id: Number(parsed.nativeId) };
+  switch (action.type) {
+    case "poke":
+      return group
+        ? ["group_poke", { ...where, user_id: Number(action.to) }]
+        : ["friend_poke", { user_id: Number(action.to) }];
+    case "react":
+      return [
+        "set_msg_emoji_like",
+        {
+          message_id: Number(action.platformId),
+          emoji_id: String(action.emojiId),
+          set: true,
+        },
+      ];
+    case "dice":
+    case "rps":
+      return [
+        group ? "send_group_msg" : "send_private_msg",
+        { ...where, message: [{ type: action.type, data: {} }] },
+      ];
+    case "recall":
+      return ["delete_msg", { message_id: Number(action.platformId) }];
+    default:
+      throw new Error("这个动作 QQ 这边做不了");
+  }
+}
+
 export function normalize(event, { botMessageIds } = {}) {
   if (
     !event ||
@@ -247,6 +325,8 @@ export function normalize(event, { botMessageIds } = {}) {
       if (type === "at")
         return atId(s) === String(event.self_id) ? "@我" : "[提及成员]";
       if (type === "image" && !isSticker(s)) return "[图片]";
+      if (type === "dice") return "[骰子]";
+      if (type === "rps") return "[猜拳]";
       if (isSticker(s)) return "[表情]";
       if (["record", "video", "file", "json", "xml"].includes(type))
         return "[媒体]";

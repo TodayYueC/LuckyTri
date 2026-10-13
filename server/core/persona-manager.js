@@ -35,6 +35,7 @@ const PREVIOUS_PLACE_PROMPTS = {
     // Round 23 (1.2.4): the analytic understanding-first turn contract.
     "e76528a24a1a420ed5a5957d039a56b915012b3a83c021689b01acab23eef9ce",
     "fca4a1f65fa7bd8d69745db56c4f4221d70c4b5a9c99892c5411ab76d37fece0",
+    "72c7110c21c2825ad814c295550e18feea85007ddb3458da7d99282430fb4826",
     // Earlier built-in turn contracts (rounds 15–23).
     "37d7162c3a7c578c5580585c5cab6be467894e450ea0d21f5612c8543b5b13ab",
     "538a3656db51420a261037fe1c0c3424ff8f3c6ce2d5b6cdc81c1a065ad99a5f",

@@ -1,3 +1,4 @@
+import { chosenActions } from "../actions/index.js";
 import {
   chosenAt,
   chosenSticker,
@@ -691,10 +692,12 @@ function expressionChoice(raw, snapshot, choice, bubbles) {
     chosenAt(raw.at, snapshot, snapshot.sessionId, ids(raw.targetMessageIds)),
     snapshot,
   );
+  const actions = chosenActions(raw.actions, snapshot);
   return {
     bubbles: typed.bubbles,
     ...(sticker ? { sticker } : {}),
     ...(typed.at.length ? { at: typed.at } : {}),
+    ...(actions.length ? { actions } : {}),
   };
 }
 

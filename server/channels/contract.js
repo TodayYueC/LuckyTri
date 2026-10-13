@@ -16,6 +16,9 @@
 //                        the message this bubble answers; a channel with the
 //                        quote capability may show it as a quote, any other
 //                        channel ignores it
+//   actions(sessionId)   optional: her non-text actions possible there now,
+//                        from reply, poke, react, dice, rps, recall
+//   perform(message, action)  optional: carry one of them out
 //   fetchQuoted(message) the message that `message.replyId` points to, or null
 //   fetchImage(file)     a fresh URL or bytes for an expired image, or null
 //   fetchMedia(file, type)  optional: a voice or file the same way, or null
