@@ -11,9 +11,16 @@ import BackupManager from "./BackupManager.vue";
 import { ask } from "../../dialog";
 import PasswordSettings from "../../components/PasswordSettings.vue";
 import UpdateSettings from "./UpdateSettings.vue";
+import StickerLibrary from "./StickerLibrary.vue";
+import MediaSettings from "./MediaSettings.vue";
 
-const VIEWS = ["connect", "models", "search", "runtime", "storage"];
-const view = ref(VIEWS.includes(studio.sub) ? studio.sub : "connect");
+const VIEWS = ["connect", "models", "stickers", "settings", "storage"];
+// Older links named the settings page "runtime" and search "search".
+const alias = (sub: string) =>
+  sub === "runtime" ? "settings" : sub === "search" ? "models" : sub;
+const view = ref(
+  VIEWS.includes(alias(studio.sub)) ? alias(studio.sub) : "connect",
+);
 async function switchView(next: string) {
   if (next === view.value) return;
   if (
@@ -33,7 +40,7 @@ watch(view, (next) => setSub(next));
 watch(
   () => studio.sub,
   (sub) => {
-    if (VIEWS.includes(sub)) view.value = sub;
+    if (VIEWS.includes(alias(sub))) view.value = alias(sub);
   },
 );
 </script>
@@ -66,16 +73,18 @@ watch(
       :items="[
         { key: 'connect', label: t('连接 QQ') },
         { key: 'models', label: t('模型库') },
-        { key: 'search', label: t('独立搜索') },
-        { key: 'runtime', label: t('运行开关') },
+        { key: 'stickers', label: t('表情包') },
+        { key: 'settings', label: t('各项设置') },
         { key: 'storage', label: t('数据与备份') },
       ]"
     />
     <ConnectQQ v-if="view === 'connect'" @open="switchView" />
-    <ModelLibrary v-else-if="view === 'models'" />
-    <SearchProfile v-else-if="view === 'search'" />
-    <template v-else-if="view === 'runtime'"
-      ><Runtime /><UpdateSettings /><PasswordSettings
+    <template v-else-if="view === 'models'"
+      ><ModelLibrary /><SearchProfile
+    /></template>
+    <StickerLibrary v-else-if="view === 'stickers'" />
+    <template v-else-if="view === 'settings'"
+      ><Runtime /><MediaSettings /><UpdateSettings /><PasswordSettings
     /></template>
     <BackupManager v-else />
   </div>

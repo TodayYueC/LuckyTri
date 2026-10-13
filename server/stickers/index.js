@@ -172,6 +172,12 @@ export class Stickers {
       .all();
     if (!rows.length) return [];
     const now = this.now();
+    // Vectors and old uses are tidied in passing, at most every ten minutes.
+    if (!(this.tidiedAt > now - 600000)) {
+      this.tidiedAt = now;
+      this.prune();
+      this.embedPending().catch(() => 0);
+    }
     const query = [text, mood && `我此刻的心情：${mood}`]
       .filter(Boolean)
       .join("\n");
