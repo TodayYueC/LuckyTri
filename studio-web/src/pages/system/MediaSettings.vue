@@ -90,10 +90,12 @@ async function save() {
         }}</small>
       </label>
     </div>
-    <Toggle v-model="stickers" name="stickers">
-      <b>{{ t("允许 TA 在聊天里用表情") }}</b>
-      <small>{{ t("关掉后表情库保留，TA 不再使用。") }}</small>
-    </Toggle>
+    <div class="switches">
+      <Toggle v-model="stickers" name="stickers">
+        <b>{{ t("允许 TA 在聊天里用表情") }}</b>
+        <small>{{ t("关掉后表情库保留，TA 不再使用。") }}</small>
+      </Toggle>
+    </div>
     <div class="save-bar">
       <button class="primary" type="submit">{{ t("保存") }}</button>
     </div>

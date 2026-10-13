@@ -28,16 +28,33 @@ export function atCandidates(snapshot, session) {
 // The @s she wrote, kept only when they make sense: someone offered, at
 // most two, and not the one person she is already talking with one to one
 // (in a two-person exchange the @ only repeats what the reply says).
-export function chosenAt(raw, snapshot, session) {
+export function chosenAt(raw, snapshot, session, targets = []) {
   const offered = new Map((snapshot.canAt || []).map((p) => [p.userId, p]));
   if (!offered.size || !Array.isArray(raw)) return [];
-  const picked = [
+  let picked = [
     ...new Set(
       raw
         .map((x) => String(x?.userId ?? x ?? ""))
         .filter((id) => offered.has(id)),
     ),
   ].slice(0, 2);
+  // Someone who just called on her will see her answer; an @ back at them
+  // only repeats it. Unless others have spoken since, burying their line.
+  const messages = snapshot.messages || [];
+  const answered = new Set();
+  for (const id of targets) {
+    const at = messages.findIndex((m) => m.id === id);
+    if (at < 0 || messages[at].relation !== "direct") continue;
+    const author = String(messages[at].speaker ?? messages[at].userId ?? "");
+    const later = messages
+      .slice(at + 1)
+      .some(
+        (m) =>
+          m.role !== "assistant" && String(m.speaker ?? m.userId) !== author,
+      );
+    if (!later) answered.add(author);
+  }
+  picked = picked.filter((id) => !answered.has(id));
   if (picked.length === 1) {
     const recent = (snapshot.messages || [])
       .slice(-6)

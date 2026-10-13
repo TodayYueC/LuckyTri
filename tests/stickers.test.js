@@ -163,6 +163,19 @@ test("@ goes only to people seen here, at most two, not to the one she is alread
   };
   assert.deepEqual(chosenAt(["10001"], duo, session), []);
   assert.deepEqual(atCandidates(snapshot, "onebot:1:private:10001"), []);
+  // The one who just called on her sees the answer; no @ back.
+  const called = {
+    canAt: snapshot.canAt,
+    messages: [
+      { id: 1, speaker: "10002", role: "user" },
+      { id: 2, speaker: "10001", role: "user", relation: "direct" },
+    ],
+  };
+  assert.deepEqual(chosenAt(["10001"], called, session, [2]), []);
+  assert.deepEqual(
+    chosenAt(["10002"], called, session, [2]).map((p) => p.userId),
+    ["10002"],
+  );
   assert.equal(expressiveChannel("qqbot:1:group:1"), false);
   snapshot.stickers = [{ ref: "s1", id: "uuid", looks: "狗" }];
   assert.equal(chosenSticker("s1", snapshot).id, "uuid");

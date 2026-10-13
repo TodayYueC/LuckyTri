@@ -153,29 +153,7 @@ async function save() {
   font-size: 23px;
   letter-spacing: -0.035em;
 }
-.switches {
-  display: grid;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-.switches :deep(.switch) {
-  align-items: flex-start;
-  padding: 18px;
-  border: 1px solid rgb(255 255 255 / 0.78);
-  border-radius: 22px;
-  background: rgb(255 255 255 / 0.41);
-  box-shadow:
-    inset 0 1px 0 white,
-    0 10px 22px -23px var(--accent);
-  backdrop-filter: blur(18px) saturate(1.5);
-  transition:
-    transform 0.35s var(--spring),
-    background-color 0.2s;
-}
-.switches :deep(.switch:hover) {
-  transform: translateY(-3px) scale(1.008);
-  background: rgb(255 255 255 / 0.64);
-}
+
 .switches :deep(.switch > span) {
   display: grid;
   gap: 2px;

@@ -298,13 +298,15 @@ const statusLabel = (s: Sticker) =>
   background: var(--accent-soft);
 }
 .toolbar {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
 }
-.toolbar input[type="search"] {
-  flex: 1 1 220px;
+@media (max-width: 760px) {
+  .toolbar {
+    grid-template-columns: 1fr;
+  }
 }
 .grid {
   display: grid;

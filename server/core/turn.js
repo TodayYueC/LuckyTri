@@ -654,7 +654,7 @@ function expressionChoice(raw, snapshot, choice, bubbles) {
   const sticker = chosenSticker(raw.sticker, snapshot);
   const typed = typedAt(
     bubbles,
-    chosenAt(raw.at, snapshot, snapshot.sessionId),
+    chosenAt(raw.at, snapshot, snapshot.sessionId, ids(raw.targetMessageIds)),
     snapshot,
   );
   return {

@@ -96,10 +96,13 @@ try {
     const trace = w.traces().at(-1);
     result.scenes.push({
       input: lines.map((l) => `${l[1]}：${l[2]}`),
-      offered: trace?.turn?.sticker ? 1 : 0,
+      offered: {
+        stickers: (offered?.stickers || []).map((x) => x.looks),
+        canAt: (offered?.canAt || []).map((x) => x.name),
+      },
       chose: {
-        sticker: trace?.turn?.sticker?.looks || null,
-        at: trace?.turn?.at || [],
+        sticker: trace?.decision?.sticker?.looks || null,
+        at: (trace?.decision?.at || []).map((p) => p.name),
       },
       sent: sends.slice(before),
     });
