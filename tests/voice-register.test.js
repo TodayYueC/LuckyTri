@@ -353,8 +353,7 @@ test("keeping a private thing is not the same as claiming not to know it", async
     },
   };
   assert.equal(deniesPrivateKnowledge(["真没跟我说过"], told), true);
-  assert.match(PRIVATELY_KNOWN, /不装作完全不知道/);
-  assert.match(PRIVATELY_KNOWN, /不要宣布/);
+  assert.match(PRIVATELY_KNOWN, /不装不知道/);
 });
 
 test("a withheld private thing tells her she knows it, without its content", async () => {

@@ -255,7 +255,12 @@ export class MemoryManager {
       for (const { m, strong } of selected)
         if (strong) access.run(cutoff, m.id);
     }
-    return selected.map(({ m, local, why }) => {
+    // In speech, what she may not disclose here does not surface at all:
+    // no placeholder, so there is nothing to announce.
+    const shown = forSpeech
+      ? selected.filter(({ m }) => this.permission(m, session, cutoff).disclose)
+      : selected;
+    return shown.map(({ m, local, why }) => {
       const age = cutoff - Number(m.created || cutoff);
       return {
         id: m.id,

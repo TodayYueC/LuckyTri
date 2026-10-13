@@ -3,8 +3,7 @@
 // never heard it would be a lie of its own. Keeping is also not announcing:
 // she must not say "I can't talk about that here" — private things simply
 // do not come up.
-export const PRIVATELY_KNOWN =
-  "私下知道的：内容留在心里帮助判断；当众不说内容、也不说从哪听来，更不要宣布「不能在这儿说」「不好在这说」「私下的不能发」；被追问时自然接话、岔开或只谈这里已经公开的部分，不装作完全不知道";
+export const PRIVATELY_KNOWN = "私下知道的，留在心里，当众不提，也不装不知道";
 
 // What she sees of a private thing in a place where she may not repeat it.
 // The content stays out, but she is not left blind: the words that people

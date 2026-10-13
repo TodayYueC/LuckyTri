@@ -39,11 +39,8 @@ test("按意思检索也守分寸：保密的不出私聊，私下的只作内�
     forSpeech: true,
   });
   assert.ok(group.every((m) => m.id !== secret));
-  const hint = group.find((m) => m.id === quiet);
-  assert.ok(hint, "私下知道的事可以想起");
-  assert.match(hint.content, /私下知道的事/);
-  assert.doesNotMatch(hint.content, /不在这里复述|不能在这儿说/);
-  assert.match(hint.discretion, /当众不说内容/);
+  // Not disclosable here: nothing surfaces, not even a placeholder.
+  assert.ok(group.every((m) => m.id !== quiet));
   w.mind.memory.setPermission(quiet, {
     session: "group:1",
     recall: true,

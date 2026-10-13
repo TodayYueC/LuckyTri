@@ -22,7 +22,8 @@ test("知道私事不等于可以复述：按目的、接收会话、授权期�
       ...options,
     });
   assert.match(recall({})[0].content, /紫荆路/);
-  assert.doesNotMatch(recall({ forSpeech: true })[0].content, /紫荆路/);
+  // Not disclosable here: in speech it does not surface at all.
+  assert.equal(recall({ forSpeech: true }).length, 0);
   w.mind.memory.setPermission(id, {
     session: "group:1",
     recall: true,
@@ -30,8 +31,9 @@ test("知道私事不等于可以复述：按目的、接收会话、授权期�
   });
   assert.match(recall({ forSpeech: true })[0].content, /紫荆路/);
   assert.doesNotMatch(
-    w.mind.memory.retrieve("group:2", rows, w.now(), { forSpeech: true })[0]
-      .content,
+    JSON.stringify(
+      w.mind.memory.retrieve("group:2", rows, w.now(), { forSpeech: true }),
+    ),
     /紫荆路/,
   );
   assert.ok(
