@@ -94,6 +94,7 @@ export function mountStickers(app, system) {
     "/api/core/stickers/:id/describe",
     wrap((req, res) => {
       if (!library.get(req.params.id)) throw Error("表情不存在");
+      library.update(req.params.id, { status: "pending" });
       queueDescribe(system, req.params.id);
       res.json({ ok: true });
     }),

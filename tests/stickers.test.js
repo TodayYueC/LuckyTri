@@ -226,3 +226,18 @@ test("a name typed as @ text becomes a real @ and is not shown twice", async () 
   });
   assert.deepEqual(typedAt(["@阿明 在吗"], [], snapshot).at, []);
 });
+
+test("choosing a sticker reads only stored meaning; no model is asked to look", async () => {
+  const db = new DatabaseSync(":memory:");
+  const repo = { db, config: () => undefined, saveConfig() {} };
+  const models = { call: () => assert.fail("no model call while choosing") };
+  const k = new Stickers(repo, { models, embedding: null });
+  const s = await k.library.add(await png("#0f0"));
+  k.library.update(s.id, {
+    description: "猫咪比心",
+    meaning: "开心 喜欢你",
+    status: "ready",
+  });
+  const offer = await k.candidates({ session: "g", text: "开心 喜欢你" });
+  assert.equal(offer[0].id, s.id);
+});

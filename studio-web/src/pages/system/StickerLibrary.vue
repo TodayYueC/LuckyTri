@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t, locale } from "../../i18n";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import { api, toast } from "../../api";
 import { requireLogin, waitForAccess } from "../../access";
 import { ask } from "../../dialog";
@@ -43,7 +43,26 @@ async function load() {
   items.value = data.items;
   categories.value = data.categories;
 }
-onMounted(() => load().catch((e) => toast(e.message, true)));
+// While uploads are being analysed in the background, look again every few
+// seconds so the progress and the finished descriptions show up by themselves.
+let poll: ReturnType<typeof setTimeout> | undefined;
+function watchProgress() {
+  clearTimeout(poll);
+  if (pending.value)
+    poll = setTimeout(
+      () =>
+        load()
+          .then(watchProgress)
+          .catch(() => {}),
+      3000,
+    );
+}
+onMounted(() =>
+  load()
+    .then(watchProgress)
+    .catch((e) => toast(e.message, true)),
+);
+onUnmounted(() => clearTimeout(poll));
 
 async function upload(files: FileList | File[] | null) {
   const list = Array.from(files || []);
@@ -82,8 +101,7 @@ async function upload(files: FileList | File[] | null) {
   );
   if (fileInput.value) fileInput.value.value = "";
   await load();
-  // Descriptions arrive in the background; look again a little later.
-  setTimeout(() => load().catch(() => {}), 8000);
+  watchProgress();
 }
 
 function drop(event: DragEvent) {
@@ -119,7 +137,8 @@ async function save() {
 async function redo(item: Sticker) {
   await api(`/core/stickers/${item.id}/describe`, "POST", {});
   toast(t("已重新识别，稍后刷新查看"));
-  setTimeout(() => load().catch(() => {}), 6000);
+  await load();
+  watchProgress();
 }
 async function remove(item: Sticker) {
   if (
@@ -191,7 +210,7 @@ const statusLabel = (s: Sticker) =>
         </option>
       </select>
       <input v-model="uploadCategory" :placeholder="t('上传到分类（可选）')" />
-      <small v-if="pending" class="faint">{{
+      <small v-if="pending" class="faint" data-testid="sticker-progress">{{
         t("{n} 张识别中", { n: pending })
       }}</small>
     </div>
