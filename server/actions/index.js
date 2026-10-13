@@ -25,6 +25,8 @@ const NOTES = {
   dice: "dice:{}，扔个骰子",
   rps: "rps:{}，出个猜拳",
   recall: "recall:{}，撤回自己刚发的上一条（只在发错了的时候）",
+  voice:
+    "voice:{}，这句用说的发语音（60字内）；有人请你唱歌，你此刻心情好也想唱，可以把歌词写进 say 并选 voice，不想就不唱",
 };
 
 // Guards against a burst, per session, in her time.
@@ -34,6 +36,7 @@ const LIMITS = {
   dice: { per: 3600000, max: 3 },
   rps: { per: 3600000, max: 3 },
   recall: { per: 3600000, max: 2 },
+  voice: { per: 3600000, max: 3 },
 };
 
 export class ActionLedger {
@@ -163,6 +166,8 @@ export function actionLine(action) {
       return "[你出了个猜拳]";
     case "recall":
       return "[你撤回了上一条]";
+    case "voice":
+      return "[你发了语音]";
     default:
       return "";
   }
@@ -174,7 +179,7 @@ export async function performActions(owner, message, actions, trace, session) {
   const done = [];
   if (!owner.perform) return done;
   for (const action of actions) {
-    if (action.type === "reply") continue;
+    if (action.type === "reply" || action.type === "voice") continue;
     if (
       owner.actions &&
       !owner.actions.allowed(session, action.type, action.to)

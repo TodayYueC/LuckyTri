@@ -327,7 +327,7 @@ export function createOneBotChannel(
   const refused = new Set();
   function actions() {
     if (!socket) return [];
-    return ["reply", "dice", "rps", "recall"]
+    return ["reply", "dice", "rps", "recall", "voice"]
       .concat(["poke", "react"])
       .filter((type) => !refused.has(type));
   }

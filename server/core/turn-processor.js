@@ -2,6 +2,7 @@ import { mediaSettings } from "../stickers/api.js";
 import { ownerImageLimits } from "./image-preprocessor.js";
 import { atCandidates, expressiveChannel } from "../stickers/offer.js";
 import { actionOffer } from "../actions/index.js";
+import { voiceOffered, voiceSettings } from "../voice/index.js";
 import { speechLength } from "./speech-length.js";
 import { parseSessionKey } from "../channels/session-key.js";
 import { initiativeContext, initiativeSnapshot } from "./initiative-context.js";
@@ -484,7 +485,10 @@ export class TurnProcessor {
         }
         // Quoting, poking, a reaction…: only what this channel can do here.
         const offered = actionOffer(
-          this.owner.actionsFor?.(session) || [],
+          (this.owner.actionsFor?.(session) || []).filter(
+            (type) =>
+              type !== "voice" || voiceOffered(voiceSettings(this.owner.repo)),
+          ),
           snapshot,
           session,
           this.owner.actions,

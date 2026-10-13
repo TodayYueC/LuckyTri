@@ -13,6 +13,7 @@ import PasswordSettings from "../../components/PasswordSettings.vue";
 import UpdateSettings from "./UpdateSettings.vue";
 import StickerLibrary from "./StickerLibrary.vue";
 import MediaSettings from "./MediaSettings.vue";
+import VoiceSettings from "./VoiceSettings.vue";
 
 const VIEWS = ["connect", "models", "stickers", "settings", "storage"];
 // Older links named the settings page "runtime" and search "search".
@@ -84,7 +85,7 @@ watch(
     /></template>
     <StickerLibrary v-else-if="view === 'stickers'" />
     <template v-else-if="view === 'settings'"
-      ><Runtime /><MediaSettings /><UpdateSettings /><PasswordSettings
+      ><Runtime /><MediaSettings /><VoiceSettings /><UpdateSettings /><PasswordSettings
     /></template>
     <BackupManager v-else />
   </div>

@@ -8,6 +8,12 @@ export const DEEP_CHECK_DEADLINE_MS = 40000;
 export const GROUP_CHECK_DEADLINE_MS = 15000;
 import { replyPrompt } from "./persona-manager.js";
 import { actionLine, performActions } from "../actions/index.js";
+import {
+  speakable,
+  synthesize,
+  voiceOffered,
+  voiceSettings,
+} from "../voice/index.js";
 import { turnModel } from "./turn.js";
 import { generate } from "./response-generator.js";
 import {
@@ -563,7 +569,7 @@ export class ReplyDelivery {
     if (
       !turn.bubbles.length &&
       !turn.sticker &&
-      turn.actions?.some((a) => a.type !== "reply") &&
+      turn.actions?.some((a) => !["reply", "voice"].includes(a.type)) &&
       !turn.crisis?.clear
     ) {
       // Only an action (a poke, a reaction, a die): no words to check.
@@ -765,30 +771,43 @@ export class ReplyDelivery {
     if (typed.bubbles.length)
       response = { ...response, bubbles: typed.bubbles };
     trace.response = response;
-    trace.sent = await deliver(
-      this.owner.repo,
-      batch.at(-1) || c.anchor,
-      response.bubbles,
-      trace,
-      this.owner.send,
-      isCurrent,
-      {
-        now: this.owner.now,
-        // Her own choice to quote comes first; the old buried-message rule
-        // stays as the fallback when she did not choose.
-        quote:
-          turn.actions?.find((a) => a.type === "reply")?.platformId ||
-          buriedTarget(batch, turn.targetMessageIds, session),
-        at: typed.at,
-        prepareBubble: (line) =>
-          this.owner.mind.time.reconcile(
-            { bubbles: [line] },
-            session,
-            this.owner.now(),
-            snapshot.inner?.currentLife?.current,
-          ).bubbles[0],
-      },
-    );
+    // She chose to say it aloud: one voice message instead of the bubbles.
+    // If the voice cannot be made, the words go out as text as usual.
+    const voiced =
+      turn.actions?.some((a) => a.type === "voice") &&
+      speakable(response.bubbles) &&
+      (await this.sendVoice(
+        batch.at(-1) || c.anchor,
+        response.bubbles,
+        turn,
+        trace,
+        session,
+      ));
+    if (!voiced)
+      trace.sent = await deliver(
+        this.owner.repo,
+        batch.at(-1) || c.anchor,
+        response.bubbles,
+        trace,
+        this.owner.send,
+        isCurrent,
+        {
+          now: this.owner.now,
+          // Her own choice to quote comes first; the old buried-message rule
+          // stays as the fallback when she did not choose.
+          quote:
+            turn.actions?.find((a) => a.type === "reply")?.platformId ||
+            buriedTarget(batch, turn.targetMessageIds, session),
+          at: typed.at,
+          prepareBubble: (line) =>
+            this.owner.mind.time.reconcile(
+              { bubbles: [line] },
+              session,
+              this.owner.now(),
+              snapshot.inner?.currentLife?.current,
+            ).bubbles[0],
+        },
+      );
     if (!trace.sent.length && hasRelevantUpdate()) return staleExit();
     if (trace.sent.length && turn.actions?.length)
       await this.doActions(batch.at(-1) || c.anchor, turn, trace, session);
@@ -821,6 +840,42 @@ export class ReplyDelivery {
       );
     }
     return finish(trace.sent.length ? "sent" : "cancelled", turn.reason);
+  }
+  async sendVoice(message, bubbles, turn, trace, session) {
+    const owner = this.owner;
+    const settings = voiceSettings(owner.repo);
+    if (!voiceOffered(settings)) return false;
+    if (owner.actions && !owner.actions.allowed(session, "voice")) {
+      trace.steps.push("这段时间语音发得够多了，这句打字发");
+      return false;
+    }
+    const text = bubbles.join("，");
+    try {
+      const audio = await (owner.synthesize || synthesize)(settings, text);
+      const result = await owner.send(message, "", {
+        record: { base64: audio.toString("base64") },
+      });
+      const line = `[你发了语音] ${text}`;
+      persistReply(
+        owner.repo,
+        {
+          ...message,
+          traceId: trace.id,
+          replyTargetIds: turn.targetMessageIds || [],
+        },
+        line,
+        result?.message_id,
+        owner.now(),
+      );
+      owner.actions?.record(session, { type: "voice", result: "done" });
+      trace.sent = [line];
+      trace.steps.push("这句用语音说了");
+      return true;
+    } catch (error) {
+      owner.actions?.record(session, { type: "voice", result: "failed" });
+      trace.steps.push(`语音没发成，改成打字：${error.message}`);
+      return false;
+    }
   }
   // Her non-text actions, after her words; each is written into her own
   // history so she remembers having done it.

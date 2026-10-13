@@ -1,5 +1,24 @@
 // English for the System section (models, embedding, search, runtime, page shell).
 export default {
+  语音: "Voice",
+  "TA 的声音": "Their voice",
+  "配好语音服务后才能打开。打开只是“可以”：要不要用语音、要不要唱歌，由 TA 自己决定。":
+    'Can be turned on once a speech service is set up. On only means "may": whether to speak aloud or sing is their own choice.',
+  协议: "Protocol",
+  "火山语音 v3（Agent Plan）": "Volcengine speech v3 (Agent Plan)",
+  "OpenAI 兼容 /audio/speech": "OpenAI-compatible /audio/speech",
+  服务地址: "Service URL",
+  "已保存，留空不变": "Saved; leave empty to keep",
+  "资源 ID": "Resource ID",
+  模型: "Model",
+  "TA 的音色": "Their voice (speaker)",
+  "声音的样子（可选）": "How the voice sounds (optional)",
+  "例如：轻快、带点笑意": "e.g. light, a little smiling",
+  "允许 TA 发语音": "Allow voice messages",
+  "默认关闭；没有可用语音服务时保持关闭。":
+    "Off by default; stays off without a working speech service.",
+  "正在合成…": "Synthesizing…",
+  试听: "Listen",
   已是最新: "Up to date",
   "发现新版本，已提醒": "New version found, notified",
   已开始自动更新: "Automatic update started",
