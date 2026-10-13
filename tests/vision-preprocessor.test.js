@@ -24,7 +24,7 @@ test("正常小照片保留原字节，压缩配置有界且非法配置回到�
   assert.deepEqual([image.width, image.height], [200, 120]);
   assert.equal(
     visionImageLimits({ VISION_SOURCE_MAX_MB: "NaN" }).maxSourceBytes,
-    32 * 1048576,
+    20 * 1048576,
   );
   assert.equal(
     visionImageLimits({ VISION_SOURCE_MAX_MB: "500" }).maxSourceBytes,

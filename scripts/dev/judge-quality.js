@@ -4,7 +4,7 @@
 // Spends tokens; the key comes only from LLM_API_KEY.
 //
 //   node scripts/dev/judge-quality.js --baseline <目录> --candidate <目录> \
-//     --out <文件.json> [--model doubao-seed-2.1-pro] [--only A1,B2] [--seed 13]
+//     --out <文件.json> [--model glm-5.3-flash] [--only A1,B2] [--seed 13]
 import { readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { loadSet } from "./quality-sets.js";
@@ -21,7 +21,7 @@ const { scenes, VERSION } = await loadSet(option("--set", "quality-v1"));
 const baselineDir = resolve(option("--baseline", ""));
 const candidateDir = resolve(option("--candidate", ""));
 const out = resolve(option("--out", "data/evaluations/quality/judge.json"));
-const model = option("--model", "doubao-seed-2.1-pro");
+const model = option("--model", "glm-5.3-flash");
 const only = option("--only", "").split(",").filter(Boolean);
 const seed = Number(option("--seed", "13"));
 const concurrency = Number(option("--concurrency", "4"));

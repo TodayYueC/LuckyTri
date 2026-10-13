@@ -30,8 +30,14 @@ async function save() {
 </script>
 <template>
   <section class="card password-settings">
-    <h2>{{ t("管理密码") }}</h2>
-    <p>{{ t("一个密码管理这个小世界。修改后，其他浏览器需要重新登录。") }}</p>
+    <div class="card-head">
+      <div>
+        <h2>{{ t("管理密码") }}</h2>
+        <p>
+          {{ t("一个密码管理这个小世界。修改后，其他浏览器需要重新登录。") }}
+        </p>
+      </div>
+    </div>
     <form @submit.prevent="save">
       <label
         >{{ t("当前密码")
@@ -73,12 +79,17 @@ async function save() {
 </template>
 <style scoped>
 .password-settings {
-  margin-top: 24px;
+  display: grid;
+  gap: 16px;
 }
 form {
   display: grid;
-  gap: 16px;
-  max-width: 520px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  align-items: end;
+}
+form > :last-child {
+  grid-column: 1 / -1;
 }
 label {
   display: grid;

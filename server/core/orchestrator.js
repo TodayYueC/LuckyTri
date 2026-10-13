@@ -1,3 +1,4 @@
+import { Stickers } from "../stickers/index.js";
 import { settleAftermath } from "../mind/aftermath.js";
 import { randomUUID } from "node:crypto";
 import { Repository } from "./repository.js";
@@ -64,6 +65,11 @@ export class ChatSystem {
         embedding: this.mind.embedding,
       });
     this.compactor = new ContextCompactor(this.repo);
+    this.stickers = new Stickers(this.repo, {
+      models: this.models,
+      embedding: this.mind.embedding,
+      now: () => this.now(),
+    });
     this.topics = new TopicTracker(this.repo);
     this.capabilities = new Capabilities(this.repo, { now });
     this.perceivers = new Perceivers(this.repo.db);
@@ -211,6 +217,14 @@ export class ChatSystem {
         this.store.settings().memoryCandidates !== false
       )
         this.mind.memory.remember({ ...m, ...event });
+      if (!m.simulated)
+        try {
+          this.stickers.observe({ ...m, ...event }, (id) =>
+            this.mind.bonds.name(id),
+          );
+        } catch {
+          // A sticker outcome is a side note; never stop a message for it.
+        }
       // Its vector is made while the batch gathers; the turn finds it cached.
       if (!m.simulated && this.enabled(event.sessionId, { simulated: false }))
         this.mind.recall.arrive(event.seq, this.now()).catch(() => false);

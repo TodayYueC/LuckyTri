@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 1.2.3 — 2026-10-13
+
+- Add a sticker library. Upload familiar stickers and let a vision model describe their image, text, emotion and fitting situations. She chooses one only when it fits, and remembers what using it with a particular person came to mean.
+- Add real @ mentions in group chats. She can choose only people seen in the room recently, and does not @ someone who just addressed her when they will naturally see her reply.
+- Image understanding now accepts images up to 20 MB by default and shrinks them to configurable dimensions and size before sending them to a model. Add image and sticker settings; existing SQLite data gains the required tables automatically.
+
 ## 1.2.2 — 2026-10-13
 
 - Fix the foreground supervisor starting the old server prematurely during memory migration. It now waits until explicit success, failure or worker exit, including stages introduced by future releases.

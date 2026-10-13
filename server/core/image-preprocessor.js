@@ -1,6 +1,10 @@
 import sharp from "sharp";
 
 const MIB = 1024 * 1024;
+// Largest picture accepted for understanding; bigger ones are shrunk before
+// any model sees them. VISION_SOURCE_CEILING_MB bounds the OneBot frame.
+export const VISION_SOURCE_DEFAULT_MB = 20;
+export const VISION_SOURCE_CEILING_MB = 64;
 const TYPES = {
   jpeg: "image/jpeg",
   png: "image/png",
@@ -19,7 +23,8 @@ function configured(value, fallback, min, max) {
 export function visionImageLimits(env = process.env) {
   return {
     maxSourceBytes: Math.floor(
-      configured(env.VISION_SOURCE_MAX_MB, 32, 4, 64) * MIB,
+      configured(env.VISION_SOURCE_MAX_MB, VISION_SOURCE_DEFAULT_MB, 1, 64) *
+        MIB,
     ),
     maxModelBytes: Math.floor(
       configured(env.VISION_MODEL_MAX_MB, 4, 1, 4) * MIB,
@@ -31,6 +36,41 @@ export function visionImageLimits(env = process.env) {
       configured(env.VISION_DOWNLOAD_TIMEOUT_SECONDS, 30, 5, 120) * 1000,
     ),
   };
+}
+
+// The owner's image-understanding size: the long side and the encoded size
+// a picture is brought down to before a model sees it. A big photo is shrunk
+// and re-encoded rather than refused; many providers reject large images or
+// time out on them.
+export function modelImageLimits({
+  visionMaxSide = 2048,
+  visionMaxMB = 3,
+  visionSourceMaxMB = VISION_SOURCE_DEFAULT_MB,
+} = {}) {
+  const source = Math.min(
+    VISION_SOURCE_CEILING_MB,
+    Math.max(1, Number(visionSourceMaxMB) || VISION_SOURCE_DEFAULT_MB),
+  );
+  const side = Math.min(
+    8192,
+    Math.max(512, Math.floor(Number(visionMaxSide) || 2048)),
+  );
+  const mb = Math.min(4, Math.max(0.5, Number(visionMaxMB) || 3));
+  return {
+    maxDimension: side,
+    maxOutputPixels: side * side,
+    maxModelBytes: Math.floor(mb * MIB),
+    maxSourceBytes: Math.floor(source * MIB),
+  };
+}
+
+// The owner's setting, unless the operator pinned the source size in the
+// environment (VISION_SOURCE_MAX_MB), which then wins everywhere.
+export function ownerImageLimits(settings, env = process.env) {
+  const limits = modelImageLimits(settings);
+  if (env.VISION_SOURCE_MAX_MB != null && env.VISION_SOURCE_MAX_MB !== "")
+    limits.maxSourceBytes = visionImageLimits(env).maxSourceBytes;
+  return limits;
 }
 
 export function imageMime(bytes) {

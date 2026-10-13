@@ -60,7 +60,7 @@ async function assertUsableImage(
 
 test("视觉图像默认限制分离源图、模型负载、像素和下载时间", () => {
   const limits = visionImageLimits({});
-  assert.equal(limits.maxSourceBytes, 32 * MiB);
+  assert.equal(limits.maxSourceBytes, 20 * MiB);
   assert.equal(limits.maxModelBytes, 4 * MiB);
   assert.equal(limits.maxPixels, 80_000_000);
   assert.equal(limits.maxDimension, 8192);

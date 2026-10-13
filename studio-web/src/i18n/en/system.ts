@@ -10,6 +10,62 @@ export default {
   检查新实例: "Checking the new instance",
   恢复原版本: "Restoring the previous release",
   "失败阶段：{stage}": "Failed step: {stage}",
+  "PNG、JPEG、GIF、WebP，每张不超过 2MB":
+    "PNG, JPEG, GIF or WebP, up to 2 MB each",
+  "TA 可以使用这张": "TA may use this one",
+  "TA 怎样看图、用表情": "How TA reads images and uses stickers",
+  "TA 收藏的表情": "TA's stickers",
+  "{n} 张识别中": "{n} being described",
+  "上传几张常用的表情，TA 就能在聊天里自己挑着用。":
+    "Upload a few stickers you often use, and TA can pick from them in chats.",
+  "上传到分类（可选）": "Upload into category (optional)",
+  "上传后会自动看懂画面、文字、情绪和用法，你可以随时修改。TA 只在觉得合适时才用，也会记得和谁用过、对方怎么回应。":
+    "Each upload is described automatically: picture, text, emotion and use. You can edit it any time. TA uses one only when it fits, and remembers who it was with and how they answered.",
+  上传失败: "Upload failed",
+  "允许 TA 在聊天里用表情": "Let TA use stickers in chats",
+  全部分类: "All categories",
+  "关掉后表情库保留，TA 不再使用。":
+    "When off, the library is kept but TA stops using it.",
+  分类: "Category",
+  删除表情: "Delete sticker",
+  "删除这张表情？它和大家一起用过的记录也会一并删除。":
+    "Delete this sticker? Its history with people is deleted too.",
+  各项设置: "Settings",
+  名称: "Name",
+  图上的字: "Text in the picture",
+  图片与表情: "Images and stickers",
+  "图片理解的大小上限（MB）": "Image understanding size limit (MB)",
+  "可接收的图片大小上限（MB）": "Largest image accepted (MB)",
+  "聊天里不超过这个大小的图片都会先缩小压缩再看。默认 20。":
+    "Chat images up to this size are shrunk and compressed before being looked at. Default 20.",
+  "图片理解的最长边（像素）": "Image understanding longest side (px)",
+  "已上传 {done} 张，正在自动识别含义": "Uploaded {done}; describing them now",
+  "已重新识别，稍后刷新查看": "Describing again; refresh shortly",
+  待手动填写: "Fill in by hand",
+  情绪: "Emotion",
+  意思或梗: "Meaning or meme",
+  "拖入或点击选择图片，可一次选多张":
+    "Drop images here or click to choose several",
+  "搜索描述、标签、情绪…": "Search descriptions, tags, emotions...",
+  "更大的图会先缩小再交给视觉模型，避免大图失败或超时。默认 2048。":
+    "Larger images are shrunk before the vision model sees them, so big pictures do not fail or time out. Default 2048.",
+  未命名: "Untitled",
+  "标签（用顿号或逗号分隔）": "Tags (separated by commas)",
+  "正在上传 {done}/{total}": "Uploading {done}/{total}",
+  "每张表情只识别一次，可选一个便宜的视觉模型。":
+    "Each sticker is described once; a cheap vision model is fine.",
+  画面: "Picture",
+  自动选择开启视觉的模型: "Any model with vision enabled",
+  表情包: "Stickers",
+  表情识别用的模型: "Model for describing stickers",
+  识别中: "Describing",
+  识别失败: "Description failed",
+  "超过时会重新压缩。部分服务商对单张图片有更严格的限制。":
+    "Larger files are re-compressed. Some providers limit single images more strictly.",
+  还没有表情: "No stickers yet",
+  适合的情境: "Fits when",
+  重新识别: "Describe again",
+  "，{failed} 张未通过": ", {failed} rejected",
   更新已开始: "Update started",
   "正在下载新版本…": "Downloading the new version...",
   "正在检查新程序…": "Checking the new program...",
@@ -361,5 +417,4 @@ export default {
   "正在与 QQ 相连": "Connecting to QQ",
   "等待 QQ 连接": "Waiting for QQ to connect",
   系统的分区: "System sections",
-  独立搜索: "Standalone search",
 } as Record<string, string>;

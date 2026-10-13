@@ -60,6 +60,7 @@ server/
     life/                   lifetime: waking, solitude, diary, night, review, reaching out
     time/                   time: activities, to-dos, works, experiences, sharing, standalone search
   knowledge/                reference library: chunking, retrieval, vector index
+  stickers/                 Stickers: library (bytes in the database), auto-description, semantic candidates, outcomes and shared meaning
   storage/                  SQLite store, schema version and migration, backups and auto-backups
   studio/                   management API: settings, display names, readiness checks
   i18n/                     English dictionaries for server-visible text (translated at the API exit only)
@@ -156,3 +157,12 @@ Nothing above the core changes. The connection option in settings and the readin
 ## Cognition and memory
 
 How understanding, recall, episodes, lessons and follow-ups fit together is in [Cognition](cognition.md). The recall index is derived. Episodes and self threads stay append-only.
+
+## Stickers and @
+
+- Upload: the studio sends the image bytes to `/api/core/stickers/upload`; type and size (≤2 MB) are checked from the bytes, duplicates are found by sha256, and the bytes live in the database, so backups, transfers and updates keep them.
+- Description: a vision-enabled model looks once and writes the picture, text, emotion, meaning, fitting situations, tags and category; all are editable. A vector is made when an embedding service is configured.
+- Candidates: only a few per turn, by vector similarity or word overlap; what she shared with this person (`sticker_bonds.meaning`) and recalled memories can bring one up; one just used steps back. They reach the turn as `expression`, with the people she could @.
+- Choice and checks: she decides `sticker` and `at` herself; only offered refs and people seen recently are accepted, at most two @s, never back at the person who just called on her; an "@name" typed as text becomes a real @.
+- Sending: OneBot `at` segments and a `base64://` image segment; the sticker goes after her words and is recorded as "[表情：…]".
+- Experience: uses go to `sticker_uses`; a clear laugh or rejection from that person within 15 minutes becomes the sticker's meaning and weight between them (fading over time). Silence or ordinary replies leave no trace; sending often is not liking.

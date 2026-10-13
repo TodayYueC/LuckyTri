@@ -1,3 +1,6 @@
+import { mediaSettings } from "../stickers/api.js";
+import { ownerImageLimits } from "./image-preprocessor.js";
+import { atCandidates, expressiveChannel } from "../stickers/offer.js";
 import { speechLength } from "./speech-length.js";
 import { parseSessionKey } from "../channels/session-key.js";
 import { initiativeContext, initiativeSnapshot } from "./initiative-context.js";
@@ -455,6 +458,27 @@ export class TurnProcessor {
         snapshot.inner = view.inner;
       }
       lap("context");
+      if (!ownInitiative && this.owner.stickers && expressiveChannel(session)) {
+        // A few stickers that could fit, and who she could @; she decides.
+        snapshot.canAt = atCandidates(snapshot, session);
+        try {
+          const last = snapshot.batch.at(-1) || {};
+          snapshot.stickers = await this.owner.stickers.candidates({
+            session,
+            text: snapshot.batch.map((m) => m.text || "").join("\n"),
+            mood: view.inner?.state || "",
+            addressee: String(last.speaker ?? last.userId ?? ""),
+            memories: (snapshot.memories || [])
+              .map((m) => m.content || m.text || "")
+              .slice(0, 6),
+          });
+        } catch (error) {
+          snapshot.stickers = [];
+          trace.steps.push(`表情候选暂不可用：${error.message}`);
+        }
+        if (!snapshot.canAt.length) delete snapshot.canAt;
+        if (!snapshot.stickers.length) delete snapshot.stickers;
+      }
       const visionModel = model.vision
         ? model
         : this.owner.fallbackFor(null, model).find((item) => item.vision) ||
@@ -474,6 +498,7 @@ export class TurnProcessor {
         ? await this.owner.loadVisionImages(early.pending, {
             sessionId: snapshot.sessionId,
             fetchImage: this.owner.fetchImage,
+            imageLimits: ownerImageLimits(mediaSettings(this.owner.repo)),
           })
         : { images: [], unavailable: [] };
       const planned = classifyLoaded(

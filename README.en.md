@@ -94,7 +94,7 @@ The full design is in [Her life](docs/en/her-life.md) and [Architecture and exte
 
 Recent work focuses on continuity and clearer conversation. Account-based recognition links public encounters across groups and private chats. Relationships, forms of address, her own views and private promises retain their sources and visibility boundaries. An ordinary greeting need not bring back unfinished tasks or demonstrate how much she remembers.
 
-**1.2.2 update:** Fix server update supervision through memory migration, replacement handover and stop signals; show the failed stage and actionable cause. Servers using the 1.2.0–1.2.1 foreground supervisor should install this version manually and restart once. See the [changelog](docs/en/CHANGELOG.md) and [server update guidance](docs/en/npm-release.md).
+**1.2.3 update:** Add a sticker library, real @ mentions in group chats, and configurable image-understanding limits. She can choose a sticker for the moment and remember what using it with a particular person came to mean. See the [changelog](docs/en/CHANGELOG.md).
 
 | Area                     | What it does today                                                                                                                                                                    |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

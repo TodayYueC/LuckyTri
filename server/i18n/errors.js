@@ -2,6 +2,20 @@
 // key, exactly as the code writes it. `{0}` stands for a value the code puts
 // into the message; patterns are used when a message carries one.
 export const ERRORS = {
+  表情开关无效: "Invalid sticker switch",
+  "图片理解尺寸应在 512–8192 像素之间":
+    "Image understanding size must be between 512 and 8192 pixels",
+  "图片理解大小应在 0.5–4 MB 之间":
+    "Image understanding size must be between 0.5 and 4 MB",
+  "可接收的图片大小应在 1–64 MB 之间":
+    "The accepted image size must be between 1 and 64 MB",
+  表情不存在: "The sticker does not exist",
+  文件为空: "The file is empty",
+  "表情超过 2MB，请压缩后再上传":
+    "The sticker is larger than 2 MB; compress it and upload again",
+  "只支持 PNG、JPEG、GIF、WebP 图片":
+    "Only PNG, JPEG, GIF and WebP images are supported",
+  "表情尺寸应在 4096 像素以内": "Stickers must be within 4096 pixels",
   复审超过截止时间: "The reply review passed its deadline",
   "JSON 同一对象含重复字段，不能确定哪份内容有效":
     "A JSON object contains duplicate fields; the intended value is ambiguous",
