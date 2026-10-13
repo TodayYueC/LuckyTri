@@ -266,7 +266,7 @@ export class ReplyDelivery {
         );
       if (announcesUnseen(response.bubbles, snapshot, c.generationImages))
         issues.push(
-          "没看清的图不用宣布，也不数第几张；照着文字和语气接，或者不提图",
+          "没看清的图不要提：别说没画面、断线、空壳、图床、图道、塌方、读不出；接文字和语气，或当情绪信号，不要交代收没收到图",
         );
       if (
         this.owner.mind.relationships.discloses(
