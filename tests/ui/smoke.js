@@ -141,7 +141,7 @@ try {
     her: ["nature"],
     models: ["system", "models"],
     connect: ["system", "connect"],
-    runtime: ["system", "runtime"],
+    runtime: ["system", "settings"],
   };
   async function navigate(name) {
     const [area, sub] = AREA[name] || [name];
