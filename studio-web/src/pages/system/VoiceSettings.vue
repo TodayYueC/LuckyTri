@@ -151,3 +151,25 @@ async function listen() {
     </div>
   </form>
 </template>
+
+<style scoped>
+.media {
+  display: grid;
+  gap: 16px;
+}
+.media h3 {
+  margin: 12px 0 0;
+  font-size: 15px;
+}
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.fields label {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  font-size: 13px;
+}
+</style>
