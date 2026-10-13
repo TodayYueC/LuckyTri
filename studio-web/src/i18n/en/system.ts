@@ -1,5 +1,16 @@
 // English for the System section (models, embedding, search, runtime, page shell).
 export default {
+  "拖入或点击选择图片或 ZIP，可一次选多张":
+    "Drop or click to choose images or ZIP files; several at once",
+  "PNG、JPEG、GIF、WebP，每张不超过 2MB；ZIP 会自动解压导入":
+    "PNG, JPEG, GIF, WebP, up to 2 MB each; ZIP files are unpacked and imported",
+  "正在导入压缩包 {name}": "Importing archive {name}",
+  "，{duplicates} 张重复已跳过": ", {duplicates} duplicates skipped",
+  "，{skipped} 个非图片或过大已跳过":
+    ", {skipped} non-images or oversized skipped",
+  "ZIP 里的文件夹名作分类": "Use ZIP folder names as categories",
+  "导入 {done} · 重复 {duplicates} · 跳过 {skipped} · 失败 {failed}":
+    "Imported {done} · duplicates {duplicates} · skipped {skipped} · failed {failed}",
   准备更新: "Preparing the update",
   下载新版本: "Downloading the new release",
   检查新程序: "Checking the new program",
@@ -10,8 +21,6 @@ export default {
   检查新实例: "Checking the new instance",
   恢复原版本: "Restoring the previous release",
   "失败阶段：{stage}": "Failed step: {stage}",
-  "PNG、JPEG、GIF、WebP，每张不超过 2MB":
-    "PNG, JPEG, GIF or WebP, up to 2 MB each",
   "TA 可以使用这张": "TA may use this one",
   "TA 怎样看图、用表情": "How TA reads images and uses stickers",
   "TA 收藏的表情": "TA's stickers",
@@ -44,8 +53,6 @@ export default {
   待手动填写: "Fill in by hand",
   情绪: "Emotion",
   意思或梗: "Meaning or meme",
-  "拖入或点击选择图片，可一次选多张":
-    "Drop images here or click to choose several",
   "搜索描述、标签、情绪…": "Search descriptions, tags, emotions...",
   "更大的图会先缩小再交给视觉模型，避免大图失败或超时。默认 2048。":
     "Larger images are shrunk before the vision model sees them, so big pictures do not fail or time out. Default 2048.",

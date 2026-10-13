@@ -27,7 +27,19 @@ function safeName(name) {
 
 // Reads a zip the way a stranger's file has to be read: only stored and
 // deflate entries, no encryption, no links, no paths that leave the folder.
-export function readZip(buffer) {
+//
+// Options let another caller (the sticker library) take larger archives:
+// maxFiles / maxBytes bound the whole archive; keep(name) skips an entry
+// without inflating it; an entry over maxEntryBytes is reported, not read.
+export function readZip(
+  buffer,
+  {
+    maxFiles = MAX_FILES,
+    maxBytes = MAX_BYTES,
+    maxEntryBytes = Infinity,
+    keep = () => true,
+  } = {},
+) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 22)
     throw new Error("压缩包无法读取");
   const eocd = findEocd(buffer);
@@ -35,7 +47,7 @@ export function readZip(buffer) {
   if (buffer.readUInt16LE(eocd + 4) !== 0)
     throw new Error("压缩包格式不受支持");
   const entries = buffer.readUInt16LE(eocd + 10);
-  if (!entries || entries > MAX_FILES) throw new Error("压缩包文件过多");
+  if (!entries || entries > maxFiles) throw new Error("压缩包文件过多");
   let offset = buffer.readUInt32LE(eocd + 16);
   if (offset >= buffer.length) throw new Error("压缩包无法读取");
   const files = [];
@@ -68,6 +80,11 @@ export function readZip(buffer) {
     if (method !== 0 && method !== 8) throw new Error("压缩包格式不受支持");
     if (name.endsWith("/") || name.endsWith("\\")) continue;
     const fileName = safeName(name);
+    if (!keep(fileName)) continue;
+    if (size > maxEntryBytes) {
+      files.push({ name: fileName, skipped: "too-large" });
+      continue;
+    }
     if (buffer.readUInt32LE(local) !== 0x04034b50)
       throw new Error("压缩包无法读取");
     const dataAt =
@@ -84,16 +101,27 @@ export function readZip(buffer) {
         method === 0
           ? Buffer.from(compressed)
           : inflateRawSync(compressed, {
-              maxOutputLength: MAX_BYTES - total + 1,
+              maxOutputLength: Math.min(maxBytes - total, maxEntryBytes) + 1,
             });
     } catch (error) {
+      if (
+        error?.code === "ERR_BUFFER_TOO_LARGE" &&
+        maxEntryBytes < maxBytes - total
+      ) {
+        files.push({ name: fileName, skipped: "too-large" });
+        continue;
+      }
       if (error?.code === "ERR_BUFFER_TOO_LARGE")
         throw new Error("压缩包解压后过大");
       throw new Error("压缩包无法读取");
     }
     if (size && bytes.length !== size) throw new Error("压缩包内容不完整");
+    if (bytes.length > maxEntryBytes) {
+      files.push({ name: fileName, skipped: "too-large" });
+      continue;
+    }
     total += bytes.length;
-    if (total > MAX_BYTES) throw new Error("压缩包解压后过大");
+    if (total > maxBytes) throw new Error("压缩包解压后过大");
     files.push({ name: fileName, bytes });
   }
   return files;

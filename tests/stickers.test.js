@@ -296,3 +296,50 @@ test("an inbound @ is read: @her marks a call, @others become mentions", async (
   assert.ok(event.mentions.map(String).includes("10002"));
   assert.match(event.text, /^@我\[提及成员\]/);
 });
+
+test("a sticker ZIP imports every image, folders as categories, skips the rest", async () => {
+  const { writeZip } = await import("../scripts/dev/zip-writer.js");
+  const { importStickerZip } = await import("../server/stickers/zip-import.js");
+  const { k } = kernel();
+  const red = await png("#f00");
+  const gif = await sharp({
+    create: { width: 32, height: 32, channels: 3, background: "#0f0" },
+  })
+    .gif()
+    .toBuffer();
+  const zip = writeZip([
+    { name: "pack/开心/red.png", bytes: red },
+    { name: "pack/开心/again.png", bytes: red },
+    { name: "pack/动图/deep/wave.gif", bytes: gif },
+    { name: "pack/readme.txt", bytes: Buffer.from("hi") },
+    { name: "__MACOSX/pack/._red.png", bytes: Buffer.from("x") },
+    { name: "pack/.hidden.png", bytes: red },
+    { name: "pack/big.png", bytes: Buffer.alloc(3 * 1024 * 1024, 1) },
+    { name: "pack/fake.png", bytes: Buffer.from("not an image") },
+  ]);
+  const queued = [];
+  const s = await importStickerZip(k.library, zip, {
+    folderCategory: true,
+    queue: (id) => queued.push(id),
+  });
+  assert.equal(s.imported, 2);
+  assert.equal(s.duplicates, 1);
+  assert.deepEqual(s.skipped.map((x) => x.reason).sort(), [
+    "不是图片",
+    "超过 2MB",
+  ]);
+  assert.equal(s.failed.length, 1);
+  assert.equal(queued.length, 2);
+  assert.deepEqual(
+    k.library
+      .categories()
+      .map((c) => c.category)
+      .sort(),
+    ["动图", "开心"],
+  );
+  await assert.rejects(
+    importStickerZip(k.library, zip, {}, { STICKER_ZIP_MAX_MB: "0.001" }),
+  );
+  const evil = writeZip([{ name: "../x.png", bytes: red }]);
+  await assert.rejects(importStickerZip(k.library, evil), /路径无效/);
+});

@@ -60,6 +60,33 @@ try {
   await page.waitForFunction(
     () => document.querySelectorAll(".tile").length === 5,
   );
+  // A ZIP: nested folders become categories, a duplicate and a text file
+  // are reported in the summary.
+  const { writeZip } = await import("../../scripts/dev/zip-writer.js");
+  const zipped = await face("#ffd", "包");
+  const zipFile = join(shots, "pack.zip");
+  writeFileSync(
+    zipFile,
+    writeZip([
+      { name: "pack/打包/a.png", bytes: zipped },
+      { name: "pack/打包/sub/b.png", bytes: await face("#dff", "包2") },
+      { name: "pack/打包/a-copy.png", bytes: zipped },
+      { name: "pack/readme.txt", bytes: Buffer.from("hi") },
+    ]),
+  );
+  await page.locator('input[type="file"]').setInputFiles([zipFile]);
+  await page.locator('[data-testid="sticker-summary"]').waitFor();
+  assert.match(
+    await page.locator('[data-testid="sticker-summary"]').innerText(),
+    /2.*1.*1.*0/,
+  );
+  await page.waitForFunction(
+    () => document.querySelectorAll(".tile").length === 7,
+  );
+  await page.screenshot({
+    path: join(shots, "sticker-zip.png"),
+    fullPage: true,
+  });
   await page.locator('input[type="search"]').fill("安慰");
   await page.waitForFunction(
     () => document.querySelectorAll(".tile").length === 1,

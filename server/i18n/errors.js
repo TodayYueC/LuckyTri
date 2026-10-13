@@ -396,6 +396,7 @@ export const ERRORS = {
   "插件不支持这个 LuckyTri 版本":
     "The plugin does not support this version of LuckyTri",
   插件网络主机无效: "A plugin network host is invalid",
+  压缩包过大: "The archive is too large",
   压缩包无法读取: "The archive could not be read",
   压缩包文件过多: "The archive has too many files",
   压缩包不能加密: "The archive must not be encrypted",
