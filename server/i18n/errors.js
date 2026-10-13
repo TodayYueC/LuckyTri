@@ -11,8 +11,8 @@ export const ERRORS = {
     "The accepted image size must be between 1 and 64 MB",
   表情不存在: "The sticker does not exist",
   文件为空: "The file is empty",
-  "表情超过 2MB，请压缩后再上传":
-    "The sticker is larger than 2 MB; compress it and upload again",
+  "表情超过单张大小上限，请压缩后再上传":
+    "The sticker is larger than the per-sticker limit; compress it and upload again",
   "只支持 PNG、JPEG、GIF、WebP 图片":
     "Only PNG, JPEG, GIF and WebP images are supported",
   "表情尺寸应在 4096 像素以内": "Stickers must be within 4096 pixels",
@@ -405,6 +405,7 @@ export const ERRORS = {
     "The plugin does not support this version of LuckyTri",
   插件网络主机无效: "A plugin network host is invalid",
   压缩包过大: "The archive is too large",
+  上传中断: "The upload was interrupted",
   压缩包无法读取: "The archive could not be read",
   压缩包文件过多: "The archive has too many files",
   压缩包不能加密: "The archive must not be encrypted",

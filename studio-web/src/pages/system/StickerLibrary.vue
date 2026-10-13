@@ -81,7 +81,27 @@ async function upload(files: FileList | File[] | null) {
       busy.value = t("正在导入压缩包 {name}", { name: file.name });
       const params = new URLSearchParams({
         folderCategory: folderCategory.value ? "1" : "0",
+        job: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       });
+      const follow = setInterval(async () => {
+        const state = await fetch(
+          `/api/core/stickers/upload-zip/progress?job=${params.get("job")}`,
+          { credentials: "same-origin" },
+        )
+          .then((r) => r.json())
+          .catch(() => null);
+        if (state?.phase === "receiving" && state.size)
+          busy.value = t("正在上传压缩包 {name} {pct}%", {
+            name: file.name,
+            pct: Math.floor((state.received / state.size) * 100),
+          });
+        else if (state?.phase === "importing")
+          busy.value = t("正在导入压缩包 {name} {done}/{total}", {
+            name: file.name,
+            done: state.done,
+            total: state.total,
+          });
+      }, 1000);
       if (uploadCategory.value.trim())
         params.set("category", uploadCategory.value.trim());
       const response = await fetch(`/api/core/stickers/upload-zip?${params}`, {
@@ -92,7 +112,7 @@ async function upload(files: FileList | File[] | null) {
           "X-LuckyTri-Locale": locale.value,
         },
         body: file,
-      });
+      }).finally(() => clearInterval(follow));
       if (response.status === 401) {
         requireLogin();
         break;
@@ -229,7 +249,7 @@ const statusLabel = (s: Sticker) =>
     >
       <b>{{ busy || t("拖入或点击选择图片或 ZIP，可一次选多张") }}</b>
       <small>{{
-        t("PNG、JPEG、GIF、WebP，每张不超过 2MB；ZIP 会自动解压导入")
+        t("PNG、JPEG、GIF、WebP，每张不超过 4MB；ZIP 会自动解压导入")
       }}</small>
       <input
         ref="fileInput"

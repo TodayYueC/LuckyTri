@@ -2,9 +2,12 @@
 export default {
   "拖入或点击选择图片或 ZIP，可一次选多张":
     "Drop or click to choose images or ZIP files; several at once",
-  "PNG、JPEG、GIF、WebP，每张不超过 2MB；ZIP 会自动解压导入":
-    "PNG, JPEG, GIF, WebP, up to 2 MB each; ZIP files are unpacked and imported",
+  "PNG、JPEG、GIF、WebP，每张不超过 4MB；ZIP 会自动解压导入":
+    "PNG, JPEG, GIF, WebP, up to 4 MB each; ZIP files are unpacked and imported",
   "正在导入压缩包 {name}": "Importing archive {name}",
+  "正在上传压缩包 {name} {pct}%": "Uploading archive {name} {pct}%",
+  "正在导入压缩包 {name} {done}/{total}":
+    "Importing archive {name} {done}/{total}",
   "，{duplicates} 张重复已跳过": ", {duplicates} duplicates skipped",
   "，{skipped} 个非图片或过大已跳过":
     ", {skipped} non-images or oversized skipped",
