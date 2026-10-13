@@ -5,7 +5,7 @@ import { replyFocus } from "./conversation-cues.js";
 
 // How long a finished reply may wait for its reviews.
 export const DEEP_CHECK_DEADLINE_MS = 40000;
-export const GROUP_CHECK_DEADLINE_MS = 15000;
+export const GROUP_CHECK_DEADLINE_MS = 5000;
 import { replyPrompt } from "./persona-manager.js";
 import { actionLine, performActions } from "../actions/index.js";
 import {
@@ -676,9 +676,25 @@ export class ReplyDelivery {
       );
       response = trimmedSpeech(response, snapshot, c.generationImages, trace);
       issues = check(response);
-      if (!issues.length && needsDeepCheck(response)) {
+      // Last rewrite in a group: local checks only — another deep review on
+      // the slower coding-plan endpoint pushed group p90 past 30 s (f26/f27).
+      // An earlier rewrite still gets a deep check so bad drafts can fail.
+      // Only undirected groups skip the last deep check; directed ones still
+      // verify so a bad second draft cannot go out (追问约定).
+      const lastGroupRewrite =
+        !c.privateChat &&
+        !c.direct &&
+        !turn.crisis?.clear &&
+        attempt === rewriteLimit - 1;
+      if (!issues.length && needsDeepCheck(response) && !lastGroupRewrite) {
         if (outdated()) return staleExit();
         issues = await deepCheck(response);
+      } else if (
+        !issues.length &&
+        needsDeepCheck(response) &&
+        lastGroupRewrite
+      ) {
+        trace.steps.push("群里末次改写后只做本地校验，不再二次复审");
       }
     }
     // Deleting an unnecessary final bubble can retain a valid answer. It
@@ -1033,7 +1049,7 @@ export function announcesUnseen(bubbles, snapshot, images = []) {
   );
   if (asked) return false;
   return (bubbles || []).some((line) =>
-    /图.{0,8}(?:没读|读不|看不清|看不到|没看到|打不开|是空|空的|空标签)|(?:没读|读不)出(?:来|内容)|第[二三四五六七八九十\d]+张|[这那几三两]张.{0,4}(?:也|全|都)?(?:是)?空|(?:读|看)(?:不)?出画面|画面.{0,4}(?:读|看)不|没读出|读不出|(?:图|这张|那张|画面).{0,8}(?:看不明白|看不懂|没看懂|看不清|糊)|(?:看不明白|看不懂|没看懂).{0,4}(?:图|这张)|查无此图|看不看懂|图运|空壳|收到个空|图.{0,6}(?:断线|罢工|挂了)|断线.{0,4}图|我这(?:边)?.{0,8}断线|(?:图|管道).{0,6}瘫|看个摘要|图.{0,6}堵死|给我口述|全靠猜|谁读出来|照样空白|(?:这份|这张)?也是白的|重新发一?遍文字/.test(
+    /图.{0,8}(?:没读|读不|看不清|看不到|没看到|打不开|是空|空的|空标签)|(?:没读|读不)出(?:来|内容)|第[二三四五六七八九十\d]+张|[这那几三两]张.{0,4}(?:也|全|都)?(?:是)?空|(?:读|看)(?:不)?出画面|画面.{0,4}(?:读|看)不|没读出|读不出|(?:图|这张|那张|画面).{0,8}(?:看不明白|看不懂|没看懂|看不清|糊)|(?:看不明白|看不懂|没看懂).{0,4}(?:图|这张)|查无此图|看不看懂|图运|空壳|收到个空|图.{0,6}(?:断线|罢工|挂了)|断线.{0,4}图|我这(?:边)?.{0,8}断线|(?:图|管道).{0,6}瘫|看个摘要|图.{0,6}堵死|给我口述|全靠猜|谁读出来|照样空白|(?:这份|这张)?也是白的|没读到|全吞了?|没救回来|救回来|废图|数废图|吞了|重新发一?遍文字/.test(
       line,
     ),
   );
