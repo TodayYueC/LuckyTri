@@ -274,6 +274,13 @@ export function actionCall(message, action) {
         group ? "send_group_msg" : "send_private_msg",
         { ...where, message: [{ type: action.type, data: {} }] },
       ];
+    case "typing":
+      // "Typing…" in a private chat while she thinks; groups have none.
+      if (group) throw new Error("这个动作 QQ 这边做不了");
+      return [
+        "set_input_status",
+        { user_id: Number(parsed.nativeId), event_type: 1 },
+      ];
     case "recall":
       return ["delete_msg", { message_id: Number(action.platformId) }];
     default:

@@ -691,6 +691,12 @@ export class TurnProcessor {
         return finish("stale", "读房间时又有新话，并入下一批");
       }
       lap("checks");
+      // While she thinks in a private chat the other side sees her typing,
+      // where the channel can show it; nothing waits on it.
+      if (live && privateChat && policy.typingStatus !== false && batch.at(-1))
+        Promise.resolve(
+          this.owner.perform?.(batch.at(-1), { type: "typing" }),
+        ).catch(() => {});
       const speech = speechLength(nature);
       let turn;
       try {

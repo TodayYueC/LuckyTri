@@ -15,6 +15,20 @@ export default {
   "声音的样子（可选）": "How the voice sounds (optional)",
   "例如：轻快、带点笑意": "e.g. light, a little smiling",
   "允许 TA 发语音": "Allow voice messages",
+  听语音: "Hearing voice",
+  识别协议: "Recognition protocol",
+  "火山语音识别（Agent Plan）": "Volcengine speech recognition (Agent Plan)",
+  火山录音文件极速版: "Volcengine flash file recognition",
+  "OpenAI 兼容 /audio/transcriptions":
+    "OpenAI-compatible /audio/transcriptions",
+  识别服务地址: "Recognition endpoint",
+  "识别 API Key": "Recognition API key",
+  "留空则用上面的 Key": "Leave empty to use the key above",
+  识别模型: "Recognition model",
+  "识别资源 ID": "Recognition resource ID",
+  听懂别人发来的语音: "Understand voice messages sent to them",
+  "默认关闭；打开后语音会先转成文字再给 TA 看。":
+    "Off by default; when on, voice messages are transcribed before they read them.",
   "默认关闭；没有可用语音服务时保持关闭。":
     "Off by default; stays off without a working speech service.",
   "正在合成…": "Synthesizing…",

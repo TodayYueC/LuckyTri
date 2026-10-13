@@ -73,3 +73,16 @@ test("enrich: voice is transcribed only when recognition is set up", async () =>
   });
   assert.equal(failed.text, "[语音]");
 });
+
+test("私聊里思考时显示正在输入，群里不发", async () => {
+  const { actionCall } = await import("../server/channels/onebot/adapter.js");
+  const [name, params] = actionCall(
+    { sessionId: "onebot:1:private:12345" },
+    { type: "typing" },
+  );
+  assert.equal(name, "set_input_status");
+  assert.deepEqual(params, { user_id: 12345, event_type: 1 });
+  assert.throws(() =>
+    actionCall({ sessionId: "onebot:1:group:9" }, { type: "typing" }),
+  );
+});

@@ -340,6 +340,7 @@ export function createOneBotChannel(
   }
   async function perform(message, action) {
     if (message.simulated) return {};
+    if (refused.has(action.type)) return {};
     const [name, params] = actionCall(message, action);
     try {
       return await rpc(name, params, 8000);

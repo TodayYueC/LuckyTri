@@ -7,6 +7,7 @@ import { api, toast } from "../../api";
 
 const v = ref<any>(null);
 const key = ref("");
+const asrKey = ref("");
 const testing = ref(false);
 onMounted(async () => {
   try {
@@ -20,8 +21,10 @@ async function save() {
     v.value = await api("/core/voice", "PUT", {
       ...v.value,
       ...(key.value.trim() ? { apiKey: key.value.trim() } : {}),
+      ...(asrKey.value.trim() ? { asrApiKey: asrKey.value.trim() } : {}),
     });
     key.value = "";
+    asrKey.value = "";
     toast(t("已保存并应用"));
   } catch (e) {
     toast((e as Error).message, true);
@@ -94,7 +97,47 @@ async function listen() {
         />
       </label>
     </div>
+    <h3>{{ t("听语音") }}</h3>
+    <div class="fields">
+      <label
+        >{{ t("识别协议") }}
+        <Select
+          v-model="v.asrProtocol"
+          :aria-label="t('识别协议')"
+          :options="[
+            { value: 'volc-plan-sauc', label: t('火山语音识别（Agent Plan）') },
+            { value: 'volc-flash', label: t('火山录音文件极速版') },
+            {
+              value: 'openai-audio',
+              label: t('OpenAI 兼容 /audio/transcriptions'),
+            },
+          ]"
+        />
+      </label>
+      <label>{{ t("识别服务地址") }}<input v-model="v.asrBaseUrl" /></label>
+      <label
+        >{{ t("识别 API Key") }}
+        <input
+          v-model="asrKey"
+          type="password"
+          autocomplete="off"
+          :placeholder="
+            v.hasAsrApiKey ? t('已保存，留空不变') : t('留空则用上面的 Key')
+          "
+        />
+      </label>
+      <label v-if="v.asrProtocol === 'openai-audio'"
+        >{{ t("识别模型") }}<input v-model="v.asrModel"
+      /></label>
+      <label v-else
+        >{{ t("识别资源 ID") }}<input v-model="v.asrResourceId"
+      /></label>
+    </div>
     <div class="switches">
+      <Toggle v-model="v.listen" name="listen" :disabled="!v.hearingReady">
+        <b>{{ t("听懂别人发来的语音") }}</b>
+        <small>{{ t("默认关闭；打开后语音会先转成文字再给 TA 看。") }}</small>
+      </Toggle>
       <Toggle v-model="v.enabled" name="voice" :disabled="!v.ready">
         <b>{{ t("允许 TA 发语音") }}</b>
         <small>{{ t("默认关闭；没有可用语音服务时保持关闭。") }}</small>
