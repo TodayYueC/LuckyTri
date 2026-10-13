@@ -192,6 +192,9 @@ const app = createApp({
 const server = app.listen(Number(process.env.PORT || 3210), host, () => {
   console.log(`LuckyTri 管理台 http://${host}:${process.env.PORT || 3210}`);
 });
+// A sticker archive of a few hundred MB over a slow uplink takes longer than
+// Node's default five minutes per request.
+server.requestTimeout = 3600000;
 channel.attach(server, chatSystem);
 function runMaintenance() {
   store.maintenance();

@@ -1,5 +1,5 @@
 import express from "express";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, readdirSync, rmSync, statSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +10,16 @@ import { stickerMaxMb } from "./library.js";
 // The owner's sticker library. Uploads arrive as raw bytes, one file per
 // request; everything else is JSON like the rest of the studio API.
 export function mountStickerUpload(app, system) {
+  // An upload cut off by a crash or restart leaves its temporary archive;
+  // anything older than an hour is from a run that is gone.
+  for (const name of readdirSync(tmpdir()))
+    if (/^luckytri-stickers-[\w-]+\.zip$/.test(name))
+      try {
+        const path = join(tmpdir(), name);
+        if (Date.now() - statSync(path).mtimeMs > 3600000) rmSync(path);
+      } catch {
+        /* Already gone or not ours to remove. */
+      }
   app.post(
     "/api/core/stickers/upload",
     express.raw({ type: "*/*", limit: `${Math.ceil(stickerMaxMb()) + 1}mb` }),
