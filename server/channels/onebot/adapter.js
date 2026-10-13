@@ -320,7 +320,7 @@ export function normalize(event, { botMessageIds } = {}) {
       ).length,
       stickers: safeSegments.filter(isSticker).length,
       other: safeSegments.filter((s) =>
-        ["record", "video", "file", "json", "xml"].includes(
+        ["record", "video", "file", "json", "xml", "forward"].includes(
           String(s.type).toLowerCase(),
         ),
       ).length,
@@ -335,8 +335,11 @@ export function normalize(event, { botMessageIds } = {}) {
       if (type === "dice") return "[骰子]";
       if (type === "rps") return "[猜拳]";
       if (isSticker(s)) return "[表情]";
-      if (["record", "video", "file", "json", "xml"].includes(type))
-        return "[媒体]";
+      if (type === "record") return "[语音]";
+      if (type === "forward") return "[合并转发]";
+      if (type === "file")
+        return `[文件：${String(s.data.name || s.data.file || "").slice(0, 60)}]`;
+      if (["video", "json", "xml"].includes(type)) return "[媒体]";
       return "";
     }),
     plainText = safeSegments

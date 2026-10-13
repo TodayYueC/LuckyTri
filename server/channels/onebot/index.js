@@ -2,6 +2,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
 import { effectiveOneBotToken, authorizeOneBot } from "./token.js";
 import { onebot, normalize, normalizePoke, actionCall } from "./adapter.js";
+import { enrich } from "./enrich.js";
 import { defineChannel } from "../contract.js";
 import { parseSessionKey } from "../session-key.js";
 import { applyDirectoryNames } from "../../core/sessions.js";
@@ -246,7 +247,13 @@ export function createOneBotChannel(
             return;
           }
           const m = normalize(event, { botMessageIds }) || normalizePoke(event);
-          if (m) chatSystem.receive(m);
+          if (m)
+            chatSystem.receive(
+              await enrich(m, {
+                rpc,
+                transcribe: chatSystem.transcriber?.() || null,
+              }),
+            );
         } catch (err) {
           console.error("OneBot:", err.message);
         }

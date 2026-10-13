@@ -2,6 +2,7 @@
 // Off unless the owner configures a speech service and turns it on; even
 // then saying it aloud (or singing) is her choice in the turn, never forced.
 import { randomUUID } from "node:crypto";
+import { saucTranscribe } from "./sauc.js";
 
 export const VOICE_DEFAULTS = {
   enabled: false,
@@ -15,6 +16,15 @@ export const VOICE_DEFAULTS = {
   format: "mp3",
   sampleRate: 24000,
   apiKey: "",
+  // Understanding voice messages people send (speech recognition).
+  listen: false,
+  // Agent Plan preset; volc-flash and openai-audio are the alternatives.
+  asrProtocol: "volc-plan-sauc",
+  asrBaseUrl:
+    "wss://openspeech.bytedance.com/api/v3/plan/sauc/bigmodel_nostream",
+  asrResourceId: "volc.seedasr.sauc.duration",
+  asrModel: "",
+  asrApiKey: "",
 };
 const MAX_CHARS = 60;
 
@@ -22,8 +32,14 @@ export function voiceSettings(repo) {
   return { ...VOICE_DEFAULTS, ...(repo.config("voice") || {}) };
 }
 export function publicVoice(settings) {
-  const { apiKey, ...safe } = settings;
-  return { ...safe, hasApiKey: !!apiKey, ready: voiceReady(settings) };
+  const { apiKey, asrApiKey, ...safe } = settings;
+  return {
+    ...safe,
+    hasApiKey: !!apiKey,
+    hasAsrApiKey: !!asrApiKey,
+    ready: voiceReady(settings),
+    hearingReady: hearingReady(settings),
+  };
 }
 export function voiceReady(s) {
   return !!(s.apiKey && s.baseUrl && s.speaker);
@@ -32,6 +48,66 @@ export function voiceReady(s) {
 export function voiceOffered(s) {
   return s.enabled === true && voiceReady(s);
 }
+export function hearingReady(s) {
+  return !!((s.asrApiKey || s.apiKey) && s.asrBaseUrl);
+}
+export function hearingOn(s) {
+  return s.listen === true && hearingReady(s);
+}
+
+export async function transcribe(
+  s,
+  audio,
+  format = "mp3",
+  { fetch: f = globalThis.fetch } = {},
+) {
+  if (!hearingReady(s)) throw new Error("语音识别还没有配置");
+  const key = s.asrApiKey || s.apiKey;
+  if (s.asrProtocol === "volc-plan-sauc")
+    return saucTranscribe(
+      { url: s.asrBaseUrl, key, resourceId: s.asrResourceId },
+      audio,
+    );
+  const signal = AbortSignal.timeout(15000);
+  if (s.asrProtocol === "openai-audio") {
+    const form = new FormData();
+    form.append("model", s.asrModel || "whisper-1");
+    form.append("file", new Blob([audio]), `voice.${format}`);
+    const r = await f(
+      `${s.asrBaseUrl.replace(/\/$/, "")}/audio/transcriptions`,
+      {
+        method: "POST",
+        signal,
+        headers: { Authorization: `Bearer ${key}` },
+        body: form,
+      },
+    );
+    if (!r.ok)
+      throw Object.assign(new Error("语音识别失败"), { status: r.status });
+    return String((await r.json()).text || "");
+  }
+  const r = await f(s.asrBaseUrl, {
+    method: "POST",
+    signal,
+    headers: {
+      "X-Api-Key": key,
+      "X-Api-Resource-Id": s.asrResourceId || "volc.bigasr.auc_turbo",
+      "X-Api-Request-Id": randomUUID(),
+      "X-Api-Sequence": "-1",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      user: { uid: "luckytri" },
+      audio: { data: Buffer.from(audio).toString("base64"), format },
+      request: { model_name: "bigmodel", enable_punc: true, enable_itn: true },
+    }),
+  });
+  if (!r.ok)
+    throw Object.assign(new Error("语音识别失败"), { status: r.status });
+  const data = await r.json();
+  return String(data?.result?.text || data?.text || "");
+}
+
 export function speakable(bubbles) {
   const text = (bubbles || []).join("，");
   return text.length > 0 && text.length <= MAX_CHARS;
@@ -143,6 +219,18 @@ export function mountVoice(app, system) {
       if (typeof b.apiKey === "string" && b.apiKey.trim())
         next.apiKey = b.apiKey.trim();
       if (b.clearKey === true) next.apiKey = "";
+      if (typeof b.asrApiKey === "string" && b.asrApiKey.trim())
+        next.asrApiKey = b.asrApiKey.trim();
+      if (
+        !["volc-plan-sauc", "volc-flash", "openai-audio"].includes(
+          next.asrProtocol,
+        )
+      )
+        throw Error("语音协议无效");
+      if (next.asrBaseUrl && !/^(?:https|wss):\/\//.test(next.asrBaseUrl))
+        throw Error("语音服务地址需要 https");
+      if (typeof b.listen === "boolean") next.listen = b.listen;
+      if (!hearingReady(next)) next.listen = false;
       if (typeof b.enabled === "boolean") next.enabled = b.enabled;
       // Without a working service the switch stays off.
       if (!voiceReady(next)) next.enabled = false;
