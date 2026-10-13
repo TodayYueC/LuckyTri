@@ -416,6 +416,7 @@ export const ERRORS = {
     "ffmpeg was not found, so voice messages cannot be heard",
   语音转换失败: "Voice conversion failed",
   语音识别超时: "Speech recognition timed out",
+  没找到这首歌: "That song was not found",
   语音识别还没有配置: "Speech recognition is not configured yet",
   这个渠道做不了这个动作: "This channel cannot do that action",
   "这个动作 QQ 这边做不了": "QQ cannot do that action",

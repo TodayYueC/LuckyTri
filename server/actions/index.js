@@ -27,6 +27,11 @@ const NOTES = {
   recall: "recall:{}，撤回自己刚发的上一条（只在发错了的时候）",
   voice:
     "voice:{}，这句用说的发语音（60字内）；有人请你唱歌，你此刻心情好也想唱，可以把歌词写进 say 并选 voice，不想就不唱",
+  music:
+    'music:{query:"歌名 歌手"}，分享一首歌的卡片（真想推荐、或有人要歌时）',
+  forward:
+    "forward:{ids:[消息序号,…]}，把这里的几条消息打包成合并转发发出来（翻旧账、给人看前情时，最多20条）",
+  file: 'file:{name:"标题",text:"全文"}，把你自己写的东西作为 .md 文件发出来（篇幅长、对方要文件时）',
 };
 
 // Guards against a burst, per session, in her time.
@@ -37,6 +42,9 @@ const LIMITS = {
   rps: { per: 3600000, max: 3 },
   recall: { per: 3600000, max: 2 },
   voice: { per: 3600000, max: 3 },
+  music: { per: 3600000, max: 3 },
+  forward: { per: 3600000, max: 2 },
+  file: { per: 3600000, max: 2 },
 };
 
 export class ActionLedger {
@@ -147,6 +155,32 @@ export function chosenActions(raw, snapshot) {
       const p = people.get(String(item.to ?? ""));
       if (!p) continue;
       out.push({ type: "poke", to: p.userId, name: p.name || "" });
+    } else if (item.type === "music") {
+      const query = String(item.query || "")
+        .trim()
+        .slice(0, 60);
+      if (!query) continue;
+      out.push({ type: "music", query });
+    } else if (item.type === "forward") {
+      const ids = (Array.isArray(item.ids) ? item.ids : [])
+        .map((id) =>
+          (snapshot.messages || []).find((m) => String(m.id) === String(id)),
+        )
+        .filter((m) => m?.platformId)
+        .slice(0, 20);
+      if (!ids.length) continue;
+      out.push({
+        type: "forward",
+        platformIds: [...new Set(ids.map((m) => String(m.platformId)))],
+      });
+    } else if (item.type === "file") {
+      const text = String(item.text || "").trim();
+      const name = String(item.name || "")
+        .replace(/[\\/:*?"<>|\n\r]/g, "")
+        .trim()
+        .slice(0, 40);
+      if (!text || !name || text.length > 20000) continue;
+      out.push({ type: "file", name: `${name}.md`, text });
     } else out.push({ type: item.type });
     if (out.length >= 2) break;
   }
@@ -168,6 +202,12 @@ export function actionLine(action) {
       return "[你撤回了上一条]";
     case "voice":
       return "[你发了语音]";
+    case "music":
+      return `[你分享了歌：${action.query}]`;
+    case "forward":
+      return `[你转发了${action.platformIds?.length || 0}条聊天记录]`;
+    case "file":
+      return `[你发了文件：${action.name}]`;
     default:
       return "";
   }

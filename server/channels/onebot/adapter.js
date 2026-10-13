@@ -281,6 +281,44 @@ export function actionCall(message, action) {
         "set_input_status",
         { user_id: Number(parsed.nativeId), event_type: 1 },
       ];
+    case "music":
+      return [
+        group ? "send_group_msg" : "send_private_msg",
+        {
+          ...where,
+          message: [
+            {
+              type: "music",
+              data: { type: "163", id: String(action.song.id) },
+            },
+          ],
+        },
+      ];
+    case "text":
+      return [
+        group ? "send_group_msg" : "send_private_msg",
+        { ...where, message: [{ type: "text", data: { text: action.text } }] },
+      ];
+    case "forward":
+      return [
+        group ? "send_group_forward_msg" : "send_private_forward_msg",
+        {
+          ...where,
+          messages: action.platformIds.map((id) => ({
+            type: "node",
+            data: { id: String(id) },
+          })),
+        },
+      ];
+    case "file":
+      return [
+        group ? "upload_group_file" : "upload_private_file",
+        {
+          ...where,
+          file: `base64://${Buffer.from(action.text, "utf8").toString("base64")}`,
+          name: action.name,
+        },
+      ];
     case "recall":
       return ["delete_msg", { message_id: Number(action.platformId) }];
     default:

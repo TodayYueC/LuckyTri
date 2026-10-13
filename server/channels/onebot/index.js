@@ -1,3 +1,4 @@
+import { searchSong } from "./music.js";
 import { WebSocketServer, WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
 import { effectiveOneBotToken, authorizeOneBot } from "./token.js";
@@ -335,12 +336,28 @@ export function createOneBotChannel(
   function actions() {
     if (!socket) return [];
     return ["reply", "dice", "rps", "recall", "voice"]
-      .concat(["poke", "react"])
+      .concat(["poke", "react", "music", "forward", "file"])
       .filter((type) => !refused.has(type));
   }
   async function perform(message, action) {
     if (message.simulated) return {};
     if (refused.has(action.type)) return {};
+    if (action.type === "music") {
+      const song = await searchSong(action.query);
+      if (!song) throw new Error("没找到这首歌");
+      try {
+        return await rpc(...actionCall(message, { ...action, song }), 8000);
+      } catch {
+        // The card is an extension; a plain line with the link still works.
+        return await rpc(
+          ...actionCall(message, {
+            type: "text",
+            text: `${song.name} - ${song.artist} https://music.163.com/song?id=${song.id}`,
+          }),
+          8000,
+        );
+      }
+    }
     const [name, params] = actionCall(message, action);
     try {
       return await rpc(name, params, 8000);
