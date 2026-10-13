@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 1.2.1 — 2026-10-13
+
+- Fix message boundaries: a line break starts another message, while a list stays together; lines that continue the same thought are joined, within the turn's message limit.
+- Normalize older sentence-per-line replies in her context and typing-style statistics, so an old layout does not keep teaching her to write that way.
+- Let tired or tense feelings affect her energy more fully; add twelve explicitly synthetic regression scenes for reply shape.
+
 ## 1.2.0 — 2026-10-13
 
 - Instance updates now run a versioned memory migration: make and verify a full snapshot, upgrade the database with the candidate release, merge legacy memory records, and rebuild full-text and experience-link indexes. Persistent row counts are checked table by table before switching versions. A failed migration restores the snapshot and restarts the previous release. Chat memories are not sent to a model, and existing vectors are not regenerated.

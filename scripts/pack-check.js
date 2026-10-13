@@ -38,6 +38,14 @@ export function checkPackage() {
     npm(["pack", "--dry-run", "--ignore-scripts", "--json"]),
   );
   const files = pack.files.map((file) => file.path);
+  if (
+    files.some((file) =>
+      /^docs\/(?:zh|en)\/(?:vision|evolution)\.md$/.test(file),
+    )
+  )
+    throw Error(
+      "个人愿景与演进文档不得发布 / Private vision and evolution charters must not be published",
+    );
   for (const file of files) {
     if (forbidden.test(file) || !allowed.some((pattern) => pattern.test(file)))
       throw Error(
