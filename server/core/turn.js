@@ -57,7 +57,10 @@ const LEGACY = {
 // A message to her, a private chat or a crisis keeps the configured effort.
 // The owner can turn this off with policy.quickGroupTurns = false.
 export function turnModel(model, { group, direct, policy = {} } = {}) {
-  if (!group || direct || policy.quickGroupTurns === false) return model;
+  if (!group || policy.quickGroupTurns === false) return model;
+  // Called by name she thinks at full effort: quick direct turns (replay f7)
+  // cut group p90 to 23 s but brought the ledger tone back (6/46).
+  if (direct && policy.quickDirectGroupTurns !== true) return model;
   const efforts = model?.reasoningEfforts || [];
   const quick = ["low", "minimal"].find((effort) => efforts.includes(effort));
   if (!quick || !model.reasoningEffort || model.reasoningEffort === quick)
@@ -693,4 +696,23 @@ function expressionChoice(raw, snapshot, choice, bubbles) {
     ...(sticker ? { sticker } : {}),
     ...(typed.at.length ? { at: typed.at } : {}),
   };
+}
+
+// A provider's content filter sometimes refuses a page someone linked. The
+// links are extra; the conversation itself should still get its turn.
+export async function withoutLinksIfFiltered(snapshot, trace, call) {
+  try {
+    return await call();
+  } catch (error) {
+    if (
+      !snapshot.links?.length ||
+      !/sensitive|敏感|content.?filter/i.test(error.message)
+    )
+      throw error;
+    trace.steps.push("链接内容被模型服务拒收，去掉链接正文后重试一次");
+    snapshot.links = snapshot.links.map(
+      ({ excerpt: _e, description: _d, ...l }) => ({ ...l, fetched: false }),
+    );
+    return call();
+  }
 }

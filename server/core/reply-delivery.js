@@ -7,6 +7,7 @@ import { replyFocus } from "./conversation-cues.js";
 export const DEEP_CHECK_DEADLINE_MS = 40000;
 export const GROUP_CHECK_DEADLINE_MS = 15000;
 import { replyPrompt } from "./persona-manager.js";
+import { turnModel } from "./turn.js";
 import { generate } from "./response-generator.js";
 import {
   contradictoryOwnWords,
@@ -107,6 +108,14 @@ export class ReplyDelivery {
       prompt,
       policy,
     } = c;
+    // A group moment nobody called her into is rewritten and reviewed at the
+    // same quick effort as its turn: the slow path missed the moment
+    // (round 24 replays: group p90 over 50 s).
+    const quickModel = turnModel(model, {
+      group: !c.privateChat,
+      direct: !!c.direct,
+      policy,
+    });
     const targetUsers = new Set(
       snapshot.messages
         .filter((m) => turn.targetMessageIds.includes(m.id))
@@ -198,7 +207,7 @@ export class ReplyDelivery {
       try {
         const raw = await generate(
           models,
-          model,
+          quickModel,
           generationPrompt,
           snapshot,
           draft ? { ...turn, bubbles: draft.bubbles } : turn,
@@ -424,7 +433,7 @@ export class ReplyDelivery {
             trace,
           );
         const review = ask(
-          model,
+          quickModel,
           "validation",
           replyPrompt(nature, prompt, "validation"),
           {
@@ -705,13 +714,7 @@ export class ReplyDelivery {
       trace.validation = issues;
       // Nobody called her here: a filler word says nothing to the room, and
       // often repeats the last one. Not saying it is the plain answer.
-      if (
-        !c.direct &&
-        !c.privateChat &&
-        !turn.crisis?.clear &&
-        !c.replay &&
-        !c.preview
-      ) {
+      if (!c.direct && !c.privateChat && !turn.crisis?.clear && !c.preview) {
         trace.steps.push(
           "没有人在叫她，回复两次仍未通过校验，不用空话顶替，不说了",
         );
@@ -880,7 +883,7 @@ export function announcesUnseen(bubbles, snapshot, images = []) {
   );
   if (asked) return false;
   return (bubbles || []).some((line) =>
-    /图.{0,8}(?:没读|读不|看不清|看不到|没看到|打不开|是空|空的|空标签)|(?:没读|读不)出(?:来|内容)|第[二三四五六七八九十\d]+张/.test(
+    /图.{0,8}(?:没读|读不|看不清|看不到|没看到|打不开|是空|空的|空标签)|(?:没读|读不)出(?:来|内容)|第[二三四五六七八九十\d]+张|[这那几三两]张.{0,4}(?:也|全|都)?(?:是)?空|(?:读|看)(?:不)?出画面|画面.{0,4}(?:读|看)不/.test(
       line,
     ),
   );

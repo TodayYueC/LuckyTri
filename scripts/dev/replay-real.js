@@ -8,7 +8,12 @@ import { join } from "node:path";
 import { createStore } from "../../server/storage/store.js";
 import { Repository } from "../../server/core/repository.js";
 import { ModelManager } from "../../server/core/model-manager.js";
-import { normalizeTurn, takeTurn, turnModel } from "../../server/core/turn.js";
+import {
+  normalizeTurn,
+  takeTurn,
+  turnModel,
+  withoutLinksIfFiltered,
+} from "../../server/core/turn.js";
 import { replyPrompt } from "../../server/core/persona-manager.js";
 import { ReplyDelivery } from "../../server/core/reply-delivery.js";
 import { speechLength } from "../../server/core/speech-length.js";
@@ -71,19 +76,21 @@ async function run(c) {
       if (read.length) snapshot.links = read;
     }
     const turn = normalizeTurn(
-      await takeTurn(
-        models,
-        process.argv.includes("--quick")
-          ? turnModel(model, {
-              group: c.session.startsWith("group:"),
-              direct: snapshot.batch.some((m) => m.relation === "direct"),
-              policy,
-            })
-          : model,
-        replyPrompt(nature, prompts, "turn"),
-        snapshot,
-        trace,
-        { images: [] },
+      await withoutLinksIfFiltered(snapshot, trace, () =>
+        takeTurn(
+          models,
+          process.argv.includes("--quick")
+            ? turnModel(model, {
+                group: c.session.startsWith("group:"),
+                direct: snapshot.batch.some((m) => m.relation === "direct"),
+                policy,
+              })
+            : model,
+          replyPrompt(nature, prompts, "turn"),
+          snapshot,
+          trace,
+          { images: [] },
+        ),
       ),
       snapshot,
       trace,

@@ -20,7 +20,12 @@ import {
   markVisionSeen,
   visionWindow,
 } from "./vision-manager.js";
-import { normalizeTurn, takeTurn, turnModel } from "./turn.js";
+import {
+  normalizeTurn,
+  takeTurn,
+  turnModel,
+  withoutLinksIfFiltered,
+} from "./turn.js";
 import { RECOLLECTION_NOTE } from "../mind/recall/index.js";
 import { workingMemory } from "./working-memory.js";
 import { expressionStrategy } from "./expression-strategy.js";
@@ -677,26 +682,28 @@ export class TurnProcessor {
       let turn;
       try {
         turn = normalizeTurn(
-          await takeTurn(
-            models,
-            turnModel(model, {
-              group: !privateChat,
-              direct: !!direct || !!occasion,
-              policy,
-            }),
-            replyPrompt(
-              nature,
-              prompt,
-              snapshot.initiative ? "initiative" : "turn",
+          await withoutLinksIfFiltered(snapshot, trace, () =>
+            takeTurn(
+              models,
+              turnModel(model, {
+                group: !privateChat,
+                direct: !!direct || !!occasion,
+                policy,
+              }),
+              replyPrompt(
+                nature,
+                prompt,
+                snapshot.initiative ? "initiative" : "turn",
+              ),
+              snapshot,
+              trace,
+              {
+                images: generationImages,
+                occasion: occasionData,
+                pressure:
+                  pressure >= 0.7 ? "今天已经说了很多话，能短就短" : undefined,
+              },
             ),
-            snapshot,
-            trace,
-            {
-              images: generationImages,
-              occasion: occasionData,
-              pressure:
-                pressure >= 0.7 ? "今天已经说了很多话，能短就短" : undefined,
-            },
           ),
           snapshot,
           trace,
