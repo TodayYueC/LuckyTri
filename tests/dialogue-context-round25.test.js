@@ -45,11 +45,16 @@ test("dialogueContext: affection drops currentLife progress", () => {
         works: [{ id: "w1", title: "小说" }],
         intentions: [{ id: 2, title: "再读一章" }],
       },
+      justLived: {
+        note: "顺口给句背景",
+        lines: [{ who: "我", text: "刚读完资料" }],
+      },
       continuity: { people: [] },
     },
     self: {},
   });
   assert.equal(ctx.inner.currentLife, undefined);
+  assert.equal(ctx.inner.justLived, undefined);
 });
 
 test("link glance: excerpt stays short", async () => {
