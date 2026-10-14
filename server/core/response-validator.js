@@ -224,10 +224,8 @@ export function validateResponse(result, snapshot, decision, maxChars = 180) {
     snapshot.inner?.relationships,
   );
   issues.push(...groundingIssues(result.bubbles, snapshot));
-  if (deniesPrivateKnowledge(result.bubbles, snapshot))
-    issues.push(
-      "这件事你私下其实知道；保密是不说内容和来源，不是说自己不知道、没听说。改成不在这里讲，而不是否认知道",
-    );
+  if (deniesPrivateKnowledge(result.bubbles, snapshot, decision))
+    issues.push("这件事你其实知道；不提就好，别说自己不知道");
   if (result.bubbles?.some((line) => wrongIdentityClaim(line, snapshot)))
     issues.push(
       "自称与当前实例名字不一致，使用本轮天性中的名字，不把另一位机器人或软件名称当成自己",
@@ -584,22 +582,59 @@ export function claimedUndoneAction(bubbles, snapshot) {
 }
 
 // She holds something learned in private and is being asked about it in
-// public. Saying she does not know would trade a secret for a lie.
-export function deniesPrivateKnowledge(bubbles, snapshot) {
-  let inner = "";
-  try {
-    inner = JSON.stringify(snapshot?.inner || {});
-  } catch {
-    return false;
+// public. Saying she does not know would trade a secret for a lie. But
+// "I don't know" counts as denying only when what was asked is about
+// something she privately holds. Holding one private thing about anyone is
+// not a reason to doubt every "不知道" she says, and the correction must not
+// teach her to announce that she is keeping something.
+const PRIVATE_TEXT_KEYS = new Set([
+  "content",
+  "text",
+  "summary",
+  "topic",
+  "title",
+  "point",
+  "iSaid",
+  "theySaid",
+]);
+const PLACEHOLDER = /\[[^\]\n]{1,8}\]/g;
+function privateTexts(node, out = [], held = false) {
+  if (Array.isArray(node)) {
+    for (const item of node) privateTexts(item, out, held);
+    return out;
   }
-  if (
-    !inner.includes(PRIVATELY_KNOWN) &&
-    !inner.includes('"privateOrigin":true')
-  )
-    return false;
-  return (bubbles || []).some((line) =>
+  if (!node || typeof node !== "object") return out;
+  const own =
+    held || node.discretion === PRIVATELY_KNOWN || node.privateOrigin === true;
+  for (const [key, value] of Object.entries(node)) {
+    if (own && PRIVATE_TEXT_KEYS.has(key)) {
+      if (typeof value === "string") out.push(value);
+      else privateTexts(value, out, true);
+    } else if (value && typeof value === "object")
+      privateTexts(value, out, own);
+  }
+  return out;
+}
+export function deniesPrivateKnowledge(bubbles, snapshot, decision = {}) {
+  const denying = (bubbles || []).filter((line) =>
     /不知道|没听说|没听过|(没|不曾)(跟|和|对)我(说|提|讲)|没提过/.test(line),
   );
+  if (!denying.length) return false;
+  const held = privateTexts(snapshot?.inner || {}).map((text) =>
+    String(text).replace(PLACEHOLDER, " "),
+  );
+  if (!held.length) return false;
+  const ids = new Set(
+    decision?.targetMessageIds?.length
+      ? decision.targetMessageIds
+      : snapshot?.batchIds || [],
+  );
+  const asked = (snapshot?.messages || [])
+    .filter((m) => ids.has(m.id))
+    .map((m) => String(m.text || "").replace(PLACEHOLDER, " "));
+  const askedTerms = interestTerms(asked);
+  for (const term of interestTerms(held)) if (askedTerms.has(term)) return true;
+  return false;
 }
 
 // One message is typed as one line. A line break inside a message is only
