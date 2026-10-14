@@ -2,6 +2,16 @@
 
 # Changelog
 
+## 1.3.0 — 2026-10-14
+
+- Add optional speech output and speech recognition through Volcengine and OpenAI-compatible services. Voice stays off by default; she chooses line by line whether to speak or sing. Incoming voice can be transcribed, with text fallback when recognition fails.
+- Add actions she can choose: quote a reply, poke, react, roll a die, play rock-paper-scissors, recall her own last message, share music, forward messages from the current conversation, and send a Markdown work. The channel, target and rate limit are checked before each action.
+- Read public web pages and GitHub repositories linked in chat. Requests have time, size and redirect limits; every redirect is checked for private addresses, cookies are not sent, and results are cached.
+- Add automatic updates, off by default. Schedule checks or notifications; automatic installation waits for a quiet conversation and uses the verified backup, migration, restart and health-check flow, restoring the old version if it fails.
+- Stream sticker ZIP imports, including ZIP64 and large archives, while keeping nested folder categories, progress and result summaries. Temporary files are cleaned up and oversized or stalled requests are stopped.
+- Improve group understanding, correction and review: avoid empty privacy or image-failure announcements, keep private-chat experience out of unrelated groups, and stop turning a moment of missing someone into a status report.
+- Expand Claude and Gemini model presets and provider controls; improve private-chat typing status, forwarded-message understanding and settings interactions.
+
 ## 1.2.4 — 2026-10-13
 
 - Import sticker ZIP archives in one batch, including nested folders and folder-based categories. Duplicates, hidden files, non-images and oversized images are skipped with a result summary. New stickers use the existing one-time analysis queue; archives are processed in memory.

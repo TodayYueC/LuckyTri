@@ -94,7 +94,7 @@ The full design is in [Her life](docs/en/her-life.md) and [Architecture and exte
 
 Recent work focuses on continuity and clearer conversation. Account-based recognition links public encounters across groups and private chats. Relationships, forms of address, her own views and private promises retain their sources and visibility boundaries. An ordinary greeting need not bring back unfinished tasks or demonstrate how much she remembers.
 
-**1.2.4 update:** Add batch ZIP import to the sticker library, with folder categories, duplicate detection and an import summary. This release also includes the contextual sticker use, real group @ mentions and configurable image-understanding limits from 1.2.3. See the [changelog](docs/en/CHANGELOG.md).
+**1.3.0 update:** Add optional voice input and output, actions she can choose in group chat, public link reading and automatic updates that are off by default. The sticker library also handles large ZIP64 archives. See the [changelog](docs/en/CHANGELOG.md).
 
 | Area                     | What it does today                                                                                                                                                                    |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
