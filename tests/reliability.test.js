@@ -814,9 +814,10 @@ test("追问约定的两次草稿都不过关时，用具体核对回应代替�
     }),
   );
   const trace = await system.process(session, system.repo.events(session));
-  assert.equal(trace.status, "sent");
-  assert.deepEqual(sent, ["你问的约定我得认真核对，刚才我没接住。"]);
-  assert.match(trace.steps.join(" "), /本地安全短句/);
+  assert.equal(trace.status, "silent");
+  assert.deepEqual(sent, []);
+  assert.match(trace.steps.join(" "), /不拿短句顶替|不说了/);
+  assert.doesNotMatch(trace.steps.join(" "), /本地安全短句/);
   system.close();
   store.db.close();
 });

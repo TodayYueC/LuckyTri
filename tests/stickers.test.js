@@ -226,8 +226,37 @@ test("a name typed as @ text becomes a real @ and is not shown twice", async () 
   assert.deepEqual(typedAt(["@小红 老王在叫你"], [], snapshot), {
     bubbles: ["老王在叫你"],
     at: [{ userId: "10002", name: "小红" }],
+    atByBubble: [[{ userId: "10002", name: "小红" }]],
   });
   assert.deepEqual(typedAt(["@阿明 在吗"], [], snapshot).at, []);
+});
+
+test("two bubbles for two people each keep their own @", async () => {
+  const { typedAt } = await import("../server/stickers/offer.js");
+  const snapshot = {
+    canAt: [
+      { userId: "10002", name: "小红" },
+      { userId: "10003", name: "小明" },
+    ],
+  };
+  const out = typedAt(
+    ["@小红 你先看这个", "@小明 你看那个"],
+    [
+      { userId: "10002", name: "小红" },
+      { userId: "10003", name: "小明" },
+    ],
+    snapshot,
+  );
+  assert.deepEqual(out.bubbles, ["你先看这个", "你看那个"]);
+  assert.deepEqual(
+    out.atByBubble.map((list) => list.map((p) => p.userId)),
+    [["10002"], ["10003"]],
+  );
+  assert.deepEqual(
+    out.at.map((p) => p.userId),
+    ["10002"],
+    "legacy at is first bubble only",
+  );
 });
 
 test("choosing a sticker reads only stored meaning; no model is asked to look", async () => {

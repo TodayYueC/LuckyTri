@@ -289,8 +289,9 @@ test("shortening a rejected reply cannot bypass comprehension when the remaining
     targetMessageIds: [1],
     bubbles: ["先说两句。", "这个放在那里就算接上了。"],
   });
-  assert(trace.steps.some((step) => /本地安全短句/.test(step)));
-  assert.notDeepEqual(trace.response.bubbles, ["先说两句。"]);
+  assert(trace.steps.some((step) => /不拿短句顶替|不说了/.test(step)));
+  assert.doesNotMatch(trace.steps.join(" "), /本地安全短句/);
+  assert.deepEqual(trace.response?.bubbles || [], []);
 });
 
 test("a repeated clarification question receives semantic review even when the latest human reply is not a question", async (t) => {

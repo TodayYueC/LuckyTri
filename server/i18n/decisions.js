@@ -72,11 +72,16 @@ export const DECISIONS = {
     "What she wants to say is not sorted out yet; the wish is kept and she will decide again later",
   "没有人在叫她，回复两次仍未通过校验，不用空话顶替，不说了":
     "No one was calling her and the reply failed validation twice; no filler, she stays quiet",
-  "没被叫到，话没整理好，就不说了":
-    "Not called on and the words were not ready; she stays quiet",
-  "回复两次生成仍未通过校验，使用本地安全短句":
-    "The reply failed validation twice; a safe local short phrase is used",
-  本地安全短句: "Safe local short phrase",
+  "有人在叫她，回复仍未通过校验，不拿短句顶替，不说了":
+    "Someone was calling her and the reply still failed validation; no filler phrase, she stays quiet",
+  "话没整理好，就不说了":
+    "The words were not ready; she stays quiet",
+  "校验未过，危机回合改用关心短句":
+    "Validation failed; on a crisis turn a care line is used instead",
+  "校验未过且关心短句也不可用，不说了":
+    "Validation failed and the care line is also unusable; she stays quiet",
+  危机关心: "Crisis care",
+  话没整理好: "Words not ready",
   "隔离回放完成，未发送或写入记忆":
     "Isolated replay finished; nothing was sent or written to memory",
 

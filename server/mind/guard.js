@@ -36,15 +36,35 @@ export function claimedPlay(text) {
   return CLAIMED_PLAY.test(String(text || ""));
 }
 
+// Phrases that are already public identity (her name, being code/model/AI)
+// must not make a privateSaying look "leaked" when she answers "who are you".
+export function publicIdentityPhrases(nature = {}) {
+  const name = String(nature.name || "").trim();
+  return [
+    name,
+    name && `我叫${name}`,
+    name && `我是${name}`,
+    "代码和模型",
+    "由代码和模型",
+    "代码和模型搭",
+    "代码和模型构成",
+    "机器人",
+    "AI",
+    "人工智能",
+  ].filter(Boolean);
+}
+
 // Secrets never enter another conversation's context, but a reply is still
-// checked against them before it leaves.
+// checked against them before it leaves. alreadySaid (and public identity
+// phrases passed through it) cancel n-gram hits so saying who she is aloud
+// is not mistaken for repeating someone else's private words.
 export function leaks(bubbles, secrets, alreadySaid = []) {
   const said = normalized((bubbles || []).join(""));
   if (said.length < 4) return [];
   const pairs = (s) =>
     new Set(Array.from({ length: s.length - 1 }, (_, i) => s.slice(i, i + 2)));
   const spoken = pairs(said);
-  const known = alreadySaid.map(normalized);
+  const known = alreadySaid.map(normalized).filter(Boolean);
   const alreadyKnown = (phrase) => known.some((line) => line.includes(phrase));
   const found = [];
   for (const secret of secrets || []) {

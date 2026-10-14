@@ -25,7 +25,7 @@ import {
   validateResponse,
 } from "./response-validator.js";
 import { deliver, sleep } from "./message-scheduler.js";
-import { leaks } from "../mind/guard.js";
+import { leaks, publicIdentityPhrases } from "../mind/guard.js";
 import { isGroupSession } from "../channels/session-key.js";
 import { interestTerms } from "../mind/attention.js";
 import {
@@ -191,9 +191,8 @@ export class ReplyDelivery {
       )
         ? ["在。"]
         : []),
-      // Holding a private thing is not a cue to announce the boundary; the
-      // ordinary "还没理清楚" line is enough, or silence.
-      "这句我还没理清楚，先不乱说。",
+      // Format / empty-bubble helpers only. Validation failure never uses these
+      // to announce a privacy boundary — that path silences (see below).
       "我还没想明白。",
     ];
     const fallbackText = turn.crisis?.clear
@@ -259,7 +258,14 @@ export class ReplyDelivery {
       );
       if (leaks(response.bubbles, secrets).length)
         issues.push("这句话说出了别人要求保密的事，不能在这里说");
-      if (leaks(response.bubbles, privateFacts, alreadySaid).length)
+      // Public identity (name / being code·model·AI) is not a private leak when
+      // she answers who she is; fold those phrases into alreadySaid.
+      if (
+        leaks(response.bubbles, privateFacts, [
+          ...alreadySaid,
+          ...publicIdentityPhrases(nature),
+        ]).length
+      )
         issues.push("这句话把私下知道的事说出来了，不能在这里说");
       if (bookkeeping(response.bubbles, snapshot))
         issues.push(
@@ -813,19 +819,32 @@ export class ReplyDelivery {
         return finish("error", "想说的话还没整理好，愿望保留，稍后重新决定");
       }
       trace.validation = issues;
-      // Nobody called her here: a filler word says nothing to the room, and
-      // often repeats the last one. Not saying it is the plain answer.
-      if (!c.direct && !c.privateChat && !turn.crisis?.clear && !c.preview) {
+      // By speak time she should already know what she may say. Failed checks
+      // mean the words are not ready: regenerate already ran above; do not
+      // fill with a secrecy / "safety" short phrase — silence instead.
+      // Crisis keeps a care line when that is the turn.
+      if (turn.crisis?.clear) {
+        const care = {
+          bubbles: ["你现在还好吗？身边有人能陪着你吗？"],
+          reason: "危机关心",
+        };
+        if (!check(care).length) {
+          trace.steps.push("校验未过，危机回合改用关心短句");
+          response = care;
+          trace.response = response;
+        } else {
+          trace.steps.push("校验未过且关心短句也不可用，不说了");
+          return finish("silent", "话没整理好，就不说了");
+        }
+      } else {
         trace.steps.push(
-          "没有人在叫她，回复两次仍未通过校验，不用空话顶替，不说了",
+          c.direct || c.privateChat
+            ? "有人在叫她，回复仍未通过校验，不拿短句顶替，不说了"
+            : "没有人在叫她，回复两次仍未通过校验，不用空话顶替，不说了",
         );
-        return finish("silent", "没被叫到，话没整理好，就不说了");
+        trace.response = { bubbles: [], reason: "话没整理好" };
+        return finish("silent", "话没整理好，就不说了");
       }
-      // Checks protect the words; when someone did call her, they must not
-      // erase the decision to answer.
-      trace.steps.push("回复两次生成仍未通过校验，使用本地安全短句");
-      response = { bubbles: [fallbackText], reason: "本地安全短句" };
-      trace.response = response;
     }
     if (c.replay) return finish("replayed", "隔离回放完成，未发送或写入记忆");
     if (c.preview) return finish("previewed", turn.reason);
@@ -874,6 +893,7 @@ export class ReplyDelivery {
             turn.actions?.find((a) => a.type === "reply")?.platformId ||
             buriedTarget(batch, turn.targetMessageIds, session),
           at: typed.at,
+          atByBubble: typed.atByBubble,
           prepareBubble: (line) =>
             this.owner.mind.time.reconcile(
               { bubbles: [line] },

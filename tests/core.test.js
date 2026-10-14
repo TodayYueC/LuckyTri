@@ -1731,12 +1731,20 @@ test("同一张图只理解一次，引用和相同内容不再提交画面", as
               description: "土拍公告，地块编号可见",
             })),
           };
+        if (stage === "validation" || stage === "review")
+          return { ok: true, issues: [] };
+        if (stage === "rewrite")
+          return {
+            bubbles: [`看到了（${seen.filter((s) => s.stage === "turn").length}）`],
+            reason: "改写",
+          };
+        const n = seen.filter((s) => s.stage === "turn").length;
         return {
           choice: "speak",
           reason: "在看这张图",
           targetMessageIds: [data.context.batchIds.at(-1)],
           topic: "土拍",
-          bubbles: ["看到了"],
+          bubbles: [n === 0 ? "看到了" : "这块也看了"],
         };
       },
     },

@@ -967,7 +967,7 @@ test("群里没被叫到的一轮失败，不会为它再试；她已经回过�
   assert.equal(tries, 1, "她已经回过，等到的重试不再发");
 });
 
-test("没人叫她时话没整理好就不说；有人叫她时仍回一句短的，不抹掉这次回答", async (t) => {
+test("话没整理好时不拿短句顶替：没人叫她或有人叫她都静默", async (t) => {
   const draft = "我自己也这样";
   const script = (w) => {
     w.answers.turn = ({ context }) => ({
@@ -1010,9 +1010,10 @@ test("没人叫她时话没整理好就不说；有人叫她时仍回一句短�
     mentioned: true,
   });
   const answered = await called.hear("group:1", asked);
-  assert.equal(answered.status, "sent");
-  assert.match(answered.steps.join(" "), /本地安全短句/);
-  assert.equal(called.sent.length, 1);
+  assert.equal(answered.status, "silent", answered.reason);
+  assert.match(answered.steps.join(" "), /不拿短句顶替|不说了/);
+  assert.doesNotMatch(answered.steps.join(" "), /本地安全短句/);
+  assert.equal(called.sent.length, 0);
 });
 
 // A lane the way the queue holds it while a batch is being worked on.

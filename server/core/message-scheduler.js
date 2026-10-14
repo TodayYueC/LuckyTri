@@ -16,10 +16,14 @@ export async function deliver(
     // Platform id of an earlier message the first bubble answers, when the
     // conversation has moved past it; the channel may show it as a quote.
     quote = "",
-    // People she chose to @, on her first message only, the way one types.
+    // Legacy: people to @ on the first bubble only.
     at = [],
+    // Preferred: per-bubble addressees. Bubble i only @s atByBubble[i].
+    atByBubble = null,
   } = {},
 ) {
+  const peopleFor = (i) =>
+    Array.isArray(atByBubble) ? atByBubble[i] || [] : i === 0 ? at : [];
   const ids = bubbles.map((text, i) => {
     const id = randomUUID();
     repo.db
@@ -47,16 +51,15 @@ export async function deliver(
         .prepare("UPDATE core_outbox SET status='sending',text=? WHERE id=?")
         .run(outgoing, ids[i]);
       try {
-        const first = i === 0 && (quote || at.length);
+        const people = peopleFor(i);
+        const opts = {
+          ...(i === 0 && quote ? { replyTo: quote } : {}),
+          ...(people.length ? { at: people.map((p) => p.userId) } : {}),
+        };
         const result = await send(
           message,
           outgoing,
-          first
-            ? {
-                ...(quote ? { replyTo: quote } : {}),
-                ...(at.length ? { at: at.map((p) => p.userId) } : {}),
-              }
-            : undefined,
+          Object.keys(opts).length ? opts : undefined,
         );
         repo.db
           .prepare(
@@ -70,8 +73,8 @@ export async function deliver(
             traceId: trace.id,
             replyTargetIds: trace.decision?.targetMessageIds || [],
           },
-          i === 0 && at.length
-            ? `${at.map((p) => `@${p.name}`).join(" ")} ${outgoing}`
+          people.length
+            ? `${people.map((p) => `@${p.name}`).join(" ")} ${outgoing}`
             : outgoing,
           result?.message_id,
           now(),

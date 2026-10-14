@@ -103,24 +103,52 @@ export function expressionInput(snapshot) {
 }
 
 // "@小红" typed as text is not an @ on QQ. A name she wrote that way for
-// someone offered becomes a real @, and the typed copy is removed so the
-// message does not show the name twice.
+// someone offered becomes a real @ on THAT bubble only, and the typed copy
+// is removed so the message does not show the name twice. Two bubbles for
+// two people must not dump both @s onto the first bubble.
 export function typedAt(bubbles, at, snapshot) {
   const offered = snapshot.canAt || [];
-  const chosen = new Map(at.map((p) => [p.userId, p]));
-  const out = bubbles.map((line, i) => {
-    let text = line;
+  const fromTurn = new Map((at || []).map((p) => [String(p.userId), p]));
+  const atByBubble = (bubbles || []).map(() => []);
+  const out = (bubbles || []).map((line, i) => {
+    let text = String(line || "");
+    const onThis = new Map();
     for (const p of offered) {
+      if (!p.name) continue;
       const mark = `@${p.name}`;
-      if (!p.name || !text.includes(mark)) continue;
-      if (i === 0 && chosen.size < 2) chosen.set(p.userId, p);
-      if (chosen.has(p.userId))
-        text = text
-          .split(mark)
-          .join("")
-          .replace(/^[\s，,]+/, "");
+      if (!text.includes(mark)) continue;
+      onThis.set(String(p.userId), fromTurn.get(String(p.userId)) || p);
+      text = text
+        .split(mark)
+        .join("")
+        .replace(/^[\s，,]+/, "");
     }
+    atByBubble[i] = [...onThis.values()].slice(0, 2);
     return text.trim();
   });
-  return { bubbles: out.filter(Boolean), at: [...chosen.values()] };
+  const placed = new Set(atByBubble.flat().map((p) => String(p.userId)));
+  const unplaced = [...fromTurn.values()].filter(
+    (p) => !placed.has(String(p.userId)),
+  );
+  if (unplaced.length) {
+    if ((bubbles || []).length <= 1) {
+      atByBubble[0] = [...(atByBubble[0] || []), ...unplaced].slice(0, 2);
+    } else if (atByBubble.every((list) => !list.length)) {
+      // turn.at with no typed @ marks: pair person i with bubble i
+      unplaced.forEach((p, i) => {
+        if (i < atByBubble.length) atByBubble[i] = [p];
+      });
+    }
+  }
+  const cleaned = out.filter(Boolean);
+  const aligned =
+    cleaned.length === atByBubble.length
+      ? atByBubble
+      : atByBubble.slice(0, cleaned.length);
+  return {
+    bubbles: cleaned,
+    atByBubble: aligned,
+    // First bubble only — never the union of every addressee.
+    at: aligned[0] || [],
+  };
 }

@@ -49,12 +49,15 @@ test("dialogueContext: affection drops currentLife progress", () => {
         note: "顺口给句背景",
         lines: [{ who: "我", text: "刚读完资料" }],
       },
+      selfKnown: { livingFor: "想把短篇渲成动画" },
       continuity: { people: [] },
     },
-    self: {},
+    self: { livingFor: "想把短篇渲成动画" },
   });
   assert.equal(ctx.inner.currentLife, undefined);
   assert.equal(ctx.inner.justLived, undefined);
+  assert.equal(ctx.self.livingFor, undefined);
+  assert.equal(ctx.inner.selfKnown?.livingFor, undefined);
 });
 
 test("link glance: excerpt stays short", async () => {

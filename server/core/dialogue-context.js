@@ -1,4 +1,5 @@
 import { announcesPrivacy } from "../mind/discretion.js";
+import { softenRelationDenialSummaries } from "../mind/relationship-context.js";
 import { isPrivateSession } from "../mind/memory.js";
 import {
   conversationGrounding,
@@ -247,33 +248,39 @@ export function dialogueContext(snapshot) {
         note: "这些是你最近说得太多的词，这次换成你自己平常的说法",
       },
     };
-  if (inner.currentLife) {
-    // Affection first: keep only that she is still herself, drop progress,
-    // works and plans so a "想你了" is not answered with a reading report.
-    if (affectionBatch(snapshot)) {
-      // Title itself is the progress report ("接着读…资料"). Drop the whole
-      // board; mood stays in inner.state. justLived's "顺口给句背景" also
-      // pushes her to narrate what she was doing — drop it on affection.
-      delete inner.currentLife;
-      delete inner.justLived;
-    } else {
-      const life = inner.currentLife;
-      const compact = (row) => ({
-        id: row.id,
-        title: row.title,
-        state: row.state,
-        ...(row.wait ? { wait: row.wait } : {}),
-        ...(row.plannedFor ? { plannedFor: row.plannedFor } : {}),
-      });
-      inner.currentLife = {
-        ...life,
-        pending: (life.pending || []).map(compact),
-        intentions: (life.intentions || []).map(compact),
-        worksCoverage:
-          "以下是按本轮话题选出的作品片段，不是全部历史；缺少一篇不能证明从未写过或读过。",
-      };
+  if (affectionBatch(snapshot)) {
+    // Affection first: keep only that she is still herself. Drop progress,
+    // justLived's "顺口给句背景", and livingFor wishes so a "想你了" is not
+    // answered with a reading report or a work-volume question.
+    delete inner.currentLife;
+    delete inner.justLived;
+    if (self) delete self.livingFor;
+    if (inner.selfKnown && typeof inner.selfKnown === "object") {
+      const { livingFor: _wish, ...rest } = inner.selfKnown;
+      inner.selfKnown = rest;
     }
+  } else if (inner.currentLife) {
+    const life = inner.currentLife;
+    const compact = (row) => ({
+      id: row.id,
+      title: row.title,
+      state: row.state,
+      ...(row.wait ? { wait: row.wait } : {}),
+      ...(row.plannedFor ? { plannedFor: row.plannedFor } : {}),
+    });
+    inner.currentLife = {
+      ...life,
+      pending: (life.pending || []).map(compact),
+      intentions: (life.intentions || []).map(compact),
+      worksCoverage:
+        "以下是按本轮话题选出的作品片段，不是全部历史；缺少一篇不能证明从未写过或读过。",
+    };
   }
+  if (Array.isArray(context.summaries))
+    context.summaries = softenRelationDenialSummaries(
+      context.summaries,
+      inner.relationships,
+    );
   return {
     ...context,
     self,
