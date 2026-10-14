@@ -77,7 +77,10 @@ test("a stalled review does not hold a finished reply past the deadline", async 
       choice: "speak",
       targetMessageIds: [2],
       bubbles: ["近的 通勤一小时太磨人了"],
-      understanding: { kind: "question", point: "在近的小房子和远的大房子之间选哪个" },
+      understanding: {
+        kind: "question",
+        point: "在近的小房子和远的大房子之间选哪个",
+      },
     },
     snapshot,
   );

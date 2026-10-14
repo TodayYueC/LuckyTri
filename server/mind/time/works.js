@@ -406,57 +406,60 @@ export class Works {
     const terms = interestTerms([words]);
     // Search the work catalogue, not just the two newest activities. Select
     // the version that existed at the requested time, including in replays.
-    return this.db
-      .prepare(
-        `SELECT w.*,COALESCE(p.kind,(SELECT kind FROM mind_creations WHERE id=w.legacy_creation)) kind,p.title project_title,p.bible,v.version,v.title,v.created version_created,v.summary,v.sources,v.provenance,length(v.content) characters
+    return (
+      this.db
+        .prepare(
+          `SELECT w.*,COALESCE(p.kind,(SELECT kind FROM mind_creations WHERE id=w.legacy_creation)) kind,p.title project_title,p.bible,v.version,v.title,v.created version_created,v.summary,v.sources,v.provenance,length(v.content) characters
       FROM mind_time_works w LEFT JOIN mind_time_projects p ON p.id=w.project_id
       JOIN mind_time_versions v ON v.work_id=w.id AND v.version=(SELECT max(h.version) FROM mind_time_versions h WHERE h.work_id=w.id AND h.created<=?)
       WHERE w.created<=? ORDER BY v.created DESC`,
-      )
-      .all(now, now)
-      .filter(
-        (w) =>
-          w.created <= now &&
-          this.time.visible(
-            { ...w, sources: parse(w.sources, []) },
-            session,
-            now,
-          ),
-      )
-      .map((w) => ({
-        ...w,
-        score: [...interestTerms([w.title, w.project_title, w.summary])]
-          .filter((term) => terms.has(term))
-          .reduce(
-            (total, term) => total + (/^[a-z][a-z0-9]{2,}$/.test(term) ? 8 : 1),
-            0,
-          ),
-      }))
-      .sort(
-        (a, b) => b.score - a.score || b.version_created - a.version_created,
-      )
-      // No topic hit → empty. Do not fall back to "latest two" and pollute
-      // ordinary chatter with manuscript fragments.
-      .filter((w) => w.score >= 2)
-      .filter((w) => this.materialSupported(w))
-      .slice(0, 3)
-      .map((w) => ({
-        id: w.id,
-        title: w.title,
-        state: this.get(w.id, w.version, { before: now }).state,
-        kind: w.kind,
-        version: w.version,
-        ordinal: w.ordinal,
-        summary: text(w.summary, 180),
-        fragment: text(this.get(w.id, w.version).content, 300),
-        ...(w.kind === "game"
-          ? {
-              experienceMode: "reference",
-              provenance: this.get(w.id, w.version).provenance,
-            }
-          : {}),
-        characters: w.characters,
-      }));
+        )
+        .all(now, now)
+        .filter(
+          (w) =>
+            w.created <= now &&
+            this.time.visible(
+              { ...w, sources: parse(w.sources, []) },
+              session,
+              now,
+            ),
+        )
+        .map((w) => ({
+          ...w,
+          score: [...interestTerms([w.title, w.project_title, w.summary])]
+            .filter((term) => terms.has(term))
+            .reduce(
+              (total, term) =>
+                total + (/^[a-z][a-z0-9]{2,}$/.test(term) ? 8 : 1),
+              0,
+            ),
+        }))
+        .sort(
+          (a, b) => b.score - a.score || b.version_created - a.version_created,
+        )
+        // No topic hit → empty. Do not fall back to "latest two" and pollute
+        // ordinary chatter with manuscript fragments.
+        .filter((w) => w.score >= 2)
+        .filter((w) => this.materialSupported(w))
+        .slice(0, 3)
+        .map((w) => ({
+          id: w.id,
+          title: w.title,
+          state: this.get(w.id, w.version, { before: now }).state,
+          kind: w.kind,
+          version: w.version,
+          ordinal: w.ordinal,
+          summary: text(w.summary, 180),
+          fragment: text(this.get(w.id, w.version).content, 300),
+          ...(w.kind === "game"
+            ? {
+                experienceMode: "reference",
+                provenance: this.get(w.id, w.version).provenance,
+              }
+            : {}),
+          characters: w.characters,
+        }))
+    );
   }
 
   activityEvidence({ session, now = this.time.now(), cue = [] } = {}) {

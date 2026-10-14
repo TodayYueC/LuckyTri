@@ -43,14 +43,14 @@ export function intentHint(text) {
   if (!value) return "other";
   if (IMAGE_ONLY.test(value)) return "media";
   const bare = value.replace(/\[提及成员\]|@\S+/g, "").trim();
-  if (bare && bare.length <= 8 && !QUESTION.test(bare)) return "short-reply";
-  if (QUESTION.test(value)) return "question";
   if (CORRECTION.test(value) && value.length < 80) return "correction";
   if (PROPOSAL.test(value)) return "proposal";
   if (FEELING.test(value)) return "feeling";
   if (SHARE.test(value)) return "share";
   if (GREETING.test(bare)) return "greeting";
   if (CLOSING.test(bare)) return "closing";
+  if (QUESTION.test(value)) return "question";
+  if (bare && bare.length <= 8) return "short-reply";
   return "other";
 }
 
@@ -96,7 +96,7 @@ export function openQuestions(messages = [], batchIds = []) {
       (m) =>
         fresh.has(m.id) &&
         m.role === "user" &&
-        intentHint(m.text) === "question",
+        QUESTION.test(String(m.text || "").trim()),
     )
     .map((m) => ({
       messageId: m.id,

@@ -8,10 +8,14 @@ import { leaks } from "../guard.js";
 import { displayNames } from "../../studio/display-names.js";
 import { interestTerms } from "../attention.js";
 
-
 // Recent human chatter that is not about this work: stickers, open questions,
 // or a busy thread. A share can wait; it should not barge in mid-fight.
-export function roomBusyUnrelated(events = [], work = {}, now = Date.now(), windowMs = 8 * 60000) {
+export function roomBusyUnrelated(
+  events = [],
+  work = {},
+  now = Date.now(),
+  windowMs = 8 * 60000,
+) {
   const recent = (events || []).filter(
     (e) =>
       e &&
@@ -56,13 +60,20 @@ export function roomBusyUnrelated(events = [], work = {}, now = Date.now(), wind
 // A share report must frame itself as sharing — first-person handoff, not a
 // bare passage that looks like answering the last sticker war.
 export function hasShareFrame(bubbles = []) {
-  const text = (Array.isArray(bubbles) ? bubbles : [bubbles])
-    .filter((line) => typeof line === "string")
-    .join("\n");
-  if (!text.trim()) return false;
-  return /(?:我刚|我写|写完|刚写|分享|给你看|想给你|回看|这一节|这一段|整理完|写到|我的.{0,6}(?:稿|故事|小说|作品|游戏)|刚做完|做完了|玩完|读完这|想聊聊这)/.test(
-    text,
+  const first = (Array.isArray(bubbles) ? bubbles : [bubbles]).find(
+    (line) => typeof line === "string" && line.trim(),
   );
+  if (!first) return false;
+  const opener = first.trim();
+  const ownWorkAction =
+    /(?:我|自己|我的).{0,10}(?:刚)?(?:写|做|整理|回看|玩|读|完成)|(?:刚)?(?:写完|做完|整理完|回看完|玩完|读完|完成了?)/.test(
+      opener,
+    );
+  const namesWorkOrHandoff =
+    /(?:作品|稿|故事|小说|游戏|这篇|这份|这一节|这一段|这段|第.{1,3}节|分享|给你看|给人看|发给你|想聊聊|想给)/.test(
+      opener,
+    );
+  return ownWorkAction && namesWorkOrHandoff;
 }
 
 export class Sharing {
@@ -460,7 +471,7 @@ export class Sharing {
             ...prompts(life.repo),
             activity: reviewing
               ? '回看自己已经完成的成果中的这一段，抓住实际内容、感受和想分享的重点。只整理，不发消息，不复制全文。输出JSON {"note":"最多220字阅读整理"}。小说人物属于作品，游戏剧情属于游戏世界。'
-              : '你已逐段回看自己的成果。现在根据notes整理想告诉这个人的话。第一句必须标明这是在分享自己刚完成的作品/这一节（例如刚写完、想给人看、回看后想分享），后面再带感受与具体内容。像日常聊天一句一句说。不要粘贴正文，不写大段汇报或列表，不解释实现方式，不暴露后台地址。输出JSON {"bubbles":["一句标明分享的开场","再接一句"]}，2至6句，每句不超过80字，总计不超过350字。可以摘一句喜欢的台词，不复制整篇。不输出隐藏推理。',
+              : '你已逐段回看自己的成果。现在根据notes整理想告诉这个人的话。第一条 bubbles 必须在开头明确点出你刚完成的具体作品/这一节，并表明想给对方看或分享（例如“刚写完第三节，想给你看看”）；不能先发一段正文感想，再把分享意图放到后面。后面再带感受与具体内容。像日常聊天一句一句说。不要粘贴正文，不写大段汇报或列表，不解释实现方式，不暴露后台地址。输出JSON {"bubbles":["一句标明分享的开场","再接一句"]}，2至6句，每句不超过80字，总计不超过350字。可以摘一句喜欢的台词，不复制整篇。不输出隐藏推理。',
           },
           "activity",
         ),

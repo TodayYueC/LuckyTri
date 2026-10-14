@@ -142,7 +142,10 @@ export function documentsInView(snapshot) {
     const files = (message.attachments || []).filter((item) =>
       ["file", "document", "html", "text"].includes(item?.type),
     );
-    if (!files.length && !/\.(?:html?|txt|md)(?:\s|$)/i.test(message.text || ""))
+    if (
+      !files.length &&
+      !/\.(?:html?|txt|md)(?:\s|$)/i.test(message.text || "")
+    )
       continue;
     const perceived = (message.perceived || []).filter(Boolean);
     const name =

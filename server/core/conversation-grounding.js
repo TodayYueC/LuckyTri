@@ -555,15 +555,21 @@ export function understandingLedgerIssues(bubbles, snapshot, decision = {}) {
     (m) =>
       (batch.has(m.id) || batch.has(Number(m.id))) &&
       m.role === "user" &&
-      /[?？]|什么|怎么|为什么|哪|有没有|能不能|是什么|啥意思/.test(m.text || ""),
+      /[?？]|什么|怎么|为什么|哪|有没有|能不能|是什么|啥意思/.test(
+        m.text || "",
+      ),
   );
-  const reply = (bubbles || []).filter((line) => typeof line === "string").join("\n");
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n");
   // Question on the table, reply only jokes about the picture / vibes: miss.
   if (openQs.length && reply) {
     const qText = openQs.map((m) => m.text || "").join(" ");
     const qTerms = interestTerms([qText, point]);
     const rTerms = interestTerms([reply]);
-    const overlap = [...qTerms].filter((term) => term.length >= 2 && rTerms.has(term));
+    const overlap = [...qTerms].filter(
+      (term) => term.length >= 2 && rTerms.has(term),
+    );
     const onlyBanter =
       overlap.length === 0 &&
       /(?:挺配|好好笑|哈哈|hh+|表情|玩偶|可爱)/.test(reply) &&
@@ -597,8 +603,6 @@ export function understandingLedgerIssues(bubbles, snapshot, decision = {}) {
 
   return issues;
 }
-
-
 
 function isVisualMessage(message) {
   const text = String(message?.text || "").trim();

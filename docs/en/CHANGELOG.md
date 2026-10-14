@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 1.3.3 — 2026-10-15
+
+- Give each turn a concrete understanding point and open-question cues. Preserve image ownership and unreadable-file state, and catch replies that attach a neighboring topic to the wrong image.
+- Defer work sharing while a group is busy with another topic, require the opening line to frame the user's own new work as a share, and stop injecting unrelated work fragments into ordinary chat.
+- Keep cross-group experiences relevant to the current conversation and classify short greetings, corrections and proposals more accurately.
+
 ## 1.3.2 — 2026-10-14
 
 - Stop filling replies with mechanical fallback phrases after repeated validation failures. Ordinary turns stay quiet; clear crisis turns retain a care response.

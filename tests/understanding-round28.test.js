@@ -65,16 +65,19 @@ test("N2: 分享框架缺失被拒；有开场则过", () => {
     ]),
     true,
   );
-  assert.throws(
-    () => {
-      const lines = naturalReport(
-        ["屋顶记风向，罐头咸淡。", "水镇里挺安心。"],
-        "很长的正文内容……",
-      );
-      if (!hasShareFrame(lines)) throw Error("汇报缺少分享开场");
-    },
-    /分享开场/,
+  assert.equal(hasShareFrame(["这一节写得挺好。"]), false);
+  assert.equal(
+    hasShareFrame(["屋顶和罐头那段我很喜欢。", "我刚写完，想给你看看。"]),
+    false,
+    "分享意图要出现在开场，不能藏在后面的气泡里",
   );
+  assert.throws(() => {
+    const lines = naturalReport(
+      ["屋顶记风向，罐头咸淡。", "水镇里挺安心。"],
+      "很长的正文内容……",
+    );
+    if (!hasShareFrame(lines)) throw Error("汇报缺少分享开场");
+  }, /分享开场/);
 });
 
 // --- U1: empty point ---
@@ -122,29 +125,26 @@ test("U2: 「tg 是什么」只啃图面被 grounding 拦住", () => {
       ],
     },
   };
-  const bad = groundingIssues(
-    ["搜个用户名就行，妙脆角玩偶挺配的"],
-    snapshot,
-    {
-      choice: "speak",
-      understanding: { kind: "question", point: "问 tg 是什么", messageIds: [10] },
-      targetMessageIds: [10],
+  const bad = groundingIssues(["搜个用户名就行，妙脆角玩偶挺配的"], snapshot, {
+    choice: "speak",
+    understanding: {
+      kind: "question",
+      point: "问 tg 是什么",
+      messageIds: [10],
     },
-  );
+    targetMessageIds: [10],
+  });
   assert.ok(bad.some((x) => /问题本身|understanding\.point|具体意思/.test(x)));
-  const ok = groundingIssues(
-    ["tg 就是 Telegram，那个通讯软件"],
-    snapshot,
-    {
-      choice: "speak",
-      understanding: { kind: "question", point: "问 tg 是什么", messageIds: [10] },
-      targetMessageIds: [10],
+  const ok = groundingIssues(["tg 就是 Telegram，那个通讯软件"], snapshot, {
+    choice: "speak",
+    understanding: {
+      kind: "question",
+      point: "问 tg 是什么",
+      messageIds: [10],
     },
-  );
-  assert.equal(
-    ok.filter((x) => /问题本身/.test(x)).length,
-    0,
-  );
+    targetMessageIds: [10],
+  });
+  assert.equal(ok.filter((x) => /问题本身/.test(x)).length, 0);
 });
 
 // --- C1: context diet ---
@@ -163,7 +163,14 @@ test("C1: 无写作 cue 时不注入作品片段、不开 CREATIVE_GUIDE", (t) =
   ).run("w1", "p1", now, now, "退潮之后·第三节", "complete", "group:1", "open");
   db.prepare(
     "INSERT INTO mind_time_versions(id,work_id,version,created,title,content,summary) VALUES (?,?,1,?,?,?,?)",
-  ).run("v1", "w1", now, "退潮之后·第三节", "屋顶罐头水镇很长正文", "屋顶与罐头");
+  ).run(
+    "v1",
+    "w1",
+    now,
+    "退潮之后·第三节",
+    "屋顶罐头水镇很长正文",
+    "屋顶与罐头",
+  );
 
   assert.deepEqual(
     w.mind.time.works.fragments({
@@ -202,8 +209,14 @@ test("C1: 无写作 cue 时不注入作品片段、不开 CREATIVE_GUIDE", (t) =
 test("exchange: intentHint / openQuestions / unreadable documents", () => {
   assert.equal(intentHint("牢大 tg 是什么"), "question");
   assert.equal(intentHint("[图片]"), "media");
+  assert.equal(intentHint("不是"), "correction");
+  assert.equal(intentHint("你好"), "greeting");
+  assert.equal(intentHint("晚安"), "greeting");
+  assert.equal(intentHint("嗯"), "closing");
+  assert.equal(intentHint("好吧"), "closing");
+  assert.equal(intentHint("要不一起写个番外"), "proposal");
   const snapshot = {
-    batchIds: [1, 2],
+    batchIds: [1, 2, 3],
     messages: [
       {
         id: 1,
@@ -220,27 +233,40 @@ test("exchange: intentHint / openQuestions / unreadable documents", () => {
         name: "，，，",
         text: "tg 是什么？",
       },
+      {
+        id: 3,
+        role: "user",
+        speaker: "b",
+        name: "，，，",
+        text: "要不要一起写个番外？",
+      },
     ],
   };
   const docs = documentsInView(snapshot);
   assert.equal(docs[0].unreadable, true);
   const exchange = currentExchange(snapshot);
   assert.ok(exchange.openQuestions?.length);
-  assert.equal(exchange.ownership.find((r) => r.id === 2).intentHint, "question");
-  assert.equal(exchange.documentsInView[0].unreadable, true);
-
-  const invent = groundingIssues(
-    ["总不会又是赛博跑路指南吧"],
-    snapshot,
-    { choice: "speak", understanding: { point: "吐槽文件", messageIds: [1] } },
+  assert.equal(
+    exchange.ownership.find((r) => r.id === 2).intentHint,
+    "question",
   );
+  assert.equal(exchange.documentsInView[0].unreadable, true);
+  assert.equal(
+    exchange.openQuestions.some((question) => question.messageId === 3),
+    true,
+    "proposal-like questions stay in the open-question ledger",
+  );
+
+  const invent = groundingIssues(["总不会又是赛博跑路指南吧"], snapshot, {
+    choice: "speak",
+    understanding: { point: "吐槽文件", messageIds: [1] },
+  });
   assert.ok(invent.some((x) => /文件内容没有读到|没打开/.test(x)));
 });
 
 test("R27 回归：图文乱绑仍被拦住", async () => {
-  const { mediaAttributionIssues } = await import(
-    "../server/core/conversation-grounding.js"
-  );
+  const { mediaAttributionIssues } =
+    await import("../server/core/conversation-grounding.js");
   const snapshot = {
     batchIds: [22],
     messages: [

@@ -28,7 +28,9 @@ export function conversationNeeds(snapshot) {
   // itself is about writing, or someone named a specific work on the table.
   const namedWork = works.some((w) => {
     const title = String(w?.title || "");
-    return title.length >= 2 && recent.some((m) => (m.text || "").includes(title));
+    return (
+      title.length >= 2 && recent.some((m) => (m.text || "").includes(title))
+    );
   });
   return {
     creative: recent.some((m) => WRITING.test(m.text || "")) || namedWork,
