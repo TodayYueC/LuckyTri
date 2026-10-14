@@ -11,6 +11,15 @@ const GUESS = /可能|应该是|估计|大概|好像|也许|说不定|我猜|不
 const OPINION = /我觉得|我认为|我感觉|在我看来|个人觉得|我更喜欢|还是.{0,6}好/;
 const HEARSAY = /听说|据说|他说|她说|有人说|别人说|朋友说/;
 const COMPLAIN = /烦死|好烦|气死|无语|崩溃|受不了|服了|累死|心累|难受/;
+const QUESTION =
+  /[?？]\s*$|(?:吗|呢|么|嘛)[？?。！!~～]*$|(?:为什么|为啥|怎么|什么|哪|几点|多少|是不是|能不能|要不要|会不会|有没有|可不可以|啥意思)/;
+const PROPOSAL = /要不|不如|建议|一起(?:写|做|看|玩)|写个|写一部|要不要/;
+const FEELING = /想你|喜欢你|爱你|抱抱|好累|好开心|难过|生气|想哭/;
+const SHARE = /你看|给你看|发来|贴了|分享|刚写|写完了|看这个/;
+const CORRECTION = /不是|说错|理解错|记错|不对|纠正|搞错/;
+const GREETING = /^(?:你好|早|晚安|在吗|嗨|哈喽|hello)/i;
+const CLOSING = /^(?:嗯+|好(?:的|吧)?|行|对|晚安|拜拜|再见|hh+|哈+)$/i;
+const IMAGE_ONLY = /^(?:\[(?:图片|表情|媒体)\]\s*)+$/;
 
 export function messageCues(text) {
   const value = String(text || "");
@@ -27,6 +36,22 @@ export function messageCues(text) {
         ? "opinion"
         : null;
   return { tone, stance };
+}
+
+export function intentHint(text) {
+  const value = String(text || "").trim();
+  if (!value) return "other";
+  if (IMAGE_ONLY.test(value)) return "media";
+  const bare = value.replace(/\[提及成员\]|@\S+/g, "").trim();
+  if (bare && bare.length <= 8 && !QUESTION.test(bare)) return "short-reply";
+  if (QUESTION.test(value)) return "question";
+  if (CORRECTION.test(value) && value.length < 80) return "correction";
+  if (PROPOSAL.test(value)) return "proposal";
+  if (FEELING.test(value)) return "feeling";
+  if (SHARE.test(value)) return "share";
+  if (GREETING.test(bare)) return "greeting";
+  if (CLOSING.test(bare)) return "closing";
+  return "other";
 }
 
 // Consecutive messages from one person in the batch, read as one turn of
@@ -64,10 +89,28 @@ export function utterances(messages = [], batchIds = []) {
     }));
 }
 
+export function openQuestions(messages = [], batchIds = []) {
+  const fresh = new Set(batchIds);
+  return messages
+    .filter(
+      (m) =>
+        fresh.has(m.id) &&
+        m.role === "user" &&
+        intentHint(m.text) === "question",
+    )
+    .map((m) => ({
+      messageId: m.id,
+      speaker: m.speaker,
+      name: m.name,
+      text: String(m.text || "").slice(0, 120),
+      clue: "这是本轮未答的问题线索，understanding.point 应对齐其中之一",
+    }));
+}
+
 export function understandingHints(messages = [], batchIds = []) {
   const fresh = new Set(batchIds);
-  const cues = messages
-    .filter((m) => fresh.has(m.id) && m.role === "user")
+  const rows = messages.filter((m) => fresh.has(m.id) && m.role === "user");
+  const cues = rows
     .map((m) => ({ messageId: m.id, ...messageCues(m.text) }))
     .filter((c) => c.tone.length || c.stance)
     .map((c) => ({
@@ -75,11 +118,24 @@ export function understandingHints(messages = [], batchIds = []) {
       ...(c.tone.length ? { tone: c.tone } : {}),
       ...(c.stance ? { stance: c.stance } : {}),
     }));
+  const intents = rows
+    .map((m) => ({
+      messageId: m.id,
+      intentHint: intentHint(m.text),
+      ...(intentHint(m.text) === "question"
+        ? { pointClue: String(m.text || "").slice(0, 80) }
+        : {}),
+    }))
+    .filter((row) => row.intentHint !== "other");
   const groups = utterances(messages, batchIds);
-  if (!cues.length && !groups.length) return null;
+  const questions = openQuestions(messages, batchIds);
+  if (!cues.length && !groups.length && !intents.length && !questions.length)
+    return null;
   return {
     ...(groups.length ? { utterances: groups } : {}),
     ...(cues.length ? { surfaceCues: cues } : {}),
-    note: "从字面看出的语气与把握程度提示，不是结论：反讽、玩笑要结合前后文判断；连续几条是同一个人分开打的一句话。",
+    ...(intents.length ? { intents } : {}),
+    ...(questions.length ? { openQuestions: questions } : {}),
+    note: "从字面看出的语气、意图与未答问题线索，不是结论：反讽、玩笑要结合前后文；连续几条是同一个人分开打的一句话；point 最终由你填写并对齐。",
   };
 }

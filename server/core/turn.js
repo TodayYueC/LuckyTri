@@ -202,6 +202,25 @@ export async function takeTurn(
     images,
   );
   raw = withSaidMessages(raw);
+  // Understanding ledger: if the model returned understanding without a
+  // concrete point, do not speak. Entirely omitting understanding is still
+  // allowed for tightly scripted tests; the schema asks for point in live use,
+  // and wording validation catches an empty point on a present understanding.
+  if (
+    !initiating &&
+    ["speak", "react"].includes(raw?.choice) &&
+    raw?.understanding &&
+    typeof raw.understanding === "object" &&
+    !String(raw.understanding.point || "").trim()
+  ) {
+    trace?.steps?.push("理解账本缺少 point，本轮先不开口");
+    raw = {
+      ...raw,
+      choice: "silent",
+      bubbles: [],
+      contribution: { kind: "none", point: "理解账本缺少 point，先不开口" },
+    };
+  }
   const words = (
     Array.isArray(raw?.bubbles) ? raw.bubbles : [raw?.bubbles]
   ).filter((word) => typeof word === "string");

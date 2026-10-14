@@ -223,7 +223,7 @@ export function validateResponse(result, snapshot, decision, maxChars = 180) {
     result.bubbles,
     snapshot.inner?.relationships,
   );
-  issues.push(...groundingIssues(result.bubbles, snapshot));
+  issues.push(...groundingIssues(result.bubbles, snapshot, decision));
   if (deniesPrivateKnowledge(result.bubbles, snapshot, decision))
     issues.push("这件事你其实知道；不提就好，别说自己不知道");
   if (result.bubbles?.some((line) => wrongIdentityClaim(line, snapshot)))

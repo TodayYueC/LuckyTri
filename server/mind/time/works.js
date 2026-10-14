@@ -435,9 +435,9 @@ export class Works {
       .sort(
         (a, b) => b.score - a.score || b.version_created - a.version_created,
       )
-      .filter((w, index, rows) =>
-        rows[0]?.score >= 2 ? w.score >= 2 : index < 2,
-      )
+      // No topic hit → empty. Do not fall back to "latest two" and pollute
+      // ordinary chatter with manuscript fragments.
+      .filter((w) => w.score >= 2)
       .filter((w) => this.materialSupported(w))
       .slice(0, 3)
       .map((w) => ({

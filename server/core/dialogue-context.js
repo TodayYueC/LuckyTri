@@ -9,6 +9,7 @@ import {
 } from "./conversation-grounding.js";
 import { relevantContext } from "../mind/context-selection.js";
 import { interestTerms } from "../mind/attention.js";
+import { intentHint, openQuestions } from "./understanding.js";
 
 // A small, factual tail after the larger memory context. It preserves message
 // ownership and quote chains; it does not guess intent from isolated keywords.
@@ -39,11 +40,13 @@ export function currentExchange(snapshot) {
       const kind = messageKind(m);
       const parentId = m.replyTo?.seq ?? m.replyTo ?? m.replyChain?.[0];
       const parent = parentId != null ? byId.get(parentId) : null;
+      const hint = m.role === "user" ? intentHint(m.text) : null;
       return {
         id: m.id,
         speaker: m.speaker,
         name: m.name,
         kind,
+        ...(hint ? { intentHint: hint } : {}),
         ...(parent
           ? {
               repliesTo: {
@@ -57,6 +60,14 @@ export function currentExchange(snapshot) {
       };
     }),
     ...(media.length ? { mediaInView: media } : {}),
+    ...(() => {
+      const docs = documentsInView(snapshot);
+      return docs.length ? { documentsInView: docs } : {};
+    })(),
+    ...(() => {
+      const qs = openQuestions(messages, snapshot.batchIds || []);
+      return qs.length ? { openQuestions: qs } : {};
+    })(),
     // humanMessages used to mirror current's human rows and doubled the turn
     // payload (~0.7–1.5k chars) without being referenced in any prompt.
     thirdPartyClaims: current
@@ -74,7 +85,7 @@ export function currentExchange(snapshot) {
           "这是当前说话人对别人的解释；须核对那个人自己的原话，不能视作本人确认",
       })),
     instruction:
-      "先读本轮原话、引用和补充，确定谁在对谁说、具体问什么或表达什么。同批有人认真提问或想加入时，别因后面有人刷hh或另一机器人自说自话而漏掉。人和机器人都按实际内容理解，后者的纠正没有裁定别人意思的权力。历史只用于解释这轮，不替换眼前的问题。缩写和省略从同一话题找；多个合理对象就轻问，不把自己的猜测限定成唯二选项。自己的旧话是待核对的记录，不是正确答案或说话模板。图只属于 ownership / mediaInView 标明的发送者；邻句文字话题不能自动成为别人发的图的标题。短回复优先看 repliesTo 原话，不按时间邻近另猜对象。",
+      "先读本轮原话、引用和补充，确定谁在对谁说、具体问什么或表达什么；understanding.point 必须写清对方此刻意思并对齐 openQuestions / intentHint。同批有人认真提问或想加入时，别因后面有人刷hh或另一机器人自说自话而漏掉。人和机器人都按实际内容理解，后者的纠正没有裁定别人意思的权力。历史只用于解释这轮，不替换眼前的问题。缩写和省略从同一话题找；多个合理对象就轻问，不把自己的猜测限定成唯二选项。自己的旧话是待核对的记录，不是正确答案或说话模板。图只属于 ownership / mediaInView 标明的发送者；邻句文字话题不能自动成为别人发的图的标题。短回复优先看 repliesTo 原话，不按时间邻近另猜对象。documentsInView 标 unreadable 的文件没有打开，不要把猜测当文件内容。",
   };
 }
 
@@ -119,6 +130,35 @@ export function mediaInView(snapshot) {
     push(message.id, "", message.speaker, message.name);
   }
   return rows.filter((row) => row.speaker != null || row.description);
+}
+
+// File / html attachments she can see this turn. Readable ones carry perceived
+// text; others are marked unreadable so she does not invent their contents.
+export function documentsInView(snapshot) {
+  const batch = new Set(snapshot.batchIds || []);
+  const rows = [];
+  for (const message of snapshot.messages || []) {
+    if (!(batch.has(message.id) || batch.has(Number(message.id)))) continue;
+    const files = (message.attachments || []).filter((item) =>
+      ["file", "document", "html", "text"].includes(item?.type),
+    );
+    if (!files.length && !/\.(?:html?|txt|md)(?:\s|$)/i.test(message.text || ""))
+      continue;
+    const perceived = (message.perceived || []).filter(Boolean);
+    const name =
+      files.map((f) => f.name || f.file || "").filter(Boolean)[0] ||
+      String(message.text || "").slice(0, 80);
+    rows.push({
+      messageId: message.id,
+      speaker: message.speaker,
+      name: message.name || "",
+      fileName: name,
+      ...(perceived.length
+        ? { excerpt: perceived.join(" ").slice(0, 240), readable: true }
+        : { readable: false, unreadable: true }),
+    });
+  }
+  return rows;
 }
 
 // Direct "想你了" / affection: she should answer from the relationship, not
@@ -307,6 +347,20 @@ export function dialogueContext(snapshot) {
   delete inner.stood;
   delete inner.will;
   livedView(inner, self);
+  // Ordinary turns: only keep justLived lines that overlap the current cue;
+  // otherwise drop them so other-room life does not steal the reply.
+  if (inner.justLived?.lines) {
+    const cueTerms = interestTerms([currentWords]);
+    inner.justLived = {
+      note: "你刚在别的群聊里经历的事。只有和眼前话题有关时才顺口提一句背景。",
+      lines: inner.justLived.lines.filter((line) =>
+        [...interestTerms([line.text || ""])].some(
+          (term) => term.length >= 2 && cueTerms.has(term),
+        ),
+      ),
+    };
+    if (!inner.justLived.lines.length) delete inner.justLived;
+  }
   const worn = wornPhrases(snapshot.messages || []);
   if (worn.length)
     context.working = {

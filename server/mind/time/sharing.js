@@ -6,6 +6,64 @@ import { parse, text, hasCredential } from "../util.js";
 import { parseSessionKey } from "../../channels/session-key.js";
 import { leaks } from "../guard.js";
 import { displayNames } from "../../studio/display-names.js";
+import { interestTerms } from "../attention.js";
+
+
+// Recent human chatter that is not about this work: stickers, open questions,
+// or a busy thread. A share can wait; it should not barge in mid-fight.
+export function roomBusyUnrelated(events = [], work = {}, now = Date.now(), windowMs = 8 * 60000) {
+  const recent = (events || []).filter(
+    (e) =>
+      e &&
+      e.role === "user" &&
+      Number.isFinite(e.time) &&
+      now - e.time <= windowMs &&
+      !e.simulated,
+  );
+  if (recent.length < 2) return false;
+  const workCue = [work.title, work.summary, work.project_title]
+    .filter(Boolean)
+    .join(" ");
+  const workTerms = interestTerms([workCue]);
+  const texts = recent.map((e) => String(e.text || ""));
+  const aboutWork = texts.some((t) =>
+    [...interestTerms([t])].some(
+      (term) => term.length >= 2 && workTerms.has(term),
+    ),
+  );
+  if (aboutWork) return false;
+  if (
+    texts.some((t) =>
+      /(?:分享|发给我|给我看|看看你写|写完了吗|交稿|交付|读完|发来)/.test(t),
+    )
+  )
+    return false;
+  const imageHeavy =
+    texts.filter((t) => {
+      const bare = t.replace(/\[(?:提及成员)\]/g, "").trim();
+      return (
+        /^(?:\[(?:图片|表情|媒体)\]\s*)+$/.test(bare) ||
+        Array.from(bare).length <= 2
+      );
+    }).length >= Math.ceil(recent.length / 2);
+  const chatty = recent.length >= 3;
+  const openQ = texts.some((t) =>
+    /[?？]|什么|怎么|为什么|哪|有没有|能不能/.test(t),
+  );
+  return imageHeavy || chatty || openQ;
+}
+
+// A share report must frame itself as sharing — first-person handoff, not a
+// bare passage that looks like answering the last sticker war.
+export function hasShareFrame(bubbles = []) {
+  const text = (Array.isArray(bubbles) ? bubbles : [bubbles])
+    .filter((line) => typeof line === "string")
+    .join("\n");
+  if (!text.trim()) return false;
+  return /(?:我刚|我写|写完|刚写|分享|给你看|想给你|回看|这一节|这一段|整理完|写到|我的.{0,6}(?:稿|故事|小说|作品|游戏)|刚做完|做完了|玩完|读完这|想聊聊这)/.test(
+    text,
+  );
+}
 
 export class Sharing {
   constructor(time) {
@@ -180,6 +238,35 @@ export class Sharing {
         )
         .run(reason, life.now() + 60 * 60000, share.id);
       return { status: "waiting", reason };
+    }
+    // Room already busy with something else: wait rather than barge in.
+    if (share.delivery_kind === "report") {
+      const recent = life.repo.recentEvents(share.session_id, 40, {
+        simulated: false,
+        role: "user",
+      });
+      if (roomBusyUnrelated(recent, work, life.now())) {
+        const reason = "房间在忙别的，稍后再分享";
+        this.db
+          .prepare(
+            "UPDATE mind_time_shares SET reason=?,next_step=? WHERE id=? AND state='pending'",
+          )
+          .run(reason, life.now() + 20 * 60000, share.id);
+        if (work.task_id)
+          this.db
+            .prepare(
+              "UPDATE mind_time_tasks SET share_reason=?,next_step=? WHERE id=?",
+            )
+            .run(reason, life.now() + 20 * 60000, work.task_id);
+        this.time.event(
+          work.task_id,
+          "share-defer",
+          reason,
+          { workId: work.id, session: share.session_id },
+          life.now(),
+        );
+        return { status: "waiting", reason };
+      }
     }
     if (share.delivery_kind === "report" && !parse(share.report, []).length) {
       try {
@@ -373,7 +460,7 @@ export class Sharing {
             ...prompts(life.repo),
             activity: reviewing
               ? '回看自己已经完成的成果中的这一段，抓住实际内容、感受和想分享的重点。只整理，不发消息，不复制全文。输出JSON {"note":"最多220字阅读整理"}。小说人物属于作品，游戏剧情属于游戏世界。'
-              : '你已逐段回看自己的成果。现在根据notes整理想告诉这个人的话，带自己的感受与具体内容，像日常聊天一样一句一句说。不要粘贴正文，不写大段汇报或列表，不解释实现方式，不暴露后台地址。输出JSON {"bubbles":["一句自然的话","再接一句"]}，2至6句，每句不超过80字，总计不超过350字。可以摘一句喜欢的台词，不复制整篇。不输出隐藏推理。',
+              : '你已逐段回看自己的成果。现在根据notes整理想告诉这个人的话。第一句必须标明这是在分享自己刚完成的作品/这一节（例如刚写完、想给人看、回看后想分享），后面再带感受与具体内容。像日常聊天一句一句说。不要粘贴正文，不写大段汇报或列表，不解释实现方式，不暴露后台地址。输出JSON {"bubbles":["一句标明分享的开场","再接一句"]}，2至6句，每句不超过80字，总计不超过350字。可以摘一句喜欢的台词，不复制整篇。不输出隐藏推理。',
           },
           "activity",
         ),
@@ -432,6 +519,8 @@ export class Sharing {
         };
       }
       const bubbles = naturalReport(result.bubbles, work.content);
+      if (!hasShareFrame(bubbles))
+        throw Error("汇报缺少分享开场，需标明这是在分享自己的作品");
       if (
         leaks(bubbles, this.time.mind.meetings.privateSayings(share.session_id))
           .length

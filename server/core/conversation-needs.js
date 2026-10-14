@@ -23,10 +23,15 @@ export function conversationNeeds(snapshot) {
   const recent = (snapshot.messages || [])
     .filter((m) => !m.referenceOnly)
     .slice(-12);
+  const works = snapshot.inner?.currentLife?.works || [];
+  // Works in view are not enough: only open creative guidance when the talk
+  // itself is about writing, or someone named a specific work on the table.
+  const namedWork = works.some((w) => {
+    const title = String(w?.title || "");
+    return title.length >= 2 && recent.some((m) => (m.text || "").includes(title));
+  });
   return {
-    creative:
-      recent.some((m) => WRITING.test(m.text || "")) ||
-      (snapshot.inner?.currentLife?.works || []).length > 0,
+    creative: recent.some((m) => WRITING.test(m.text || "")) || namedWork,
     bots: recent.some((m) => m.role === "user" && bots.has(String(m.speaker))),
   };
 }

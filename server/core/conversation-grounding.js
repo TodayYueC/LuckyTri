@@ -258,7 +258,7 @@ export function claimChallenged(snapshot) {
   );
 }
 
-export function groundingIssues(bubbles, snapshot) {
+export function groundingIssues(bubbles, snapshot, decision = {}) {
   const recent = recentOwnMessages(snapshot, 6);
   const issues = [];
   const currentActivity = snapshot.inner?.currentLife?.current;
@@ -524,8 +524,81 @@ export function groundingIssues(bubbles, snapshot) {
   }
 
   issues.push(...mediaAttributionIssues(bubbles, snapshot));
+  issues.push(...understandingLedgerIssues(bubbles, snapshot, decision));
   return [...new Set(issues)];
 }
+
+// Speak/react must carry a concrete understanding.point. Empty point was the
+// live failure mode (353/353 empty in the 1.3.2 log window).
+export function understandingLedgerIssues(bubbles, snapshot, decision = {}) {
+  const issues = [];
+  const choice = decision.choice;
+  const point = String(decision.understanding?.point || "").trim();
+  // Only when the turn explicitly chose to speak; bare groundingIssues(bubbles, snapshot)
+  // calls must not all fail for empty point.
+  // Only when the turn already produced an understanding object but left point
+  // blank. Turns that never set understanding (older tests / silent paths) are
+  // gated earlier in takeTurn, not here.
+  if (
+    ["speak", "react"].includes(choice) &&
+    !snapshot.initiative &&
+    decision.understanding &&
+    typeof decision.understanding === "object" &&
+    !point
+  )
+    issues.push(
+      "开口前须写清 understanding.point（对方此刻具体意思），不能为空或只复述关键词。",
+    );
+
+  const batch = new Set(snapshot.batchIds || []);
+  const openQs = (snapshot.messages || []).filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) &&
+      m.role === "user" &&
+      /[?？]|什么|怎么|为什么|哪|有没有|能不能|是什么|啥意思/.test(m.text || ""),
+  );
+  const reply = (bubbles || []).filter((line) => typeof line === "string").join("\n");
+  // Question on the table, reply only jokes about the picture / vibes: miss.
+  if (openQs.length && reply) {
+    const qText = openQs.map((m) => m.text || "").join(" ");
+    const qTerms = interestTerms([qText, point]);
+    const rTerms = interestTerms([reply]);
+    const overlap = [...qTerms].filter((term) => term.length >= 2 && rTerms.has(term));
+    const onlyBanter =
+      overlap.length === 0 &&
+      /(?:挺配|好好笑|哈哈|hh+|表情|玩偶|可爱)/.test(reply) &&
+      /是什么|什么意思|啥意思|怎么|为什么/.test(qText);
+    if (onlyBanter)
+      issues.push(
+        "本轮有人在问具体意思；先回应问题本身，不要只接图面或气氛玩笑。",
+      );
+  }
+
+  // Unreadable file: do not invent a topic as fact.
+  const docs = (snapshot.messages || []).filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) &&
+      ((m.attachments || []).some((a) =>
+        ["file", "document", "html", "text"].includes(a?.type),
+      ) ||
+        /\.(?:html?|txt|md)\b/i.test(m.text || "")) &&
+      !(m.perceived || []).length,
+  );
+  if (
+    docs.length &&
+    /(?:这是|又是|赛博|指南|教程|说明书).{0,12}(?:指南|教程|攻略|说明书|文档)/.test(
+      reply,
+    ) &&
+    !/(?:没打开|打不开|还没看|看不清|文件名)/.test(reply)
+  )
+    issues.push(
+      "文件内容没有读到；不要把猜测说成文件主题，按没打开接话或只提文件名。",
+    );
+
+  return issues;
+}
+
+
 
 function isVisualMessage(message) {
   const text = String(message?.text || "").trim();

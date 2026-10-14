@@ -564,6 +564,8 @@ export const ERRORS = {
     "The work's source does not allow sharing in this session",
   需要明确分享选择: "A clear sharing choice is needed",
   成果整理格式无效: "The result-sorting format is invalid",
+  "汇报缺少分享开场，需标明这是在分享自己的作品":
+    "The report needs a sharing opener that makes clear she is sharing her own work",
   汇报涉及私下内容: "The report touches private content",
   需要几句自然汇报: "A few natural sentences of report are needed",
   汇报需要简短的一句一句说:
