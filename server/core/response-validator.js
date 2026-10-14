@@ -605,7 +605,11 @@ function privateTexts(node, out = [], held = false) {
   }
   if (!node || typeof node !== "object") return out;
   const own =
-    held || node.discretion === PRIVATELY_KNOWN || node.privateOrigin === true;
+    held ||
+    node.privateOrigin === true ||
+    node.discretion === PRIVATELY_KNOWN ||
+    (typeof node.discretion === "string" &&
+      /^私下知道的/.test(node.discretion));
   for (const [key, value] of Object.entries(node)) {
     if (own && PRIVATE_TEXT_KEYS.has(key)) {
       if (typeof value === "string") out.push(value);
@@ -614,6 +618,33 @@ function privateTexts(node, out = [], held = false) {
       privateTexts(value, out, own);
   }
   return out;
+}
+// Words already said aloud in this room (except the question being answered)
+// are not evidence of a private hold. Open relationship names and roles are
+// public identity, not secrets. Subtracting them stops "妹妹" / "好感度" style
+// nicknames that the group already uses from forcing a false denial rewrite.
+function aloudTerms(snapshot, exceptIds = new Set()) {
+  const terms = interestTerms(
+    (snapshot?.messages || [])
+      .filter((m) => !exceptIds.has(m.id) && m.role !== "assistant")
+      .slice(-24)
+      .map((m) => String(m.text || "").replace(PLACEHOLDER, " ")),
+  );
+  for (const row of [
+    ...(snapshot?.inner?.relationships?.known || []),
+    ...(snapshot?.inner?.people || [])
+      .map((p) => p.relationship)
+      .filter(Boolean),
+  ]) {
+    if (row.discretion && row.discretion !== "open") continue;
+    for (const term of interestTerms(
+      [row.peerRole, row.selfRole, row.name, ...(row.knownAs || [])].filter(
+        Boolean,
+      ),
+    ))
+      terms.add(term);
+  }
+  return terms;
 }
 export function deniesPrivateKnowledge(bubbles, snapshot, decision = {}) {
   const denying = (bubbles || []).filter((line) =>
@@ -633,7 +664,9 @@ export function deniesPrivateKnowledge(bubbles, snapshot, decision = {}) {
     .filter((m) => ids.has(m.id))
     .map((m) => String(m.text || "").replace(PLACEHOLDER, " "));
   const askedTerms = interestTerms(asked);
-  for (const term of interestTerms(held)) if (askedTerms.has(term)) return true;
+  const heldTerms = interestTerms(held);
+  for (const term of aloudTerms(snapshot, ids)) heldTerms.delete(term);
+  for (const term of heldTerms) if (askedTerms.has(term)) return true;
   return false;
 }
 

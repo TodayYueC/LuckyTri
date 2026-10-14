@@ -1871,6 +1871,6 @@ test("对方发的链接她会打开：回合看到网页内容，复审也看�
   assert.equal(read.length, 1);
   const turn = seen.find((s) => s.stage === "turn");
   assert.equal(turn.links[0].title, "o/r");
-  assert.match(turn.guide, /实际打开读到/);
+  assert.match(turn.guide, /打开链接瞄到/);
   assert(trace.steps.some((step) => /读了链接：o\/r/.test(step)));
 });

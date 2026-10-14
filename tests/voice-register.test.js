@@ -390,6 +390,63 @@ test("keeping a private thing is not the same as claiming not to know it", async
   assert.match(PRIVATELY_KNOWN, /不装不知道/);
 });
 
+test("public nicknames already said aloud are not private-denial evidence", async () => {
+  const { deniesPrivateKnowledge } =
+    await import("../server/core/response-validator.js");
+  const { PRIVATELY_KNOWN } = await import("../server/mind/discretion.js");
+  // Group joked about 好感度; she also holds a private joke about it.
+  // Asking something else with 好感度 in the public trail must not force a rewrite.
+  const snap = {
+    batchIds: [3],
+    messages: [
+      { id: 1, role: "user", text: "查一下好感度哈哈" },
+      { id: 2, role: "user", text: "妹妹又来了" },
+      { id: 3, role: "user", text: "rina干嘛呢" },
+    ],
+    inner: {
+      remembered: [
+        {
+          content: "好感度查询结果：π，我答应不扣分",
+          discretion: PRIVATELY_KNOWN,
+        },
+      ],
+      relationships: {
+        known: [
+          {
+            name: "小月",
+            peerRole: "妹妹",
+            selfRole: "姐姐",
+            discretion: "open",
+          },
+        ],
+      },
+    },
+  };
+  assert.equal(
+    deniesPrivateKnowledge(["不知道她在干嘛"], snap, { targetMessageIds: [3] }),
+    false,
+  );
+  // Real private ask still counts when the secret words were not already public.
+  const resign = {
+    batchIds: [1],
+    messages: [{ id: 1, role: "user", text: "阿明是不是要离职了？" }],
+    inner: {
+      remembered: [
+        {
+          content: "阿明下个月离职，让她别在群里说",
+          discretion: PRIVATELY_KNOWN,
+        },
+      ],
+    },
+  };
+  assert.equal(
+    deniesPrivateKnowledge(["不知道，他没跟我提过"], resign, {
+      targetMessageIds: [1],
+    }),
+    true,
+  );
+});
+
 test("a correction for denying never asks her to announce keeping it", async () => {
   const { validateResponse } =
     await import("../server/core/response-validator.js");

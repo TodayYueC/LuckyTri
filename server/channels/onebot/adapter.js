@@ -384,7 +384,13 @@ export function normalize(event, { botMessageIds } = {}) {
       if (type === "forward") return "[合并转发]";
       if (type === "file")
         return `[文件：${String(s.data.name || s.data.file || "").slice(0, 60)}]`;
-      if (["video", "json", "xml"].includes(type)) return "[媒体]";
+      if (type === "video") {
+        const name = String(
+          s.data?.file_name || s.data?.name || s.data?.file || "",
+        ).slice(0, 60);
+        return name ? `[视频：${name}]` : "[视频]";
+      }
+      if (["json", "xml"].includes(type)) return "[媒体]";
       return "";
     }),
     plainText = safeSegments

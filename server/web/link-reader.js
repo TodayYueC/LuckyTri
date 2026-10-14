@@ -360,14 +360,18 @@ export class LinkReader {
         const page = await this.read(url);
         if (!page.ok)
           return { messageId, url, site: page.site, fetched: false };
+        // A glance, not a briefing: title + a short opening is enough to
+        // talk; a long excerpt made her read out feature lists.
         return {
           messageId,
           url,
           site: page.site,
           fetched: true,
           title: page.title,
-          ...(page.description ? { description: page.description } : {}),
-          excerpt: String(page.text || "").slice(0, 1200),
+          ...(page.description
+            ? { description: String(page.description).slice(0, 160) }
+            : {}),
+          excerpt: String(page.text || "").slice(0, 360),
         };
       }),
     );

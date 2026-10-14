@@ -1,7 +1,8 @@
 // What a QQ message carries beyond text, turned into words before the core
 // sees it: a merged forward is unfolded into its lines, a voice message is
-// transcribed when the owner set up speech recognition. Both are bounded;
-// when either fails the placeholder stays and nothing is guessed.
+// transcribed when the owner set up speech recognition, a video keeps its
+// filename when known. All are bounded; when anything fails the placeholder
+// stays and nothing is guessed.
 import { readFile } from "node:fs/promises";
 
 const FORWARD_MAX_LINES = 40;
@@ -17,6 +18,12 @@ function plain(content) {
       if (type === "image") return "[图片]";
       if (type === "forward") return "[合并转发]";
       if (type === "record") return "[语音]";
+      if (type === "video") {
+        const name = String(
+          s.data?.file_name || s.data?.name || s.data?.file || "",
+        ).slice(0, 60);
+        return name ? `[视频：${name}]` : "[视频]";
+      }
       if (type === "face" || type === "mface") return "[表情]";
       return "";
     })
@@ -81,6 +88,22 @@ export async function enrich(message, { rpc, transcribe } = {}) {
         }
       } catch {
         /* The placeholder stays. */
+      }
+    }
+    if (type === "video") {
+      const name = String(
+        s.data?.file_name || s.data?.name || s.data?.file || "",
+      ).slice(0, 60);
+      const label = name ? `[视频：${name}]` : "[视频]";
+      if (text.includes("[媒体]")) {
+        text = text.replace("[媒体]", label);
+        changed = true;
+      } else if (
+        name &&
+        (text === "[视频]" || /(?:^|\n)\[视频\](?!：)/.test(text))
+      ) {
+        text = text.replace("[视频]", label);
+        changed = true;
       }
     }
     if (type === "record" && s.data?.file && transcribe) {

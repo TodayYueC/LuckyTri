@@ -58,10 +58,16 @@ async function run(c) {
   // Recorded before round 24: memories she may not disclose here were kept
   // as placeholders. Speech recall now leaves them out; replay the same way.
   // Old discretion labels are read as today's wording.
+  // Old "privately known" wordings → today's label. Relationship
+  // discretion open/private/secret must stay as-is (open is public).
   (function relabel(o) {
     if (!o || typeof o !== "object") return;
     for (const k of Object.keys(o))
-      if (k === "discretion" && typeof o[k] === "string")
+      if (
+        k === "discretion" &&
+        typeof o[k] === "string" &&
+        /^私下知道的/.test(o[k])
+      )
         o[k] = PRIVATELY_KNOWN;
       else relabel(o[k]);
   })(snapshot);

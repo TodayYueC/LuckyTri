@@ -52,6 +52,20 @@ export function currentExchange(snapshot) {
   };
 }
 
+// Direct "想你了" / affection: she should answer from the relationship, not
+// from a task board. Detected here so currentLife progress is not in view.
+export function affectionBatch(snapshot) {
+  const fresh = new Set(snapshot.batchIds || []);
+  const privateChat = /(?:^|:)private:/.test(snapshot.sessionId || "");
+  return (snapshot.messages || []).some(
+    (m) =>
+      fresh.has(m.id) &&
+      m.role === "user" &&
+      (m.relation === "direct" || privateChat) &&
+      /(?:想你|喜欢你|爱你)/.test(m.text || ""),
+  );
+}
+
 export function dialogueContext(snapshot) {
   const { sourceRows, batch, persona, ...context } = snapshot;
   const inner = { ...context.inner };
@@ -234,21 +248,36 @@ export function dialogueContext(snapshot) {
       },
     };
   if (inner.currentLife) {
-    const life = inner.currentLife;
-    const compact = (row) => ({
-      id: row.id,
-      title: row.title,
-      state: row.state,
-      ...(row.wait ? { wait: row.wait } : {}),
-      ...(row.plannedFor ? { plannedFor: row.plannedFor } : {}),
-    });
-    inner.currentLife = {
-      ...life,
-      pending: (life.pending || []).map(compact),
-      intentions: (life.intentions || []).map(compact),
-      worksCoverage:
-        "以下是按本轮话题选出的作品片段，不是全部历史；缺少一篇不能证明从未写过或读过。",
-    };
+    // Affection first: keep only that she is still herself, drop progress,
+    // works and plans so a "想你了" is not answered with a reading report.
+    if (affectionBatch(snapshot)) {
+      const cur = inner.currentLife.current;
+      inner.currentLife = cur
+        ? {
+            current:
+              typeof cur === "string"
+                ? cur
+                : { title: cur.title, state: cur.state },
+          }
+        : undefined;
+      if (!inner.currentLife) delete inner.currentLife;
+    } else {
+      const life = inner.currentLife;
+      const compact = (row) => ({
+        id: row.id,
+        title: row.title,
+        state: row.state,
+        ...(row.wait ? { wait: row.wait } : {}),
+        ...(row.plannedFor ? { plannedFor: row.plannedFor } : {}),
+      });
+      inner.currentLife = {
+        ...life,
+        pending: (life.pending || []).map(compact),
+        intentions: (life.intentions || []).map(compact),
+        worksCoverage:
+          "以下是按本轮话题选出的作品片段，不是全部历史；缺少一篇不能证明从未写过或读过。",
+      };
+    }
   }
   return {
     ...context,
