@@ -259,6 +259,30 @@ test("two bubbles for two people each keep their own @", async () => {
   );
 });
 
+test("removing an @-only bubble does not shift the next bubble's recipient", async () => {
+  const { typedAt } = await import("../server/stickers/offer.js");
+  const snapshot = {
+    canAt: [
+      { userId: "10002", name: "小红" },
+      { userId: "10003", name: "小明" },
+    ],
+  };
+  const out = typedAt(
+    ["@小红", "@小明 你先看这个"],
+    [
+      { userId: "10002", name: "小红" },
+      { userId: "10003", name: "小明" },
+    ],
+    snapshot,
+  );
+  assert.deepEqual(out.bubbles, ["你先看这个"]);
+  assert.deepEqual(
+    out.atByBubble.map((list) => list.map((p) => p.userId)),
+    [["10003"]],
+  );
+  assert.deepEqual(out.at.map((p) => p.userId), ["10003"]);
+});
+
 test("choosing a sticker reads only stored meaning; no model is asked to look", async () => {
   const db = new DatabaseSync(":memory:");
   const repo = { db, config: () => undefined, saveConfig() {} };

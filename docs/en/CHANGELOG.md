@@ -2,6 +2,12 @@
 
 # Changelog
 
+## 1.3.2 — 2026-10-14
+
+- Stop filling replies with mechanical fallback phrases after repeated validation failures. Ordinary turns stay quiet; clear crisis turns retain a care response.
+- Avoid treating public identity introductions as private-memory leaks, keep recorded open kinship from being denied by old banter or summaries, and leave life wishes and progress out of affectionate replies.
+- Keep @ mentions attached to their intended message bubble, including when an @-only empty bubble is removed.
+
 ## 1.3.1 — 2026-10-14
 
 - Fix foreground shutdown after updates on Linux and macOS by recognizing unreaped zombie processes as stopped, so the supervisor cannot wait forever. Add a POSIX zombie-process regression test.

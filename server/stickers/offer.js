@@ -109,46 +109,47 @@ export function expressionInput(snapshot) {
 export function typedAt(bubbles, at, snapshot) {
   const offered = snapshot.canAt || [];
   const fromTurn = new Map((at || []).map((p) => [String(p.userId), p]));
-  const atByBubble = (bubbles || []).map(() => []);
-  const out = (bubbles || []).map((line, i) => {
+  const out = [];
+  const atByBubble = [];
+  const typedIds = new Set();
+  for (const line of bubbles || []) {
     let text = String(line || "");
     const onThis = new Map();
     for (const p of offered) {
       if (!p.name) continue;
       const mark = `@${p.name}`;
       if (!text.includes(mark)) continue;
-      onThis.set(String(p.userId), fromTurn.get(String(p.userId)) || p);
+      const id = String(p.userId);
+      typedIds.add(id);
+      onThis.set(id, fromTurn.get(id) || p);
       text = text
         .split(mark)
         .join("")
         .replace(/^[\s，,]+/, "");
     }
-    atByBubble[i] = [...onThis.values()].slice(0, 2);
-    return text.trim();
-  });
+    text = text.trim();
+    if (!text) continue;
+    out.push(text);
+    atByBubble.push([...onThis.values()].slice(0, 2));
+  }
   const placed = new Set(atByBubble.flat().map((p) => String(p.userId)));
   const unplaced = [...fromTurn.values()].filter(
-    (p) => !placed.has(String(p.userId)),
+    (p) => !placed.has(String(p.userId)) && !typedIds.has(String(p.userId)),
   );
   if (unplaced.length) {
-    if ((bubbles || []).length <= 1) {
+    if (out.length === 1) {
       atByBubble[0] = [...(atByBubble[0] || []), ...unplaced].slice(0, 2);
-    } else if (atByBubble.every((list) => !list.length)) {
+    } else if (out.length > 1 && atByBubble.every((list) => !list.length)) {
       // turn.at with no typed @ marks: pair person i with bubble i
       unplaced.forEach((p, i) => {
         if (i < atByBubble.length) atByBubble[i] = [p];
       });
     }
   }
-  const cleaned = out.filter(Boolean);
-  const aligned =
-    cleaned.length === atByBubble.length
-      ? atByBubble
-      : atByBubble.slice(0, cleaned.length);
   return {
-    bubbles: cleaned,
-    atByBubble: aligned,
+    bubbles: out,
+    atByBubble,
     // First bubble only — never the union of every addressee.
-    at: aligned[0] || [],
+    at: atByBubble[0] || [],
   };
 }
