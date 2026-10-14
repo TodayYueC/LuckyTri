@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -33,14 +34,45 @@ export const isUpdateFinished = (stage) =>
   stage === "done" || stage === "error";
 const beforeStop = (stage) =>
   ["queued", "downloading", "checking"].includes(stage);
+function isZombieProcess(pid) {
+  if (process.platform === "linux") {
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+      const commandEnd = stat.lastIndexOf(")");
+      return commandEnd >= 0 && stat[commandEnd + 2] === "Z";
+    } catch (error) {
+      // A process can disappear after kill(pid, 0) succeeds but before its
+      // proc entry is read. Treat that race as an exited process.
+      return error.code === "ENOENT";
+    }
+  }
+  if (process.platform === "darwin") {
+    try {
+      const state = execFileSync("ps", ["-o", "stat=", "-p", String(pid)], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 1000,
+        windowsHide: true,
+      }).trimStart();
+      return !state || state.startsWith("Z");
+    } catch (error) {
+      // `ps` reports no rows with status 1 when the process exited in the gap
+      // after kill(pid, 0). Keep other inspection failures conservative.
+      return error.status === 1 || error.code === "ENOENT" ? false : true;
+    }
+  }
+  return false;
+}
 export const processAlive = (pid) => {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
     process.kill(pid, 0);
-    return true;
   } catch (e) {
-    return e.code !== "ESRCH";
+    if (e.code === "ESRCH") return false;
   }
+  // On POSIX, kill(pid, 0) also succeeds for a zombie. A zombie cannot run or
+  // answer requests, so keep the foreground supervisor from waiting forever.
+  return !isZombieProcess(pid);
 };
 export function readUpdateJob(home, id) {
   updatePath(home, id);

@@ -2,6 +2,10 @@
 
 # Changelog
 
+## 1.3.1 — 2026-10-14
+
+- Fix foreground shutdown after updates on Linux and macOS by recognizing unreaped zombie processes as stopped, so the supervisor cannot wait forever. Add a POSIX zombie-process regression test.
+
 ## 1.3.0 — 2026-10-14
 
 - Add optional speech output and speech recognition through Volcengine and OpenAI-compatible services. Voice stays off by default; she chooses line by line whether to speak or sing. Incoming voice can be transcribed, with text fallback when recognition fails.

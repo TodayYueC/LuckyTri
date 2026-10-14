@@ -1,9 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import {
   updatedServerAfterExit,
   waitForProcessExit,
 } from "../scripts/service-supervisor.js";
+import { processAlive } from "../server/runtime/update-manager.js";
 
 test("foreground supervisor waits for the update worker and follows its replacement", async () => {
   const jobs = [
@@ -60,4 +63,49 @@ test("replacement monitor returns once the process has stopped", async () => {
     sleep: async (ms) => waits.push(ms),
   });
   assert.deepEqual(waits, [250]);
+});
+
+test("process liveness treats an unreaped POSIX zombie as stopped", async (t) => {
+  if (!["linux", "darwin"].includes(process.platform))
+    return t.skip("POSIX zombie process states are platform-specific");
+  const python = spawnSync("python3", ["--version"], { stdio: "ignore" });
+  if (python.error || python.status !== 0)
+    return t.skip("python3 is unavailable for the zombie-process fixture");
+
+  const parent = spawn(
+    "python3",
+    [
+      "-u",
+      "-c",
+      "import os,time; child=os.fork(); os._exit(0) if child == 0 else None; print(child, flush=True); time.sleep(10); os.waitpid(child, 0)",
+    ],
+    { stdio: ["ignore", "pipe", "ignore"] },
+  );
+  t.after(() => {
+    if (parent.exitCode === null) parent.kill("SIGKILL");
+  });
+  const zombiePid = await new Promise((resolve, reject) => {
+    let output = "";
+    parent.stdout.setEncoding("utf8");
+    parent.stdout.on("data", (chunk) => {
+      output += chunk;
+      const line = output.split("\n", 1)[0];
+      if (line) resolve(Number(line));
+    });
+    parent.once("error", reject);
+    parent.once("exit", (code) => reject(Error(`Fixture exited (${code})`)));
+  });
+  const parentExit = once(parent, "exit");
+  const deadline = Date.now() + 3000;
+  let stopped = false;
+  while (Date.now() < deadline) {
+    if (!processAlive(zombiePid)) {
+      stopped = true;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  parent.kill("SIGTERM");
+  await parentExit;
+  assert.equal(stopped, true, "zombies must not block process handover");
 });
