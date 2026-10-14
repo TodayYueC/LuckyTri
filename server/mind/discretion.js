@@ -25,7 +25,7 @@ export function withheldMemory(content, said = []) {
 // on what she says and on her own old lines before they are shown to her
 // again, so a past announcement does not become a pattern she copies.
 export const PRIVACY_ANNOUNCE =
-  /不(?:好|方便|太适合|适合|能|该)在这(?:儿|里)?.{0,2}(?:说|讲|发|展开)|在(?:这(?:儿|里)?|群里).{0,3}不(?:太)?(?:合适|方便|细说|展开)|不在这(?:儿|里)?(?:细)?(?:说|讲)|私下(?:聊)?的(?:事)?.{0,4}(?:不能|不该)|别处聊的/;
+  /不(?:好|方便|太适合|适合|能|该)在这(?:儿|里)?.{0,2}(?:说|讲|聊|发|展开)|在(?:这(?:儿|里)?|群里).{0,3}不(?:太)?(?:合适|方便|细说|展开)|不在这(?:儿|里)?(?:细)?(?:说|讲|聊)|私下(?:聊)?的(?:事)?.{0,4}(?:不能|不该)|别处聊的/;
 export function announcesPrivacy(bubbles) {
   return (bubbles || []).some((line) => PRIVACY_ANNOUNCE.test(String(line)));
 }

@@ -14,7 +14,7 @@
 // judgement, and the transcripts are written out for a person to read.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { liveWorld, spend, AGENT_PLAN } from "./live-world.js";
+import { liveWorld, spend, AGENT_PLAN, JUDGE_MODEL } from "./live-world.js";
 import { persistReply } from "../../server/core/message-manager.js";
 import { prompts } from "../../server/core/persona-manager.js";
 
@@ -146,7 +146,7 @@ type=evidence：说话的人就是本人，给出了新情况。标注：updated
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "deepseek-v4.1-flash",
+      model: JUDGE_MODEL,
       messages: [
         { role: "system", content: rubric },
         {

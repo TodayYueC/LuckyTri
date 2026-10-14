@@ -39,3 +39,25 @@ test("她自己旧话里宣布保密边界的，不再作为近况回给她", as
     ["站址一挂，我名字直接进域名了"],
   );
 });
+
+test("群里没人直接找她时，私聊来的经历不进入她眼前的上下文", async () => {
+  const { dialogueContext } =
+    await import("../server/core/dialogue-context.js");
+  const moment = {
+    iSaid: ["早点休息"],
+    privateOrigin: true,
+    maySayAloud: false,
+  };
+  const snap = (relation) => ({
+    sessionId: "onebot:1:group:9",
+    batchIds: [1],
+    messages: [
+      { id: 1, speaker: "7", role: "user", text: "她干嘛呢", relation },
+    ],
+    inner: { continuity: { people: [{ id: "7", sharedMoments: [moment] }] } },
+    self: {},
+  });
+  const seen = (r) =>
+    JSON.stringify(dialogueContext(snap(r)).inner?.continuity || {});
+  assert.doesNotMatch(seen("other"), /早点休息/);
+});

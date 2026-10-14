@@ -1,4 +1,5 @@
 import { announcesPrivacy } from "../mind/discretion.js";
+import { isPrivateSession } from "../mind/memory.js";
 import {
   conversationGrounding,
   conversationalMemory,
@@ -106,6 +107,35 @@ export function dialogueContext(snapshot) {
       }),
     };
   }
+  // In a group, what she lived in private with someone does not surface in
+  // what she sees while talking; her own promises stay. Leak checks at
+  // delivery still hold the line. A private thing that is not in view cannot
+  // become "I can't say that here".
+  const addressing = new Set(
+    (snapshot.messages || [])
+      .filter((m) => fresh.has(m.id) && m.relation === "direct")
+      .map((m) => String(m.speaker ?? m.userId)),
+  );
+  if (inner.continuity && !isPrivateSession(snapshot.sessionId || ""))
+    inner.continuity = {
+      ...inner.continuity,
+      people: (inner.continuity.people || []).map((person) => {
+        // Someone talking to her directly still meets the her they know.
+        if (addressing.has(String(person.id))) return person;
+        const kept = { ...person };
+        for (const key of [
+          "recentShared",
+          "myElsewhereWords",
+          "sharedMoments",
+          "memories",
+        ])
+          if (Array.isArray(person[key]))
+            kept[key] = person[key].filter(
+              (row) => !(row && row.privateOrigin && row.maySayAloud === false),
+            );
+        return kept;
+      }),
+    };
   const messages = snapshot.messages || [];
   const mustKeep = new Set(
     [
