@@ -522,6 +522,144 @@ export function groundingIssues(bubbles, snapshot) {
         );
     }
   }
+
+  issues.push(...mediaAttributionIssues(bubbles, snapshot));
+  return [...new Set(issues)];
+}
+
+function isVisualMessage(message) {
+  const text = String(message?.text || "").trim();
+  if (/^(?:\[(?:图片|表情|媒体)\]\s*)+$/.test(text)) return true;
+  return (message?.attachments || []).some((item) =>
+    ["image", "mface", "market_face", "sticker"].includes(item?.type),
+  );
+}
+
+// Catch the live failure mode: a picture from A gets titled with B's earlier
+// topic ("你这实装内容…路线图"), or "你这图" is aimed at someone who did not
+// send the picture in view.
+export function mediaAttributionIssues(bubbles, snapshot) {
+  const text = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n");
+  if (!text) return [];
+  const messages = snapshot.messages || [];
+  const batch = new Set(snapshot.batchIds || []);
+  const byId = new Map(messages.map((m) => [m.id, m]));
+  for (const m of messages) byId.set(String(m.id), m);
+
+  const media = [];
+  const seen = new Set();
+  for (const obs of snapshot.vision?.observations || []) {
+    const key = String(obs.messageId);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const message = byId.get(obs.messageId) || byId.get(key);
+    media.push({
+      messageId: obs.messageId,
+      speaker: obs.speaker ?? message?.speaker,
+      name: obs.name || message?.name || "",
+      description: obs.description || "",
+    });
+  }
+  for (const message of messages) {
+    if (!(batch.has(message.id) || batch.has(Number(message.id)))) continue;
+    if (!isVisualMessage(message)) continue;
+    const key = String(message.id);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    media.push({
+      messageId: message.id,
+      speaker: message.speaker,
+      name: message.name || "",
+      description: "",
+    });
+  }
+  if (!media.length) return [];
+
+  const issues = [];
+  const batchPeople = messages.filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) &&
+      m.role === "user" &&
+      !isVisualMessage(m),
+  );
+  const imageOwners = new Set(
+    media
+      .map((item) => String(item.speaker))
+      .filter((id) => id && id !== "undefined"),
+  );
+
+  // "你这图" while every text speaker in the batch did not send the picture.
+  if (
+    /你这(?:张)?图|你发的图|你这表情/.test(text) &&
+    batchPeople.length &&
+    imageOwners.size &&
+    batchPeople.every((person) => !imageOwners.has(String(person.speaker)))
+  ) {
+    const ownerName =
+      media.find((item) => item.name)?.name ||
+      media.find((item) => item.speaker)?.speaker ||
+      "别人";
+    issues.push(
+      `在场的图是${ownerName}发的，不是本轮说话的人发的；不要把别人的图说成对方的态度或内容。`,
+    );
+  }
+
+  for (const item of media) {
+    if (item.speaker == null) continue;
+    const descTerms = interestTerms([item.description || ""]);
+    const talksAboutImage =
+      [...descTerms].some((term) => term.length >= 2 && text.includes(term)) ||
+      (/这(?:张)?图|图里|截图|画面|路线图/.test(text) &&
+        (batch.has(item.messageId) || batch.has(Number(item.messageId))));
+    if (!talksAboutImage) continue;
+
+    const ownerId = String(item.speaker);
+    const priorOthers = messages
+      .filter(
+        (m) =>
+          m.role === "user" &&
+          String(m.speaker) !== ownerId &&
+          !batch.has(m.id) &&
+          !batch.has(Number(m.id)) &&
+          (m.text || "").length > 2 &&
+          !isVisualMessage(m),
+      )
+      .slice(-24);
+    const ownerLines = messages
+      .filter(
+        (m) =>
+          String(m.speaker) === ownerId &&
+          (m.text || "").length > 2 &&
+          !isVisualMessage(m),
+      )
+      .slice(-24);
+    const otherTerms = interestTerms(priorOthers.map((m) => m.text));
+    const ownerTerms = interestTerms([
+      ...ownerLines.map((m) => m.text),
+      item.description || "",
+    ]);
+    // Prefer longer foreign phrases so common bigrams do not dominate.
+    const foreign = [...otherTerms].filter(
+      (term) =>
+        term.length >= 2 &&
+        text.includes(term) &&
+        !ownerTerms.has(term) &&
+        !descTerms.has(term),
+    );
+    const notable = foreign.filter((term) => term.length >= 2);
+    const glues =
+      /你这.{0,16}(?:内容|材料|东西|附件)|(?:版本更新|实装).{0,16}(?:附赠|内容|材料)|附赠.{0,12}(?:材料|内容|阅读)|归到.{0,12}头上|当成.{0,12}(?:实装|更新|内容)|你这实装/.test(
+        text,
+      ) ||
+      (notable.length > 0 &&
+        /你这|你发的|你给我塞|跟我有啥关系|版本更新附赠/.test(text));
+    if (glues && notable.length)
+      issues.push(
+        `图是${item.name || "发图的人"}发的；不要把别人先前的话题（如「${notable.slice(0, 3).join("、")}」）说成这张图的内容或归属。`,
+      );
+  }
   return [...new Set(issues)];
 }
 

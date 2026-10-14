@@ -18,6 +18,7 @@ import {
   classifyLoaded,
   descriptionsFor,
   mergeVision,
+  enrichVisionOwnership,
   saveVision,
   markVisionSeen,
   visionWindow,
@@ -617,6 +618,7 @@ export class TurnProcessor {
           if (model.vision) show = show.concat(describe);
         }
       }
+      enrichVisionOwnership(snapshot);
       if (snapshot.vision) trace.snapshot.vision = snapshot.vision;
       if (!ownInitiative) {
         await this.owner.perceivers.apply(snapshot, { replay, now });

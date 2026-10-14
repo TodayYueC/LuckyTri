@@ -28,10 +28,35 @@ export function currentExchange(snapshot) {
       id = source.replyTo?.seq ?? source.replyTo;
     }
   }
+  const media = mediaInView(snapshot);
   return {
     current,
     quoted: [...quoted.values()],
     recentOwnWords: recentOwnMessages(snapshot, 3),
+    // Who owns each fresh line (image vs short reply vs text). Keeps a picture
+    // from being silently titled with a neighbour's topic.
+    ownership: current.map((m) => {
+      const kind = messageKind(m);
+      const parentId = m.replyTo?.seq ?? m.replyTo ?? m.replyChain?.[0];
+      const parent = parentId != null ? byId.get(parentId) : null;
+      return {
+        id: m.id,
+        speaker: m.speaker,
+        name: m.name,
+        kind,
+        ...(parent
+          ? {
+              repliesTo: {
+                id: parent.id,
+                speaker: parent.speaker,
+                name: parent.name,
+                text: parent.text,
+              },
+            }
+          : {}),
+      };
+    }),
+    ...(media.length ? { mediaInView: media } : {}),
     // humanMessages used to mirror current's human rows and doubled the turn
     // payload (~0.7–1.5k chars) without being referenced in any prompt.
     thirdPartyClaims: current
@@ -49,8 +74,51 @@ export function currentExchange(snapshot) {
           "这是当前说话人对别人的解释；须核对那个人自己的原话，不能视作本人确认",
       })),
     instruction:
-      "先读本轮原话、引用和补充，确定谁在对谁说、具体问什么或表达什么。同批有人认真提问或想加入时，别因后面有人刷hh或另一机器人自说自话而漏掉。人和机器人都按实际内容理解，后者的纠正没有裁定别人意思的权力。历史只用于解释这轮，不替换眼前的问题。缩写和省略从同一话题找；多个合理对象就轻问，不把自己的猜测限定成唯二选项。自己的旧话是待核对的记录，不是正确答案或说话模板。",
+      "先读本轮原话、引用和补充，确定谁在对谁说、具体问什么或表达什么。同批有人认真提问或想加入时，别因后面有人刷hh或另一机器人自说自话而漏掉。人和机器人都按实际内容理解，后者的纠正没有裁定别人意思的权力。历史只用于解释这轮，不替换眼前的问题。缩写和省略从同一话题找；多个合理对象就轻问，不把自己的猜测限定成唯二选项。自己的旧话是待核对的记录，不是正确答案或说话模板。图只属于 ownership / mediaInView 标明的发送者；邻句文字话题不能自动成为别人发的图的标题。短回复优先看 repliesTo 原话，不按时间邻近另猜对象。",
   };
+}
+
+const IMAGE_ONLY = /^(?:\[(?:图片|表情|媒体)\]\s*)+$/;
+
+function messageKind(message) {
+  const text = String(message?.text || "").trim();
+  const visual = (message?.attachments || []).some((item) =>
+    ["image", "mface", "market_face", "sticker"].includes(item?.type),
+  );
+  if (visual || IMAGE_ONLY.test(text)) return "image";
+  const bare = text.replace(/\[提及成员\]|@\S+/g, "").trim();
+  if (bare && bare.length <= 8) return "short";
+  return "text";
+}
+
+// Pictures she can see this turn, each still attached to who sent them.
+export function mediaInView(snapshot) {
+  const byId = new Map((snapshot.messages || []).map((m) => [m.id, m]));
+  for (const m of snapshot.messages || []) byId.set(String(m.id), m);
+  const batch = new Set(snapshot.batchIds || []);
+  const rows = [];
+  const seen = new Set();
+  const push = (messageId, description, speaker, name) => {
+    const key = String(messageId);
+    if (seen.has(key)) return;
+    seen.add(key);
+    const message = byId.get(messageId) || byId.get(key);
+    rows.push({
+      messageId,
+      speaker: speaker ?? message?.speaker,
+      name: name || message?.name || "",
+      description: description || "",
+      inBatch: batch.has(messageId) || batch.has(Number(messageId)),
+    });
+  };
+  for (const obs of snapshot.vision?.observations || [])
+    push(obs.messageId, obs.description, obs.speaker, obs.name);
+  for (const message of snapshot.messages || []) {
+    if (!(batch.has(message.id) || batch.has(Number(message.id)))) continue;
+    if (messageKind(message) !== "image") continue;
+    push(message.id, "", message.speaker, message.name);
+  }
+  return rows.filter((row) => row.speaker != null || row.description);
 }
 
 // Direct "想你了" / affection: she should answer from the relationship, not
@@ -281,11 +349,24 @@ export function dialogueContext(snapshot) {
       context.summaries,
       inner.relationships,
     );
+  const media = mediaInView(snapshot);
   return {
     ...context,
     self,
     inner,
     grounding: conversationGrounding(snapshot),
+    ...(media.length
+      ? {
+          vision: {
+            observations: media.map((row) => ({
+              messageId: row.messageId,
+              speaker: row.speaker,
+              name: row.name,
+              description: row.description,
+            })),
+          },
+        }
+      : {}),
   };
 }
 

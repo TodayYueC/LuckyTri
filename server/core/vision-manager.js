@@ -518,7 +518,12 @@ export function classifyVision(db, sessionId, images) {
   const pending = [];
   for (const image of images || []) {
     const description = recallVision(db, visionCacheKeys(sessionId, image));
-    if (description) cached.push({ messageId: image.messageId, description });
+    if (description)
+      cached.push({
+        messageId: image.messageId,
+        description: sanitizeVisionDescription(description),
+        speaker: image.speaker,
+      });
     else pending.push(image);
   }
   return { cached, pending };
@@ -538,8 +543,13 @@ export function classifyLoaded(
     const keys = visionCacheKeys(sessionId, image);
     const description = recallVision(db, keys);
     if (description) {
-      cached.push({ messageId: image.messageId, description });
-      saveVision(db, sessionId, [{ image, description }]);
+      const clean = sanitizeVisionDescription(description);
+      cached.push({
+        messageId: image.messageId,
+        description: clean,
+        speaker: image.speaker,
+      });
+      saveVision(db, sessionId, [{ image, description: clean }]);
       continue;
     }
     const quoted = !batch.has(image.messageId);
@@ -556,7 +566,8 @@ export function descriptionsFor(images, result) {
   for (const row of rows) {
     if (!row || typeof row.description !== "string" || !row.description.trim())
       continue;
-    const description = row.description.trim().slice(0, 1000);
+    const description = sanitizeVisionDescription(row.description);
+    if (!description) continue;
     const key = String(row.messageId);
     if (!byMessage.has(key)) byMessage.set(key, []);
     byMessage.get(key).push(description);
@@ -573,6 +584,41 @@ export function descriptionsFor(images, result) {
   return paired;
 }
 
+// Drop topic / intent guesses that leak into cacheable image notes. Visible
+// content stays; neighbouring chat topics must not become part of the picture.
+const VISION_TOPIC_BLEED =
+  /发送意图|发图意图|发送人.{0,24}(?:正参与|正在|当时|此刻).{0,48}(?:聊天|话题|讨论)|当时正(?:在|参与).{0,48}(?:聊天|话题|讨论)|参与关于.{0,48}的聊天|跟[「『"“'].{0,40}[」』"”'].{0,12}放一起|自动归到|属于当前话题|延续(?:了)?(?:当前|前面|之前)?.{0,12}话题|结合前后文推断|从语境看发送/;
+
+export function sanitizeVisionDescription(value) {
+  return String(value || "")
+    .split(/(?<=[。！？\n])/)
+    .map((part) => part.trim())
+    .filter((part) => part && !VISION_TOPIC_BLEED.test(part))
+    .join("")
+    .trim()
+    .slice(0, 1000);
+}
+
+function messageOwner(snapshot, messageId) {
+  const rows = [
+    ...(snapshot?.messages || []),
+    ...(snapshot?.sourceRows || []).map((row) => ({
+      id: row.seq,
+      speaker: row.userId,
+      name: row.name,
+    })),
+  ];
+  const hit = rows.find(
+    (row) => row.id === messageId || String(row.id) === String(messageId),
+  );
+  return hit
+    ? {
+        speaker: hit.speaker ?? hit.userId,
+        name: hit.name || "",
+      }
+    : {};
+}
+
 export function mergeVision(snapshot, observations) {
   const prev = Array.isArray(snapshot.vision?.observations)
     ? snapshot.vision.observations
@@ -583,15 +629,38 @@ export function mergeVision(snapshot, observations) {
   );
   for (const item of observations || []) {
     if (!item?.description) continue;
-    const key = `${item.messageId}\n${item.description}`;
+    const description = sanitizeVisionDescription(item.description);
+    if (!description) continue;
+    const key = `${item.messageId}\n${description}`;
     if (seen.has(key)) continue;
     seen.add(key);
+    const owner = messageOwner(snapshot, item.messageId);
     next.push({
       messageId: item.messageId,
-      description: String(item.description).slice(0, 1000),
+      description,
+      ...(item.speaker != null || owner.speaker != null
+        ? { speaker: item.speaker ?? owner.speaker }
+        : {}),
+      ...(item.name || owner.name ? { name: item.name || owner.name } : {}),
     });
   }
-  if (next.length) snapshot.vision = { observations: next };
+  // Re-attach ownership on every merge so cached notes keep a sender.
+  for (const row of next) {
+    const owner = messageOwner(snapshot, row.messageId);
+    if (row.speaker == null && owner.speaker != null)
+      row.speaker = owner.speaker;
+    if (!row.name && owner.name) row.name = owner.name;
+    row.description = sanitizeVisionDescription(row.description);
+  }
+  const kept = next.filter((row) => row.description);
+  if (kept.length) snapshot.vision = { observations: kept };
+  else delete snapshot.vision;
+}
+
+export function enrichVisionOwnership(snapshot) {
+  if (!snapshot?.vision?.observations?.length) return snapshot;
+  mergeVision(snapshot, []);
+  return snapshot;
 }
 
 function compactMessage(message) {
