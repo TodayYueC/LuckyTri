@@ -49,11 +49,7 @@ test("dialogueContext: affection drops currentLife progress", () => {
     },
     self: {},
   });
-  assert.ok(ctx.inner.currentLife);
-  assert.equal(ctx.inner.currentLife.current.title, "读容器身份");
-  assert.equal(ctx.inner.currentLife.pending, undefined);
-  assert.equal(ctx.inner.currentLife.works, undefined);
-  assert.equal(ctx.inner.currentLife.intentions, undefined);
+  assert.equal(ctx.inner.currentLife, undefined);
 });
 
 test("link glance: excerpt stays short", async () => {

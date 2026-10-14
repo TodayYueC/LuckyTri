@@ -251,16 +251,9 @@ export function dialogueContext(snapshot) {
     // Affection first: keep only that she is still herself, drop progress,
     // works and plans so a "想你了" is not answered with a reading report.
     if (affectionBatch(snapshot)) {
-      const cur = inner.currentLife.current;
-      inner.currentLife = cur
-        ? {
-            current:
-              typeof cur === "string"
-                ? cur
-                : { title: cur.title, state: cur.state },
-          }
-        : undefined;
-      if (!inner.currentLife) delete inner.currentLife;
+      // Title itself is the progress report ("接着读…资料"). Drop the whole
+      // board; mood stays in inner.state. She answers from the relationship.
+      delete inner.currentLife;
     } else {
       const life = inner.currentLife;
       const compact = (row) => ({
