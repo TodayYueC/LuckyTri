@@ -458,8 +458,7 @@ export class Continuity {
           lines.push({
             who: payload.name || who,
             samePerson: true,
-            maySayAloud: false,
-            text: "你们刚刚私下说过话",
+            text: "你们刚刚私下聊过",
           });
         }
         continue;
@@ -468,14 +467,13 @@ export class Continuity {
       lines.push({
         who: row.role === "assistant" ? "我" : payload.name || who,
         samePerson: !!samePerson,
-        maySayAloud: !!samePerson && row.role === "user",
         text: said,
       });
       if (lines.length >= 4) break;
     }
     if (!lines.length) return null;
     return {
-      note: "这是你刚刚在别处经历的，你知道。一般不要主动向这里的人提起别的地方的事。眼前如果就是当时的人，可以接着，也可以不提，由你决定。",
+      note: "你刚在别的群聊里经历的事，是你自己的近况。这里的人没看到，提起时顺口给句背景就行。",
       lines: lines.reverse(),
     };
   }

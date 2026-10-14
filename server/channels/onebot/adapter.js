@@ -133,28 +133,35 @@ export const onebot = {
       : [];
     // A sticker goes as an image of its own, its bytes inline so the QQ client
     // needs no path or URL on this machine.
-    const body = options?.image
+    const body = options?.record
       ? [
           {
-            type: "image",
-            data: {
-              file: `base64://${options.image.base64}`,
-              sub_type: options.image.sticker ? 1 : 0,
-              ...(options.image.summary
-                ? { summary: options.image.summary }
-                : {}),
-            },
+            type: "record",
+            data: { file: `base64://${options.record.base64}` },
           },
         ]
-      : [
-          ...(Array.isArray(options?.at) ? options.at : [])
-            .filter((id) => /^\d{5,12}$/.test(String(id)))
-            .flatMap((id) => [{ type: "at", data: { qq: String(id) } }]),
-          {
-            type: "text",
-            data: { text: options?.at?.length ? ` ${text}` : text },
-          },
-        ];
+      : options?.image
+        ? [
+            {
+              type: "image",
+              data: {
+                file: `base64://${options.image.base64}`,
+                sub_type: options.image.sticker ? 1 : 0,
+                ...(options.image.summary
+                  ? { summary: options.image.summary }
+                  : {}),
+              },
+            },
+          ]
+        : [
+            ...(Array.isArray(options?.at) ? options.at : [])
+              .filter((id) => /^\d{5,12}$/.test(String(id)))
+              .flatMap((id) => [{ type: "at", data: { qq: String(id) } }]),
+            {
+              type: "text",
+              data: { text: options?.at?.length ? ` ${text}` : text },
+            },
+          ];
     return {
       message: [...reply, ...body],
       [parsed.kind === "group" ? "group_id" : "user_id"]:
@@ -196,6 +203,129 @@ export const onebot = {
   },
 };
 
+// Someone poking her is a way of calling her; poking between others is not.
+export function normalizePoke(event) {
+  if (
+    event?.post_type !== "notice" ||
+    !(event.notice_type === "notify" && event.sub_type === "poke") ||
+    String(event.target_id) !== String(event.self_id) ||
+    String(event.user_id) === String(event.self_id) ||
+    !/^\d+$/.test(String(event.user_id)) ||
+    !/^\d+$/.test(String(event.self_id))
+  )
+    return null;
+  const kind = event.group_id ? "group" : "private";
+  const nativeId = String(event.group_id || event.user_id);
+  const time = event.time ? event.time * 1000 : Date.now();
+  return {
+    sessionId: formatSessionKey({
+      channel: "onebot",
+      accountId: String(event.self_id),
+      kind,
+      nativeId,
+    }),
+    channel: "onebot",
+    accountId: String(event.self_id),
+    nativeId,
+    segments: [],
+    kind,
+    userId: String(event.user_id),
+    name: senderLabel(event.sender, event.user_id),
+    text: "[戳了戳你]",
+    poke: true,
+    mentioned: true,
+    replyToBot: false,
+    platformId: "",
+    time,
+    mentions: [],
+    replyId: "",
+    attachments: [],
+    media: { images: 0, stickers: 0, other: 0, count: 0, only: false },
+    eventId: `${event.self_id}:poke:${nativeId}:${event.user_id}:${time}`,
+    raw: event,
+  };
+}
+
+// One of her non-text actions as an OneBot call. Poke and reactions are
+// extensions of some implementations; dice, rps and recall are OneBot 11.
+export function actionCall(message, action) {
+  const parsed = parseSessionKey(message.sessionId);
+  const group = parsed.kind === "group";
+  const where = group
+    ? { group_id: Number(parsed.nativeId) }
+    : { user_id: Number(parsed.nativeId) };
+  switch (action.type) {
+    case "poke":
+      return group
+        ? ["group_poke", { ...where, user_id: Number(action.to) }]
+        : ["friend_poke", { user_id: Number(action.to) }];
+    case "react":
+      return [
+        "set_msg_emoji_like",
+        {
+          message_id: Number(action.platformId),
+          emoji_id: String(action.emojiId),
+          set: true,
+        },
+      ];
+    case "dice":
+    case "rps":
+      return [
+        group ? "send_group_msg" : "send_private_msg",
+        { ...where, message: [{ type: action.type, data: {} }] },
+      ];
+    case "typing":
+      // "Typing…" in a private chat while she thinks; groups have none.
+      if (group) throw new Error("这个动作 QQ 这边做不了");
+      return [
+        "set_input_status",
+        { user_id: Number(parsed.nativeId), event_type: 1 },
+      ];
+    case "music":
+      return [
+        group ? "send_group_msg" : "send_private_msg",
+        {
+          ...where,
+          message: [
+            {
+              type: "music",
+              data: { type: "163", id: String(action.song.id) },
+            },
+          ],
+        },
+      ];
+    case "text":
+      return [
+        group ? "send_group_msg" : "send_private_msg",
+        { ...where, message: [{ type: "text", data: { text: action.text } }] },
+      ];
+    case "forward":
+      return [
+        group ? "send_group_forward_msg" : "send_private_forward_msg",
+        {
+          ...where,
+          messages: action.platformIds.map((id) => ({
+            type: "node",
+            data: { id: String(id) },
+          })),
+        },
+      ];
+    case "file":
+      return [
+        group ? "upload_group_file" : "upload_private_file",
+        {
+          ...where,
+          file: `base64://${Buffer.from(action.text, "utf8").toString("base64")}`,
+          name: action.name,
+        },
+      ];
+    case "recall":
+      return ["delete_msg", { message_id: Number(action.platformId) }];
+    default:
+      throw new Error("这个动作 QQ 这边做不了");
+  }
+}
+
 export function normalize(event, { botMessageIds } = {}) {
   if (
     !event ||
@@ -235,7 +365,7 @@ export function normalize(event, { botMessageIds } = {}) {
       ).length,
       stickers: safeSegments.filter(isSticker).length,
       other: safeSegments.filter((s) =>
-        ["record", "video", "file", "json", "xml"].includes(
+        ["record", "video", "file", "json", "xml", "forward"].includes(
           String(s.type).toLowerCase(),
         ),
       ).length,
@@ -247,9 +377,20 @@ export function normalize(event, { botMessageIds } = {}) {
       if (type === "at")
         return atId(s) === String(event.self_id) ? "@我" : "[提及成员]";
       if (type === "image" && !isSticker(s)) return "[图片]";
+      if (type === "dice") return "[骰子]";
+      if (type === "rps") return "[猜拳]";
       if (isSticker(s)) return "[表情]";
-      if (["record", "video", "file", "json", "xml"].includes(type))
-        return "[媒体]";
+      if (type === "record") return "[语音]";
+      if (type === "forward") return "[合并转发]";
+      if (type === "file")
+        return `[文件：${String(s.data.name || s.data.file || "").slice(0, 60)}]`;
+      if (type === "video") {
+        const name = String(
+          s.data?.file_name || s.data?.name || s.data?.file || "",
+        ).slice(0, 60);
+        return name ? `[视频：${name}]` : "[视频]";
+      }
+      if (["json", "xml"].includes(type)) return "[媒体]";
       return "";
     }),
     plainText = safeSegments

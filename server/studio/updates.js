@@ -125,8 +125,18 @@ export class UpdateChecker {
   }
 }
 
-export function mountUpdates(app, checker, updater) {
-  const view = (info) => ({ ...info, operation: updater?.status() || null });
+export function mountUpdates(app, checker, updater, autoUpdate) {
+  const view = (info) => ({
+    ...info,
+    operation: updater?.status() || null,
+    auto: autoUpdate?.view() || null,
+  });
+  app.post("/api/system/update/auto", (req, res) => {
+    if (!autoUpdate)
+      return res.status(400).json({ error: "当前实例不支持自动更新" });
+    autoUpdate.save(req.body || {});
+    res.json(view(checker.status()));
+  });
   app.get("/api/system/update", (_req, res) =>
     res.json(view(checker.status())),
   );

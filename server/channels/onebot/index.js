@@ -1,7 +1,9 @@
+import { searchSong } from "./music.js";
 import { WebSocketServer, WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
 import { effectiveOneBotToken, authorizeOneBot } from "./token.js";
-import { onebot, normalize } from "./adapter.js";
+import { onebot, normalize, normalizePoke, actionCall } from "./adapter.js";
+import { enrich } from "./enrich.js";
 import { defineChannel } from "../contract.js";
 import { parseSessionKey } from "../session-key.js";
 import { applyDirectoryNames } from "../../core/sessions.js";
@@ -205,6 +207,7 @@ export function createOneBotChannel(
           .catch(() => {});
       };
       pullNames();
+      refused.clear();
       ws.isAlive = true;
       ws.on("pong", () => (ws.isAlive = true));
       ws.on("message", async (raw) => {
@@ -244,8 +247,14 @@ export function createOneBotChannel(
                 );
             return;
           }
-          const m = normalize(event, { botMessageIds });
-          if (m) chatSystem.receive(m);
+          const m = normalize(event, { botMessageIds }) || normalizePoke(event);
+          if (m)
+            chatSystem.receive(
+              await enrich(m, {
+                rpc,
+                transcribe: chatSystem.transcriber?.() || null,
+              }),
+            );
         } catch (err) {
           console.error("OneBot:", err.message);
         }
@@ -320,8 +329,49 @@ export function createOneBotChannel(
     };
   }
 
+  // Poke and reactions are extensions some OneBot implementations add. They
+  // are offered until the connected one refuses them; a refused action is
+  // not offered again on that connection.
+  const refused = new Set();
+  function actions() {
+    if (!socket) return [];
+    return ["reply", "dice", "rps", "recall", "voice"]
+      .concat(["poke", "react", "music", "forward", "file"])
+      .filter((type) => !refused.has(type));
+  }
+  async function perform(message, action) {
+    if (message.simulated) return {};
+    if (refused.has(action.type)) return {};
+    if (action.type === "music") {
+      const song = await searchSong(action.query);
+      if (!song) throw new Error("没找到这首歌");
+      try {
+        return await rpc(...actionCall(message, { ...action, song }), 8000);
+      } catch {
+        // The card is an extension; a plain line with the link still works.
+        return await rpc(
+          ...actionCall(message, {
+            type: "text",
+            text: `${song.name} - ${song.artist} https://music.163.com/song?id=${song.id}`,
+          }),
+          8000,
+        );
+      }
+    }
+    const [name, params] = actionCall(message, action);
+    try {
+      return await rpc(name, params, 8000);
+    } catch (error) {
+      if (/not ?support|不支持|unknown|1404|not ?found/i.test(error.message))
+        refused.add(action.type);
+      throw error;
+    }
+  }
+
   return defineChannel({
     type: "onebot",
+    actions,
+    perform,
     capabilities: onebot.capabilities,
     attach,
     start,

@@ -1,3 +1,5 @@
+import { announcesPrivacy } from "../mind/discretion.js";
+export { announcesPrivacy };
 import { typedAt } from "../stickers/offer.js";
 import { persistReply } from "./message-manager.js";
 import { PRIVATELY_KNOWN } from "../mind/discretion.js";
@@ -5,7 +7,16 @@ import { replyFocus } from "./conversation-cues.js";
 
 // How long a finished reply may wait for its reviews.
 export const DEEP_CHECK_DEADLINE_MS = 40000;
+export const GROUP_CHECK_DEADLINE_MS = 5000;
 import { replyPrompt } from "./persona-manager.js";
+import { actionLine, performActions } from "../actions/index.js";
+import {
+  speakable,
+  synthesize,
+  voiceOffered,
+  voiceSettings,
+} from "../voice/index.js";
+import { turnModel } from "./turn.js";
 import { generate } from "./response-generator.js";
 import {
   contradictoryOwnWords,
@@ -106,6 +117,16 @@ export class ReplyDelivery {
       prompt,
       policy,
     } = c;
+    // A group moment nobody called her into is rewritten and reviewed at the
+    // same quick effort as its turn: the slow path missed the moment
+    // (round 24 replays: group p90 over 50 s).
+    // Being called by name keeps the turn itself at full effort; checking
+    // and rewriting the words is a reading task and runs quick in any group.
+    const quickModel = turnModel(model, {
+      group: !c.privateChat,
+      direct: policy.quickGroupReview === false ? !!c.direct : false,
+      policy,
+    });
     const targetUsers = new Set(
       snapshot.messages
         .filter((m) => turn.targetMessageIds.includes(m.id))
@@ -170,9 +191,8 @@ export class ReplyDelivery {
       )
         ? ["在。"]
         : []),
-      // When what went wrong is that she holds someone's private thing, the
-      // honest short line is that she will not tell it here, not "I'm unsure".
-      ...(holdsPrivate(snapshot) ? ["这是别人私下的事，我不在这儿讲。"] : []),
+      // Holding a private thing is not a cue to announce the boundary; the
+      // ordinary "还没理清楚" line is enough, or silence.
       "这句我还没理清楚，先不乱说。",
       "我还没想明白。",
     ];
@@ -197,7 +217,7 @@ export class ReplyDelivery {
       try {
         const raw = await generate(
           models,
-          model,
+          quickModel,
           generationPrompt,
           snapshot,
           draft ? { ...turn, bubbles: draft.bubbles } : turn,
@@ -241,6 +261,18 @@ export class ReplyDelivery {
         issues.push("这句话说出了别人要求保密的事，不能在这里说");
       if (leaks(response.bubbles, privateFacts, alreadySaid).length)
         issues.push("这句话把私下知道的事说出来了，不能在这里说");
+      if (bookkeeping(response.bubbles, snapshot))
+        issues.push(
+          "别用记账、认账、验收、立此存照这类说法，像在办手续；直接说你的反应",
+        );
+      if (announcesUnseen(response.bubbles, snapshot, c.generationImages))
+        issues.push(
+          "没看清的图不用宣布，也不数第几张；照着文字和语气接，或者不提图",
+        );
+      if (announcesPrivacy(response.bubbles))
+        issues.push(
+          "不要宣布保密边界（不好在这说、不能在这里发、私下的不能说）；私事根本不要提，直接接这里的话",
+        );
       if (
         this.owner.mind.relationships.discloses(
           response.bubbles,
@@ -260,8 +292,14 @@ export class ReplyDelivery {
         (person) =>
           person.recentShared?.length || person.myPrivateIntentions?.length,
       );
+    // An open question in a group no longer sends every reply to a second
+    // model asking whether she answered all of it: that audit made her
+    // complete and flat (round 24 real logs). A question put to her, in
+    // private, or "what do you mean?" still gets it; facts, promises and care
+    // still go to review below.
     const deepCheckFor = (response, ignoreBotTail = false) =>
-      readerQuestions(snapshot, turn).length > 0 ||
+      (readerQuestions(snapshot, turn).length > 0 &&
+        (c.direct || c.privateChat || focus === "readability_repair")) ||
       (turn.contribution?.kind === "question" &&
         snapshot.messages
           .filter((m) => m.role === "assistant")
@@ -328,6 +366,8 @@ export class ReplyDelivery {
         )
       ) ||
       !!recentPrivateContinuity ||
+      // Reviews guard facts, promises and care, not how much she said: a
+      // long or undirected line alone no longer waits for a second model.
       (policy.deepCheck &&
         c.pressure < 0.85 &&
         (turn.crisis?.clear ||
@@ -338,10 +378,7 @@ export class ReplyDelivery {
             "promise_check",
             "clarify_claim",
             "basis_check",
-          ].includes(focus) ||
-          (!c.direct &&
-            (response.bubbles.join("").length > 60 ||
-              snapshot.batch.some((m) => m.relation === "unresolved")))));
+          ].includes(focus)));
     // A bot exchange whose reply the contribution review already found to
     // add something new does not need a second review for that same reason.
     const contributionReviewed =
@@ -357,8 +394,12 @@ export class ReplyDelivery {
       // goes out as it is. A stalled call used to hold a finished reply for
       // minutes (one network timeout plus its retry took 187 s). Past the
       // deadline a check counts as unavailable, the same as a failed one.
+      // In a group nobody called her in, a reply that waits half a minute
+      // for its review has already missed the moment.
       const deadline =
-        Date.now() + (policy.deepCheckDeadlineMs ?? DEEP_CHECK_DEADLINE_MS);
+        Date.now() +
+        (policy.deepCheckDeadlineMs ??
+          (!c.privateChat ? GROUP_CHECK_DEADLINE_MS : DEEP_CHECK_DEADLINE_MS));
       let timer;
       const late = new Promise((_, reject) => {
         timer = setTimeout(
@@ -407,8 +448,11 @@ export class ReplyDelivery {
             },
             trace,
           );
+        // In private a question to her is reviewed at full effort; in a group
+        // the moment matters more, and the anti-sycophancy gate is re-run
+        // for it (round 24).
         const review = ask(
-          model,
+          c.direct && questions.length && c.privateChat ? model : quickModel,
           "validation",
           replyPrompt(nature, prompt, "validation"),
           {
@@ -517,11 +561,22 @@ export class ReplyDelivery {
           checked.issues,
           snapshot,
         );
-        return checked.ok || (checked.issues.length > 0 && !issues.length)
-          ? []
-          : issues.length
-            ? issues
-            : ["与天性或语境不一致"];
+        const found =
+          checked.ok || (checked.issues.length > 0 && !issues.length)
+            ? []
+            : issues.length
+              ? issues
+              : ["与天性或语境不一致"];
+        // The reviewer's own minimal repair, used in a group to save a
+        // rewrite and a second review (round 24 latency).
+        if (
+          found.length &&
+          Array.isArray(checked.fixed) &&
+          checked.fixed.length &&
+          checked.fixed.every((line) => typeof line === "string" && line.trim())
+        )
+          found.fixed = checked.fixed.map((line) => line.trim()).slice(0, 4);
+        return found;
       } catch (error) {
         trace.steps.push(
           `回复复审暂不可用，已按本地校验继续：${error.message}`,
@@ -534,6 +589,34 @@ export class ReplyDelivery {
       }
     };
     if (outdated()) return staleExit();
+    if (
+      !turn.bubbles.length &&
+      !turn.sticker &&
+      turn.actions?.some((a) => !["reply", "voice"].includes(a.type)) &&
+      !turn.crisis?.clear
+    ) {
+      // Only an action (a poke, a reaction, a die): no words to check.
+      trace.response = { bubbles: [], actions: turn.actions };
+      trace.sent = [];
+      if (
+        !response.bubbles.length &&
+        !turn.sticker &&
+        !turn.actions?.some((a) => !["reply", "voice"].includes(a.type)) &&
+        !turn.crisis?.clear
+      ) {
+        trace.steps.push("没有可说的句子了，本轮不说");
+        return finish("silent", "话被删光或不成立，不说了");
+      }
+      if (c.replay) return finish("replayed", "隔离回放完成，未发送或写入记忆");
+      if (c.preview) return finish("previewed", turn.reason);
+      const done = await this.doActions(
+        batch.at(-1) || c.anchor,
+        turn,
+        trace,
+        session,
+      );
+      return finish(done.length ? "sent" : "cancelled", turn.reason);
+    }
     if (!turn.bubbles.length && turn.sticker && !turn.crisis?.clear) {
       // Only a sticker: nothing to check in words, it was chosen from hers.
       trace.response = { bubbles: [], sticker: turn.sticker.ref };
@@ -554,12 +637,43 @@ export class ReplyDelivery {
           fallbackText,
         )
       : await makeResponse();
+    response = trimmedSpeech(response, snapshot, c.generationImages, trace);
     let issues = check(response);
     if (!issues.length && needsDeepCheck(response)) {
       if (outdated()) return staleExit();
       issues = await deepCheck(response);
     }
-    const rewriteLimit = c.pressure >= 0.85 ? 1 : 2;
+    // One rewrite in a group she was not called in: if that still fails, she
+    // simply does not say it (below) instead of a third round of checks.
+    const rewriteLimit =
+      c.pressure >= 0.85 || (!c.direct && !c.privateChat && !turn.crisis?.clear)
+        ? 1
+        : 2;
+    // In a group, a minimal repair the reviewer already wrote is taken
+    // instead of a rewrite and second review, when it passes every local
+    // check and only removes or trims what she said.
+    if (issues.fixed && !c.privateChat && !turn.crisis?.clear) {
+      const original = response.bubbles.join("");
+      const repaired = trimmedSpeech(
+        { ...response, bubbles: issues.fixed },
+        snapshot,
+        c.generationImages,
+        trace,
+      );
+      if (
+        repaired.bubbles.join("").length <= original.length + 12 &&
+        !check(repaired).length
+      ) {
+        (trace.revisions ||= []).push({
+          draft: response.bubbles,
+          issues: [...issues],
+          repairedByReview: true,
+        });
+        response = repaired;
+        issues = [];
+        trace.steps.push("复审给出的最小修改通过本地校验，直接采用");
+      }
+    }
     const repairConstraints = new Set();
     for (let attempt = 0; issues.length && attempt < rewriteLimit; attempt++) {
       (trace.revisions ||= []).push({
@@ -574,10 +688,27 @@ export class ReplyDelivery {
         response,
         !snapshot.initiative && attempt === rewriteLimit - 1,
       );
+      response = trimmedSpeech(response, snapshot, c.generationImages, trace);
       issues = check(response);
-      if (!issues.length && needsDeepCheck(response)) {
+      // Last rewrite in a group: local checks only — another deep review on
+      // the slower coding-plan endpoint pushed group p90 past 30 s (f26/f27).
+      // An earlier rewrite still gets a deep check so bad drafts can fail.
+      // Only undirected groups skip the last deep check; directed ones still
+      // verify so a bad second draft cannot go out (追问约定).
+      const lastGroupRewrite =
+        !c.privateChat &&
+        !c.direct &&
+        !turn.crisis?.clear &&
+        attempt === rewriteLimit - 1;
+      if (!issues.length && needsDeepCheck(response) && !lastGroupRewrite) {
         if (outdated()) return staleExit();
         issues = await deepCheck(response);
+      } else if (
+        !issues.length &&
+        needsDeepCheck(response) &&
+        lastGroupRewrite
+      ) {
+        trace.steps.push("群里末次改写后只做本地校验，不再二次复审");
       }
     }
     // Deleting an unnecessary final bubble can retain a valid answer. It
@@ -684,13 +815,7 @@ export class ReplyDelivery {
       trace.validation = issues;
       // Nobody called her here: a filler word says nothing to the room, and
       // often repeats the last one. Not saying it is the plain answer.
-      if (
-        !c.direct &&
-        !c.privateChat &&
-        !turn.crisis?.clear &&
-        !c.replay &&
-        !c.preview
-      ) {
+      if (!c.direct && !c.privateChat && !turn.crisis?.clear && !c.preview) {
         trace.steps.push(
           "没有人在叫她，回复两次仍未通过校验，不用空话顶替，不说了",
         );
@@ -721,27 +846,46 @@ export class ReplyDelivery {
     if (typed.bubbles.length)
       response = { ...response, bubbles: typed.bubbles };
     trace.response = response;
-    trace.sent = await deliver(
-      this.owner.repo,
-      batch.at(-1) || c.anchor,
-      response.bubbles,
-      trace,
-      this.owner.send,
-      isCurrent,
-      {
-        now: this.owner.now,
-        quote: buriedTarget(batch, turn.targetMessageIds, session),
-        at: typed.at,
-        prepareBubble: (line) =>
-          this.owner.mind.time.reconcile(
-            { bubbles: [line] },
-            session,
-            this.owner.now(),
-            snapshot.inner?.currentLife?.current,
-          ).bubbles[0],
-      },
-    );
+    // She chose to say it aloud: one voice message instead of the bubbles.
+    // If the voice cannot be made, the words go out as text as usual.
+    const voiced =
+      turn.actions?.some((a) => a.type === "voice") &&
+      speakable(response.bubbles) &&
+      (await this.sendVoice(
+        batch.at(-1) || c.anchor,
+        response.bubbles,
+        turn,
+        trace,
+        session,
+      ));
+    if (!voiced)
+      trace.sent = await deliver(
+        this.owner.repo,
+        batch.at(-1) || c.anchor,
+        response.bubbles,
+        trace,
+        this.owner.send,
+        isCurrent,
+        {
+          now: this.owner.now,
+          // Her own choice to quote comes first; the old buried-message rule
+          // stays as the fallback when she did not choose.
+          quote:
+            turn.actions?.find((a) => a.type === "reply")?.platformId ||
+            buriedTarget(batch, turn.targetMessageIds, session),
+          at: typed.at,
+          prepareBubble: (line) =>
+            this.owner.mind.time.reconcile(
+              { bubbles: [line] },
+              session,
+              this.owner.now(),
+              snapshot.inner?.currentLife?.current,
+            ).bubbles[0],
+        },
+      );
     if (!trace.sent.length && hasRelevantUpdate()) return staleExit();
+    if (trace.sent.length && turn.actions?.length)
+      await this.doActions(batch.at(-1) || c.anchor, turn, trace, session);
     if (trace.sent.length && turn.sticker)
       await this.sendSticker(
         batch.at(-1) || c.anchor,
@@ -771,6 +915,66 @@ export class ReplyDelivery {
       );
     }
     return finish(trace.sent.length ? "sent" : "cancelled", turn.reason);
+  }
+  async sendVoice(message, bubbles, turn, trace, session) {
+    const owner = this.owner;
+    const settings = voiceSettings(owner.repo);
+    if (!voiceOffered(settings)) return false;
+    if (owner.actions && !owner.actions.allowed(session, "voice")) {
+      trace.steps.push("这段时间语音发得够多了，这句打字发");
+      return false;
+    }
+    const text = bubbles.join("，");
+    try {
+      const audio = await (owner.synthesize || synthesize)(settings, text);
+      const result = await owner.send(message, "", {
+        record: { base64: audio.toString("base64") },
+      });
+      const line = `[你发了语音] ${text}`;
+      persistReply(
+        owner.repo,
+        {
+          ...message,
+          traceId: trace.id,
+          replyTargetIds: turn.targetMessageIds || [],
+        },
+        line,
+        result?.message_id,
+        owner.now(),
+      );
+      owner.actions?.record(session, { type: "voice", result: "done" });
+      trace.sent = [line];
+      trace.steps.push("这句用语音说了");
+      return true;
+    } catch (error) {
+      owner.actions?.record(session, { type: "voice", result: "failed" });
+      trace.steps.push(`语音没发成，改成打字：${error.message}`);
+      return false;
+    }
+  }
+  // Her non-text actions, after her words; each is written into her own
+  // history so she remembers having done it.
+  async doActions(message, turn, trace, session) {
+    const done = await performActions(
+      this.owner,
+      message,
+      turn.actions,
+      trace,
+      session,
+    );
+    for (const action of done) {
+      const line = actionLine(action);
+      if (!line) continue;
+      persistReply(
+        this.owner.repo,
+        { ...message, traceId: trace.id, replyTargetIds: [] },
+        line,
+        "",
+        this.owner.now(),
+      );
+      (trace.sent ||= []).push(line);
+    }
+    return done;
   }
   // Her sticker, after her words. It is recorded as something she sent, and
   // the use is kept to learn how it landed with this person.
@@ -844,8 +1048,84 @@ export function holdsPrivate(snapshot) {
     return false;
   }
   // Only a private thing that what is being said here actually touches.
-  return (
-    (seen.includes(PRIVATELY_KNOWN) && seen.includes("和这里刚说到的「")) ||
-    seen.includes('"maySayAloud":false')
+  return seen.includes(PRIVATELY_KNOWN) && seen.includes("和这里刚说到的「");
+}
+
+// Saying "I couldn't read the picture" again and again became a ritual in
+// the group (round 24 real logs). When nobody asked about the pictures and
+// she has no view of them, the line is noise, not honesty.
+export function announcesUnseen(bubbles, snapshot, images = []) {
+  if (images?.length || snapshot?.vision) return false;
+  const asked = (snapshot?.batch || []).some((m) =>
+    /(?:看|读|识别)(?:不|没)(?:到|出|了)|看得到|看见了吗|能看|图呢|什么原因|为什么.{0,6}图/.test(
+      String(m.text || "").replace(/\[(?:图片|动画表情|表情|媒体)\]/g, ""),
+    ),
   );
+  if (asked) return false;
+  // Small generic fallback only; no per-phrase list (round 24 rollback).
+  return (bubbles || []).some((line) =>
+    /图.{0,8}(?:没读|读不|看不清|看不到|打不开|是空|空的)|读不出|没读出|没读到/.test(
+      line,
+    ),
+  );
+}
+
+// Bookkeeping words: settling, accepting and filing things away is never
+// how she talks.
+const LEDGER_ALWAYS =
+  /认账|记账|账目|账本|对账|算账|认了|认下|认领|认一半|这条我认|我认[。！!]?$|验收|并案|立此存照|存照|记一笔|按清白记|清白|结案|散庭|先领|领一半|记下了|记上了/;
+const LEDGER_ECHO = /账/;
+export function bookkeeping(bubbles) {
+  // Round 24 replays: even echoing the room's "账" joke kept the ledger
+  // tone going, so it is left to them.
+  return (bubbles || []).some(
+    (line) => LEDGER_ALWAYS.test(line) || LEDGER_ECHO.test(line),
+  );
+}
+
+// Announcing a privacy boundary ("不好在这说") is itself the leak of
+// posture: private things simply never come up (round 24 steering).
+
+// A clause that only announces an unseen picture, or keeps books, is cut
+// out mechanically when the rest of the reply still stands: no rewrite, no
+// extra model call.
+export function trimmedSpeech(response, snapshot, images, trace) {
+  const unseen = (line) => announcesUnseen([line], snapshot, images);
+  const ledger = (line) => bookkeeping([line], snapshot);
+  const secretive = (line) => announcesPrivacy([line]);
+  const bad = (line) => unseen(line) || ledger(line) || secretive(line);
+  // A bubble that opens on stray punctuation, or on the tail of a cut
+  // sentence ("发的算我那份）。…"), loses that fragment (round 24 f17).
+  const tidy = (line) =>
+    line
+      .replace(/^[^（(）)]{2,16}[）)]。(?=\S)/u, "")
+      .replace(/^[\s，,。；;、]+/u, "");
+  if (response?.bubbles?.length) {
+    const cleaned = response.bubbles
+      .map((line) => (typeof line === "string" ? tidy(line) : line))
+      .filter((line) => typeof line !== "string" || /[\p{L}\p{N}]/u.test(line));
+    if (
+      cleaned.length &&
+      cleaned.some((line, i) => line !== response.bubbles[i])
+    ) {
+      trace?.steps?.push("去掉气泡开头的残句或标点");
+      response = { ...response, bubbles: cleaned };
+    }
+  }
+  if (!response?.bubbles?.some(bad)) return response;
+  const bubbles = response.bubbles
+    .map((line) => {
+      if (!bad(line)) return line;
+      // Cut secretive / image / ledger clauses; keep the rest of the line.
+      const parts = line.split(/(?<=[，,。！!？?；;])|(?<=—)(?!—)/u);
+      const kept = parts.filter((part) => !bad(part)).join("");
+      return kept
+        .replace(/^[\s，,。；;—]+|[\s，,；;—]+$/gu, "")
+        .replace(/^(?:不过|但是|但|而且|所以|然后)[，,]?/u, "")
+        .replace(/[，,](?:行|好|嗯)$/u, "");
+    })
+    .filter((line) => line && /[\p{L}\p{N}]/u.test(line));
+  if (!bubbles.length || bubbles.some(bad)) return response;
+  trace?.steps?.push("删去宣布没看清图、记账或故作保密的半句，其余照原样");
+  return { ...response, bubbles };
 }

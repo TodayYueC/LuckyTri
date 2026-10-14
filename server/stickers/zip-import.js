@@ -1,4 +1,5 @@
 import { readZip, stripRoot } from "../plugins/zip.js";
+import { readZipFile, zipFileNames } from "../plugins/zip-file.js";
 import { STICKER_MAX_BYTES } from "./library.js";
 
 const MIB = 1024 * 1024;
@@ -16,7 +17,7 @@ function stripArchiveRoot(files) {
 // Upload size of one sticker archive; STICKER_ZIP_MAX_MB overrides it.
 export function stickerZipLimitMb(env = process.env) {
   const n = Number(env.STICKER_ZIP_MAX_MB);
-  return Number.isFinite(n) && n > 0 ? Math.min(n, 2048) : 200;
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 4096) : 1024;
 }
 
 const hidden = (name) =>
@@ -51,7 +52,7 @@ export async function importStickerZip(
   );
   for (const file of files) {
     if (file.skipped) {
-      summary.skipped.push({ name: file.name, reason: "超过 2MB" });
+      summary.skipped.push({ name: file.name, reason: "超过单张大小上限" });
       continue;
     }
     const parts = file.name.split("/");
@@ -71,6 +72,65 @@ export async function importStickerZip(
     } catch (error) {
       summary.failed.push({ name: file.name, reason: error.message });
     }
+  }
+  return summary;
+}
+
+// The same import for an archive already on disk: entries are read and
+// added one at a time, so memory stays at one sticker however big the pack.
+// progress({ done, total }) is called after each entry.
+export async function importStickerZipFile(
+  library,
+  path,
+  {
+    category = "",
+    folderCategory = false,
+    queue = () => {},
+    progress = () => {},
+  } = {},
+) {
+  const summary = { imported: 0, duplicates: 0, skipped: [], failed: [] };
+  const names = (await zipFileNames(path)).filter((name) => !hidden(name));
+  const images = names.filter((name) => IMAGE.test(name));
+  for (const name of names)
+    if (!IMAGE.test(name)) summary.skipped.push({ name, reason: "不是图片" });
+  // The same single-root folder rule as the in-memory import.
+  const roots = new Set(images.map((name) => name.split("/")[0]));
+  const root =
+    roots.size === 1 &&
+    ARCHIVE_ROOT.test([...roots][0]) &&
+    images.every((name) => name.includes("/"))
+      ? [...roots][0]
+      : null;
+  let done = 0;
+  progress({ done, total: images.length });
+  for await (const file of readZipFile(path, {
+    maxEntryBytes: STICKER_MAX_BYTES,
+    keep: (name) => !hidden(name) && IMAGE.test(name),
+  })) {
+    done++;
+    const relative = root ? file.name.slice(root.length + 1) : file.name;
+    if (file.skipped) {
+      summary.skipped.push({ name: file.name, reason: "超过单张大小上限" });
+    } else {
+      const parts = relative.split("/");
+      const base = parts.at(-1).replace(/\.[a-z0-9]+$/i, "");
+      const folder = parts.length > 1 ? parts[0] : "";
+      try {
+        const item = await library.add(file.bytes, {
+          name: base,
+          category: (folderCategory && folder) || category,
+        });
+        if (item.duplicate) summary.duplicates++;
+        else {
+          summary.imported++;
+          queue(item.id);
+        }
+      } catch (error) {
+        summary.failed.push({ name: file.name, reason: error.message });
+      }
+    }
+    progress({ done, total: images.length });
   }
   return summary;
 }

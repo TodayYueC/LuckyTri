@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import Toggle from "../../components/ui/Toggle.vue";
+import Select from "../../components/ui/Select.vue";
 import { t, locale } from "../../i18n";
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { api, toast } from "../../api";
@@ -81,7 +83,27 @@ async function upload(files: FileList | File[] | null) {
       busy.value = t("正在导入压缩包 {name}", { name: file.name });
       const params = new URLSearchParams({
         folderCategory: folderCategory.value ? "1" : "0",
+        job: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       });
+      const follow = setInterval(async () => {
+        const state = await fetch(
+          `/api/core/stickers/upload-zip/progress?job=${params.get("job")}`,
+          { credentials: "same-origin" },
+        )
+          .then((r) => r.json())
+          .catch(() => null);
+        if (state?.phase === "receiving" && state.size)
+          busy.value = t("正在上传压缩包 {name} {pct}%", {
+            name: file.name,
+            pct: Math.floor((state.received / state.size) * 100),
+          });
+        else if (state?.phase === "importing")
+          busy.value = t("正在导入压缩包 {name} {done}/{total}", {
+            name: file.name,
+            done: state.done,
+            total: state.total,
+          });
+      }, 1000);
       if (uploadCategory.value.trim())
         params.set("category", uploadCategory.value.trim());
       const response = await fetch(`/api/core/stickers/upload-zip?${params}`, {
@@ -92,7 +114,7 @@ async function upload(files: FileList | File[] | null) {
           "X-LuckyTri-Locale": locale.value,
         },
         body: file,
-      });
+      }).finally(() => clearInterval(follow));
       if (response.status === 401) {
         requireLogin();
         break;
@@ -229,7 +251,7 @@ const statusLabel = (s: Sticker) =>
     >
       <b>{{ busy || t("拖入或点击选择图片或 ZIP，可一次选多张") }}</b>
       <small>{{
-        t("PNG、JPEG、GIF、WebP，每张不超过 2MB；ZIP 会自动解压导入")
+        t("PNG、JPEG、GIF、WebP，每张不超过 4MB；ZIP 会自动解压导入")
       }}</small>
       <input
         ref="fileInput"
@@ -247,17 +269,22 @@ const statusLabel = (s: Sticker) =>
         :placeholder="t('搜索描述、标签、情绪…')"
         @input="load()"
       />
-      <select v-model="category" @change="load()">
-        <option value="">{{ t("全部分类") }}</option>
-        <option v-for="c in categories" :key="c.category" :value="c.category">
-          {{ c.category }} · {{ c.n }}
-        </option>
-      </select>
+      <Select
+        v-model="category"
+        :aria-label="t('全部分类')"
+        :options="[
+          { value: '', label: t('全部分类') },
+          ...categories.map((c: any) => ({
+            value: c.category,
+            label: `${c.category} · ${c.n}`,
+          })),
+        ]"
+        @update:model-value="load()"
+      />
       <input v-model="uploadCategory" :placeholder="t('上传到分类（可选）')" />
-      <label class="faint folder-cat"
-        ><input v-model="folderCategory" type="checkbox" />
-        {{ t("ZIP 里的文件夹名作分类") }}</label
-      >
+      <Toggle v-model="folderCategory" class="faint folder-cat">{{
+        t("ZIP 里的文件夹名作分类")
+      }}</Toggle>
       <small v-if="lastSummary" class="faint" data-testid="sticker-summary">{{
         t(
           "导入 {done} · 重复 {duplicates} · 跳过 {skipped} · 失败 {failed}",

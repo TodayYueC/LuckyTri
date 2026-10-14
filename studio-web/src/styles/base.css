@@ -1000,6 +1000,15 @@ select {
     transform 0.35s var(--spring),
     background-color 0.2s;
 }
+/* Title on its own line, the explanation under it. */
+.switches .switch > span {
+  display: grid;
+  gap: 4px;
+}
+.switches .switch small {
+  color: var(--ink-soft);
+  font-weight: 400;
+}
 .switches .switch:hover {
   transform: translateY(-3px) scale(1.008);
   background: rgb(255 255 255 / 0.64);

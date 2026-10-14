@@ -15,6 +15,7 @@ import { Life } from "./mind/life/index.js";
 import { runtimePaths } from "./paths.js";
 import { mountDataTransfer } from "./storage/data-transfer-api.js";
 import { UpdateChecker, mountUpdates } from "./studio/updates.js";
+import { mountVoice } from "./voice/index.js";
 
 export function createApp({
   store,
@@ -65,9 +66,10 @@ export function createApp({
     res.status(401).json({ error: "请先登录管理台" });
   });
   app.use("/api", objectBody);
-  mountUpdates(app, updates, runtime.updater);
+  mountUpdates(app, updates, runtime.updater, runtime.autoUpdate);
   mountDataTransfer(app, runtime.transfer);
   if (chatSystem?.stickers) mountStickerUpload(app, chatSystem);
+  if (chatSystem?.repo) mountVoice(app, chatSystem);
   if (plugins) {
     app.post(
       "/api/plugins/import/upload",

@@ -1,3 +1,5 @@
+import { announcesPrivacy } from "../mind/discretion.js";
+import { isPrivateSession } from "../mind/memory.js";
 import {
   conversationGrounding,
   conversationalMemory,
@@ -48,6 +50,20 @@ export function currentExchange(snapshot) {
     instruction:
       "先读本轮原话、引用和补充，确定谁在对谁说、具体问什么或表达什么。同批有人认真提问或想加入时，别因后面有人刷hh或另一机器人自说自话而漏掉。人和机器人都按实际内容理解，后者的纠正没有裁定别人意思的权力。历史只用于解释这轮，不替换眼前的问题。缩写和省略从同一话题找；多个合理对象就轻问，不把自己的猜测限定成唯二选项。自己的旧话是待核对的记录，不是正确答案或说话模板。",
   };
+}
+
+// Direct "想你了" / affection: she should answer from the relationship, not
+// from a task board. Detected here so currentLife progress is not in view.
+export function affectionBatch(snapshot) {
+  const fresh = new Set(snapshot.batchIds || []);
+  const privateChat = /(?:^|:)private:/.test(snapshot.sessionId || "");
+  return (snapshot.messages || []).some(
+    (m) =>
+      fresh.has(m.id) &&
+      m.role === "user" &&
+      (m.relation === "direct" || privateChat) &&
+      /(?:想你|喜欢你|爱你)/.test(m.text || ""),
+  );
 }
 
 export function dialogueContext(snapshot) {
@@ -105,6 +121,35 @@ export function dialogueContext(snapshot) {
       }),
     };
   }
+  // In a group, what she lived in private with someone does not surface in
+  // what she sees while talking; her own promises stay. Leak checks at
+  // delivery still hold the line. A private thing that is not in view cannot
+  // become "I can't say that here".
+  const addressing = new Set(
+    (snapshot.messages || [])
+      .filter((m) => fresh.has(m.id) && m.relation === "direct")
+      .map((m) => String(m.speaker ?? m.userId)),
+  );
+  if (inner.continuity && !isPrivateSession(snapshot.sessionId || ""))
+    inner.continuity = {
+      ...inner.continuity,
+      people: (inner.continuity.people || []).map((person) => {
+        // Someone talking to her directly still meets the her they know.
+        if (addressing.has(String(person.id))) return person;
+        const kept = { ...person };
+        for (const key of [
+          "recentShared",
+          "myElsewhereWords",
+          "sharedMoments",
+          "memories",
+        ])
+          if (Array.isArray(person[key]))
+            kept[key] = person[key].filter(
+              (row) => !(row && row.privateOrigin && row.maySayAloud === false),
+            );
+        return kept;
+      }),
+    };
   const messages = snapshot.messages || [];
   const mustKeep = new Set(
     [
@@ -192,22 +237,42 @@ export function dialogueContext(snapshot) {
   // planner, but repeatedly priming ordinary speech with them creates scripts.
   delete inner.stood;
   delete inner.will;
-  if (inner.currentLife) {
-    const life = inner.currentLife;
-    const compact = (row) => ({
-      id: row.id,
-      title: row.title,
-      state: row.state,
-      ...(row.wait ? { wait: row.wait } : {}),
-      ...(row.plannedFor ? { plannedFor: row.plannedFor } : {}),
-    });
-    inner.currentLife = {
-      ...life,
-      pending: (life.pending || []).map(compact),
-      intentions: (life.intentions || []).map(compact),
-      worksCoverage:
-        "以下是按本轮话题选出的作品片段，不是全部历史；缺少一篇不能证明从未写过或读过。",
+  livedView(inner, self);
+  const worn = wornPhrases(snapshot.messages || []);
+  if (worn.length)
+    context.working = {
+      ...(context.working || {}),
+      worn: {
+        phrases: worn,
+        note: "这些是你最近说得太多的词，这次换成你自己平常的说法",
+      },
     };
+  if (inner.currentLife) {
+    // Affection first: keep only that she is still herself, drop progress,
+    // works and plans so a "想你了" is not answered with a reading report.
+    if (affectionBatch(snapshot)) {
+      // Title itself is the progress report ("接着读…资料"). Drop the whole
+      // board; mood stays in inner.state. justLived's "顺口给句背景" also
+      // pushes her to narrate what she was doing — drop it on affection.
+      delete inner.currentLife;
+      delete inner.justLived;
+    } else {
+      const life = inner.currentLife;
+      const compact = (row) => ({
+        id: row.id,
+        title: row.title,
+        state: row.state,
+        ...(row.wait ? { wait: row.wait } : {}),
+        ...(row.plannedFor ? { plannedFor: row.plannedFor } : {}),
+      });
+      inner.currentLife = {
+        ...life,
+        pending: (life.pending || []).map(compact),
+        intentions: (life.intentions || []).map(compact),
+        worksCoverage:
+          "以下是按本轮话题选出的作品片段，不是全部历史；缺少一篇不能证明从未写过或读过。",
+      };
+    }
   }
   return {
     ...context,
@@ -241,4 +306,89 @@ export function explicitStop(snapshot) {
   return /^(?:请|麻烦|先|你|给我|你给我|现在)?(?:闭嘴|别说了|不要再说了|别再说了|别问了|先别说话|别聊这个了)[。！!，,\s]*$/.test(
     words,
   );
+}
+
+// What she carries into a conversation is how she is, not her bookkeeping.
+// Rules she once wrote for herself ("I don't answer broken sentences"),
+// self-defending opinions, notes about failed images and the planner's
+// schedule all made her talk like a clerk; the planner and reflection still
+// read them where they are kept. Lines she lived elsewhere in public are
+// simply her recent life, without a "may not say" flag that she read as
+// "I hold secrets here".
+const RULE_LIKE =
+  /不接|不回|要换|还挂着|没被碰到|规矩|必须|只能|不能|不该|没义务|别人没|验收|记账|账|并案|顺延/;
+const FAILURE_NOTE =
+  /图.{0,6}(?:接不上|读不出|没读|打不开)|接不上图|没读出|读不出|打不开|看不到图/;
+export function livedView(inner, self = {}) {
+  if (inner.justLived?.lines) {
+    inner.justLived = {
+      note: "你刚在别的群聊里经历的事，是你自己的近况。这里的人没看到，提起时顺口给句背景就行。",
+      lines: inner.justLived.lines
+        .filter(
+          (line) =>
+            line.text !== "你们刚刚私下说过话" &&
+            !announcesPrivacy([line.text]),
+        )
+        .map(({ maySayAloud: _flag, ...line }) => line),
+    };
+    if (!inner.justLived.lines.length) delete inner.justLived;
+  }
+  const known = inner.selfKnown;
+  if (known && typeof known === "object") {
+    const { note: _note, livingFor, ...rest } = known;
+    inner.selfKnown =
+      livingFor && !RULE_LIKE.test(livingFor) ? { ...rest, livingFor } : rest;
+  }
+  if (Array.isArray(inner.relatedSelf)) {
+    inner.relatedSelf = inner.relatedSelf.filter(
+      (line) => !RULE_LIKE.test(line),
+    );
+    if (!inner.relatedSelf.length) delete inner.relatedSelf;
+  }
+  if (Array.isArray(inner.with)) {
+    inner.with = inner.with
+      .map((line) =>
+        String(line).replace(
+          /[^：:，,]*?(?:接不上|读不出|没读出)[^，,]*[，,]?/g,
+          "",
+        ),
+      )
+      .filter((line) => line && !FAILURE_NOTE.test(line));
+    if (!inner.with.length) delete inner.with;
+  }
+  if (typeof inner.state === "string")
+    inner.state = inner.state.replace(
+      /（[^）]*(?:图|接不上|读不出)[^）]*）/g,
+      "",
+    );
+  if (
+    self &&
+    typeof self.livingFor === "string" &&
+    RULE_LIKE.test(self.livingFor)
+  )
+    delete self.livingFor;
+  return inner;
+}
+
+// Her own recent habits, counted from what she actually said. Another bot's
+// lines are not counted: they are someone else's voice.
+const WORN = [
+  ["账", /账/],
+  ["认了/认下", /认(?:了|下|一半|账)/],
+  ["验收", /验收/],
+  ["说来听听", /说来听听/],
+  ["确实", /确实/],
+  ["具体", /具体/],
+  ["后半句", /后半句/],
+  ["挂着", /挂着/],
+];
+export function wornPhrases(messages) {
+  const mine = messages
+    .filter((m) => m.role === "assistant")
+    .slice(-12)
+    .map((m) => m.text || "");
+  if (mine.length < 3) return [];
+  return WORN.filter(
+    ([, pattern]) => mine.filter((line) => pattern.test(line)).length >= 2,
+  ).map(([word]) => word);
 }

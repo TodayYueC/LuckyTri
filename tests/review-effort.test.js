@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { world, HOUR } from "./helpers/world.js";
 
-test("复审里“有没有答到提问的人”不带隐藏推理，主复审仍用配置的推理强度", async (t) => {
+test("复审里“有没有答到提问的人”不带隐藏推理，群里主复审用快速档但不降到无推理", async (t) => {
   const w = world();
   t.after(w.close);
   w.store.save({ reasoningEffort: "high" });
@@ -41,7 +41,8 @@ test("复审里“有没有答到提问的人”不带隐藏推理，主复审�
   assert.ok(reader.length > 0, "触发了读者复核");
   assert.ok(main.length > 0, "触发了主复审");
   assert.ok(reader.every((s) => s.effort === "none"));
-  assert.ok(main.every((s) => s.effort === "high"));
+  // Round 24: checking words in a group runs at the quick effort.
+  assert.ok(main.every((s) => s.effort === "low"));
 });
 
 test("模型自己不提供“none”时，读者复核照旧使用配置", async (t) => {

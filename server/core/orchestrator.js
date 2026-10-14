@@ -1,3 +1,5 @@
+import { hearingOn, transcribe, voiceSettings } from "../voice/index.js";
+import { ActionLedger } from "../actions/index.js";
 import { Stickers } from "../stickers/index.js";
 import { settleAftermath } from "../mind/aftermath.js";
 import { randomUUID } from "node:crypto";
@@ -33,6 +35,7 @@ import { TurnProcessor } from "./turn-processor.js";
 import { ReplyDelivery } from "./reply-delivery.js";
 import { Capabilities } from "./capabilities.js";
 import { Perceivers } from "./perceivers.js";
+import { LinkReader } from "../web/link-reader.js";
 
 export class ChatSystem {
   constructor(
@@ -45,6 +48,9 @@ export class ChatSystem {
       fetchQuoted,
       fetchImage,
       loadVisionImages: loadImages = loadVisionImages,
+      linkReader,
+      perform,
+      actionsFor,
       now = Date.now,
     } = {},
   ) {
@@ -73,7 +79,12 @@ export class ChatSystem {
     this.topics = new TopicTracker(this.repo);
     this.capabilities = new Capabilities(this.repo, { now });
     this.perceivers = new Perceivers(this.repo.db);
+    this.links = linkReader || new LinkReader({ db: this.repo.db, now });
     this.send = send;
+    // Her non-text actions (poke, reactions, dice…), when the channel has them.
+    this.perform = perform;
+    this.actionsFor = actionsFor;
+    this.actions = new ActionLedger(this.repo.db, { now: () => this.now() });
     this.localDemo = localDemo;
     this.fetchQuoted = fetchQuoted;
     this.fetchImage = fetchImage;
@@ -93,6 +104,13 @@ export class ChatSystem {
     );
     this.turnProcessor = new TurnProcessor(this);
     this.replyDelivery = new ReplyDelivery(this);
+  }
+  // How the channel hears a voice message, or null when that is off.
+  transcriber() {
+    const settings = voiceSettings(this.repo);
+    return hearingOn(settings)
+      ? (audio, format) => transcribe(settings, audio, format)
+      : null;
   }
   policy(session) {
     const {

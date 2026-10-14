@@ -66,7 +66,7 @@ test("另一个说法被取代或删除后不再并排；受限的不复述内�
     .get(newer);
   assert.equal(
     w.mind.memory.conflictNote(m, "group:1", w.now(), true).conflictsWith,
-    "另有一条对不上的说法（受限，不在这里复述）",
+    "另有一条对不上的说法（私下知道，开口时不提）",
   );
   w.mind.memory.update(older, { status: "deleted" });
   assert.deepEqual(w.mind.memory.conflictNote(m, "group:1", w.now()), {});

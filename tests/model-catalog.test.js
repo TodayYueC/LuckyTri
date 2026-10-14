@@ -91,6 +91,13 @@ test("模型目录使用当前厂商参数，且预算能通过校验", () => {
     "glm-5.3-flash",
     "kimi-k3",
     "kimi-k2.6",
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+    "claude-haiku-5-5",
+    "claude-fable-5-1",
+    "gemini-4-argon",
+    "gemini-3.8-flash",
+    "gemini-3.5-flash-lite",
     ...GPT_IDS,
     ...OPENCODE_ZEN_GPT_IDS,
     "qwen3.8-max",
@@ -407,4 +414,27 @@ test("空模型库没有默认档案，有模型时只保留一个默认", () =>
   );
   assert.equal(pickModel(models, "default").id, "b");
   assert.equal(pickModel([{ id: "only" }], "").id, "only");
+});
+
+test("Claude 与 Gemini 目录：协议、默认思考档与官方上限", () => {
+  const opus = find("claude-opus-5-5");
+  assert.equal(opus.vendor, "Claude");
+  assert.equal(opus.provider, "anthropic");
+  assert.equal(opus.apiProtocol, "anthropic");
+  assert.equal(opus.thinkingStyle, "anthropic-adaptive");
+  assert.equal(opus.reasoningEffort, "medium");
+  assert.equal(opus.baseUrl, "https://api.anthropic.com/v1");
+  assert.equal(opus.maxOutputTokens, 128000);
+  assert.equal(find("claude-sonnet-5-5").reasoningEffort, "high");
+  assert.equal(find("claude-haiku-5-5").reasoningEffort, "medium");
+  assert.equal(find("claude-fable-5-1").reasoningEffort, "high");
+  const argon = find("gemini-4-argon");
+  assert.equal(argon.vendor, "Gemini");
+  assert.equal(argon.provider, "gemini");
+  assert.equal(argon.model, "gemini-4-argon");
+  assert.equal(argon.omitSampling, true);
+  assert.equal(argon.reasoningEffort, "medium");
+  assert.match(argon.baseUrl, /generativelanguage\.googleapis\.com/);
+  assert.equal(find("gemini-3.8-flash").reasoningEffort, "medium");
+  assert.equal(find("gemini-3.5-flash-lite").reasoningEffort, "low");
 });

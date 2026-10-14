@@ -1,12 +1,28 @@
 import express from "express";
-import { importStickerZip, stickerZipLimitMb } from "./zip-import.js";
+import { createWriteStream, readdirSync, rmSync, statSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { importStickerZipFile, stickerZipLimitMb } from "./zip-import.js";
+import { stickerMaxMb } from "./library.js";
 
 // The owner's sticker library. Uploads arrive as raw bytes, one file per
 // request; everything else is JSON like the rest of the studio API.
 export function mountStickerUpload(app, system) {
+  // An upload cut off by a crash or restart leaves its temporary archive;
+  // anything older than an hour is from a run that is gone.
+  for (const name of readdirSync(tmpdir()))
+    if (/^luckytri-stickers-[\w-]+\.zip$/.test(name))
+      try {
+        const path = join(tmpdir(), name);
+        if (Date.now() - statSync(path).mtimeMs > 3600000) rmSync(path);
+      } catch {
+        /* Already gone or not ours to remove. */
+      }
   app.post(
     "/api/core/stickers/upload",
-    express.raw({ type: "*/*", limit: "3mb" }),
+    express.raw({ type: "*/*", limit: `${Math.ceil(stickerMaxMb()) + 1}mb` }),
     async (req, res) => {
       try {
         const item = await system.stickers.library.add(req.body, {
@@ -20,25 +36,76 @@ export function mountStickerUpload(app, system) {
       }
     },
   );
-  app.post(
-    "/api/core/stickers/upload-zip",
-    express.raw({ type: "*/*", limit: `${stickerZipLimitMb()}mb` }),
-    async (req, res) => {
-      try {
-        res.json(
-          await importStickerZip(system.stickers.library, req.body, {
-            category: String(req.query.category || ""),
-            folderCategory: req.query.folderCategory === "1",
-            queue: (id) => queueDescribe(system, id),
-          }),
-        );
-      } catch (error) {
-        res.status(400).json({ error: error.message });
-      }
-    },
-  );
+  // A big archive is streamed to a temporary file and imported entry by
+  // entry; ?job=<id> lets the studio follow the progress.
+  app.get("/api/core/stickers/upload-zip/progress", (req, res) => {
+    res.json(zipJobs.get(String(req.query.job || "")) || { phase: "unknown" });
+  });
+  app.post("/api/core/stickers/upload-zip", async (req, res) => {
+    const job = String(req.query.job || randomUUID()).slice(0, 64);
+    const limit = stickerZipLimitMb() * 1024 * 1024;
+    const declared = Number(req.headers["content-length"] || 0);
+    const state = {
+      phase: "receiving",
+      received: 0,
+      size: declared,
+      done: 0,
+      total: 0,
+    };
+    zipJobs.set(job, state);
+    const path = join(tmpdir(), `luckytri-stickers-${randomUUID()}.zip`);
+    const forget = () =>
+      setTimeout(() => zipJobs.delete(job), 10 * 60000).unref?.();
+    try {
+      if (declared > limit)
+        throw Object.assign(Error("压缩包过大"), { status: 413 });
+      await new Promise((resolve, reject) => {
+        const out = createWriteStream(path);
+        let failed = false;
+        const fail = (error) => {
+          if (failed) return;
+          failed = true;
+          out.destroy();
+          req.unpipe?.(out);
+          req.resume();
+          reject(error);
+        };
+        req.on("data", (chunk) => {
+          state.received += chunk.length;
+          if (state.received > limit)
+            fail(Object.assign(Error("压缩包过大"), { status: 413 }));
+        });
+        req.on("error", fail);
+        req.on("aborted", () => fail(Error("上传中断")));
+        out.on("error", fail);
+        out.on("finish", () => !failed && resolve());
+        req.pipe(out);
+      });
+      if (!state.received) throw Error("文件为空");
+      state.phase = "importing";
+      const summary = await importStickerZipFile(
+        system.stickers.library,
+        path,
+        {
+          category: String(req.query.category || ""),
+          folderCategory: req.query.folderCategory === "1",
+          queue: (id) => queueDescribe(system, id),
+          progress: ({ done, total }) => Object.assign(state, { done, total }),
+        },
+      );
+      Object.assign(state, { phase: "done", summary });
+      res.json(summary);
+    } catch (error) {
+      Object.assign(state, { phase: "failed", error: error.message });
+      res.status(error.status || 400).json({ error: error.message });
+    } finally {
+      forget();
+      await rm(path, { force: true }).catch(() => {});
+    }
+  });
 }
 
+const zipJobs = new Map();
 const queue = [];
 let running = false;
 let current = null; // the one being analysed right now still counts as pending

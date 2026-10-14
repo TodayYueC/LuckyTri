@@ -41,7 +41,10 @@ function kernel(now = { t: 1_800_000_000_000 }) {
 test("stickers are checked by their bytes, kept once, and found by meaning", async () => {
   const { k } = kernel();
   await assert.rejects(k.library.add(Buffer.from("not an image")), /只支持/);
-  await assert.rejects(k.library.add(Buffer.alloc(3 * 1024 * 1024, 1)), /2MB/);
+  await assert.rejects(
+    k.library.add(Buffer.alloc(5 * 1024 * 1024, 1)),
+    /单张大小上限/,
+  );
   const a = await k.library.add(await png(), {
     name: "doge.png",
     category: "无语",
@@ -314,7 +317,7 @@ test("a sticker ZIP imports every image, folders as categories, skips the rest",
     { name: "pack/readme.txt", bytes: Buffer.from("hi") },
     { name: "__MACOSX/pack/._red.png", bytes: Buffer.from("x") },
     { name: "pack/.hidden.png", bytes: red },
-    { name: "pack/big.png", bytes: Buffer.alloc(3 * 1024 * 1024, 1) },
+    { name: "pack/big.png", bytes: Buffer.alloc(5 * 1024 * 1024, 1) },
     { name: "pack/fake.png", bytes: Buffer.from("not an image") },
   ]);
   const queued = [];
@@ -326,7 +329,7 @@ test("a sticker ZIP imports every image, folders as categories, skips the rest",
   assert.equal(s.duplicates, 1);
   assert.deepEqual(s.skipped.map((x) => x.reason).sort(), [
     "不是图片",
-    "超过 2MB",
+    "超过单张大小上限",
   ]);
   assert.equal(s.failed.length, 1);
   assert.equal(queued.length, 2);

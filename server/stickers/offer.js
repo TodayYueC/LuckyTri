@@ -1,3 +1,4 @@
+import { actionNote } from "../actions/index.js";
 import { isGroupSession, parseSessionKey } from "../channels/session-key.js";
 
 // Only OneBot can carry an @ segment or a sticker image.
@@ -78,7 +79,8 @@ export function chosenSticker(raw, snapshot) {
 export function expressionInput(snapshot) {
   const stickers = snapshot.stickers || [];
   const canAt = snapshot.canAt || [];
-  if (!stickers.length && !canAt.length) return {};
+  const actions = snapshot.actionsOffered || [];
+  if (!stickers.length && !canAt.length && !actions.length) return {};
   return {
     expression: {
       ...(stickers.length
@@ -95,6 +97,7 @@ export function expressionInput(snapshot) {
               "群里要叫住某个人、让他注意到这句话时，可返回 at:[userId]，最多两人；正在一对一接话、对方自然会看到时不用@。",
           }
         : {}),
+      ...(actions.length ? actionNote(actions) : {}),
     },
   };
 }

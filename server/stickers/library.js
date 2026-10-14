@@ -3,7 +3,13 @@ import sharp from "sharp";
 import { imageMime } from "../core/image-preprocessor.js";
 import { ensureStickerSchema } from "./schema.js";
 
-export const STICKER_MAX_BYTES = 2 * 1024 * 1024;
+// One sticker, whether uploaded alone or inside an archive. 4 MB by default
+// (round 24); STICKER_MAX_MB overrides it, up to 20 MB.
+export function stickerMaxMb(env = process.env) {
+  const n = Number(env.STICKER_MAX_MB);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 20) : 4;
+}
+export const STICKER_MAX_BYTES = Math.round(stickerMaxMb() * 1024 * 1024);
 const ALLOWED = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const clip = (value, n) =>
   String(value ?? "")
@@ -39,7 +45,7 @@ export class StickerLibrary {
   async add(bytes, { name = "", category = "" } = {}) {
     if (!Buffer.isBuffer(bytes) || !bytes.length) throw Error("文件为空");
     if (bytes.length > STICKER_MAX_BYTES)
-      throw Error("表情超过 2MB，请压缩后再上传");
+      throw Error("表情超过单张大小上限，请压缩后再上传");
     const mime = imageMime(bytes);
     if (!ALLOWED.has(mime)) throw Error("只支持 PNG、JPEG、GIF、WebP 图片");
     let meta;

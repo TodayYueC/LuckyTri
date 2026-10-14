@@ -199,7 +199,9 @@ export function outputLimit(profile, stage) {
     ? profile.reasoningEfforts
     : [];
   const alwaysThinks =
-    ["glm", "kimi-effort"].includes(thinkingStyle(profile)) ||
+    ["glm", "kimi-effort", "anthropic-adaptive"].includes(
+      thinkingStyle(profile),
+    ) ||
     (efforts.length > 0 && !efforts.includes("none"));
   if (effort === "none" && alwaysThinks && !quiet) effort = "low";
   return Math.max(
@@ -348,26 +350,35 @@ function protocolRequest(body, profile, stage) {
     const maxTokens =
       body.max_completion_tokens ?? body.max_tokens ?? profile.maxOutputTokens;
     const effort = profile.reasoningEffort || "none";
-    const budgets = {
-      minimal: 1024,
-      low: 2048,
-      medium: 4096,
-      high: 8192,
-      xhigh: 12288,
-      max: 16384,
-    };
-    const thinkingBudget = Math.min(
-      budgets[effort] || 0,
-      Math.max(0, maxTokens - 1024),
-    );
-    const thinking = thinkingBudget >= 1024 && !QUIET_STAGES.has(stage);
     const output = { model: body.model, max_tokens: maxTokens, messages };
     if (system) output.system = system;
-    if (thinking)
-      output.thinking = { type: "enabled", budget_tokens: thinkingBudget };
-    else {
-      if (body.temperature !== undefined) output.temperature = body.temperature;
-      if (body.top_p !== undefined) output.top_p = body.top_p;
+    // Claude 5.x adaptive thinking: effort lives in output_config; budget_tokens
+    // is rejected. Quiet stages drop to low rather than trying to disable.
+    if (thinkingStyle(profile) === "anthropic-adaptive") {
+      const level =
+        QUIET_STAGES.has(stage) || effort === "none" ? "low" : effort;
+      output.output_config = { effort: level };
+    } else {
+      const budgets = {
+        minimal: 1024,
+        low: 2048,
+        medium: 4096,
+        high: 8192,
+        xhigh: 12288,
+        max: 16384,
+      };
+      const thinkingBudget = Math.min(
+        budgets[effort] || 0,
+        Math.max(0, maxTokens - 1024),
+      );
+      const thinking = thinkingBudget >= 1024 && !QUIET_STAGES.has(stage);
+      if (thinking)
+        output.thinking = { type: "enabled", budget_tokens: thinkingBudget };
+      else {
+        if (body.temperature !== undefined)
+          output.temperature = body.temperature;
+        if (body.top_p !== undefined) output.top_p = body.top_p;
+      }
     }
     return {
       protocol,
@@ -1155,9 +1166,13 @@ export class ModelManager {
     const endpoint = profile.baseUrl.replace(/\/$/, "") + request.path;
     const headers = {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`,
       ...request.headers,
     };
+    // Anthropic's Messages API wants x-api-key; OpenCode's anthropic route
+    // and every other provider keep Bearer.
+    if (request.protocol === "anthropic" && profile.provider === "anthropic")
+      headers["x-api-key"] = key;
+    else headers.Authorization = `Bearer ${key}`;
     // OpenCode routes and caches by this per-conversation header and expects
     // clients to identify themselves.
     if (isOpenCode(profile)) {

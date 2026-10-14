@@ -255,7 +255,12 @@ export class MemoryManager {
       for (const { m, strong } of selected)
         if (strong) access.run(cutoff, m.id);
     }
-    return selected.map(({ m, local, why }) => {
+    // In speech, what she may not disclose here does not surface at all:
+    // no placeholder, so there is nothing to announce.
+    const shown = forSpeech
+      ? selected.filter(({ m }) => this.permission(m, session, cutoff).disclose)
+      : selected;
+    return shown.map(({ m, local, why }) => {
       const age = cutoff - Number(m.created || cutoff);
       return {
         id: m.id,
@@ -302,7 +307,7 @@ export class MemoryManager {
     const allowed = this.permission(other, session, now);
     if (!allowed.recall) return {};
     if (forSpeech && !allowed.disclose)
-      return { conflictsWith: "另有一条对不上的说法（受限，不在这里复述）" };
+      return { conflictsWith: "另有一条对不上的说法（私下知道，开口时不提）" };
     const age = now - Number(other.created || now);
     const where =
       this.scopes(session).includes(other.session_id) ||

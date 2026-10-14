@@ -157,6 +157,21 @@ export function createChannelHub(store, channels, { env = process.env } = {}) {
       const channel = sessionId ? resolve(sessionId) : current();
       return channel.fetchMedia ? channel.fetchMedia(file, type) : null;
     },
+    // Her non-text actions; a channel without them offers none.
+    actions: (sessionId) => {
+      try {
+        const channel = resolve(sessionId);
+        return channel.actions ? channel.actions(sessionId) : [];
+      } catch {
+        return [];
+      }
+    },
+    perform: async (message, action) => {
+      if (message?.simulated) return {};
+      const channel = resolve(message.sessionId);
+      if (!channel.perform) throw new Error("这个渠道做不了这个动作");
+      return channel.perform(message, action);
+    },
     refreshDirectory: () => current().refreshDirectory(),
     close() {
       for (const channel of registry.values()) channel.close();

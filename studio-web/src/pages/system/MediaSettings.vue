@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Select from "../../components/ui/Select.vue";
 import { t } from "../../i18n";
 import { onMounted, ref } from "vue";
 import { api, toast } from "../../api";
@@ -91,16 +92,19 @@ async function save() {
       </label>
       <label
         >{{ t("表情识别用的模型") }}
-        <select v-model="taggingModelId">
-          <option value="">{{ t("自动选择开启视觉的模型") }}</option>
-          <option
-            v-for="m in (studio.core.models || []).filter((m: any) => m.vision)"
-            :key="m.id"
-            :value="m.id"
-          >
-            {{ m.label || m.model || m.id }}
-          </option>
-        </select>
+        <Select
+          v-model="taggingModelId"
+          :aria-label="t('表情识别用的模型')"
+          :options="[
+            { value: '', label: t('自动选择开启视觉的模型') },
+            ...(studio.core.models || [])
+              .filter((m: any) => m.vision)
+              .map((m: any) => ({
+                value: m.id,
+                label: m.label || m.model || m.id,
+              })),
+          ]"
+        />
         <small class="faint">{{
           t("每张表情只识别一次，可选一个便宜的视觉模型。")
         }}</small>

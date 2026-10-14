@@ -1,10 +1,71 @@
 // English for the System section (models, embedding, search, runtime, page shell).
 export default {
+  语音: "Voice",
+  "TA 的声音": "TA's voice",
+  "配好语音服务后才能打开。打开只是“可以”：要不要用语音、要不要唱歌，由 TA 自己决定。":
+    'Can be turned on once a speech service is set up. On only means "may": whether to speak aloud or sing is up to TA.',
+  协议: "Protocol",
+  "火山语音 v3（Agent Plan）": "Volcengine speech v3 (Agent Plan)",
+  "OpenAI 兼容 /audio/speech": "OpenAI-compatible /audio/speech",
+  服务地址: "Service URL",
+  "已保存，留空不变": "Saved; leave empty to keep",
+  "资源 ID": "Resource ID",
+  模型: "Model",
+  "TA 的音色": "TA's voice (speaker)",
+  "声音的样子（可选）": "How the voice sounds (optional)",
+  "例如：轻快、带点笑意": "e.g. light, a little smiling",
+  "允许 TA 发语音": "Allow voice messages",
+  听语音: "Hearing voice",
+  识别协议: "Recognition protocol",
+  "火山语音识别（Agent Plan）": "Volcengine speech recognition (Agent Plan)",
+  火山录音文件极速版: "Volcengine flash file recognition",
+  "OpenAI 兼容 /audio/transcriptions":
+    "OpenAI-compatible /audio/transcriptions",
+  识别服务地址: "Recognition endpoint",
+  "识别 API Key": "Recognition API key",
+  "留空则用上面的 Key": "Leave empty to use the key above",
+  识别模型: "Recognition model",
+  "识别资源 ID": "Recognition resource ID",
+  听懂别人发来的语音: "Understand voice messages sent to them",
+  "默认关闭；打开后语音会先转成文字再给 TA 看。":
+    "Off by default; when on, voice messages are transcribed before they read them.",
+  "默认关闭；没有可用语音服务时保持关闭。":
+    "Off by default; stays off without a working speech service.",
+  "正在合成…": "Synthesizing…",
+  试听: "Listen",
+  已是最新: "Up to date",
+  "发现新版本，已提醒": "New version found, notified",
+  已开始自动更新: "Automatic update started",
+  自动更新失败: "Automatic update failed",
+  "更新失败，已恢复原版本": "Update failed; the previous version was restored",
+  "一直没有合适时机，本次放弃": "No safe moment came; skipped this time",
+  "该版本失败过，不再自动重试":
+    "This version failed before; not retried automatically",
+  检查失败: "Check failed",
+  自动更新设置已保存: "Automatic update settings saved",
+  自动检查更新: "Check for updates automatically",
+  "默认关闭。到点检查；自动安装会等 TA 不在聊天、没有备份或迁移时再进行，失败自动恢复原版本。":
+    "Off by default. Checks at the set time; automatic install waits until TA is not chatting and no backup or migration is running, and restores the previous version on failure.",
+  检查方式: "Schedule",
+  每天固定时间: "Daily at a set time",
+  每隔一段时间: "Every few hours",
+  检查时间: "Check time",
+  间隔: "Interval",
+  "{hours} 小时": "{hours} hours",
+  发现新版本时: "When a new version is found",
+  只提醒: "Notify only",
+  自动安全更新: "Update safely and automatically",
+  "允许更新的时段（可空，如 02:00-06:00）":
+    "Allowed update window (optional, e.g. 02:00-06:00)",
+  "等待合适时机：{reason}": "Waiting for a safe moment: {reason}",
   "拖入或点击选择图片或 ZIP，可一次选多张":
     "Drop or click to choose images or ZIP files; several at once",
-  "PNG、JPEG、GIF、WebP，每张不超过 2MB；ZIP 会自动解压导入":
-    "PNG, JPEG, GIF, WebP, up to 2 MB each; ZIP files are unpacked and imported",
+  "PNG、JPEG、GIF、WebP，每张不超过 4MB；ZIP 会自动解压导入":
+    "PNG, JPEG, GIF, WebP, up to 4 MB each; ZIP files are unpacked and imported",
   "正在导入压缩包 {name}": "Importing archive {name}",
+  "正在上传压缩包 {name} {pct}%": "Uploading archive {name} {pct}%",
+  "正在导入压缩包 {name} {done}/{total}":
+    "Importing archive {name} {done}/{total}",
   "，{duplicates} 张重复已跳过": ", {duplicates} duplicates skipped",
   "，{skipped} 个非图片或过大已跳过":
     ", {skipped} non-images or oversized skipped",

@@ -11,8 +11,8 @@ export const ERRORS = {
     "The accepted image size must be between 1 and 64 MB",
   表情不存在: "The sticker does not exist",
   文件为空: "The file is empty",
-  "表情超过 2MB，请压缩后再上传":
-    "The sticker is larger than 2 MB; compress it and upload again",
+  "表情超过单张大小上限，请压缩后再上传":
+    "The sticker is larger than the per-sticker limit; compress it and upload again",
   "只支持 PNG、JPEG、GIF、WebP 图片":
     "Only PNG, JPEG, GIF and WebP images are supported",
   "表情尺寸应在 4096 像素以内": "Stickers must be within 4096 pixels",
@@ -254,6 +254,14 @@ export const ERRORS = {
     "Choose a session and enter a message and a valid user ID",
 
   // core
+  "只读取 http/https 链接": "Only http/https links are read",
+  这个地址不是公开网页: "This address is not a public web page",
+  跳转缺少目标: "The redirect has no target",
+  网页没有正常返回: "The page did not load normally",
+  不是网页文字内容: "This is not readable web text",
+  网页太大: "The page is too large",
+  网页读取超时: "Reading the page timed out",
+  跳转次数太多: "Too many redirects",
   "输入预算太小，无法容纳语境与人格":
     "The input budget is too small to hold the context and persona",
   "当前消息批次和引用链超过预算，请增加模型输入预算":
@@ -397,6 +405,21 @@ export const ERRORS = {
     "The plugin does not support this version of LuckyTri",
   插件网络主机无效: "A plugin network host is invalid",
   压缩包过大: "The archive is too large",
+  上传中断: "The upload was interrupted",
+  语音服务还没有配置: "The speech service is not configured yet",
+  语音协议无效: "Invalid speech protocol",
+  "语音服务地址需要 https": "The speech service address must use https",
+  语音合成没有返回声音: "Speech synthesis returned no audio",
+  语音合成失败: "Speech synthesis failed",
+  语音识别失败: "Speech recognition failed",
+  "没有找到 ffmpeg，听不了语音":
+    "ffmpeg was not found, so voice messages cannot be heard",
+  语音转换失败: "Voice conversion failed",
+  语音识别超时: "Speech recognition timed out",
+  没找到这首歌: "That song was not found",
+  语音识别还没有配置: "Speech recognition is not configured yet",
+  这个渠道做不了这个动作: "This channel cannot do that action",
+  "这个动作 QQ 这边做不了": "QQ cannot do that action",
   压缩包无法读取: "The archive could not be read",
   压缩包文件过多: "The archive has too many files",
   压缩包不能加密: "The archive must not be encrypted",

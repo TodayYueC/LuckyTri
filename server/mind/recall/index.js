@@ -629,6 +629,8 @@ export class Recall {
       if (!m) continue;
       const permission = memory.permission(m, session, now);
       if (!permission.recall) continue;
+      // Not disclosable here: in speech it does not surface at all.
+      if (forSpeech && !permission.disclose) continue;
       const local = scopes.has(m.session_id) || m.session_id === "__shared__";
       if (touch && (item.meant || item.worded || item.pinned))
         access.run(now, m.id);

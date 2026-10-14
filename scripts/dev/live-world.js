@@ -7,7 +7,15 @@ import { createStore } from "../../server/storage/store.js";
 import { MODEL_CATALOG } from "../../server/core/model-presets.js";
 import { saveEmbeddingProfile } from "../../server/knowledge/embedding-profile.js";
 
-export const AGENT_PLAN = "https://ark.cn-beijing.volces.com/api/plan/v3";
+// LIVE_PLAN=coding runs the same probes through the Coding Plan endpoint
+// (an evaluation key that only has Coding Plan quota).
+export const LIVE_CODING = process.env.LIVE_PLAN === "coding";
+export const AGENT_PLAN = LIVE_CODING
+  ? "https://ark.cn-beijing.volces.com/api/coding/v3"
+  : "https://ark.cn-beijing.volces.com/api/plan/v3";
+export const JUDGE_MODEL = LIVE_CODING
+  ? "glm-5.3-flash"
+  : "deepseek-v4.1-flash";
 
 // Characters of instruction text (system/developer) or of all text a request
 // carries, for either the chat or the responses protocol.
@@ -69,7 +77,7 @@ export function countRequests() {
 }
 
 export async function liveWorld({
-  model = "deepseek-v4.1-flash",
+  model = LIVE_CODING ? "glm-5.3-flash" : "deepseek-v4.1-flash",
   effort,
   embedding = true,
   start = "2026-09-22T10:00:00+08:00",
@@ -91,7 +99,8 @@ export async function liveWorld({
     { now: () => now },
   );
   const preset = MODEL_CATALOG.find(
-    (m) => m.id === `volcengine-agent-plan-${model}`,
+    (m) =>
+      m.id === `volcengine-${LIVE_CODING ? "coding" : "agent"}-plan-${model}`,
   );
   if (!preset) throw Error(`找不到预设 ${model}`);
   system.repo.saveConfig("models", [

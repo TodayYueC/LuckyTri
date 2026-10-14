@@ -22,8 +22,10 @@ test("刚在另一个群说过的话，换个群她知道，但不被要求说�
     /牛肉面/,
   );
   assert.equal(lived.lines[0].samePerson, false);
-  assert.equal(lived.lines[0].maySayAloud, false);
-  assert.match(lived.note, /不要主动/);
+  // A public line from another room is just her recent life: no "may not
+  // say" flag, which she read as holding secrets (round 24 real logs).
+  assert.equal(lived.lines[0].maySayAloud, undefined);
+  assert.match(lived.note, /顺口给句背景/);
   assert.match(view.inner.selfKnown.note, /同一个人/);
   // Her mood is stated once, in inner.state, not repeated as a report item.
   assert.match(view.inner.state, /心情/);
@@ -48,7 +50,7 @@ test("眼前就是刚才那个人时，接不接由她决定", (t) => {
     /牛肉面/.test(item.text),
   );
   assert.equal(line.samePerson, true);
-  assert.equal(line.maySayAloud, true);
+  assert.equal(line.maySayAloud, undefined);
 });
 
 test("私下的原话不会带进另一个群", (t) => {

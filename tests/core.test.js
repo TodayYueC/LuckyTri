@@ -251,7 +251,8 @@ test("普通群聊由注意力决定细看还是扫一眼：扫一眼不花 toke
   second.seq = system.repo.append(second);
   const look = await system.process(session, [second]);
   assert.equal(look.status, "sent");
-  assert.deepEqual(stages, ["turn", "validation", "validation"]);
+  // An open question to the whole group is not audited for completeness.
+  assert.deepEqual(stages, ["turn"]);
   assert.deepEqual(look.snapshot.batchIds, [first.seq, second.seq]);
   assert.match(look.attention.reason, /在意/);
   assert.equal(system.mind.unread(session).length, 0);
@@ -1126,6 +1127,72 @@ test("OpenCode Messages 模型映射系统提示、图像、推理预算并解�
   assert(!JSON.stringify(trace).includes("SECRET"));
   store.db.close();
 });
+test("Claude Opus 5.5 使用 Messages、x-api-key 与 output_config.effort", async () => {
+  const { repo, store } = setup();
+  let request;
+  const models = new ModelManager(repo, {
+    fetcher: async (url, options) => {
+      request = { url, options, body: JSON.parse(options.body) };
+      return {
+        ok: true,
+        json: async () => ({
+          content: [{ type: "text", text: '{"ok":true}' }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 4, output_tokens: 2 },
+        }),
+      };
+    },
+  });
+  const preset = MODEL_CATALOG.find((item) => item.id === "claude-opus-5-5");
+  const result = await models.call(
+    { ...preset, id: "claude-test", apiKey: "SECRET" },
+    "test",
+    "规则",
+    { a: 1 },
+    { calls: [] },
+  );
+  assert.deepEqual(result, { ok: true });
+  assert.equal(request.url, "https://api.anthropic.com/v1/messages");
+  assert.equal(request.options.headers["x-api-key"], "SECRET");
+  assert.equal(request.options.headers.Authorization, undefined);
+  assert.equal(request.options.headers["anthropic-version"], "2023-06-01");
+  assert.equal(request.body.model, "claude-opus-5-5");
+  assert.deepEqual(request.body.output_config, { effort: "medium" });
+  assert.equal(request.body.thinking, undefined);
+  store.db.close();
+});
+test("Gemini 走 OpenAI 兼容端点并用 Bearer", async () => {
+  const { repo, store } = setup();
+  let request;
+  const models = new ModelManager(repo, {
+    fetcher: async (url, options) => {
+      request = { url, options, body: JSON.parse(options.body) };
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: '{"ok":true}' } }],
+        }),
+      };
+    },
+  });
+  const preset = MODEL_CATALOG.find((item) => item.id === "gemini-3.8-flash");
+  const result = await models.call(
+    { ...preset, id: "gemini-test", apiKey: "SECRET" },
+    "test",
+    "规则",
+    { a: 1 },
+    { calls: [] },
+  );
+  assert.deepEqual(result, { ok: true });
+  assert.equal(
+    request.url,
+    "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+  );
+  assert.equal(request.options.headers.Authorization, "Bearer SECRET");
+  assert.equal(request.body.model, "gemini-3.8-flash");
+  assert.equal(request.body.reasoning_effort, "medium");
+  store.db.close();
+});
 test("MiMo 请求显式关闭或开启 thinking，并使用 max_completion_tokens", async () => {
   const { repo, store } = setup();
   const bodies = [];
@@ -1817,4 +1884,59 @@ test("图片字节不计入文本预算，调试记录不保存画面数据", as
   );
   assert.equal(JSON.stringify(trace).includes(payload), false);
   store.db.close();
+});
+
+test("对方发的链接她会打开：回合看到网页内容，复审也看到同一份", async () => {
+  const { store } = setup();
+  store.save({ enabled: true, apiKey: "k" });
+  const session = "private:12345";
+  store.db
+    .prepare("INSERT INTO sessions(id,name,kind,enabled) VALUES (?,?,?,1)")
+    .run(session, "测试", "private");
+  const seen = [];
+  const read = [];
+  const system = new ChatSystem(store, async () => ({ message_id: 1 }), {
+    linkReader: {
+      forMessages: async (messages) => {
+        read.push(messages.map((m) => m.text));
+        return [
+          {
+            messageId: 1,
+            url: "https://github.com/o/r",
+            site: "github.com",
+            fetched: true,
+            title: "o/r",
+            description: "游戏资源解包工具",
+            excerpt: "支持 PAK 解包",
+          },
+        ];
+      },
+    },
+    models: {
+      profile: () => defaultModel(store.settings()),
+      call: async (_profile, stage, _prompt, data) => {
+        seen.push({ stage, links: data.context?.links, guide: data.linkGuide });
+        if (stage === "validation") return { ok: true, issues: [] };
+        return {
+          choice: "speak",
+          say: "解包工具啊，PAK 都能拆",
+          targetMessageIds: [1],
+        };
+      },
+    },
+  });
+  system.repo.append(
+    msg(1, {
+      sessionId: session,
+      kind: "private",
+      text: "https://github.com/o/r 你看看",
+    }),
+  );
+  const trace = await system.process(session, system.repo.events(session));
+  assert.equal(trace.status, "sent");
+  assert.equal(read.length, 1);
+  const turn = seen.find((s) => s.stage === "turn");
+  assert.equal(turn.links[0].title, "o/r");
+  assert.match(turn.guide, /打开链接瞄到/);
+  assert(trace.steps.some((step) => /读了链接：o\/r/.test(step)));
 });

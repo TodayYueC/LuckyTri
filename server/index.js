@@ -1,3 +1,4 @@
+import { AutoUpdater } from "./studio/auto-update.js";
 import { claimServer, clearStarting } from "./startup-lock.js";
 import { createStore } from "./storage/store.js";
 import { ChatSystem } from "./core/orchestrator.js";
@@ -33,6 +34,8 @@ const channel = createChannelHub(
 const chatSystem = new ChatSystem(store, channel.send, {
   fetchQuoted: (message) => channel.fetchQuoted(message),
   fetchImage: (file, sessionId) => channel.fetchImage(file, sessionId),
+  perform: (message, action) => channel.perform(message, action),
+  actionsFor: (sessionId) => channel.actions(sessionId),
 });
 await migrateReleaseData(chatSystem.mind, { version: VERSION });
 const life = new Life(chatSystem, {
@@ -149,6 +152,25 @@ function shutdown() {
   setTimeout(finish, 3000).unref();
 }
 
+// Off unless the owner turns it on; waits until she is not talking.
+const autoUpdate = new AutoUpdater({
+  repo: chatSystem.repo,
+  checker: updates,
+  updater,
+  occupied: () => backups.running || cleanup.running || transfer.busy,
+  talking: (quietMs) =>
+    chatSystem.queue.lanes.size > 0 ||
+    Number(
+      store.db
+        .prepare(
+          "SELECT MAX(time) t FROM core_outbox WHERE status IN ('pending','sending','confirmed')",
+        )
+        .get()?.t || 0,
+    ) >
+      Date.now() - quietMs,
+  zone: () => chatSystem.mind.timeZone(),
+});
+autoUpdate.observe(updater.status());
 const app = createApp({
   auth,
   store,
@@ -163,12 +185,16 @@ const app = createApp({
     cleanup,
     transfer,
     updater,
+    autoUpdate,
     shutdown,
   },
 });
 const server = app.listen(Number(process.env.PORT || 3210), host, () => {
   console.log(`LuckyTri 管理台 http://${host}:${process.env.PORT || 3210}`);
 });
+// A sticker archive of a few hundred MB over a slow uplink takes longer than
+// Node's default five minutes per request.
+server.requestTimeout = 3600000;
 channel.attach(server, chatSystem);
 function runMaintenance() {
   store.maintenance();
@@ -188,6 +214,10 @@ function runMaintenance() {
   } catch (error) {
     console.error(`定时备份整理调度失败：${error.message}`);
   }
+  if (!updater.busy)
+    autoUpdate
+      .tick()
+      .catch((error) => console.error(`自动更新调度失败：${error.message}`));
   channel.refreshDirectory().catch(() => {});
 }
 runMaintenance();

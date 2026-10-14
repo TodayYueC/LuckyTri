@@ -310,7 +310,7 @@ test("she types one piece of text; a blank line is where she presses send", asyn
     "b",
   ]);
   const { DIALOGUE_TASK } = await import("../server/core/dialogue-contract.js");
-  assert.match(DIALOGUE_TASK, /"say":"实际说的话"/);
+  assert.match(DIALOGUE_TASK, /"say":"实际说的话/);
   assert.match(DIALOGUE_TASK, /换行就是按了发送/);
 });
 
@@ -340,7 +340,21 @@ test("keeping a private thing is not the same as claiming not to know it", async
   const { deniesPrivateKnowledge } =
     await import("../server/core/response-validator.js");
   const { PRIVATELY_KNOWN } = await import("../server/mind/discretion.js");
-  const holding = { inner: { remembered: [{ discretion: PRIVATELY_KNOWN }] } };
+  const asked = (text) => ({
+    batchIds: [1],
+    messages: [{ id: 1, text }],
+  });
+  const holding = {
+    ...asked("阿明是不是要离职了？"),
+    inner: {
+      remembered: [
+        {
+          content: "阿明下个月离职，让她别在群里说",
+          discretion: PRIVATELY_KNOWN,
+        },
+      ],
+    },
+  };
   assert.equal(deniesPrivateKnowledge(["不知道，他没跟我提过"], holding), true);
   assert.equal(
     deniesPrivateKnowledge(["这是他私聊的事，别在群里说"], holding),
@@ -348,12 +362,115 @@ test("keeping a private thing is not the same as claiming not to know it", async
   );
   assert.equal(deniesPrivateKnowledge(["不知道"], { inner: {} }), false);
   const told = {
+    ...asked("[提及成员] 他比赛赢了没"),
     inner: {
-      continuity: { people: [{ privateOrigin: true, maySayAloud: false }] },
+      continuity: {
+        people: [
+          {
+            sharedMoments: [
+              {
+                theySaid: [{ text: "[图片]" }, { text: "看绿龙比赛，赢了" }],
+                privateOrigin: true,
+                maySayAloud: false,
+              },
+            ],
+          },
+        ],
+      },
     },
   };
   assert.equal(deniesPrivateKnowledge(["真没跟我说过"], told), true);
-  assert.match(PRIVATELY_KNOWN, /不装作不知道/);
+  // Holding something private about someone is not a reason to doubt an
+  // honest "I don't know" about something else; placeholders do not count.
+  const elsewhere = { ...told, ...asked("[提及成员] [图片] 这rina干嘛呢") };
+  assert.equal(
+    deniesPrivateKnowledge(["别看我，我也不知道她这会儿在干嘛"], elsewhere),
+    false,
+  );
+  assert.match(PRIVATELY_KNOWN, /不装不知道/);
+});
+
+test("public nicknames already said aloud are not private-denial evidence", async () => {
+  const { deniesPrivateKnowledge } =
+    await import("../server/core/response-validator.js");
+  const { PRIVATELY_KNOWN } = await import("../server/mind/discretion.js");
+  // Group joked about 好感度; she also holds a private joke about it.
+  // Asking something else with 好感度 in the public trail must not force a rewrite.
+  const snap = {
+    batchIds: [3],
+    messages: [
+      { id: 1, role: "user", text: "查一下好感度哈哈" },
+      { id: 2, role: "user", text: "妹妹又来了" },
+      { id: 3, role: "user", text: "rina干嘛呢" },
+    ],
+    inner: {
+      remembered: [
+        {
+          content: "好感度查询结果：π，我答应不扣分",
+          discretion: PRIVATELY_KNOWN,
+        },
+      ],
+      relationships: {
+        known: [
+          {
+            name: "小月",
+            peerRole: "妹妹",
+            selfRole: "姐姐",
+            discretion: "open",
+          },
+        ],
+      },
+    },
+  };
+  assert.equal(
+    deniesPrivateKnowledge(["不知道她在干嘛"], snap, { targetMessageIds: [3] }),
+    false,
+  );
+  // Real private ask still counts when the secret words were not already public.
+  const resign = {
+    batchIds: [1],
+    messages: [{ id: 1, role: "user", text: "阿明是不是要离职了？" }],
+    inner: {
+      remembered: [
+        {
+          content: "阿明下个月离职，让她别在群里说",
+          discretion: PRIVATELY_KNOWN,
+        },
+      ],
+    },
+  };
+  assert.equal(
+    deniesPrivateKnowledge(["不知道，他没跟我提过"], resign, {
+      targetMessageIds: [1],
+    }),
+    true,
+  );
+});
+
+test("a correction for denying never asks her to announce keeping it", async () => {
+  const { validateResponse } =
+    await import("../server/core/response-validator.js");
+  const { PRIVATELY_KNOWN, announcesPrivacy } =
+    await import("../server/mind/discretion.js");
+  const snapshot = {
+    batchIds: [1],
+    messages: [{ id: 1, speaker: "u1", text: "阿明是不是要离职了？" }],
+    inner: {
+      remembered: [
+        {
+          content: "阿明下个月离职，让她别在群里说",
+          discretion: PRIVATELY_KNOWN,
+        },
+      ],
+    },
+  };
+  const issues = validateResponse({ bubbles: ["不知道，没听说"] }, snapshot, {
+    targetMessageIds: [1],
+  });
+  const denial = issues.find((x) => /别说自己不知道/.test(x));
+  assert.ok(denial);
+  assert.equal(announcesPrivacy([denial]), false);
+  assert.doesNotMatch(denial, /不在这|这里讲/);
 });
 
 test("a withheld private thing tells her she knows it, without its content", async () => {
@@ -365,10 +482,14 @@ test("a withheld private thing tells her she knows it, without its content", asy
   ]);
   assert.match(seen, /「阿明、离职」有关/);
   assert.doesNotMatch(seen, /下个月/);
-  assert.match(withheldMemory("别的事", ["天气"]), /受限记忆/);
+  assert.match(withheldMemory("别的事", ["天气"]), /私下知道的事/);
+  assert.doesNotMatch(
+    withheldMemory("别的事", ["天气"]),
+    /不在这里复述|不能在这儿说/,
+  );
 });
 
-test("the safe short line for a touched private thing withholds instead of hedging", async () => {
+test("a touched private thing is still recognized without an announcing fallback", async () => {
   const { holdsPrivate } = await import("../server/core/reply-delivery.js");
   const { PRIVATELY_KNOWN, withheldMemory } =
     await import("../server/mind/discretion.js");
@@ -385,7 +506,8 @@ test("the safe short line for a touched private thing withholds instead of hedgi
     holdsPrivate({
       memories: [
         {
-          content: "（关于此人的一条受限记忆；没有在这里复述具体内容的授权）",
+          content:
+            "（关于此人的一条你私下知道的事；开口时不要提起它，也不要提起你知道）",
           discretion: PRIVATELY_KNOWN,
         },
       ],
