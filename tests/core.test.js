@@ -1127,6 +1127,72 @@ test("OpenCode Messages 模型映射系统提示、图像、推理预算并解�
   assert(!JSON.stringify(trace).includes("SECRET"));
   store.db.close();
 });
+test("Claude Opus 5.5 使用 Messages、x-api-key 与 output_config.effort", async () => {
+  const { repo, store } = setup();
+  let request;
+  const models = new ModelManager(repo, {
+    fetcher: async (url, options) => {
+      request = { url, options, body: JSON.parse(options.body) };
+      return {
+        ok: true,
+        json: async () => ({
+          content: [{ type: "text", text: '{"ok":true}' }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 4, output_tokens: 2 },
+        }),
+      };
+    },
+  });
+  const preset = MODEL_CATALOG.find((item) => item.id === "claude-opus-5-5");
+  const result = await models.call(
+    { ...preset, id: "claude-test", apiKey: "SECRET" },
+    "test",
+    "规则",
+    { a: 1 },
+    { calls: [] },
+  );
+  assert.deepEqual(result, { ok: true });
+  assert.equal(request.url, "https://api.anthropic.com/v1/messages");
+  assert.equal(request.options.headers["x-api-key"], "SECRET");
+  assert.equal(request.options.headers.Authorization, undefined);
+  assert.equal(request.options.headers["anthropic-version"], "2023-06-01");
+  assert.equal(request.body.model, "claude-opus-5-5");
+  assert.deepEqual(request.body.output_config, { effort: "medium" });
+  assert.equal(request.body.thinking, undefined);
+  store.db.close();
+});
+test("Gemini 走 OpenAI 兼容端点并用 Bearer", async () => {
+  const { repo, store } = setup();
+  let request;
+  const models = new ModelManager(repo, {
+    fetcher: async (url, options) => {
+      request = { url, options, body: JSON.parse(options.body) };
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: '{"ok":true}' } }],
+        }),
+      };
+    },
+  });
+  const preset = MODEL_CATALOG.find((item) => item.id === "gemini-3.8-flash");
+  const result = await models.call(
+    { ...preset, id: "gemini-test", apiKey: "SECRET" },
+    "test",
+    "规则",
+    { a: 1 },
+    { calls: [] },
+  );
+  assert.deepEqual(result, { ok: true });
+  assert.equal(
+    request.url,
+    "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+  );
+  assert.equal(request.options.headers.Authorization, "Bearer SECRET");
+  assert.equal(request.body.model, "gemini-3.8-flash");
+  assert.equal(request.body.reasoning_effort, "medium");
+  store.db.close();
+});
 test("MiMo 请求显式关闭或开启 thinking，并使用 max_completion_tokens", async () => {
   const { repo, store } = setup();
   const bodies = [];

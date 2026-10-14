@@ -1,4 +1,4 @@
-// Checked against vendor API docs on 2026-10-11.
+// Checked against vendor API docs on 2026-10-14.
 // maxOutputTokens is the published output ceiling and maxInputTokens is what
 // the window leaves after it, so every preset passes validateModel as is.
 
@@ -38,6 +38,8 @@ const shared = {
 };
 
 const OPENAI = "https://api.openai.com/v1";
+const ANTHROPIC = "https://api.anthropic.com/v1";
+const GEMINI_OPENAI = "https://generativelanguage.googleapis.com/v1beta/openai";
 const BEDROCK = "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1";
 const OPENROUTER = "https://openrouter.ai/api/v1";
 const OPENCODE_GO = "https://opencode.ai/zen/go/v1";
@@ -612,6 +614,157 @@ export const MODEL_CATALOG = [
     omitSampling: true,
     reasoningEfforts: ["none", "high"],
     reasoningEffort: "high",
+    temperature: 1,
+    topP: 0.95,
+  },
+
+  // Anthropic Claude — Messages API, adaptive thinking + output_config.effort.
+  // Specs from https://platform.claude.com/docs/en/models/overview (2026-10-14).
+  {
+    id: "claude-opus-5-5",
+    vendor: "Claude",
+    label: "Claude Opus 5.5",
+    summary:
+      "官方推荐主力。自适应思考，默认 medium；支持看图。上下文 1M，输出上限 128K。",
+    provider: "anthropic",
+    baseUrl: ANTHROPIC,
+    model: "claude-opus-5-5",
+    apiProtocol: "anthropic",
+    ...limits(1000000, 128000),
+    ...shared,
+    vision: true,
+    thinkingStyle: "anthropic-adaptive",
+    tokenField: "max_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
+    reasoningEffort: "medium",
+    temperature: 1,
+    topP: 1,
+  },
+  {
+    id: "claude-sonnet-5-5",
+    vendor: "Claude",
+    label: "Claude Sonnet 5.5",
+    summary:
+      "速度与智力的平衡。自适应思考，默认 high；支持看图。上下文 1M，输出上限 128K。",
+    provider: "anthropic",
+    baseUrl: ANTHROPIC,
+    model: "claude-sonnet-5-5",
+    apiProtocol: "anthropic",
+    ...limits(1000000, 128000),
+    ...shared,
+    vision: true,
+    thinkingStyle: "anthropic-adaptive",
+    tokenField: "max_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
+    reasoningEffort: "high",
+    temperature: 1,
+    topP: 1,
+  },
+  {
+    id: "claude-haiku-5-5",
+    vendor: "Claude",
+    label: "Claude Haiku 5.5",
+    summary:
+      "高频低延迟。自适应思考，默认 medium；支持看图。上下文 1M，输出上限 128K。",
+    provider: "anthropic",
+    baseUrl: ANTHROPIC,
+    model: "claude-haiku-5-5",
+    apiProtocol: "anthropic",
+    ...limits(1000000, 128000),
+    ...shared,
+    vision: true,
+    thinkingStyle: "anthropic-adaptive",
+    tokenField: "max_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
+    reasoningEffort: "medium",
+    temperature: 1,
+    topP: 1,
+  },
+  {
+    id: "claude-fable-5-1",
+    vendor: "Claude",
+    label: "Claude Fable 5.1",
+    summary:
+      "长程代理与重推理。自适应思考，默认 high；支持看图。上下文 1M，输出上限 128K。",
+    provider: "anthropic",
+    baseUrl: ANTHROPIC,
+    model: "claude-fable-5-1",
+    apiProtocol: "anthropic",
+    ...limits(1000000, 128000),
+    ...shared,
+    vision: true,
+    thinkingStyle: "anthropic-adaptive",
+    tokenField: "max_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
+    reasoningEffort: "high",
+    temperature: 1,
+    topP: 1,
+  },
+  // Google Gemini — OpenAI-compatible endpoint (Bearer). Specs from
+  // https://ai.google.dev/gemini-api/docs/models (2026-10-14).
+  {
+    id: "gemini-4-argon",
+    vendor: "Gemini",
+    label: "Gemini 4 Argon",
+    summary:
+      "旗舰推理。思考档 low/medium/high，默认 medium；支持看图。统一 1M 窗口；采样参数会被忽略。",
+    provider: "gemini",
+    baseUrl: GEMINI_OPENAI,
+    model: "gemini-4-argon",
+    apiProtocol: "chat",
+    ...limits(1048576, 65536),
+    ...shared,
+    vision: true,
+    thinkingStyle: "openai",
+    tokenField: "max_completion_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["low", "medium", "high"],
+    reasoningEffort: "medium",
+    temperature: 1,
+    topP: 1,
+    timeoutMs: 900000,
+  },
+  {
+    id: "gemini-3.8-flash",
+    vendor: "Gemini",
+    label: "Gemini 3.8 Flash",
+    summary:
+      "最新 Flash。思考档 low/medium/high，默认 medium；支持看图。输入 1M，输出 64K。",
+    provider: "gemini",
+    baseUrl: GEMINI_OPENAI,
+    model: "gemini-3.8-flash",
+    apiProtocol: "chat",
+    ...limits(1048576, 65536),
+    ...shared,
+    vision: true,
+    thinkingStyle: "openai",
+    tokenField: "max_completion_tokens",
+    reasoningEfforts: ["low", "medium", "high"],
+    reasoningEffort: "medium",
+    temperature: 1,
+    topP: 0.95,
+  },
+  {
+    id: "gemini-3.5-flash-lite",
+    vendor: "Gemini",
+    label: "Gemini 3.5 Flash-Lite",
+    summary:
+      "高吞吐、低成本。思考档 low/medium/high，默认 low；支持看图。适合高频回合。",
+    provider: "gemini",
+    baseUrl: GEMINI_OPENAI,
+    model: "gemini-3.5-flash-lite",
+    apiProtocol: "chat",
+    ...limits(1048576, 65536),
+    ...shared,
+    vision: true,
+    thinkingStyle: "openai",
+    tokenField: "max_completion_tokens",
+    reasoningEfforts: ["low", "medium", "high"],
+    reasoningEffort: "low",
     temperature: 1,
     topP: 0.95,
   },
