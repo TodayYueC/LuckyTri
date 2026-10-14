@@ -1,3 +1,4 @@
+import { announcesPrivacy } from "../mind/discretion.js";
 import {
   conversationGrounding,
   conversationalMemory,
@@ -269,7 +270,11 @@ export function livedView(inner, self = {}) {
     inner.justLived = {
       note: "你刚在别的群聊里经历的事，是你自己的近况。这里的人没看到，提起时顺口给句背景就行。",
       lines: inner.justLived.lines
-        .filter((line) => line.text !== "你们刚刚私下说过话")
+        .filter(
+          (line) =>
+            line.text !== "你们刚刚私下说过话" &&
+            !announcesPrivacy([line.text]),
+        )
         .map(({ maySayAloud: _flag, ...line }) => line),
     };
     if (!inner.justLived.lines.length) delete inner.justLived;

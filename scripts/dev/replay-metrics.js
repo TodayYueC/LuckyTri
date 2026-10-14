@@ -1,3 +1,4 @@
+import { PRIVACY_ANNOUNCE } from "../../server/mind/discretion.js";
 // Metrics for replay runs (scripts/dev/replay-real.js). Reads only files in
 // REPLAY_DIR. Usage: REPLAY_DIR=... node scripts/dev/replay-metrics.js base f1
 import { readFileSync } from "node:fs";
@@ -15,8 +16,7 @@ const P = {
   clarify: /说来听听|是指.{0,20}还是|后半句|具体.{0,6}(?:讲讲|说说)|讲讲呗/,
   secrecy:
     /不在(?:这|群)[儿里]?(?:细说|说|讲|展开|点名)|不好在这|知道但|另外知道|先不展开|留一手|在别处聊|私下聊的|不在这说/,
-  privacyAnnounce:
-    /不(?:好|方便|太适合|适合|能|该)在这(?:儿|里)?(?:说|讲|发)|不在这(?:儿|里)?(?:细)?(?:说|讲)|私下(?:聊)?的(?:事)?.{0,4}(?:不能|不该)|别处聊的/,
+  privacyAnnounce: PRIVACY_ANNOUNCE,
   selfCrit: /检讨|又.{0,4}错|不像话|认错/,
 };
 const pct = (a) => {

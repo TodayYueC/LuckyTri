@@ -1,3 +1,5 @@
+import { announcesPrivacy } from "../mind/discretion.js";
+export { announcesPrivacy };
 import { typedAt } from "../stickers/offer.js";
 import { persistReply } from "./message-manager.js";
 import { PRIVATELY_KNOWN } from "../mind/discretion.js";
@@ -1083,11 +1085,6 @@ export function bookkeeping(bubbles) {
 
 // Announcing a privacy boundary ("不好在这说") is itself the leak of
 // posture: private things simply never come up (round 24 steering).
-const PRIVACY_ANNOUNCE =
-  /不(?:好|方便|太适合|适合|能|该)在这(?:儿|里)?(?:说|讲|发)|不在这(?:儿|里)?(?:细)?(?:说|讲)|私下(?:聊)?的(?:事)?.{0,4}(?:不能|不该)|别处聊的/;
-export function announcesPrivacy(bubbles) {
-  return (bubbles || []).some((line) => PRIVACY_ANNOUNCE.test(line));
-}
 
 // A clause that only announces an unseen picture, or keeps books, is cut
 // out mechanically when the rest of the reply still stands: no rewrite, no

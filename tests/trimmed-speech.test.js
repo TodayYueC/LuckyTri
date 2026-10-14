@@ -22,3 +22,20 @@ test("开头的残句和标点去掉，括号语气和普通短句保留", () =>
   assert.deepEqual(run(["好耶）"]), ["好耶）"]);
   assert.deepEqual(run(["哈哈）我来了"]), ["哈哈）我来了"]);
 });
+
+test("她自己旧话里宣布保密边界的，不再作为近况回给她", async () => {
+  const { livedView } = await import("../server/core/dialogue-context.js");
+  const inner = {
+    justLived: {
+      lines: [
+        { who: "我", text: "里面写了啥，这个我在群里先不展开" },
+        { who: "我", text: "站址一挂，我名字直接进域名了" },
+      ],
+    },
+  };
+  livedView(inner);
+  assert.deepEqual(
+    inner.justLived.lines.map((l) => l.text),
+    ["站址一挂，我名字直接进域名了"],
+  );
+});
