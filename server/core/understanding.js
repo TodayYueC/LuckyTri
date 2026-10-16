@@ -12,7 +12,7 @@ const OPINION = /我觉得|我认为|我感觉|在我看来|个人觉得|我更�
 const HEARSAY = /听说|据说|他说|她说|有人说|别人说|朋友说/;
 const COMPLAIN = /烦死|好烦|气死|无语|崩溃|受不了|服了|累死|心累|难受/;
 const QUESTION =
-  /[?？]\s*$|(?:吗|呢|么|嘛)[？?。！!~～]*$|(?:为什么|为啥|怎么|什么|哪|几点|多少|是不是|能不能|要不要|会不会|有没有|可不可以|啥意思)/;
+  /[?？]\s*$|(?:吗|呢|么|嘛)[？?。！!~～]*$|(?:为什么|为啥|怎么|什么|哪|几点|多少|是不是|能不能|要不要|会不会|有没有|可不可以|啥意思|啥)/;
 const PROPOSAL = /要不|不如|建议|一起(?:写|做|看|玩)|写个|写一部|要不要/;
 const FEELING = /想你|喜欢你|爱你|抱抱|好累|好开心|难过|生气|想哭/;
 const SHARE = /你看|给你看|发来|贴了|分享|刚写|写完了|看这个/;
@@ -167,6 +167,12 @@ const GLOSS_RULES = [
   { re: /扫不了|扫不动|扫码|二维码|(?:哪个|什么|啥)码/, glosses: ["二维码", "验证码", "邀请码"] },
   { re: /牢大/, glosses: ["老大", "老哥"] },
   { re: /hh+|哈哈哈*/, glosses: ["笑", "哈哈"] },
+  { re: /日轻/, glosses: ["日本轻小说", "轻小说"] },
+  { re: /巫师\s*三|巫师3/, glosses: ["巫师3", "巫师", "游戏"] },
+  { re: /赛博(?:朋克)?|2077/, glosses: ["赛博朋克", "2077", "游戏"] },
+  { re: /换区|区服|(?:哪个|什么|啥)区/, glosses: ["服务器", "区服", "节点"] },
+  { re: /挂了|掉线/, glosses: ["掉线", "断开", "死了"] },
+  { re: /抽卡|肝本|肝活动/, glosses: ["抽卡", "氪金", "刷本"] },
 ];
 
 export function speechGlosses(text) {
@@ -226,7 +232,7 @@ export function priorityCues(messages = [], batchIds = [], addressedIds = []) {
     if (
       !isQuestion &&
       !["proposal", "correction"].includes(hint) &&
-      !/[?？]|怎么|为什么|什么|哪|有没有|能不能|是什么|啥意思|扫不了|过不了/.test(
+      !/[?？]|怎么|为什么|什么|哪|有没有|能不能|是什么|啥意思|啥|扫不了|过不了/.test(
         value,
       )
     )
@@ -250,6 +256,25 @@ export function priorityCues(messages = [], batchIds = [], addressedIds = []) {
         addressed: false,
         why: "本轮唯一未答的问题线索",
       });
+    } else if (qs.length > 1) {
+      // No @/direct: still keep one soft priority so a lively side thread
+      // cannot erase every open question in a crowded batch.
+      const substantive = qs.filter((q) => {
+        const bare = String(q.text || "")
+          .replace(/\[提及成员\]|@\S+/g, "")
+          .replace(/^[?？\s]+|[?？\s]+$/g, "")
+          .trim();
+        return [...bare].length >= 8;
+      });
+      const pick = (substantive.length ? substantive : qs).at(-1);
+      if (pick)
+        cues.push({
+          ...pick,
+          intentHint: "question",
+          addressed: false,
+          soft: true,
+          why: "本轮最近一条未答问题线索",
+        });
     }
   }
   return cues;

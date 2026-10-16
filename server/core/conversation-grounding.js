@@ -590,7 +590,7 @@ export function understandingLedgerIssues(bubbles, snapshot, decision = {}) {
       ((m.attachments || []).some((a) =>
         ["file", "document", "html", "text"].includes(a?.type),
       ) ||
-        /\.(?:html?|txt|md)\b/i.test(m.text || "")) &&
+        /\.(?:html?|txt|md|pdf|docx?)\b/i.test(m.text || "")) &&
       !(m.perceived || []).length,
   );
   if (
@@ -696,18 +696,23 @@ function multiThreadLedgerIssues(bubbles, snapshot, decision, reply) {
   );
   const otherText = others.map((m) => m.text || "").join(" ");
   const otherOverlap = termOverlap(reply, otherText);
-  // Only when she already targeted the priority cue: require evidence she is
-  // actually on another branch. Pure paraphrase answers (你叫什么→我叫X) must
-  // not fail for zero bigram overlap.
+  const focusIsQuestion = focus.some((c) => c.intentHint === "question");
+  // Paraphrase answers (你叫什么→我叫X) often share no bigram with the cue; allow
+  // those. Still catch: riding another speaker's branch, or pure banter/vibe.
+  const banterOnly =
+    focusIsQuestion &&
+    /(?:挺配|好好笑|哈哈|hh+|表情包|玩偶|可爱|笑死)/.test(reply) &&
+    focusOverlap.length < 1 &&
+    !(point && termOverlap(reply, point).length >= 1);
   if (hit.length && otherOverlap.length >= 2) {
     issues.push(
       "回复像在接另一条支线，却没有碰到优先提问里的具体意思；先回眼前被叫到的问题。",
     );
-  } else if (
-    !hit.length &&
-    focus.some((c) => c.intentHint === "question") &&
-    focusOverlap.length < 1
-  ) {
+  } else if (hit.length && banterOnly) {
+    issues.push(
+      "已点到优先提问，但回复只接气氛玩笑；先答问题本身，再接支线。",
+    );
+  } else if (!hit.length && focusIsQuestion && focusOverlap.length < 1) {
     issues.push(
       "本轮优先提问的具体内容没有被回应；先答问题本身，再接气氛或其他支线。",
     );

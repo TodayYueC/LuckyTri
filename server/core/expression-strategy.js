@@ -93,6 +93,14 @@ export function expressionStrategy({ ownLines = [], theirLines = [] } = {}) {
       recent: `最近 ${lines.length} 句里有 ${jokeEnds} 句以括号玩笑收尾`,
       hint: "这次可以直说完就停，不一定再用括号补一刀",
     };
+  const particles = lines.filter((l) =>
+    /(?:呢|吧|呀|嘛|啦)[?？!！.。~～…]*\s*$/.test(String(l || "").trim()),
+  ).length;
+  if (particles / lines.length >= 0.45)
+    out.particleEndings = {
+      recent: `最近 ${lines.length} 句里有 ${particles} 句以呢/吧/呀/嘛收尾`,
+      hint: "这次可以换成更干脆的收束，不一定每句都拖语气词",
+    };
   if (!Object.keys(out).length) return null;
   return {
     ...out,

@@ -95,6 +95,19 @@ export function musicReadyState(settings = MUSIC_DEFAULTS, lastEvent = null) {
   return { ready: "ok", label: "已填写签名提示；以接入端实际签名服务为准" };
 }
 
+// Recent card failure / link degrade with no sign hint → skip another doomed card RPC.
+export function shouldSkipCard(settings = MUSIC_DEFAULTS, lastEvent = null, now = Date.now()) {
+  if (settings.musicSignUrl) return false;
+  if (!lastEvent) return false;
+  const at = Number(lastEvent.at || 0);
+  if (!at || now - at > 24 * 3600_000) return false;
+  return (
+    lastEvent.degraded === "link" ||
+    lastEvent.status === "failed" ||
+    lastEvent.reason === "skip_card_known_unsigned"
+  );
+}
+
 // Card first; optional link fallback. Failures are always recorded — never silent.
 export async function deliverMusicCard({
   song,
@@ -102,9 +115,31 @@ export async function deliverMusicCard({
   sendCard,
   sendText,
   record = () => {},
+  lastEvent = null,
+  now = Date.now(),
 }) {
   const link = musicLinkText(song);
   const hint = musicCardHint(settings);
+  if (settings.preferCard && shouldSkipCard(settings, lastEvent, now)) {
+    if (!settings.allowLinkFallback || settings.failClosed) {
+      const err = Error("音乐卡片已知未签名且不允许降级为链接");
+      record({
+        status: "failed",
+        degraded: null,
+        reason: "skip_card_known_unsigned",
+        hint,
+      });
+      throw err;
+    }
+    const result = await sendText(link);
+    record({
+      status: "sent",
+      degraded: "link",
+      reason: "skip_card_known_unsigned",
+      hint,
+    });
+    return { ...result, degraded: "link" };
+  }
   if (!settings.preferCard) {
     if (!settings.allowLinkFallback || settings.failClosed) {
       const err = Error("音乐卡片策略不允许发链接，且未启用卡片");

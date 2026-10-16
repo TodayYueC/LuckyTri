@@ -488,7 +488,12 @@ export class TurnProcessor {
             snapshot.batch.every(
               (m) => Array.from(String(m.text || "").trim()).length <= 8,
             );
-          const playful = peerStickers || shortBatch;
+          const laughBatch = snapshot.batch.some((m) =>
+            /哈{2,}|h{2,}|233+|笑死|草{1,3}$|乐$|绷不住|xswl/i.test(
+              String(m.text || ""),
+            ),
+          );
+          const playful = peerStickers || shortBatch || laughBatch;
           snapshot.stickers = await this.owner.stickers.candidates({
             session,
             text: batchText,

@@ -361,6 +361,7 @@ export function createOneBotChannel(
       return await deliverMusicCard({
         song,
         settings,
+        lastEvent: lastMusicEvent,
         sendCard: () =>
           rpc(...actionCall(message, { ...action, song }), 8000),
         sendText: (text) =>

@@ -546,6 +546,8 @@ export const ERRORS = {
   搜索配置格式无效: "The search settings format is invalid",
   搜索地址无效: "The search URL is invalid",
   无法保存音乐卡片设置: "Could not save music card settings",
+  音乐卡片已知未签名且不允许降级为链接:
+    "Music card is known unsigned and link fallback is not allowed",
   "音乐卡片策略不允许发链接，且未启用卡片":
     "Music card policy forbids link fallback and the card is disabled",
   "DeepSeek 搜索地址无效": "The DeepSeek search URL is invalid",

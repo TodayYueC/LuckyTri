@@ -228,7 +228,7 @@ export class Stickers {
       )
       .all(session, now - 2 * 3600000);
     // Just sent here: not again so soon. Soft penalty still covers 2h.
-    const hardCoolMs = 10 * 60000;
+    const hardCoolMs = 6 * 60000;
     const justUsed = new Set(
       recentRows
         .filter((r) => r.time > now - hardCoolMs)
@@ -272,7 +272,7 @@ export class Stickers {
       return { item, score, fit, personal };
     });
     // Playful / sticker-war turns keep a slightly lower bar so she can join.
-    const floor = qv ? (playful ? 0.18 : 0.22) : playful ? 0.05 : 0.08;
+    const floor = qv ? (playful ? 0.14 : 0.16) : playful ? 0.04 : 0.06;
     const mapOffer = ({ item, personal }, i) => ({
       ref: `s${i + 1}`,
       id: item.id,

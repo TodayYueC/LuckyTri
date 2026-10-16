@@ -174,7 +174,7 @@ export function documentsInView(snapshot) {
     );
     if (
       !files.length &&
-      !/\.(?:html?|txt|md)(?:\s|$)/i.test(message.text || "")
+      !/\.(?:html?|txt|md|pdf|docx?)(?:\s|$)/i.test(message.text || "")
     )
       continue;
     const perceived = (message.perceived || []).filter(Boolean);
