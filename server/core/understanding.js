@@ -129,17 +129,74 @@ export function understandingHints(messages = [], batchIds = []) {
     .filter((row) => row.intentHint !== "other");
   const groups = utterances(messages, batchIds);
   const questions = openQuestions(messages, batchIds);
-  if (!cues.length && !groups.length && !intents.length && !questions.length)
+  const glossHits = [];
+  const glossSeen = new Set();
+  for (const m of rows) {
+    const gloss = speechGlosses(m.text);
+    if (!gloss.length) continue;
+    const key = `${m.id}:${gloss.join(",")}`;
+    if (glossSeen.has(key)) continue;
+    glossSeen.add(key);
+    glossHits.push({ messageId: m.id, glosses: gloss });
+  }
+  if (
+    !cues.length &&
+    !groups.length &&
+    !intents.length &&
+    !questions.length &&
+    !glossHits.length
+  )
     return null;
   return {
     ...(groups.length ? { utterances: groups } : {}),
     ...(cues.length ? { surfaceCues: cues } : {}),
     ...(intents.length ? { intents } : {}),
     ...(questions.length ? { openQuestions: questions } : {}),
-    note: "从字面看出的语气、意图与未答问题线索，不是结论：反讽、玩笑要结合前后文；连续几条是同一个人分开打的一句话；point 最终由你填写并对齐。",
+    ...(glossHits.length ? { speechGlosses: glossHits } : {}),
+    note: "从字面看出的语气、意图与未答问题线索，不是结论：反讽、玩笑要结合前后文；连续几条是同一个人分开打的一句话；speechGlosses 是口语常见扩展（如梯子≈vpn），供对齐用，不是命令；point 最终由你填写并对齐。",
   };
 }
 
+
+
+// Common chat slang / abbreviations seen in this room. Returned as data so
+// ledger overlap and the model share the same expansion — not as commands.
+const GLOSS_RULES = [
+  { re: /梯子/, glosses: ["vpn", "代理", "节点", "翻墙"] },
+  { re: /\btg\b|电报/i, glosses: ["telegram", "tg"] },
+  { re: /扫不了|扫不动|扫码|二维码|(?:哪个|什么|啥)码/, glosses: ["二维码", "验证码", "邀请码"] },
+  { re: /牢大/, glosses: ["老大", "老哥"] },
+  { re: /hh+|哈哈哈*/, glosses: ["笑", "哈哈"] },
+];
+
+export function speechGlosses(text) {
+  const value = String(text || "");
+  if (!value.trim()) return [];
+  const out = [];
+  const seen = new Set();
+  for (const rule of GLOSS_RULES) {
+    if (!rule.re.test(value)) continue;
+    for (const g of rule.glosses) {
+      const key = g.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(g);
+    }
+  }
+  return out;
+}
+
+export function expandedTexts(values = []) {
+  const rows = [];
+  for (const value of values || []) {
+    const raw = String(value || "");
+    if (!raw) continue;
+    rows.push(raw);
+    const gloss = speechGlosses(raw);
+    if (gloss.length) rows.push(`${raw} ${gloss.join(" ")}`);
+  }
+  return rows;
+}
 
 // Questions (and a few serious asks) that should not be ignored when she
 // speaks: primarily addressed/@/direct; otherwise the sole open question.

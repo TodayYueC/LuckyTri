@@ -14,6 +14,7 @@ const fields = [
   "model",
   "maxUses",
   "reuseChatKey",
+  "apiStyle",
 ];
 const draft = reactive<any>({
   provider: "tavily",
@@ -26,6 +27,7 @@ const draft = reactive<any>({
   model: "deepseek-flash",
   maxUses: 1,
   reuseChatKey: false,
+  apiStyle: "anthropic",
 });
 const active = ref<any>(null),
   busy = ref(false),
@@ -229,7 +231,7 @@ onUnmounted(() => {
         <p v-if="draft.provider === 'deepseek'" class="hint">
           {{
             t(
-              "DeepSeek 原生联网（Anthropic 兼容 web_search）。按 DeepSeek Search/Token 计费；需 API Key。默认仍可用 Tavily/Brave。",
+              "DeepSeek 原生联网。默认 Anthropic 兼容 web_search；可选 Responses 接口。按 DeepSeek Search/Token 计费；需 API Key。默认搜索提供方仍是 Tavily。",
             )
           }}
         </p>
@@ -255,6 +257,16 @@ onUnmounted(() => {
             type="number"
             min="1"
             max="5"
+            :disabled="busy"
+        /></label>
+        <label v-if="draft.provider === 'deepseek'"
+          >{{ t("DeepSeek 接口")
+          }}<Select
+            v-model="draft.apiStyle"
+            :options="[
+              { value: 'anthropic', label: t('Anthropic 兼容（默认）') },
+              { value: 'responses', label: t('Responses（可选）') },
+            ]"
             :disabled="busy"
         /></label>
         <label

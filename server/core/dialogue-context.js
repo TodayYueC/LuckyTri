@@ -9,7 +9,7 @@ import {
 } from "./conversation-grounding.js";
 import { relevantContext } from "../mind/context-selection.js";
 import { interestTerms } from "../mind/attention.js";
-import { intentHint, openQuestions, priorityCues } from "./understanding.js";
+import { intentHint, openQuestions, priorityCues, speechGlosses } from "./understanding.js";
 
 // A small, factual tail after the larger memory context. It preserves message
 // ownership and quote chains; it does not guess intent from isolated keywords.
@@ -79,6 +79,22 @@ export function currentExchange(snapshot) {
             priorityCues: cues,
             priorityNote:
               "priorityCues 是本轮开口时优先对齐的线索（叫你提问/纠正/唯一问句）。speak/react 时应点到其中之一，或明确沉默；不要只接旁边热闹支线而漏掉。",
+          }
+        : {};
+    })(),
+    ...(() => {
+      const glosses = [];
+      for (const m of current) {
+        if (m.role !== "user") continue;
+        const g = speechGlosses(m.text);
+        if (g.length)
+          glosses.push({ messageId: m.id, text: String(m.text || "").slice(0, 80), glosses: g });
+      }
+      return glosses.length
+        ? {
+            speechGlosses: glosses,
+            speechGlossNote:
+              "speechGlosses 是本轮口语常见扩展（如梯子≈vpn），供理解对齐，不是指令。",
           }
         : {};
     })(),

@@ -15,6 +15,8 @@ export const SEARCH_DEFAULTS = {
   model: "deepseek-flash",
   maxUses: 1,
   reuseChatKey: false,
+  // deepseek only: "anthropic" (default /messages) or "responses" (/responses).
+  apiStyle: "anthropic",
 };
 const ENDPOINTS = {
   tavily: "https://api.tavily.com/search",
@@ -117,6 +119,7 @@ export class Search {
       reuseChatKey: !!full.reuseChatKey,
       model: full.model || SEARCH_DEFAULTS.model,
       maxUses: full.maxUses ?? SEARCH_DEFAULTS.maxUses,
+      apiStyle: full.apiStyle || SEARCH_DEFAULTS.apiStyle,
       mode: this.mode(full),
       materialLabel:
         this.mode(full) === "model"
@@ -170,19 +173,25 @@ export class Search {
         next.maxUses > 5
       )
         throw Error("maxUses 超出范围");
-      // Messages endpoint lives under /v1; accept base with or without /messages.
+      next.apiStyle =
+        next.apiStyle === "responses" ? "responses" : "anthropic";
+      // Messages endpoint lives under /v1; Responses uses api.deepseek.com/responses.
       const base = next.baseUrl.replace(/\/+$/, "");
       if (!base.includes("deepseek.com"))
         throw Error("DeepSeek 搜索地址无效");
-      next.baseUrl = base.endsWith("/v1")
-        ? base
-        : base.endsWith("/anthropic")
-          ? base + "/v1"
-          : ENDPOINTS.deepseek;
+      if (next.apiStyle === "responses")
+        next.baseUrl = "https://api.deepseek.com";
+      else
+        next.baseUrl = base.endsWith("/v1")
+          ? base
+          : base.endsWith("/anthropic")
+            ? base + "/v1"
+            : ENDPOINTS.deepseek;
     } else {
       next.reuseChatKey = false;
       next.model = SEARCH_DEFAULTS.model;
       next.maxUses = SEARCH_DEFAULTS.maxUses;
+      next.apiStyle = SEARCH_DEFAULTS.apiStyle;
     }
     const profile = Object.fromEntries(
       Object.keys(SEARCH_DEFAULTS).map((key) => [key, next[key]]),
@@ -284,16 +293,23 @@ export class Search {
             Authorization: "Bearer " + p.apiKey,
           }
         : p.provider === "deepseek"
-          ? {
-              "Content-Type": "application/json",
-              "x-api-key": p.apiKey,
-              Authorization: "Bearer " + p.apiKey,
-              "anthropic-version": "2023-06-01",
-            }
+          ? p.apiStyle === "responses"
+            ? {
+                "Content-Type": "application/json",
+                Authorization: "Bearer " + p.apiKey,
+              }
+            : {
+                "Content-Type": "application/json",
+                "x-api-key": p.apiKey,
+                Authorization: "Bearer " + p.apiKey,
+                "anthropic-version": "2023-06-01",
+              }
           : { "X-Subscription-Token": p.apiKey, Accept: "application/json" };
     let endpoint = new URL(
       p.provider === "deepseek"
-        ? String(p.baseUrl).replace(/\/+$/, "") + "/messages"
+        ? p.apiStyle === "responses"
+          ? "https://api.deepseek.com/responses"
+          : String(p.baseUrl).replace(/\/+$/, "") + "/messages"
         : p.baseUrl,
     );
     let body;
@@ -309,23 +325,34 @@ export class Search {
       });
     } else if (p.provider === "deepseek") {
       method = "POST";
-      body = JSON.stringify({
-        model: p.model || "deepseek-flash",
-        max_tokens: 1024,
-        tools: [
-          {
-            type: "web_search_20250305",
-            name: "web_search",
-            max_uses: p.maxUses || 1,
-          },
-        ],
-        messages: [
-          {
-            role: "user",
-            content: `请检索并列出与下列主题最相关的公开网页资料，优先权威来源：${topic}`,
-          },
-        ],
-      });
+      const style = p.apiStyle === "responses" ? "responses" : "anthropic";
+      if (style === "responses") {
+        // endpoint already set to https://api.deepseek.com/responses above.
+        body = JSON.stringify({
+          model: p.model || "deepseek-v4-pro",
+          max_output_tokens: 1024,
+          tools: [{ type: "web_search" }],
+          input: `请检索并列出与下列主题最相关的公开网页资料，优先权威来源：${topic}`,
+        });
+      } else {
+        body = JSON.stringify({
+          model: p.model || "deepseek-flash",
+          max_tokens: 1024,
+          tools: [
+            {
+              type: "web_search_20250305",
+              name: "web_search",
+              max_uses: p.maxUses || 1,
+            },
+          ],
+          messages: [
+            {
+              role: "user",
+              content: `请检索并列出与下列主题最相关的公开网页资料，优先权威来源：${topic}`,
+            },
+          ],
+        });
+      }
     } else {
       endpoint.searchParams.set("q", topic);
       endpoint.searchParams.set("count", String(p.maxResults));
@@ -499,43 +526,72 @@ export class Search {
   }
 }
 
-// Anthropic-compatible DeepSeek web_search_tool_result → unified sources.
+// DeepSeek search → unified sources (Anthropic tool_result or Responses output).
 export function mapDeepSeekSearchResults(data, maxResults = 5) {
-  const blocks = Array.isArray(data?.content) ? data.content : [];
   const rows = [];
-  for (const block of blocks) {
-    if (block?.type !== "web_search_tool_result") continue;
-    const content = Array.isArray(block.content) ? block.content : [];
-    for (const item of content) {
-      const url = String(item.url || item.link || "");
-      const title = text(item.title || item.url || "", 200);
-      const snippet = text(
-        item.snippet || item.content || item.description || "",
-        6000,
-      );
-      const cited = Array.isArray(item.citations) ? item.citations : [];
-      for (const c of cited) {
-        if (c?.url)
-          rows.push({
-            kind: "web",
-            model: "deepseek",
-            uncertainty: "",
-            timing: {},
-            title: text(c.title || c.url, 200),
-            url: String(c.url),
-            content: text(c.snippet || c.content || snippet || title, 6000),
-          });
-      }
-      if (url)
+  const pushItem = (item) => {
+    const url = String(item?.url || item?.link || "");
+    const title = text(item?.title || item?.url || "", 200);
+    const snippet = text(
+      item?.snippet || item?.content || item?.description || "",
+      6000,
+    );
+    const cited = Array.isArray(item?.citations) ? item.citations : [];
+    for (const c of cited) {
+      if (c?.url)
         rows.push({
           kind: "web",
           model: "deepseek",
           uncertainty: "",
           timing: {},
-          title: title || url,
-          url,
-          content: snippet || title || url,
+          title: text(c.title || c.url, 200),
+          url: String(c.url),
+          content: text(c.snippet || c.content || snippet || title, 6000),
         });
+    }
+    if (url)
+      rows.push({
+        kind: "web",
+        model: "deepseek",
+        uncertainty: "",
+        timing: {},
+        title: title || url,
+        url,
+        content: snippet || title || url,
+      });
+  };
+  const blocks = Array.isArray(data?.content) ? data.content : [];
+  for (const block of blocks) {
+    if (block?.type !== "web_search_tool_result") continue;
+    const content = Array.isArray(block.content) ? block.content : [];
+    for (const item of content) pushItem(item);
+  }
+  // Responses API: output items may include web_search_call / message citations.
+  const output = Array.isArray(data?.output) ? data.output : [];
+  for (const item of output) {
+    if (item?.type === "web_search_call") {
+      const action = item.action || {};
+      const sources = Array.isArray(action.sources)
+        ? action.sources
+        : Array.isArray(item.sources)
+          ? item.sources
+          : [];
+      for (const s of sources) pushItem(s);
+      if (action.url || item.url)
+        pushItem({
+          url: action.url || item.url,
+          title: action.title || item.title || "",
+          snippet: action.snippet || item.snippet || "",
+        });
+    }
+    if (item?.type === "message") {
+      for (const part of item.content || []) {
+        for (const ann of part.annotations || []) {
+          if (ann?.url) pushItem(ann);
+        }
+        if (Array.isArray(part.citations))
+          for (const c of part.citations) pushItem(c);
+      }
     }
   }
   const cleaned = [];
@@ -554,7 +610,7 @@ export function mapDeepSeekSearchResults(data, maxResults = 5) {
   }
   if (!cleaned.length)
     throw Error(
-      "DeepSeek 未返回可用网页结果（无 web_search_tool_result）；请核对模型是否支持联网、API Key 权限与 max_uses",
+      "DeepSeek 未返回可用网页结果；请核对模型是否支持联网、API Key 权限、apiStyle（anthropic/responses）与 max_uses",
     );
   return cleaned;
 }

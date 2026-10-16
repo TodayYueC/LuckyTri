@@ -35,6 +35,7 @@ import { TurnProcessor } from "./turn-processor.js";
 import { ReplyDelivery } from "./reply-delivery.js";
 import { Capabilities } from "./capabilities.js";
 import { Perceivers } from "./perceivers.js";
+import { registerFileTextPerceivers } from "./file-text.js";
 import { LinkReader } from "../web/link-reader.js";
 
 export class ChatSystem {
@@ -47,6 +48,7 @@ export class ChatSystem {
       localDemo = demoReply,
       fetchQuoted,
       fetchImage,
+      fetchMedia,
       loadVisionImages: loadImages = loadVisionImages,
       linkReader,
       perform,
@@ -79,6 +81,7 @@ export class ChatSystem {
     this.topics = new TopicTracker(this.repo);
     this.capabilities = new Capabilities(this.repo, { now });
     this.perceivers = new Perceivers(this.repo.db);
+    registerFileTextPerceivers(this.perceivers, () => this.fetchMedia);
     this.links = linkReader || new LinkReader({ db: this.repo.db, now });
     this.send = send;
     // Her non-text actions (poke, reactions, dice…), when the channel has them.
@@ -88,6 +91,7 @@ export class ChatSystem {
     this.localDemo = localDemo;
     this.fetchQuoted = fetchQuoted;
     this.fetchImage = fetchImage;
+    this.fetchMedia = fetchMedia;
     this.loadVisionImages = loadImages;
     this.clearEpoch = new Map();
     // A model service that was out of reach for a moment should not leave

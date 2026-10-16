@@ -34,6 +34,8 @@ const channel = createChannelHub(
 const chatSystem = new ChatSystem(store, channel.send, {
   fetchQuoted: (message) => channel.fetchQuoted(message),
   fetchImage: (file, sessionId) => channel.fetchImage(file, sessionId),
+  fetchMedia: (file, sessionId, type) =>
+    channel.fetchMedia(file, sessionId, type),
   perform: (message, action) => channel.perform(message, action),
   actionsFor: (sessionId) => channel.actions(sessionId),
 });

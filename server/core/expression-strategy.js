@@ -81,7 +81,18 @@ export function expressionStrategy({ ownLines = [], theirLines = [] } = {}) {
         recent: `你最近每句约 ${Math.round(mine)} 字，对方约 ${Math.round(avg)} 字`,
         hint: "能短就短，除非对方在要解释",
       };
+    else if (avg <= 4 && mine >= 16)
+      out.length = {
+        recent: `对方最近约 ${Math.round(avg)} 字，你约 ${Math.round(mine)} 字`,
+        hint: "对方在短回时可以更短，不必独自展开",
+      };
   }
+  const jokeEnds = lines.filter((l) => /[（(][^）)]{0,40}$/.test(String(l || "").trim())).length;
+  if (jokeEnds / lines.length >= 0.4)
+    out.jokeEndings = {
+      recent: `最近 ${lines.length} 句里有 ${jokeEnds} 句以括号玩笑收尾`,
+      hint: "这次可以直说完就停，不一定再用括号补一刀",
+    };
   if (!Object.keys(out).length) return null;
   return {
     ...out,

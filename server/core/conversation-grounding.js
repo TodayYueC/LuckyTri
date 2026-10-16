@@ -1,7 +1,7 @@
 import { botSpeakers, WRITING_TOPIC } from "./conversation-needs.js";
 import { interestTerms } from "../mind/attention.js";
 import { hasShareFrame } from "../mind/time/sharing.js";
-import { priorityCues } from "./understanding.js";
+import { priorityCues, expandedTexts } from "./understanding.js";
 
 // Shared by understanding, wording and review. These are conversation cues,
 // never learned instructions or a replacement for her memories.
@@ -568,8 +568,8 @@ export function understandingLedgerIssues(bubbles, snapshot, decision = {}) {
   // Question on the table, reply only jokes about the picture / vibes: miss.
   if (openQs.length && reply) {
     const qText = openQs.map((m) => m.text || "").join(" ");
-    const qTerms = interestTerms([qText, point]);
-    const rTerms = interestTerms([reply]);
+    const qTerms = interestTerms(expandedTexts([qText, point]));
+    const rTerms = interestTerms(expandedTexts([reply]));
     const overlap = [...qTerms].filter(
       (term) => term.length >= 2 && rTerms.has(term),
     );
@@ -622,8 +622,8 @@ function idSet(values = []) {
 }
 
 function termOverlap(left, right) {
-  const a = interestTerms([left]);
-  const b = interestTerms([right]);
+  const a = interestTerms(expandedTexts([left]));
+  const b = interestTerms(expandedTexts([right]));
   return [...a].filter((term) => term.length >= 2 && b.has(term));
 }
 

@@ -549,8 +549,8 @@ export const ERRORS = {
   "音乐卡片策略不允许发链接，且未启用卡片":
     "Music card policy forbids link fallback and the card is disabled",
   "DeepSeek 搜索地址无效": "The DeepSeek search URL is invalid",
-  "DeepSeek 未返回可用网页结果（无 web_search_tool_result）；请核对模型是否支持联网、API Key 权限与 max_uses":
-    "DeepSeek returned no usable web results (no web_search_tool_result); check web-search support, API key permissions, and max_uses",
+  "DeepSeek 未返回可用网页结果；请核对模型是否支持联网、API Key 权限、apiStyle（anthropic/responses）与 max_uses":
+    "DeepSeek returned no usable web results; check web-search support, API key permissions, apiStyle (anthropic/responses), and max_uses",
   查询用途无效: "The query purpose is invalid",
   查询只能包含资料主题: "A query may only contain the material topic",
   "搜索接口未返回有效 JSON，请核对提供方与完整搜索地址":

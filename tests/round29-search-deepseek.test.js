@@ -64,10 +64,10 @@ test("S1: DeepSeek provider mock 搜索映射结构化 results", async (t) => {
   assert.match(rows[0].content, /海面|未来/);
 });
 
-test("S1b: 无 web_search_tool_result → 明确错误", () => {
+test("S1b: 无可用网页结果 → 明确错误", () => {
   assert.throws(
     () => mapDeepSeekSearchResults({ content: [{ type: "text", text: "hi" }] }),
-    /web_search_tool_result/,
+    /未返回可用网页结果/,
   );
 });
 

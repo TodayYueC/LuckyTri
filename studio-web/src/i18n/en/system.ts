@@ -459,9 +459,12 @@ export default {
   搜索地址: "Search URL",
   独立密钥: "Separate key",
   填写该提供方的搜索密钥: "Enter this provider's search key",
-  "DeepSeek 原生联网（Anthropic 兼容 web_search）。按 DeepSeek Search/Token 计费；需 API Key。默认仍可用 Tavily/Brave。":
-    "DeepSeek native web search (Anthropic-compatible web_search). Billed by DeepSeek Search/Token; needs an API key. Tavily/Brave remain available by default.",
+  "DeepSeek 原生联网。默认 Anthropic 兼容 web_search；可选 Responses 接口。按 DeepSeek Search/Token 计费；需 API Key。默认搜索提供方仍是 Tavily。":
+    "DeepSeek native web search. Default Anthropic-compatible web_search; optional Responses API. Billed by DeepSeek Search/Token; API key required. Default search provider remains Tavily.",
   "复用已配置的 DeepSeek 对话密钥": "Reuse the configured DeepSeek chat API key",
+  "DeepSeek 接口": "DeepSeek API style",
+  "Anthropic 兼容（默认）": "Anthropic-compatible (default)",
+  "Responses（可选）": "Responses (optional)",
   搜索模型: "Search model",
   每次搜索次数上限: "Max searches per request",
   每次结果数: "Results per search",
