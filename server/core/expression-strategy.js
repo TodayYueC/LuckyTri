@@ -109,6 +109,14 @@ export function expressionStrategy({ ownLines = [], theirLines = [] } = {}) {
       recent: `最近 ${lines.length} 句里有 ${ellipsisEnds} 句以省略号收尾`,
       hint: "这次可以直接说完就停，不必用省略号装犹豫或拖音",
     };
+  const laughEnds = lines.filter((l) =>
+    /(?:哈{2,}|hh+|233+)[!！.。~～…]*\s*$/i.test(String(l || "").trim()),
+  ).length;
+  if (laughEnds / lines.length >= 0.4)
+    out.laughEndings = {
+      recent: `最近 ${lines.length} 句里有 ${laughEnds} 句以哈哈/hh收尾`,
+      hint: "这次可以换一种收束，不一定每句都用笑场收尾",
+    };
   if (!Object.keys(out).length) return null;
   return {
     ...out,
