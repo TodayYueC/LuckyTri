@@ -96,12 +96,24 @@ export class Search {
   public(provider, testedProfile) {
     const { apiKey, ...profile } = testedProfile || this.profile(provider);
     const full = { ...profile, apiKey };
+    const own = String(full.apiKey || "").trim();
     const effectiveKey =
       full.provider === "deepseek" ? this.resolveApiKey(full) : apiKey;
+    const keySource =
+      full.provider !== "deepseek"
+        ? own
+          ? "own"
+          : "none"
+        : own
+          ? "own"
+          : effectiveKey
+            ? "reuse"
+            : "none";
     const usage = this.usage(this.time.now());
     return {
       ...profile,
       hasApiKey: !!effectiveKey,
+      keySource,
       reuseChatKey: !!full.reuseChatKey,
       model: full.model || SEARCH_DEFAULTS.model,
       maxUses: full.maxUses ?? SEARCH_DEFAULTS.maxUses,
@@ -341,7 +353,9 @@ export class Search {
             data.error?.message ||
             (typeof data.error === "string" ? data.error : "");
           const hint = [401, 403].includes(response.status)
-            ? "请核对独立密钥与权限"
+            ? p.provider === "deepseek"
+              ? "请核对 DeepSeek API Key，或开启「复用对话密钥」并确认对话模型已配置 DeepSeek"
+              : "请核对独立密钥与权限"
             : [429, 432, 433].includes(response.status)
               ? "提供方限制了请求频率或账户额度"
               : [404, 405].includes(response.status)
@@ -540,7 +554,7 @@ export function mapDeepSeekSearchResults(data, maxResults = 5) {
   }
   if (!cleaned.length)
     throw Error(
-      "DeepSeek 搜索未返回可用的 web_search_tool_result 结果，请核对模型与联网权限",
+      "DeepSeek 未返回可用网页结果（无 web_search_tool_result）；请核对模型是否支持联网、API Key 权限与 max_uses",
     );
   return cleaned;
 }

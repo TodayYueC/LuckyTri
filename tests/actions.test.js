@@ -140,6 +140,9 @@ test("actions: performed once, guarded by rate, a failure leaves the words alone
   );
   assert.deepEqual(done, [poke]);
   assert.equal(actionLine(poke), "[你戳了戳阿明]");
+  // Same person: up to 2 pokes / 10 min.
+  done = await performActions(owner, { sessionId: G }, [poke], trace, G);
+  assert.equal(done.length, 1);
   done = await performActions(owner, { sessionId: G }, [poke], trace, G);
   assert.deepEqual(done, []);
   t += 11 * 60000;

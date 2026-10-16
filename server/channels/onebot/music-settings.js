@@ -69,9 +69,30 @@ export function musicLinkText(song) {
 }
 
 export function musicCardHint(settings = MUSIC_DEFAULTS) {
+  const steps =
+    "步骤：① 在接入端 WebUI 配置音乐签名服务；② 本页可填写 musicSignUrl 作为镜像提示；③ 优先发卡片，失败时可降级为链接或 failClosed 只卡片。";
   if (settings.musicSignUrl)
-    return "已填写 musicSignUrl 提示；仍失败时请核对接入端 WebUI 的音乐签名服务是否可用";
-  return "卡片失败常见原因：接入端未配置音乐签名（musicSignUrl）；可在通道设置填写提示或到接入端 WebUI 配置";
+    return `已填写 musicSignUrl 提示；仍失败时请核对接入端 WebUI 的音乐签名服务是否可用。${steps}`;
+  return `卡片失败常见原因：接入端未配置音乐签名（musicSignUrl）。${steps}`;
+}
+
+export function musicReadyState(settings = MUSIC_DEFAULTS, lastEvent = null) {
+  if (lastEvent?.degraded === "link")
+    return {
+      ready: "degraded_link",
+      label: "最近一次已降级为纯链接，请检查音乐签名",
+    };
+  if (lastEvent?.status === "failed")
+    return {
+      ready: "needs_sign",
+      label: "最近一次卡片发送失败，请配置或核对 musicSignUrl",
+    };
+  if (!settings.musicSignUrl)
+    return {
+      ready: "needs_sign",
+      label: "尚未填写 musicSignUrl 提示；接入端也需配置签名",
+    };
+  return { ready: "ok", label: "已填写签名提示；以接入端实际签名服务为准" };
 }
 
 // Card first; optional link fallback. Failures are always recorded — never silent.

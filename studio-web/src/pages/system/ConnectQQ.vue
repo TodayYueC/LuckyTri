@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { api, toast } from "../../api";
 import { ask } from "../../dialog";
 import { ago } from "../../format";
@@ -7,6 +7,7 @@ import { localized, N_, t } from "../../i18n";
 import { go, reload, studio } from "../../stores/studio";
 import type { Page } from "../../router";
 import Tabs from "../../components/ui/Tabs.vue";
+import Toggle from "../../components/ui/Toggle.vue";
 
 type Channel = "onebot" | "qqbot";
 
@@ -146,6 +147,61 @@ async function saveQqbot() {
   }
 }
 
+
+const music = reactive({
+  musicSignUrl: "",
+  preferCard: true,
+  allowLinkFallback: true,
+  failClosed: false,
+  hint: "",
+  ready: "",
+  label: "",
+  lastEvent: null as null | Record<string, unknown>,
+});
+const musicBusy = ref(false);
+
+async function loadMusic() {
+  try {
+    const data = await api("/channels/onebot/music");
+    music.musicSignUrl = String(data.musicSignUrl || "");
+    music.preferCard = data.preferCard !== false;
+    music.allowLinkFallback = data.allowLinkFallback !== false;
+    music.failClosed = Boolean(data.failClosed);
+    music.hint = String(data.hint || "");
+    music.ready = String(data.ready || "");
+    music.label = String(data.label || "");
+    music.lastEvent = data.lastEvent || null;
+  } catch (error) {
+    /* channel may be unused */
+  }
+}
+
+async function saveMusic() {
+  if (musicBusy.value) return;
+  musicBusy.value = true;
+  try {
+    const data = await api("/channels/onebot/music", "PATCH", {
+      musicSignUrl: music.musicSignUrl.trim(),
+      preferCard: music.preferCard,
+      allowLinkFallback: music.allowLinkFallback,
+      failClosed: music.failClosed,
+    });
+    music.hint = String(data.hint || "");
+    music.ready = String(data.ready || "");
+    music.label = String(data.label || "");
+    music.lastEvent = data.lastEvent || null;
+    toast(t("已保存"));
+  } catch (error) {
+    toast((error as Error).message, true);
+  } finally {
+    musicBusy.value = false;
+  }
+}
+
+onMounted(() => {
+  void loadMusic();
+});
+
 const FIX: Record<string, [Page | "", string]> = {
   token: ["", "connect"],
   credentials: ["", "connect"],
@@ -239,6 +295,54 @@ function fix(id: string) {
           >
             {{ t("改用这种方式") }}
           </button>
+        </div>
+
+        <div class="music-card" data-testid="onebot-music">
+          <h3>{{ t("网易云音乐卡片") }}</h3>
+          <p class="muted">
+            {{
+              t(
+                "分享歌曲时优先发卡片。部分接入端需在 WebUI 配置音乐签名；此处可填镜像提示并选择降级策略。",
+              )
+            }}
+          </p>
+          <p v-if="music.label" class="muted note">{{ music.label }}</p>
+          <p v-if="music.hint" class="muted note">{{ music.hint }}</p>
+          <label>
+            {{ t("musicSignUrl 提示（可选）") }}
+            <input
+              v-model="music.musicSignUrl"
+              type="url"
+              autocomplete="off"
+              :placeholder="t('接入端 WebUI 中的音乐签名服务地址')"
+              @change="studio.dirty = true"
+            />
+          </label>
+          <div class="music-toggles">
+            <Toggle v-model="music.preferCard" name="preferCard" @change="studio.dirty = true">
+              <b>{{ t("优先发卡片") }}</b>
+            </Toggle>
+            <Toggle
+              v-model="music.allowLinkFallback"
+              name="allowLinkFallback"
+              @change="studio.dirty = true"
+            >
+              <b>{{ t("卡片失败时降级为链接") }}</b>
+            </Toggle>
+            <Toggle v-model="music.failClosed" name="failClosed" @change="studio.dirty = true">
+              <b>{{ t("失败则不发（failClosed）") }}</b>
+            </Toggle>
+          </div>
+          <div class="row">
+            <button
+              class="primary"
+              type="button"
+              :disabled="musicBusy"
+              @click="saveMusic"
+            >
+              {{ t("保存音乐卡片设置") }}
+            </button>
+          </div>
         </div>
       </template>
 
@@ -506,5 +610,28 @@ function fix(id: string) {
   .connect {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+.music-card {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid color-mix(in oklab, CanvasText 12%, transparent);
+}
+.music-card h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+}
+.music-card label {
+  display: block;
+  margin: 0.75rem 0;
+}
+.music-card input[type="url"] {
+  width: 100%;
+  margin-top: 0.35rem;
+}
+.music-toggles {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.75rem 0 1rem;
 }
 </style>

@@ -981,6 +981,7 @@ export class ReplyDelivery {
       turn.actions,
       trace,
       session,
+      turn.snapshot || this.owner._lastSnapshot || null,
     );
     for (const action of done) {
       const line = actionLine(action);

@@ -7,6 +7,7 @@ import {
   musicSettings,
   saveMusicSettings,
   musicCardHint,
+  musicReadyState,
 } from "../channels/onebot/music-settings.js";
 import { FEEDBACK_LABELS } from "../core/feedback.js";
 import {
@@ -127,25 +128,40 @@ export function mountStudio(app, store, runtime, chat) {
   // whether she speaks is hers to decide.
   app.get("/api/channels/onebot/music", (req, res) => {
     const music = musicSettings(store);
+    let lastEvent = null;
+    try {
+      const row = store.db
+        .prepare("SELECT value FROM core_config WHERE id=?")
+        .get("onebot-music-last");
+      lastEvent = row ? JSON.parse(row.value) : null;
+    } catch {
+      lastEvent = null;
+    }
     res.json({
       ...music,
       hint: musicCardHint(music),
-      lastEvent: (() => {
-        try {
-          const row = store.db
-            .prepare("SELECT value FROM core_config WHERE id=?")
-            .get("onebot-music-last");
-          return row ? JSON.parse(row.value) : null;
-        } catch {
-          return null;
-        }
-      })(),
+      lastEvent,
+      ...musicReadyState(music, lastEvent),
     });
   });
   app.patch("/api/channels/onebot/music", (req, res) => {
     try {
       const music = saveMusicSettings(store, req.body || {});
-      res.json({ ...music, hint: musicCardHint(music) });
+      let lastEvent = null;
+      try {
+        const row = store.db
+          .prepare("SELECT value FROM core_config WHERE id=?")
+          .get("onebot-music-last");
+        lastEvent = row ? JSON.parse(row.value) : null;
+      } catch {
+        lastEvent = null;
+      }
+      res.json({
+        ...music,
+        hint: musicCardHint(music),
+        lastEvent,
+        ...musicReadyState(music, lastEvent),
+      });
     } catch (error) {
       res.status(400).json({ error: error.message });
     }

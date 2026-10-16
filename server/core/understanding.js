@@ -139,3 +139,61 @@ export function understandingHints(messages = [], batchIds = []) {
     note: "从字面看出的语气、意图与未答问题线索，不是结论：反讽、玩笑要结合前后文；连续几条是同一个人分开打的一句话；point 最终由你填写并对齐。",
   };
 }
+
+
+// Questions (and a few serious asks) that should not be ignored when she
+// speaks: primarily addressed/@/direct; otherwise the sole open question.
+export function priorityCues(messages = [], batchIds = [], addressedIds = []) {
+  const fresh = new Set(batchIds);
+  const addressed = new Set(addressedIds || []);
+  for (const id of addressedIds || []) {
+    addressed.add(id);
+    const n = Number(id);
+    if (Number.isFinite(n)) addressed.add(n);
+  }
+  const rows = messages.filter((m) => fresh.has(m.id) && m.role === "user");
+  const cues = [];
+  for (const m of rows) {
+    const value = String(m.text || "").trim();
+    if (!value) continue;
+    const bare = value.replace(/\[提及成员\]|@\S+/g, "").trim();
+    if (CLOSING.test(bare)) continue;
+    const isDirect =
+      m.relation === "direct" ||
+      addressed.has(m.id) ||
+      addressed.has(Number(m.id)) ||
+      /\[提及成员\]|@我\b/.test(value);
+    if (!isDirect) continue;
+    const hint = intentHint(value);
+    const isQuestion = hint === "question" || QUESTION.test(value);
+    if (
+      !isQuestion &&
+      !["proposal", "correction"].includes(hint) &&
+      !/[?？]|怎么|为什么|什么|哪|有没有|能不能|是什么|啥意思|扫不了|过不了/.test(
+        value,
+      )
+    )
+      continue;
+    cues.push({
+      messageId: m.id,
+      speaker: m.speaker,
+      name: m.name,
+      text: value.slice(0, 120),
+      intentHint: isQuestion ? "question" : hint,
+      addressed: true,
+      why: isQuestion ? "有人叫你并在提问" : "有人叫你提出请求或纠正",
+    });
+  }
+  if (!cues.length) {
+    const qs = openQuestions(messages, batchIds);
+    if (qs.length === 1) {
+      cues.push({
+        ...qs[0],
+        intentHint: "question",
+        addressed: false,
+        why: "本轮唯一未答的问题线索",
+      });
+    }
+  }
+  return cues;
+}

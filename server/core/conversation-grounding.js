@@ -1,6 +1,7 @@
 import { botSpeakers, WRITING_TOPIC } from "./conversation-needs.js";
 import { interestTerms } from "../mind/attention.js";
 import { hasShareFrame } from "../mind/time/sharing.js";
+import { priorityCues } from "./understanding.js";
 
 // Shared by understanding, wording and review. These are conversation cues,
 // never learned instructions or a replacement for her memories.
@@ -603,6 +604,114 @@ export function understandingLedgerIssues(bubbles, snapshot, decision = {}) {
       "文件内容没有读到；不要把猜测说成文件主题，按没打开接话或只提文件名。",
     );
 
+  if (["speak", "react"].includes(choice) && !snapshot.initiative && reply) {
+    issues.push(...multiThreadLedgerIssues(bubbles, snapshot, decision, reply));
+  }
+
+  return issues;
+}
+
+function idSet(values = []) {
+  const out = new Set();
+  for (const value of values || []) {
+    out.add(value);
+    const n = Number(value);
+    if (Number.isFinite(n)) out.add(n);
+  }
+  return out;
+}
+
+function termOverlap(left, right) {
+  const a = interestTerms([left]);
+  const b = interestTerms([right]);
+  return [...a].filter((term) => term.length >= 2 && b.has(term));
+}
+
+// Multi-thread: once she speaks, do not leave an addressed/priority question
+// unanswered while chatting another lively branch.
+function multiThreadLedgerIssues(bubbles, snapshot, decision, reply) {
+  const issues = [];
+  const cues = priorityCues(
+    snapshot.messages || [],
+    snapshot.batchIds || [],
+    snapshot.addressed?.messageIds || [],
+  );
+  if (!cues.length) return issues;
+
+  const targets = idSet([
+    ...(decision.targetMessageIds || []),
+    ...(decision.understanding?.messageIds || []),
+  ]);
+  const point = String(decision.understanding?.point || "").trim();
+
+  // Hollow point: claims understanding without any concrete cue terms.
+  if (
+    decision.understanding &&
+    point &&
+    point.length < 24 &&
+    /^(?:对方|有人|他|她)?(?:在问|问了|说了|想知道|的意思)/.test(point) &&
+    termOverlap(
+      point,
+      cues.map((c) => c.text).join(" "),
+    ).length === 0
+  )
+    issues.push(
+      "understanding.point 不能只写「在问/想知道」这类空壳，须写清对方具体问的是什么。",
+    );
+
+  const hit = cues.filter(
+    (c) => targets.has(c.messageId) || targets.has(Number(c.messageId)),
+  );
+  const cueText = cues.map((c) => c.text).join(" ");
+  const cueOverlap = termOverlap(reply, cueText);
+
+  if (!hit.length && cueOverlap.length < 1) {
+    issues.push(
+      "本轮有优先要对齐的提问或叫你的线索；开口时应点到该条并回应其内容，不要只接旁边热闹支线。",
+    );
+    return issues;
+  }
+
+  // Targeted a priority cue but answered a different branch's terms.
+  const focus = hit.length ? hit : cues;
+  const focusText = focus.map((c) => c.text).join(" ");
+  const focusOverlap = termOverlap(reply, focusText);
+  if (focusOverlap.length >= 1) return issues;
+
+  // Aligning with understanding.point counts as answering the cue.
+  if (point && termOverlap(reply, point).length >= 1) return issues;
+
+  const batch = new Set(snapshot.batchIds || []);
+  const focusSpeakers = new Set(focus.map((c) => String(c.speaker)));
+  // Rival branch = other speakers' lines in the batch (true multi-thread).
+  // Same-speaker unread history in a private/1:1 batch is context, not a rival.
+  const others = (snapshot.messages || []).filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) &&
+      m.role === "user" &&
+      !focus.some(
+        (c) => c.messageId === m.id || Number(c.messageId) === Number(m.id),
+      ) &&
+      !focusSpeakers.has(String(m.speaker)),
+  );
+  const otherText = others.map((m) => m.text || "").join(" ");
+  const otherOverlap = termOverlap(reply, otherText);
+  // Only when she already targeted the priority cue: require evidence she is
+  // actually on another branch. Pure paraphrase answers (你叫什么→我叫X) must
+  // not fail for zero bigram overlap.
+  if (hit.length && otherOverlap.length >= 2) {
+    issues.push(
+      "回复像在接另一条支线，却没有碰到优先提问里的具体意思；先回眼前被叫到的问题。",
+    );
+  } else if (
+    !hit.length &&
+    focus.some((c) => c.intentHint === "question") &&
+    focusOverlap.length < 1
+  ) {
+    issues.push(
+      "本轮优先提问的具体内容没有被回应；先答问题本身，再接气氛或其他支线。",
+    );
+  }
   return issues;
 }
 

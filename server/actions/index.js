@@ -36,8 +36,8 @@ const NOTES = {
 
 // Guards against a burst, per session, in her time.
 const LIMITS = {
-  poke: { per: 10 * 60000, max: 1, key: "to" },
-  react: { per: 3600000, max: 6 },
+  poke: { per: 10 * 60000, max: 2, key: "to" },
+  react: { per: 3600000, max: 8 },
   dice: { per: 3600000, max: 3 },
   rps: { per: 3600000, max: 3 },
   recall: { per: 3600000, max: 2 },
@@ -63,9 +63,11 @@ export class ActionLedger {
       )
       .get(session, type, since, ...(target ? [String(target)] : [])).n;
   }
-  allowed(session, type, target) {
+  allowed(session, type, target, { reciprocalPoke = false } = {}) {
     const limit = LIMITS[type];
     if (!limit) return true;
+    // Someone just poked her: one reply-poke to that person skips the cap.
+    if (type === "poke" && reciprocalPoke) return true;
     return (
       this.count(
         session,
@@ -112,7 +114,7 @@ export function actionNote(offered) {
   return {
     actions: offered.map((type) => NOTES[type]),
     actionsNote:
-      '想做时返回 actions:[{"type":"…",…}]，最多两个；不做就不写。和说话一样由你决定，不用为用而用。',
+      '想做时返回 actions:[{"type":"…",…}]，最多两个；合适就用，不做就不写。',
   };
 }
 
@@ -154,7 +156,20 @@ export function chosenActions(raw, snapshot) {
     } else if (item.type === "poke") {
       const p = people.get(String(item.to ?? ""));
       if (!p) continue;
-      out.push({ type: "poke", to: p.userId, name: p.name || "" });
+      const batch = new Set(snapshot.batchIds || []);
+      const reciprocal = (snapshot.messages || []).some(
+        (m) =>
+          m.poke &&
+          m.role === "user" &&
+          String(m.speaker) === String(p.userId) &&
+          (!batch.size || batch.has(m.id) || batch.has(Number(m.id))),
+      );
+      out.push({
+        type: "poke",
+        to: p.userId,
+        name: p.name || "",
+        ...(reciprocal ? { reciprocal: true } : {}),
+      });
     } else if (item.type === "music") {
       const query = String(item.query || "")
         .trim()
@@ -215,14 +230,24 @@ export function actionLine(action) {
 
 // Runs the non-text actions; a failed one is noted and dropped, the words
 // still go out.
-export async function performActions(owner, message, actions, trace, session) {
+export async function performActions(
+  owner,
+  message,
+  actions,
+  trace,
+  session,
+  snapshot = null,
+) {
   const done = [];
   if (!owner.perform) return done;
   for (const action of actions) {
     if (action.type === "reply" || action.type === "voice") continue;
+    const reciprocalPoke = action.type === "poke" && !!action.reciprocal;
     if (
       owner.actions &&
-      !owner.actions.allowed(session, action.type, action.to)
+      !owner.actions.allowed(session, action.type, action.to, {
+        reciprocalPoke,
+      })
     ) {
       trace.steps.push(`动作「${action.type}」这段时间做得够多了，这次不做`);
       continue;

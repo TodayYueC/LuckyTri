@@ -98,4 +98,13 @@ export default {
   会话名称: "Chat name",
   "官方机器人平台不提供群名称，可以在这里自己起一个":
     "The official bot platform does not provide group names, so you can name it yourself here",
+  网易云音乐卡片: "NetEase music card",
+  "分享歌曲时优先发卡片。部分接入端需在 WebUI 配置音乐签名；此处可填镜像提示并选择降级策略。":
+    "Prefer cards when sharing songs. Some clients need a music sign service in their WebUI; you can mirror the URL here and choose fallback policy.",
+  "musicSignUrl 提示（可选）": "musicSignUrl hint (optional)",
+  "接入端 WebUI 中的音乐签名服务地址": "Music sign service URL from the client WebUI",
+  优先发卡片: "Prefer card",
+  卡片失败时降级为链接: "Fall back to a link if the card fails",
+  "失败则不发（failClosed）": "Fail closed (no link fallback)",
+  保存音乐卡片设置: "Save music card settings",
 } as Record<string, string>;
