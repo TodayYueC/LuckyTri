@@ -24,7 +24,7 @@ export function roomBusyUnrelated(
       now - e.time <= windowMs &&
       !e.simulated,
   );
-  if (recent.length < 2) return false;
+  if (!recent.length) return false;
   const workCue = [work.title, work.summary, work.project_title]
     .filter(Boolean)
     .join(" ");
@@ -42,6 +42,15 @@ export function roomBusyUnrelated(
     )
   )
     return false;
+  // A lone sticker/image/short burst is already a bad moment to dump a piece.
+  // A single substantive line (e.g. "写完后和我聊聊") is not automatic defer.
+  if (recent.length < 2) {
+    const bare = texts[0].replace(/\[(?:提及成员)\]/g, "").trim();
+    return (
+      /^(?:\[(?:图片|表情|媒体)\]\s*)+$/.test(bare) ||
+      Array.from(bare).length <= 2
+    );
+  }
   const imageHeavy =
     texts.filter((t) => {
       const bare = t.replace(/\[(?:提及成员)\]/g, "").trim();
@@ -250,7 +259,21 @@ export class Sharing {
         .run(reason, life.now() + 60 * 60000, share.id);
       return { status: "waiting", reason };
     }
-    // Room already busy with something else: wait rather than barge in.
+    // Private review/compose first; only the actual send waits on the room.
+    if (share.delivery_kind === "report" && !parse(share.report, []).length) {
+      try {
+        return await this.review(life, share, work);
+      } catch (error) {
+        const reason = text(error.message, 180);
+        this.db
+          .prepare(
+            "UPDATE mind_time_shares SET reason=?,next_step=? WHERE id=? AND state='pending'",
+          )
+          .run(reason, life.now() + 15 * 60000, share.id);
+        return { status: "waiting", reason };
+      }
+    }
+    // Room busy with something else: defer delivery, do not barge in.
     if (share.delivery_kind === "report") {
       const recent = life.repo.recentEvents(share.session_id, 40, {
         simulated: false,
@@ -279,22 +302,15 @@ export class Sharing {
         return { status: "waiting", reason };
       }
     }
-    if (share.delivery_kind === "report" && !parse(share.report, []).length) {
-      try {
-        return await this.review(life, share, work);
-      } catch (error) {
-        const reason = text(error.message, 180);
-        this.db
-          .prepare(
-            "UPDATE mind_time_shares SET reason=?,next_step=? WHERE id=? AND state='pending'",
-          )
-          .run(reason, life.now() + 15 * 60000, share.id);
-        return { status: "waiting", reason };
-      }
-    }
     const task = this.time.tasks.get(work.task_id),
       trace = life.repo.trace(share.session_id, "live");
-    trace.decision = { targetMessageIds: [] };
+    // Empty targets + shareDelivery: this is a framed share, not a reply to
+    // the last sticker war line.
+    trace.decision = {
+      targetMessageIds: [],
+      shareDelivery: true,
+      shareKind: share.delivery_kind || "report",
+    };
     const report = parse(share.report, []),
       chars = Array.from(work.content),
       bubbles = [];
@@ -342,6 +358,8 @@ export class Sharing {
       artifact: {
         workId: work.id,
         version: work.version,
+        shareDelivery: true,
+        shareKind: share.delivery_kind || "report",
         domain:
           kind === "game"
             ? "reference"

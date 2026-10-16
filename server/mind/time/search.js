@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { dayKey, hasCredential, text } from "../util.js";
 import { describeNetworkError, sanitizeDetail } from "../../core/network.js";
 import { modelMaterial, MODEL_MATERIAL_LABEL } from "./model-material.js";
+import { storedModels } from "../../core/model-manager.js";
 export const SEARCH_DEFAULTS = {
   enabled: true,
   provider: "tavily",
@@ -10,11 +11,17 @@ export const SEARCH_DEFAULTS = {
   timeoutMs: 20000,
   maxResults: 5,
   dailyLimit: 12,
+  // DeepSeek Anthropic-compatible web search (ignored by tavily/brave).
+  model: "deepseek-flash",
+  maxUses: 1,
+  reuseChatKey: false,
 };
 const ENDPOINTS = {
   tavily: "https://api.tavily.com/search",
   brave: "https://api.search.brave.com/res/v1/web/search",
+  deepseek: "https://api.deepseek.com/anthropic/v1",
 };
+export const SEARCH_PROVIDERS = Object.keys(ENDPOINTS);
 export const SEARCH_TEST_TOPIC = "ATRI 游戏 资料简介";
 export class Search {
   constructor(time) {
@@ -33,7 +40,11 @@ export class Search {
     this.wake();
   }
   mode(profile = this.profile()) {
-    return profile.enabled && profile.apiKey ? "web" : "model";
+    const key =
+      profile.provider === "deepseek"
+        ? this.resolveApiKey(profile)
+        : profile.apiKey;
+    return profile.enabled && key ? "web" : "model";
   }
   wake() {
     const now = this.time.now();
@@ -66,17 +77,41 @@ export class Search {
     // Activity reads and connection tests must use the same credential bytes.
     return { ...profile, apiKey: profile.apiKey.trim() };
   }
+  // Optional: reuse a DeepSeek chat model key when search-profile has none.
+  resolveApiKey(profile = this.profile()) {
+    const own = String(profile.apiKey || "").trim();
+    if (own) return own;
+    if (profile.provider !== "deepseek" || !profile.reuseChatKey) return "";
+    const models = storedModels(this.time.mind.repo) || [];
+    const hit = models.find((m) => {
+      const provider = String(m.provider || "").toLowerCase();
+      const base = String(m.baseUrl || "").toLowerCase();
+      return (
+        !!m.apiKey &&
+        (provider === "deepseek" || base.includes("api.deepseek.com"))
+      );
+    });
+    return hit?.apiKey ? String(hit.apiKey).trim() : "";
+  }
   public(provider, testedProfile) {
     const { apiKey, ...profile } = testedProfile || this.profile(provider);
+    const full = { ...profile, apiKey };
+    const effectiveKey =
+      full.provider === "deepseek" ? this.resolveApiKey(full) : apiKey;
     const usage = this.usage(this.time.now());
     return {
       ...profile,
-      hasApiKey: !!apiKey,
-      mode: this.mode({ ...profile, apiKey }),
+      hasApiKey: !!effectiveKey,
+      reuseChatKey: !!full.reuseChatKey,
+      model: full.model || SEARCH_DEFAULTS.model,
+      maxUses: full.maxUses ?? SEARCH_DEFAULTS.maxUses,
+      mode: this.mode(full),
       materialLabel:
-        this.mode({ ...profile, apiKey }) === "model"
+        this.mode(full) === "model"
           ? MODEL_MATERIAL_LABEL
-          : "联网检索资料",
+          : full.provider === "deepseek"
+            ? "DeepSeek 原生联网"
+            : "联网检索资料",
       used: usage.used,
       usage,
     };
@@ -112,6 +147,31 @@ export class Search {
     ])
       if (!Number.isInteger(next[key]) || next[key] < min || next[key] > max)
         throw Error(key + " 超出范围");
+    if (provider === "deepseek") {
+      if (typeof next.reuseChatKey !== "boolean") next.reuseChatKey = false;
+      if (typeof next.model !== "string" || !next.model.trim())
+        next.model = SEARCH_DEFAULTS.model;
+      next.model = next.model.trim().slice(0, 80);
+      if (
+        !Number.isInteger(next.maxUses) ||
+        next.maxUses < 1 ||
+        next.maxUses > 5
+      )
+        throw Error("maxUses 超出范围");
+      // Messages endpoint lives under /v1; accept base with or without /messages.
+      const base = next.baseUrl.replace(/\/+$/, "");
+      if (!base.includes("deepseek.com"))
+        throw Error("DeepSeek 搜索地址无效");
+      next.baseUrl = base.endsWith("/v1")
+        ? base
+        : base.endsWith("/anthropic")
+          ? base + "/v1"
+          : ENDPOINTS.deepseek;
+    } else {
+      next.reuseChatKey = false;
+      next.model = SEARCH_DEFAULTS.model;
+      next.maxUses = SEARCH_DEFAULTS.maxUses;
+    }
     const profile = Object.fromEntries(
       Object.keys(SEARCH_DEFAULTS).map((key) => [key, next[key]]),
     );
@@ -186,29 +246,48 @@ export class Search {
       /\b\d{5,}\b|(?:群|私聊|账号)\s*[:：=]/.test(topic)
     )
       throw Error("查询只能包含资料主题");
-    const p = profile,
-      id = Number(
-        this.db
-          .prepare(
-            "INSERT INTO mind_time_searches(created,provider,query,state,purpose) VALUES (?,?,?,'running',?)",
-          )
-          .run(
-            now,
-            this.mode(p) === "model" ? "model" : p.provider,
-            topic,
-            purpose,
-          ).lastInsertRowid,
-      );
+    const p = {
+      ...profile,
+      apiKey:
+        profile.provider === "deepseek"
+          ? this.resolveApiKey(profile)
+          : profile.apiKey,
+    };
+    const id = Number(
+      this.db
+        .prepare(
+          "INSERT INTO mind_time_searches(created,provider,query,state,purpose) VALUES (?,?,?,'running',?)",
+        )
+        .run(
+          now,
+          this.mode(profile) === "model" ? "model" : p.provider,
+          topic,
+          purpose,
+        ).lastInsertRowid,
+    );
     const headers =
       p.provider === "tavily"
         ? {
             "Content-Type": "application/json",
             Authorization: "Bearer " + p.apiKey,
           }
-        : { "X-Subscription-Token": p.apiKey, Accept: "application/json" };
-    const endpoint = new URL(p.baseUrl);
+        : p.provider === "deepseek"
+          ? {
+              "Content-Type": "application/json",
+              "x-api-key": p.apiKey,
+              Authorization: "Bearer " + p.apiKey,
+              "anthropic-version": "2023-06-01",
+            }
+          : { "X-Subscription-Token": p.apiKey, Accept: "application/json" };
+    let endpoint = new URL(
+      p.provider === "deepseek"
+        ? String(p.baseUrl).replace(/\/+$/, "") + "/messages"
+        : p.baseUrl,
+    );
     let body;
-    if (p.provider === "tavily")
+    let method = "GET";
+    if (p.provider === "tavily") {
+      method = "POST";
       body = JSON.stringify({
         query: topic,
         search_depth: "basic",
@@ -216,21 +295,40 @@ export class Search {
         include_answer: false,
         include_raw_content: false,
       });
-    else {
+    } else if (p.provider === "deepseek") {
+      method = "POST";
+      body = JSON.stringify({
+        model: p.model || "deepseek-flash",
+        max_tokens: 1024,
+        tools: [
+          {
+            type: "web_search_20250305",
+            name: "web_search",
+            max_uses: p.maxUses || 1,
+          },
+        ],
+        messages: [
+          {
+            role: "user",
+            content: `请检索并列出与下列主题最相关的公开网页资料，优先权威来源：${topic}`,
+          },
+        ],
+      });
+    } else {
       endpoint.searchParams.set("q", topic);
       endpoint.searchParams.set("count", String(p.maxResults));
       endpoint.searchParams.set("extra_snippets", "true");
     }
     try {
       let results;
-      if (this.mode(p) === "model") {
+      if (this.mode(profile) === "model") {
         results = await modelMaterial(this.life, topic, {
           trace,
           maxResults: p.maxResults,
         });
       } else {
         const response = await this.fetch(endpoint, {
-          method: p.provider === "tavily" ? "POST" : "GET",
+          method,
           headers,
           ...(body ? { body } : {}),
           signal: AbortSignal.timeout(p.timeoutMs),
@@ -252,45 +350,50 @@ export class Search {
           throw Error(`搜索接口 HTTP ${response.status}：${detail || hint}`);
         }
         const data = await response.json().catch(() => {
-            throw Error("搜索接口未返回有效 JSON，请核对提供方与完整搜索地址");
-          }),
-          raw = p.provider === "tavily" ? data?.results : data?.web?.results;
-        if (
-          !Array.isArray(raw) &&
-          !(p.provider === "brave" && data?.type === "search" && !data.web)
-        )
-          throw Error(
-            "搜索返回格式与选定提供方不匹配，请核对提供方与完整搜索地址",
-          );
-        results = (Array.isArray(raw) ? raw : [])
-          .slice(0, p.maxResults)
-          .map((row) => ({
-            kind: "web",
-            model: "",
-            uncertainty: "",
-            timing: {},
-            title: text(row.title, 200),
-            url: String(row.url || ""),
-            content: text(
-              p.provider === "tavily"
-                ? row.content
-                : [row.description, ...(row.extra_snippets || [])]
-                    .filter(Boolean)
-                    .join("\n"),
-              6000,
-            ),
-          }))
-          .filter((row) => {
-            try {
-              return (
-                ["https:", "http:"].includes(new URL(row.url).protocol) &&
-                row.content &&
-                !hasCredential(row.content)
-              );
-            } catch {
-              return false;
-            }
-          });
+          throw Error("搜索接口未返回有效 JSON，请核对提供方与完整搜索地址");
+        });
+        if (p.provider === "deepseek") {
+          results = mapDeepSeekSearchResults(data, p.maxResults);
+        } else {
+          const raw =
+            p.provider === "tavily" ? data?.results : data?.web?.results;
+          if (
+            !Array.isArray(raw) &&
+            !(p.provider === "brave" && data?.type === "search" && !data.web)
+          )
+            throw Error(
+              "搜索返回格式与选定提供方不匹配，请核对提供方与完整搜索地址",
+            );
+          results = (Array.isArray(raw) ? raw : [])
+            .slice(0, p.maxResults)
+            .map((row) => ({
+              kind: "web",
+              model: "",
+              uncertainty: "",
+              timing: {},
+              title: text(row.title, 200),
+              url: String(row.url || ""),
+              content: text(
+                p.provider === "tavily"
+                  ? row.content
+                  : [row.description, ...(row.extra_snippets || [])]
+                      .filter(Boolean)
+                      .join("\n"),
+                6000,
+              ),
+            }))
+            .filter((row) => {
+              try {
+                return (
+                  ["https:", "http:"].includes(new URL(row.url).protocol) &&
+                  row.content &&
+                  !hasCredential(row.content)
+                );
+              } catch {
+                return false;
+              }
+            });
+        }
       }
       if (!valid()) throw Error("任务已经变化，资料结果未提交");
       const saved = [];
@@ -380,4 +483,64 @@ export class Search {
       )
       .all(projectId);
   }
+}
+
+// Anthropic-compatible DeepSeek web_search_tool_result → unified sources.
+export function mapDeepSeekSearchResults(data, maxResults = 5) {
+  const blocks = Array.isArray(data?.content) ? data.content : [];
+  const rows = [];
+  for (const block of blocks) {
+    if (block?.type !== "web_search_tool_result") continue;
+    const content = Array.isArray(block.content) ? block.content : [];
+    for (const item of content) {
+      const url = String(item.url || item.link || "");
+      const title = text(item.title || item.url || "", 200);
+      const snippet = text(
+        item.snippet || item.content || item.description || "",
+        6000,
+      );
+      const cited = Array.isArray(item.citations) ? item.citations : [];
+      for (const c of cited) {
+        if (c?.url)
+          rows.push({
+            kind: "web",
+            model: "deepseek",
+            uncertainty: "",
+            timing: {},
+            title: text(c.title || c.url, 200),
+            url: String(c.url),
+            content: text(c.snippet || c.content || snippet || title, 6000),
+          });
+      }
+      if (url)
+        rows.push({
+          kind: "web",
+          model: "deepseek",
+          uncertainty: "",
+          timing: {},
+          title: title || url,
+          url,
+          content: snippet || title || url,
+        });
+    }
+  }
+  const cleaned = [];
+  const seen = new Set();
+  for (const row of rows) {
+    try {
+      if (!["https:", "http:"].includes(new URL(row.url).protocol)) continue;
+      if (!row.content || hasCredential(row.content)) continue;
+      if (seen.has(row.url)) continue;
+      seen.add(row.url);
+      cleaned.push(row);
+      if (cleaned.length >= maxResults) break;
+    } catch {
+      /* skip bad url */
+    }
+  }
+  if (!cleaned.length)
+    throw Error(
+      "DeepSeek 搜索未返回可用的 web_search_tool_result 结果，请核对模型与联网权限",
+    );
+  return cleaned;
 }

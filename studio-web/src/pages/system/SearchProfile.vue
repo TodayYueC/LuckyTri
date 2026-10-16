@@ -11,6 +11,9 @@ const fields = [
   "timeoutMs",
   "maxResults",
   "dailyLimit",
+  "model",
+  "maxUses",
+  "reuseChatKey",
 ];
 const draft = reactive<any>({
   provider: "tavily",
@@ -20,6 +23,9 @@ const draft = reactive<any>({
   timeoutMs: 20000,
   maxResults: 5,
   dailyLimit: 12,
+  model: "deepseek-flash",
+  maxUses: 1,
+  reuseChatKey: false,
 });
 const active = ref<any>(null),
   busy = ref(false),
@@ -35,7 +41,7 @@ const changed = computed(
       fields.some((key) => draft[key] !== active.value?.[key])),
 );
 const providerName = (value: string) =>
-  value === "brave" ? "Brave" : "Tavily";
+  value === "brave" ? "Brave" : value === "deepseek" ? "DeepSeek" : "Tavily";
 const limitLabel = computed(() =>
   active.value?.dailyLimit === 0 ? t("不限") : (active.value?.dailyLimit ?? 12),
 );
@@ -193,6 +199,7 @@ onUnmounted(() => {
             :options="[
               { value: 'tavily', label: 'Tavily' },
               { value: 'brave', label: 'Brave' },
+              { value: 'deepseek', label: 'DeepSeek' },
             ]"
             @change="provider"
         /></label>
@@ -218,6 +225,37 @@ onUnmounted(() => {
                 ? t('已保存，留空保留')
                 : t('填写该提供方的搜索密钥')
             "
+        /></label>
+        <p v-if="draft.provider === 'deepseek'" class="hint">
+          {{
+            t(
+              "DeepSeek 原生联网（Anthropic 兼容 web_search）。按 DeepSeek Search/Token 计费；需 API Key。默认仍可用 Tavily/Brave。",
+            )
+          }}
+        </p>
+        <label v-if="draft.provider === 'deepseek'" class="check"
+          ><input
+            v-model="draft.reuseChatKey"
+            type="checkbox"
+            :disabled="busy"
+          />{{ t("复用已配置的 DeepSeek 对话密钥") }}</label
+        >
+        <label v-if="draft.provider === 'deepseek'"
+          >{{ t("搜索模型")
+          }}<input
+            v-model="draft.model"
+            type="text"
+            :disabled="busy"
+            placeholder="deepseek-flash"
+        /></label>
+        <label v-if="draft.provider === 'deepseek'"
+          >{{ t("每次搜索次数上限")
+          }}<input
+            v-model.number="draft.maxUses"
+            type="number"
+            min="1"
+            max="5"
+            :disabled="busy"
         /></label>
         <label
           >{{ t("超时（毫秒）")

@@ -59,6 +59,26 @@ export class Stickers {
     return { enabled: true, ...(this.repo.config?.("stickers") || {}) };
   }
 
+  // Human reason when the library cannot offer anything — Linux "never sends
+  // stickers" is usually empty/pending/disabled, not the channel.
+  diagnosis() {
+    if (!this.settings().enabled)
+      return "表情库已关闭";
+    const total = this.db
+      .prepare("SELECT COUNT(*) n FROM sticker_items")
+      .get()?.n;
+    if (!total) return "表情库还是空的，先导入或添加表情";
+    const ready = this.db
+      .prepare(
+        `SELECT COUNT(*) n FROM sticker_items
+         WHERE enabled=1 AND status IN ('ready','manual') AND description<>''`,
+      )
+      .get()?.n;
+    if (!ready)
+      return "表情库还没描述好：已有图但缺少可用描述，先完成标注";
+    return "";
+  }
+
   visionProfile() {
     const wanted = this.settings().taggingModelId;
     const all = storedModels(this.repo);
@@ -162,6 +182,8 @@ export class Stickers {
     addressee = "",
     memories = [],
     limit = 5,
+    playful = false,
+    peerStickers = false,
   }) {
     if (!this.settings().enabled) return [];
     const rows = this.db
@@ -205,10 +227,11 @@ export class Stickers {
         "SELECT sticker_id, MAX(time) time FROM sticker_uses WHERE session_id=? AND time>? GROUP BY sticker_id",
       )
       .all(session, now - 2 * 3600000);
-    // Just sent here: not again so soon. Earlier today: a step back.
+    // Just sent here: not again so soon. Soft penalty still covers 2h.
+    const hardCoolMs = 10 * 60000;
     const justUsed = new Set(
       recentRows
-        .filter((r) => r.time > now - 30 * 60000)
+        .filter((r) => r.time > now - hardCoolMs)
         .map((r) => r.sticker_id),
     );
     const recent = new Set(recentRows.map((r) => r.sticker_id));
@@ -248,25 +271,44 @@ export class Stickers {
         (recent.has(r.id) ? 0.35 : 0);
       return { item, score, fit, personal };
     });
-    const floor = qv ? 0.3 : 0.12;
-    return scored
+    // Playful / sticker-war turns keep a slightly lower bar so she can join.
+    const floor = qv ? (playful ? 0.18 : 0.22) : playful ? 0.05 : 0.08;
+    const mapOffer = ({ item, personal }, i) => ({
+      ref: `s${i + 1}`,
+      id: item.id,
+      looks: clip(item.description, 60),
+      ...(item.words ? { says: clip(item.words, 30) } : {}),
+      means: clip(item.meaning || item.emotion, 60),
+      ...(item.scenes ? { fits: clip(item.scenes, 50) } : {}),
+      ...(personal?.meaning
+        ? { withThisPerson: clip(personal.meaning, 60) }
+        : {}),
+    });
+    let picked = scored
       .filter(
         (s) =>
           !justUsed.has(s.item.id) && (s.fit >= floor || s.personal?.meaning),
       )
       .sort((a, b) => b.score - a.score)
-      .slice(0, limit)
-      .map(({ item, personal }, i) => ({
-        ref: `s${i + 1}`,
-        id: item.id,
-        looks: clip(item.description, 60),
-        ...(item.words ? { says: clip(item.words, 30) } : {}),
-        means: clip(item.meaning || item.emotion, 60),
-        ...(item.scenes ? { fits: clip(item.scenes, 50) } : {}),
-        ...(personal?.meaning
-          ? { withThisPerson: clip(personal.meaning, 60) }
-          : {}),
-      }));
+      .slice(0, limit);
+    // Stickers flying or a bond with this person: keep top1 even a hair under floor.
+    if (
+      !picked.length &&
+      (playful || peerStickers) &&
+      scored.length
+    ) {
+      const top = scored
+        .filter((s) => !justUsed.has(s.item.id))
+        .sort((a, b) => b.score - a.score)[0];
+      if (
+        top &&
+        (top.personal?.meaning ||
+          peerStickers ||
+          top.fit >= floor * 0.7)
+      )
+        picked = [top];
+    }
+    return picked.map(mapOffer);
   }
 
   // She sent one: remember with whom and about what, to see how it lands.

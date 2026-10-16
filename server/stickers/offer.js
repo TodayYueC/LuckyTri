@@ -87,7 +87,7 @@ export function expressionInput(snapshot) {
         ? {
             stickers: stickers.map(({ id: _id, ...s }) => s),
             stickerNote:
-              '这些是你收藏的表情里此刻可能合适的几张。真想用时返回 sticker:"ref"（一次最多一张，可以配文字，也可以只发表情，此时 say 留空）；不合适就不用，不必为用而用。withThisPerson 是你和这个人用它的经历。',
+              '这些是你收藏的表情里此刻可能合适的几张。合适就用：返回 sticker:"ref"（一次最多一张，可以配文字，也可以只发表情，此时 say 留空）。withThisPerson 是你和这个人用它的经历。',
           }
         : {}),
       ...(canAt.length

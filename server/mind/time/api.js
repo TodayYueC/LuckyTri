@@ -39,7 +39,7 @@ export function mountTime(app, life) {
     wrap((req, res) => {
       if (
         req.query.provider &&
-        !["tavily", "brave"].includes(req.query.provider)
+        !["tavily", "brave", "deepseek"].includes(req.query.provider)
       )
         throw Error("搜索提供方无效");
       res.json(time.search.public(req.query.provider));

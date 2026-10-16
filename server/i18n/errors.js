@@ -545,6 +545,12 @@ export const ERRORS = {
     "The instance stopped; the material result was not submitted",
   搜索配置格式无效: "The search settings format is invalid",
   搜索地址无效: "The search URL is invalid",
+  无法保存音乐卡片设置: "Could not save music card settings",
+  "音乐卡片策略不允许发链接，且未启用卡片":
+    "Music card policy forbids link fallback and the card is disabled",
+  "DeepSeek 搜索地址无效": "The DeepSeek search URL is invalid",
+  "DeepSeek 搜索未返回可用的 web_search_tool_result 结果，请核对模型与联网权限":
+    "DeepSeek search returned no usable web_search_tool_result; check the model and web-search permission",
   查询用途无效: "The query purpose is invalid",
   查询只能包含资料主题: "A query may only contain the material topic",
   "搜索接口未返回有效 JSON，请核对提供方与完整搜索地址":
@@ -706,5 +712,10 @@ export const ERROR_PATTERNS = [
   [
     "搜索连接失败（{0}），请检查网络和代理；代理状态改变后可重启实例",
     "The search connection failed ({0}). Check the network and proxy; restart the instance after the proxy changes.",
+  ],
+  ["{0} 须为布尔值", "{0} must be a boolean"],
+  [
+    "音乐卡片发送失败：{0}。{1}",
+    "Music card failed to send: {0}. {1}",
   ],
 ];

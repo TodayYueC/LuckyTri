@@ -3,6 +3,11 @@ import { VERSION } from "../version.js";
 import { publicSession } from "../channels/session-key.js";
 import { CHANNEL_TYPES } from "../channels/hub.js";
 import { readiness } from "./readiness.js";
+import {
+  musicSettings,
+  saveMusicSettings,
+  musicCardHint,
+} from "../channels/onebot/music-settings.js";
 import { FEEDBACK_LABELS } from "../core/feedback.js";
 import {
   EFFORT_LABELS,
@@ -120,7 +125,32 @@ export function mountStudio(app, store, runtime, chat) {
   });
   // Connection and runtime switches only. Who she is lives in her nature;
   // whether she speaks is hers to decide.
-  app.patch("/api/settings", (req, res) => {
+  app.get("/api/channels/onebot/music", (req, res) => {
+    const music = musicSettings(store);
+    res.json({
+      ...music,
+      hint: musicCardHint(music),
+      lastEvent: (() => {
+        try {
+          const row = store.db
+            .prepare("SELECT value FROM core_config WHERE id=?")
+            .get("onebot-music-last");
+          return row ? JSON.parse(row.value) : null;
+        } catch {
+          return null;
+        }
+      })(),
+    });
+  });
+  app.patch("/api/channels/onebot/music", (req, res) => {
+    try {
+      const music = saveMusicSettings(store, req.body || {});
+      res.json({ ...music, hint: musicCardHint(music) });
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+    app.patch("/api/settings", (req, res) => {
     const v = req.body;
     const allowed = {};
     for (const k of [

@@ -471,14 +471,35 @@ export class TurnProcessor {
         snapshot.canAt = atCandidates(snapshot, session);
         try {
           const last = snapshot.batch.at(-1) || {};
+          const batchText = snapshot.batch.map((m) => m.text || "").join("\n");
+          const peerStickers = snapshot.batch.some((m) => {
+            const bare = String(m.text || "")
+              .replace(/\[(?:提及成员)\]/g, "")
+              .trim();
+            return (
+              /^(?:\[(?:图片|表情|媒体)\]\s*)+$/.test(bare) ||
+              (m.attachments || []).some((a) =>
+                ["image", "mface", "market_face", "sticker"].includes(a?.type),
+              )
+            );
+          });
+          const shortBatch =
+            snapshot.batch.length > 0 &&
+            snapshot.batch.every(
+              (m) => Array.from(String(m.text || "").trim()).length <= 8,
+            );
+          const playful = peerStickers || shortBatch;
           snapshot.stickers = await this.owner.stickers.candidates({
             session,
-            text: snapshot.batch.map((m) => m.text || "").join("\n"),
+            text: batchText,
             mood: view.inner?.state || "",
             addressee: String(last.speaker ?? last.userId ?? ""),
             memories: (snapshot.memories || [])
               .map((m) => m.content || m.text || "")
               .slice(0, 6),
+            limit: playful ? 8 : 5,
+            playful,
+            peerStickers,
           });
         } catch (error) {
           snapshot.stickers = [];
@@ -496,7 +517,11 @@ export class TurnProcessor {
         );
         if (offered.length) snapshot.actionsOffered = offered;
         if (!snapshot.canAt.length) delete snapshot.canAt;
-        if (!snapshot.stickers.length) delete snapshot.stickers;
+        if (!snapshot.stickers.length) {
+          const why = this.owner.stickers.diagnosis?.() || "";
+          if (why) trace.steps.push(`表情未供给：${why}`);
+          delete snapshot.stickers;
+        }
       }
       const visionModel = model.vision
         ? model

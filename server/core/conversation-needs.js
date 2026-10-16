@@ -1,8 +1,10 @@
 // Which situational guidance a turn needs: writing guidance when the talk is
 // about a piece of writing, bot guidance when another AI is speaking here.
 // This is awareness of what is going on, never a template for her tone.
+// Narrow: bare「写了」matches homework. Require writing nouns or write+work.
 const WRITING =
-  /小说|故事|诗|稿子|稿|章节|剧本|情节|片段|主线|作品|续写|写(?:了|一|个|篇|首|段|完)/;
+  /小说|故事|诗(?:稿|歌|篇)?|稿子|稿件|章节|剧本|情节|片段|主线|作品|续写|写作|写小说|写故事|写诗|写稿|写(?:了|一|个|篇|首|段|完).{0,16}(?:小说|故事|诗|稿|章|节|片段|作品|剧本)|(?:小说|故事|稿|章|节|作品).{0,8}写/;
+export { WRITING as WRITING_TOPIC };
 
 // The other AIs in this conversation, by speaker id: each one is a named
 // counterpart bound with relationship kind=bot. One place decides this.

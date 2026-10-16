@@ -1,4 +1,9 @@
 import { searchSong } from "./music.js";
+import {
+  musicSettings,
+  musicCardHint,
+  deliverMusicCard,
+} from "./music-settings.js";
 import { WebSocketServer, WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
 import { effectiveOneBotToken, authorizeOneBot } from "./token.js";
@@ -30,6 +35,7 @@ export function createOneBotChannel(
   let heartbeat = null;
   let wss = null;
   let directoryAt = 0;
+  let lastMusicEvent = null;
   const checkedNames = new Map();
 
   function asList(data) {
@@ -316,6 +322,7 @@ export function createOneBotChannel(
   }
 
   function status() {
+    const music = musicSettings(store);
     return {
       type: "onebot",
       online: !!socket,
@@ -326,6 +333,11 @@ export function createOneBotChannel(
       localConnectionAllowed: true,
       wsPath: "/onebot/v11/ws",
       port: Number(process.env.PORT || 3210),
+      music: {
+        ...music,
+        hint: musicCardHint(music),
+        lastEvent: lastMusicEvent,
+      },
     };
   }
 
@@ -345,18 +357,37 @@ export function createOneBotChannel(
     if (action.type === "music") {
       const song = await searchSong(action.query);
       if (!song) throw new Error("没找到这首歌");
-      try {
-        return await rpc(...actionCall(message, { ...action, song }), 8000);
-      } catch {
-        // The card is an extension; a plain line with the link still works.
-        return await rpc(
-          ...actionCall(message, {
-            type: "text",
-            text: `${song.name} - ${song.artist} https://music.163.com/song?id=${song.id}`,
-          }),
-          8000,
-        );
-      }
+      const settings = musicSettings(store);
+      return await deliverMusicCard({
+        song,
+        settings,
+        sendCard: () =>
+          rpc(...actionCall(message, { ...action, song }), 8000),
+        sendText: (text) =>
+          rpc(...actionCall(message, { type: "text", text }), 8000),
+        record: (event) => {
+          lastMusicEvent = {
+            at: Date.now(),
+            sessionId: message.sessionId || "",
+            query: action.query,
+            songId: song.id,
+            ...event,
+          };
+          try {
+            const db = store.db;
+            if (db)
+              db.prepare(
+                "INSERT INTO core_config(id,value) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value,version=version+1",
+              ).run("onebot-music-last", JSON.stringify(lastMusicEvent));
+          } catch {
+            /* best-effort — core_config may not exist yet in tests */
+          }
+          if (event.degraded || event.status === "failed")
+            console.warn(
+              `[onebot/music] ${event.status}${event.degraded ? "→" + event.degraded : ""}: ${event.reason || ""} ${event.hint || ""}`,
+            );
+        },
+      });
     }
     const [name, params] = actionCall(message, action);
     try {

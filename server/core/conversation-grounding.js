@@ -1,5 +1,6 @@
-import { botSpeakers } from "./conversation-needs.js";
+import { botSpeakers, WRITING_TOPIC } from "./conversation-needs.js";
 import { interestTerms } from "../mind/attention.js";
+import { hasShareFrame } from "../mind/time/sharing.js";
 
 // Shared by understanding, wording and review. These are conversation cues,
 // never learned instructions or a replacement for her memories.
@@ -525,6 +526,7 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
 
   issues.push(...mediaAttributionIssues(bubbles, snapshot));
   issues.push(...understandingLedgerIssues(bubbles, snapshot, decision));
+  issues.push(...unframedCreativeDumpIssues(bubbles, snapshot, decision));
   return [...new Set(issues)];
 }
 
@@ -610,6 +612,75 @@ function isVisualMessage(message) {
   return (message?.attachments || []).some((item) =>
     ["image", "mface", "market_face", "sticker"].includes(item?.type),
   );
+}
+
+
+// Ordinary speak/react/initiative must not 0-frame dump fiction imagery when
+// the room is not talking about writing and the reply has no share frame.
+// Sharing.report path already requires hasShareFrame; this catches the live
+// failure where a normal turn suddenly narrates a chapter.
+export function unframedCreativeDumpIssues(bubbles, snapshot, decision = {}) {
+  if (decision.shareDelivery || snapshot.shareDelivery) return [];
+  if (hasShareFrame(bubbles || [])) return [];
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply || reply.length < 12) return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const botIds = botSpeakers(snapshot);
+  const people = (snapshot.messages || []).filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id)) || !batch.size) &&
+      m.role === "user" &&
+      !botIds.has(String(m.speaker)),
+  );
+  // Initiative has no batch: use recent human lines as the room cue.
+  const cueMessages = batch.size
+    ? people.filter((m) => batch.has(m.id) || batch.has(Number(m.id)))
+    : people.slice(-8);
+  const cueText = cueMessages.map((m) => m.text || "").join("\n");
+  const works = snapshot.inner?.currentLife?.works || [];
+  const namedWork = works.some((w) => {
+    const title = String(w?.title || "");
+    return title.length >= 2 && cueText.includes(title);
+  });
+  const writingTalk =
+    WRITING_TOPIC.test(cueText) ||
+    namedWork ||
+    /(?:分享|发给我|给我看|看看你写|写完了吗|交稿|交付)/.test(cueText);
+  if (writingTalk) return [];
+
+  // Structural fiction dump: chapter/passage review, or third-person scene
+  // commentary with aesthetic judgment — without naming it as a share.
+  const passageReview =
+    /(?:看到|读到|写到|回看|刚写).{0,28}(?:那段|那节|这一节|这一段|第.{1,4}[章节段])/.test(
+      reply,
+    ) ||
+    /第.{1,4}[章节段].{0,24}(?:觉得|挺|很|特别)/.test(reply);
+  const sceneDump =
+    /(?:她|他).{0,10}(?:在|把|从|朝|向).{0,36}(?:记|走|看|说|写|推|停|量|拿|放|回).{0,48}(?:那段|觉得|特别|挺|安心|踏实)/.test(
+      reply,
+    );
+  const aestheticWorkTalk =
+    /(?:小说|作品|稿|故事|这一节|这一段|那一节).{0,24}(?:觉得|特别|挺|很).{0,12}(?:踏实|安心|喜欢|好看|不错)/.test(
+      reply,
+    );
+  if (!(passageReview || sceneDump || aestheticWorkTalk)) return [];
+
+  // If the reply clearly overlaps the room's current cue, it is answering —
+  // not a cold dump of her own manuscript.
+  const cueTerms = interestTerms([cueText]);
+  const replyTerms = interestTerms([reply]);
+  const overlap = [...cueTerms].filter(
+    (term) => term.length >= 2 && replyTerms.has(term),
+  ).length;
+  if (cueText && overlap >= 2 && !passageReview) return [];
+
+  return [
+    "本轮没有在谈写作，回复却以未标明的作品观感/情节为主；若要分享自己的稿，先用一句开场说明在分享，否则先回应眼前在聊的事。",
+  ];
 }
 
 // Catch the live failure mode: a picture from A gets titled with B's earlier
