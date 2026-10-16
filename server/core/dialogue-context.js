@@ -181,13 +181,24 @@ export function documentsInView(snapshot) {
     const name =
       files.map((f) => f.name || f.file || "").filter(Boolean)[0] ||
       String(message.text || "").slice(0, 80);
+    const excerpt = perceived.join(" ").slice(0, 240);
+    const scanned = perceived.some((p) =>
+      /扫描版|图片型\s*PDF|无可抽取文字/.test(String(p || "")),
+    );
     rows.push({
       messageId: message.id,
       speaker: message.speaker,
       name: message.name || "",
       fileName: name,
       ...(perceived.length
-        ? { excerpt: perceived.join(" ").slice(0, 240), readable: true }
+        ? scanned
+          ? {
+              excerpt,
+              readable: false,
+              unreadable: true,
+              why: "scanned_image_pdf",
+            }
+          : { excerpt, readable: true }
         : { readable: false, unreadable: true }),
     });
   }

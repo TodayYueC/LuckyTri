@@ -72,8 +72,21 @@ export function extractPdfText(raw) {
     .replace(/[^\S\n]+/g, " ")
     .replace(/\s+\n/g, "\n")
     .trim();
-  if (joined.length < 8) return null;
+  if (joined.length < 8) {
+    if (pdfLooksImageOnly(latin))
+      return { kind: "pdf", scanned: true, title: "", text: "" };
+    return null;
+  }
   return { kind: "pdf", title: "", text: joined.slice(0, MAX_CHARS) };
+}
+
+// Image-heavy PDF with no extractable page text → scanned / photo PDF.
+function pdfLooksImageOnly(latin) {
+  const images = (String(latin || "").match(/\/Subtype\s*\/Image\b/g) || [])
+    .length;
+  const hasTextOp =
+    /\bBT\b/.test(latin) || /\bTj\b/.test(latin) || /\bTJ\b/.test(latin);
+  return images >= 1 && !hasTextOp;
 }
 
 function pdfStringsFromContent(content) {
@@ -237,8 +250,13 @@ export async function resolveAttachmentBytes(
 }
 
 export function formatPerceived(extracted, fileName = "") {
-  if (!extracted?.text) return "";
   const name = String(fileName || "").slice(0, 60);
+  if (extracted?.scanned) {
+    return name
+      ? `文件「${name}」：扫描版/图片型 PDF，没有可抽取文字`
+      : "扫描版/图片型 PDF，没有可抽取文字";
+  }
+  if (!extracted?.text) return "";
   const head = name
     ? `文件「${name}」摘录：`
     : extracted.title
@@ -269,7 +287,12 @@ export function registerFileTextPerceivers(perceivers, fetchMediaOf) {
     if (!bytes?.length) return null;
     const extracted = extractText(bytes, name);
     if (!extracted) return null;
-    return { text: formatPerceived(extracted, name) };
+    const note = formatPerceived(extracted, name);
+    if (!note) return null;
+    return {
+      text: note,
+      ...(extracted.scanned ? { scanned: true } : {}),
+    };
   };
   for (const type of ["file", "document", "html", "text"])
     perceivers.register(type, "core:file-text", run);

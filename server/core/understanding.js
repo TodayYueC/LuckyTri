@@ -275,6 +275,32 @@ export function priorityCues(messages = [], batchIds = [], addressedIds = []) {
           soft: true,
           why: "本轮最近一条未答问题线索",
         });
+    } else {
+      // Split across bubbles: "所以是" + "啥模型" — single-message openQuestions
+      // miss it; utterances already stitch the same speaker's run.
+      const groups = utterances(messages, batchIds);
+      for (const g of groups.slice().reverse()) {
+        const combined = String(g.text || "").trim();
+        const tight = combined.replace(/\s+/g, "");
+        if (!QUESTION.test(combined) && !QUESTION.test(tight)) continue;
+        const bare = combined
+          .replace(/\[提及成员\]|@\S+/g, "")
+          .replace(/^[?？\s]+|[?？\s]+$/g, "")
+          .trim();
+        if ([...bare].length < 6) continue;
+        cues.push({
+          messageId: g.ids.at(-1),
+          speaker: g.speaker,
+          name: g.name,
+          text: (QUESTION.test(tight) ? tight : combined).slice(0, 120),
+          intentHint: "question",
+          addressed: false,
+          soft: true,
+          utteranceIds: g.ids,
+          why: "同一人拆开打的一条提问",
+        });
+        break;
+      }
     }
   }
   return cues;

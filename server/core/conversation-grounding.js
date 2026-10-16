@@ -644,26 +644,26 @@ function multiThreadLedgerIssues(bubbles, snapshot, decision, reply) {
   ]);
   const point = String(decision.understanding?.point || "").trim();
 
-  // Hollow point: claims understanding without any concrete cue terms.
-  if (
-    decision.understanding &&
-    point &&
-    point.length < 24 &&
-    /^(?:对方|有人|他|她)?(?:在问|问了|说了|想知道|的意思)/.test(point) &&
-    termOverlap(
-      point,
-      cues.map((c) => c.text).join(" "),
-    ).length === 0
-  )
-    issues.push(
-      "understanding.point 不能只写「在问/想知道」这类空壳，须写清对方具体问的是什么。",
-    );
-
   const hit = cues.filter(
     (c) => targets.has(c.messageId) || targets.has(Number(c.messageId)),
   );
   const cueText = cues.map((c) => c.text).join(" ");
   const cueOverlap = termOverlap(reply, cueText);
+
+  // Hollow / off-topic point: must share at least one expanded term with the
+  // priority cue once she claims to target it (or any cue when point is set).
+  if (decision.understanding && point) {
+    const pointCues = hit.length ? hit : cues;
+    const pointCueText = pointCues.map((c) => c.text).join(" ");
+    const pointCueOverlap = termOverlap(point, pointCueText);
+    const shellShort =
+      point.length < 24 &&
+      /^(?:对方|有人|他|她)?(?:在问|问了|说了|想知道|的意思)/.test(point);
+    if (pointCueOverlap.length === 0 && (shellShort || hit.length))
+      issues.push(
+        "understanding.point 须对齐优先线索的具体内容，不能只写空壳或跑题概括。",
+      );
+  }
 
   if (!hit.length && cueOverlap.length < 1) {
     issues.push(
@@ -698,12 +698,21 @@ function multiThreadLedgerIssues(bubbles, snapshot, decision, reply) {
   const otherOverlap = termOverlap(reply, otherText);
   const focusIsQuestion = focus.some((c) => c.intentHint === "question");
   // Paraphrase answers (你叫什么→我叫X) often share no bigram with the cue; allow
-  // those. Still catch: riding another speaker's branch, or pure banter/vibe.
+  // those. Still catch: riding another speaker's branch, pure banter, or a
+  // hollow short dodge that answers nothing.
   const banterOnly =
     focusIsQuestion &&
     /(?:挺配|好好笑|哈哈|hh+|表情包|玩偶|可爱|笑死)/.test(reply) &&
     focusOverlap.length < 1 &&
     !(point && termOverlap(reply, point).length >= 1);
+  const substantiveQ = focus.some((c) => isSubstantiveQuestionText(c.text));
+  const hollowDodge =
+    hit.length &&
+    focusIsQuestion &&
+    substantiveQ &&
+    focusOverlap.length < 1 &&
+    !(point && termOverlap(reply, point).length >= 1) &&
+    isHollowShortReply(reply);
   if (hit.length && otherOverlap.length >= 2) {
     issues.push(
       "回复像在接另一条支线，却没有碰到优先提问里的具体意思；先回眼前被叫到的问题。",
@@ -712,12 +721,45 @@ function multiThreadLedgerIssues(bubbles, snapshot, decision, reply) {
     issues.push(
       "已点到优先提问，但回复只接气氛玩笑；先答问题本身，再接支线。",
     );
+  } else if (hollowDodge) {
+    issues.push(
+      "已点到优先提问，但回复过于含糊短促、没有碰到问题本身；先答具体内容。",
+    );
   } else if (!hit.length && focusIsQuestion && focusOverlap.length < 1) {
     issues.push(
       "本轮优先提问的具体内容没有被回应；先答问题本身，再接气氛或其他支线。",
     );
   }
   return issues;
+}
+
+// Hedge-only or near-empty replies: not a paraphrase answer to a real question.
+// Short but contentful answers ("想吃面，你呢") must pass; pure hedges must not.
+function isSubstantiveQuestionText(text) {
+  const bare = String(text || "")
+    .replace(/\[提及成员\]|@\S+/g, "")
+    .replace(/^[?？\s]+|[?？\s]+$/g, "")
+    .trim();
+  if (!bare) return false;
+  if (
+    /^(?:在吗|在不在|还在吗|你好|嗨|哈喽|早|晚安|hello)$/i.test(bare)
+  )
+    return false;
+  return [...bare].length >= 4;
+}
+
+function isHollowShortReply(reply) {
+  const raw = String(reply || "").trim();
+  if (!raw) return true;
+  const bare = raw
+    .replace(/\[提及成员\]|@\S+/g, "")
+    .replace(/[\s\p{P}\p{S}]/gu, "");
+  if (/[a-z0-9]{2,}/i.test(bare)) return false;
+  // Pure hedges only — presence acks like「嗯」to「在吗」are handled by
+  // skipping hollowDodge when the cue is not a substantive question.
+  return /^(?:嗯+|哦+|啊+|额+|唔+|好吧|行吧|随便|无所谓|还行|还好|可以|哈哈+|hh+|草+|呵呵|嗯嗯|哦哦)(?:吧|呀|呢|啦|了)?[…。.!！~～哈哈h]*$/i.test(
+    raw.replace(/\s+/g, ""),
+  );
 }
 
 function isVisualMessage(message) {

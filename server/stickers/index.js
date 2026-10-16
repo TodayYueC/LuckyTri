@@ -228,7 +228,8 @@ export class Stickers {
       )
       .all(session, now - 2 * 3600000);
     // Just sent here: not again so soon. Soft penalty still covers 2h.
-    const hardCoolMs = 6 * 60000;
+    // Playful / sticker-war: slightly shorter hard cool so she can keep up.
+    const hardCoolMs = playful || peerStickers ? 4 * 60000 : 6 * 60000;
     const justUsed = new Set(
       recentRows
         .filter((r) => r.time > now - hardCoolMs)
@@ -291,22 +292,24 @@ export class Stickers {
       )
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
-    // Stickers flying or a bond with this person: keep top1 even a hair under floor.
+    // Stickers flying or a bond with this person: keep top under floor so the
+    // war does not go silent when scores sit just below the bar.
     if (
       !picked.length &&
       (playful || peerStickers) &&
       scored.length
     ) {
-      const top = scored
+      const soft = scored
         .filter((s) => !justUsed.has(s.item.id))
-        .sort((a, b) => b.score - a.score)[0];
-      if (
-        top &&
-        (top.personal?.meaning ||
-          peerStickers ||
-          top.fit >= floor * 0.7)
-      )
-        picked = [top];
+        .sort((a, b) => b.score - a.score)
+        .filter(
+          (top, i) =>
+            i < (peerStickers ? 2 : 1) &&
+            (top.personal?.meaning ||
+              peerStickers ||
+              top.fit >= floor * 0.5),
+        );
+      if (soft.length) picked = soft.slice(0, peerStickers ? 2 : 1);
     }
     return picked.map(mapOffer);
   }
