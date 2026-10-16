@@ -164,6 +164,7 @@ export function understandingHints(messages = [], batchIds = []) {
 const GLOSS_RULES = [
   { re: /梯子/, glosses: ["vpn", "代理", "节点", "翻墙"] },
   { re: /\btg\b|电报/i, glosses: ["telegram", "tg"] },
+  { re: /\bds\b/i, glosses: ["deepseek", "ds"] },
   { re: /扫不了|扫不动|扫码|二维码|(?:哪个|什么|啥)码/, glosses: ["二维码", "验证码", "邀请码"] },
   { re: /牢大/, glosses: ["老大", "老哥"] },
   { re: /hh+|哈哈哈*/, glosses: ["笑", "哈哈"] },

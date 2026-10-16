@@ -706,13 +706,19 @@ function multiThreadLedgerIssues(bubbles, snapshot, decision, reply) {
     focusOverlap.length < 1 &&
     !(point && termOverlap(reply, point).length >= 1);
   const substantiveQ = focus.some((c) => isSubstantiveQuestionText(c.text));
+  const contentAsk = focus.some((c) => asksForContent(c.text));
+  // Agreement-only ("好"/"行") is a valid yes/no answer; still hollow for
+  // content questions ("啥模型"/"吃什么").
+  const agreementOk =
+    isAgreementOnly(reply) && !contentAsk;
   const hollowDodge =
     hit.length &&
     focusIsQuestion &&
     substantiveQ &&
     focusOverlap.length < 1 &&
     !(point && termOverlap(reply, point).length >= 1) &&
-    isHollowShortReply(reply);
+    isHollowShortReply(reply) &&
+    !agreementOk;
   if (hit.length && otherOverlap.length >= 2) {
     issues.push(
       "回复像在接另一条支线，却没有碰到优先提问里的具体意思；先回眼前被叫到的问题。",
@@ -735,11 +741,15 @@ function multiThreadLedgerIssues(bubbles, snapshot, decision, reply) {
 
 // Hedge-only or near-empty replies: not a paraphrase answer to a real question.
 // Short but contentful answers ("想吃面，你呢") must pass; pure hedges must not.
-function isSubstantiveQuestionText(text) {
-  const bare = String(text || "")
+function cueBare(text) {
+  return String(text || "")
     .replace(/\[提及成员\]|@\S+/g, "")
     .replace(/^[?？\s]+|[?？\s]+$/g, "")
     .trim();
+}
+
+function isSubstantiveQuestionText(text) {
+  const bare = cueBare(text);
   if (!bare) return false;
   if (
     /^(?:在吗|在不在|还在吗|你好|嗨|哈喽|早|晚安|hello)$/i.test(bare)
@@ -748,17 +758,41 @@ function isSubstantiveQuestionText(text) {
   return [...bare].length >= 4;
 }
 
+// Wh-/content questions that an ack ("好的"/"收到"/"ok") cannot answer.
+function asksForContent(text) {
+  const bare = cueBare(text);
+  if (!bare) return false;
+  return /(?:什么|怎么|为什么|为啥|哪[里儿个些]?|啥|多少|谁|何时|为何|如何|几[点个天]?|是什么|是啥|啥意思)/.test(
+    bare,
+  );
+}
+
+function replyBareChars(reply) {
+  return String(reply || "")
+    .replace(/\[提及成员\]|@\S+/g, "")
+    .replace(/[\s\p{P}\p{S}]/gu, "");
+}
+
+function isAgreementOnly(reply) {
+  const bare = replyBareChars(reply);
+  return /^(?:好|行|可以|好的|行的|好呀|行呀|好啦|行啦|嗯好|哦好|好吧|行吧)(?:吧|呀|呢|啦|了)?$/i.test(
+    bare,
+  );
+}
+
 function isHollowShortReply(reply) {
   const raw = String(reply || "").trim();
   if (!raw) return true;
-  const bare = raw
-    .replace(/\[提及成员\]|@\S+/g, "")
-    .replace(/[\s\p{P}\p{S}]/gu, "");
+  const bare = replyBareChars(raw);
+  // Latin ack tokens before the alphanumeric early-out (otherwise "ok" slips).
+  if (/^(?:ok|okay|hmm+|mhm+|yup|yeah|yea)$/i.test(bare)) return true;
+  // Contentful alphanumeric answers (DeepSeek, GPT-4, …) are not hollow.
   if (/[a-z0-9]{2,}/i.test(bare)) return false;
-  // Pure hedges only — presence acks like「嗯」to「在吗」are handled by
-  // skipping hollowDodge when the cue is not a substantive question.
-  return /^(?:嗯+|哦+|啊+|额+|唔+|好吧|行吧|随便|无所谓|还行|还好|可以|哈哈+|hh+|草+|呵呵|嗯嗯|哦哦)(?:吧|呀|呢|啦|了)?[…。.!！~～哈哈h]*$/i.test(
-    raw.replace(/\s+/g, ""),
+  // Match on punctuation-stripped bare so「嗯，好」→「嗯好」仍算空洞附和。
+  // Presence acks to「在吗」skip via non-substantive cues; agreement-only to
+  // yes/no skips via agreementOk.
+  return /^(?:嗯+|哦+|啊+|额+|唔+|嗯哼|好吧|行吧|随便|无所谓|还行|还好|可以|哈哈+|hh+|草+|呵呵|嗯嗯|哦哦|好的?|行的?|收到|懂了|知道了|明白了?|了解了?|确实|是的?|对的?|没错|再说(?:吧)?|回头说|等会|稍后|看情况|嗯好|哦好)(?:吧|呀|呢|啦|了)?$/i.test(
+    bare,
   );
 }
 
