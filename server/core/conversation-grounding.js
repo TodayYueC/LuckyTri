@@ -539,6 +539,8 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   issues.push(...wrongAddressedAtIssues(bubbles, snapshot, decision));
   issues.push(...batchOrphanReplyIssues(bubbles, snapshot, decision));
   issues.push(...misdirectedSelfJabIssues(bubbles, snapshot));
+  issues.push(...ignoredRoomStopIssues(bubbles, snapshot));
+  issues.push(...hearsayCatchphraseIssues(bubbles, snapshot));
   return [...new Set(issues)];
 }
 
@@ -1270,6 +1272,19 @@ function extractConcreteVisionClaims(reply) {
     /(?:一只|一个|那位)?([^，。！？\n（）()]{1,10}(?:玩偶|手办|公仔))/gu,
   ))
     push(match[1]);
+  // Readable code claims invented from a picture with no OCR/observation.
+  for (const match of value.matchAll(
+    /码就在(?:那|这)(?:呢|里|面)?/gu,
+  ))
+    out.push("二维码");
+  for (const match of value.matchAll(
+    /复制(?:一下)?(?:这个|那个|这|那)?码/gu,
+  ))
+    out.push("二维码");
+  for (const match of value.matchAll(
+    /二维码(?:里|上|是|就是)/gu,
+  ))
+    out.push("二维码");
   return [...new Set(out)];
 }
 
@@ -1591,11 +1606,13 @@ export function misdirectedSelfJabIssues(bubbles, snapshot) {
     if (!addressed) continue;
     const bare = raw.replace(/\[提及成员\]|@\S+/g, " ").trim();
     // 你个扫货 / 你这复读机 / 你真是个傻子 / 你真扫货
+    // 你也太扫货了 / 你怎么这么扫货
     const hit = bare.match(
-      /你(?:个|这|真(?:是|个)?)([\u4e00-\u9fffA-Za-z]{2,8})/,
+      /你(?:个|这|真(?:是|个)?|也太|怎么这么)([\u4e00-\u9fffA-Za-z]{2,8})/,
     );
     if (!hit) continue;
-    const label = hit[1];
+    const label = hit[1].replace(/(?:了|啊|呀|呢|嘛|啦)$/u, "");
+    if ([...label].length < 2) continue;
     // Skip pure pronouns / filler that aren't jabs.
     if (/^(?:这样|那样|什么|怎么|可以|知道|觉得|看看|说说)$/.test(label))
       continue;
@@ -1637,6 +1654,104 @@ export function misdirectedSelfJabIssues(bubbles, snapshot) {
         ];
       }
     }
+  }
+  return [];
+}
+
+
+// Room-stop / risk cue ignored: keep bantering with zero ack.
+// Live: 能不能不要在QQ群聊这些 / 你们想让我喝茶吗 / 咱们别在群里讨论了
+// → continued owl-avatar joke with no "行/收到/不聊/喝茶" ack.
+const ROOM_STOP_CUE =
+  /别在群里(?:讨论|聊)|咱们别在群里|能不能不要在.{0,8}群.{0,8}聊|不要在.{0,8}群.{0,8}聊这些|别聊这些|别讨论这些|想让我喝茶|喝茶吗|喝茶啊/;
+const ROOM_STOP_ACK =
+  /(?:收到(?:了)?|好的|好吧|行吧|行行|闭麦|不聊(?:了)?|换地方|喝茶|注意(?:点|一下)?|懂了|明白(?:了)?|私聊(?:吧)?|去tg|tg那边|那边讲|闭嘴|别说了|记下了|不讨论|换个地方|知道了)/;
+
+export function ignoredRoomStopIssues(bubbles, snapshot) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+  if (ROOM_STOP_ACK.test(reply)) return [];
+  // Short social / media-only reactions are fine.
+  if (routineSocialReply(reply, snapshot)) return [];
+  const bare = String(reply)
+    .replace(/\[提及成员\]|@\S+/g, "")
+    .replace(/[（(][^）)]{0,40}[）)]\s*$/u, "")
+    .trim();
+  if ([...bare].length < 10) return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const messages = snapshot.messages || [];
+  const hasStop = messages.some((m) => {
+    if (!(batch.has(m.id) || batch.has(Number(m.id)))) return false;
+    if (m.role !== "user") return false;
+    return ROOM_STOP_CUE.test(String(m.text || ""));
+  });
+  if (!hasStop) return [];
+  return [
+    "本轮有人明确叫停群聊话题或提示风险（别在群里聊/喝茶一类）；先确认停聊或换地方，不要无视继续扯刚才的玩笑。",
+  ];
+}
+
+// Hearsay catchphrase hung on the reporter.
+// Live: Rina counts 北学姐's「神了」→ reply asks Rina「让你觉得神了」.
+export function hearsayCatchphraseIssues(bubbles, snapshot) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const batchMsgs = (snapshot.messages || []).filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  if (!batchMsgs.length) return [];
+
+  const reported = [];
+  for (const m of batchMsgs) {
+    const raw = String(m.text || "");
+    // 「X」 quoted while attributing to 她/他/第三人, or 全靠「X」/第N个「X」
+    for (const match of raw.matchAll(
+      /[「""]([\u4e00-\u9fffA-Za-z]{1,8})[」""]/gu,
+    )) {
+      const phrase = match[1];
+      const before = raw.slice(Math.max(0, match.index - 24), match.index);
+      const attributed =
+        /(?:她|他|人家|对方|北学姐|学姐)/.test(before) ||
+        /全靠|第[一二三四五六七八九十\d]+个/.test(before) ||
+        /全靠|第[一二三四五六七八九十\d]+个/.test(
+          raw.slice(match.index, match.index + phrase.length + 12),
+        );
+      if (!attributed) continue;
+      reported.push({
+        phrase,
+        reporter: String(m.speaker ?? m.userId ?? ""),
+        reporterName: m.name || "",
+      });
+    }
+  }
+  if (!reported.length) return [];
+
+  for (const row of reported) {
+    const esc = row.phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Treat the reporter as the one who feels/says the catchphrase.
+    const misread = new RegExp(
+      `(?:让你觉得|你觉得|你又|你也|你这).{0,6}${esc}|${esc}.{0,6}(?:让你|是你)`,
+    );
+    if (!misread.test(reply)) continue;
+    // If reply clearly keeps third-person attribution, allow.
+    if (
+      /(?:她|他|人家|对方|北学姐|学姐).{0,8}/.test(reply) &&
+      new RegExp(`(?:她|他|人家|对方).{0,10}${esc}`).test(reply)
+    )
+      continue;
+    return [
+      `有人在转述别人的「${row.phrase}」，却当成${row.reporterName || "转述人"}自己的评价来问；顺着转述谈第三人，不要栽到转述人头上。`,
+    ];
   }
   return [];
 }
