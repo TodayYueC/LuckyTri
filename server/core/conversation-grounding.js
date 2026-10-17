@@ -828,7 +828,7 @@ function isSubstantiveQuestionText(text) {
 function asksForContent(text) {
   const bare = cueBare(text);
   if (!bare) return false;
-  return /(?:什么|怎么|为什么|为啥|哪[里儿个些]?|啥|多少|谁|何时|为何|如何|几[点个天]?|是什么|是啥|啥意思|解释一下|说清楚|展开说说?|告诉我|能不能告诉|可以说一下|讲讲|说说看|来点评|点评一下|点评|评价一下|评价下|评一下|对比一下|哪个好|哪个别好|有招|怎么办|咋办|咋整|有没有办法)/.test(
+  return /(?:什么|怎么|为什么|为啥|哪[里儿个些]?|啥|多少|谁|何时|为何|如何|几[点个天]?|是什么|是啥|啥意思|解释一下|说清楚|展开说说?|告诉我|能不能告诉|可以说一下|讲讲|说说看|来点评|点评一下|点评|评价一下|评价下|评一下|对比一下|哪个好|哪个别好|有招|怎么办|咋办|咋整|有没有办法|还是|二选一|选哪个|你更喜欢|更喜欢哪个|喜欢哪个)/.test(
     bare,
   );
 }
@@ -1739,6 +1739,29 @@ export function misattributedNamedTraitIssues(bubbles, snapshot) {
     )) {
       let trait = match[1].replace(/值$/u, "");
       let who = match[2].trim();
+      if ([...trait].length < 2 || [...who].length < 1) continue;
+      if (/^(?:你|我|他|她|它|你们|我们|他们|她们|大家|别人|什么|啥|谁)$/.test(who))
+        continue;
+      if (attrs.some((a) => a.trait === trait && a.who === who)) continue;
+      attrs.push({ trait, who, reporter: String(m.speaker ?? m.userId ?? "") });
+    }
+    // Bent: 「最急切的是牢大」「急切最高的是牢大」
+    for (const match of raw.matchAll(
+      /最([\u4e00-\u9fff]{2,4})的(?:就)?是([\u4e00-\u9fffA-Za-z]{1,8})/gu,
+    )) {
+      let trait = match[1].replace(/值$/u, "");
+      let who = match[2].replace(/(?:吧|啊|呀|呢)$/u, "").trim();
+      if ([...trait].length < 2 || [...who].length < 1) continue;
+      if (/^(?:你|我|他|她|它|你们|我们|他们|她们|大家|别人|什么|啥|谁)$/.test(who))
+        continue;
+      if (attrs.some((a) => a.trait === trait && a.who === who)) continue;
+      attrs.push({ trait, who, reporter: String(m.speaker ?? m.userId ?? "") });
+    }
+    for (const match of raw.matchAll(
+      /([\u4e00-\u9fff]{2,4})(?:最高|最多|最满)的(?:就)?是([\u4e00-\u9fffA-Za-z]{1,8})/gu,
+    )) {
+      let trait = match[1].replace(/值$/u, "");
+      let who = match[2].replace(/(?:吧|啊|呀|呢)$/u, "").trim();
       if ([...trait].length < 2 || [...who].length < 1) continue;
       if (/^(?:你|我|他|她|它|你们|我们|他们|她们|大家|别人|什么|啥|谁)$/.test(who))
         continue;

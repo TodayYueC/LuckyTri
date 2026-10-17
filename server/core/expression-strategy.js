@@ -88,7 +88,7 @@ export function expressionStrategy({ ownLines = [], theirLines = [] } = {}) {
       };
   }
   const jokeEnds = lines.filter((l) => /[（(][^）)]{0,40}$/.test(String(l || "").trim())).length;
-  if (jokeEnds / lines.length >= 0.22)
+  if (jokeEnds / lines.length >= 0.20)
     out.jokeEndings = {
       recent: `最近 ${lines.length} 句里有 ${jokeEnds} 句以括号玩笑收尾`,
       hint: "这次可以直说完就停，不一定再用括号补一刀",
