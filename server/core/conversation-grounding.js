@@ -527,9 +527,12 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
 
   issues.push(...mediaAttributionIssues(bubbles, snapshot));
   issues.push(...documentPresenceIssues(bubbles, snapshot));
+  issues.push(...claimedUnreadDocumentIssues(bubbles, snapshot));
   issues.push(...processOnlyContentIssues(bubbles, snapshot));
   issues.push(...understandingLedgerIssues(bubbles, snapshot, decision));
   issues.push(...unframedCreativeDumpIssues(bubbles, snapshot, decision));
+  issues.push(...stalePriorThreadIssues(bubbles, snapshot, decision));
+  issues.push(...linkReviewMissIssues(bubbles, snapshot, decision));
   return [...new Set(issues)];
 }
 
@@ -774,7 +777,7 @@ function isSubstantiveQuestionText(text) {
 function asksForContent(text) {
   const bare = cueBare(text);
   if (!bare) return false;
-  return /(?:什么|怎么|为什么|为啥|哪[里儿个些]?|啥|多少|谁|何时|为何|如何|几[点个天]?|是什么|是啥|啥意思|解释一下|说清楚|展开说说?|告诉我|能不能告诉|可以说一下|讲讲|说说看|点评|评价一下|对比一下|哪个好|哪个别好)/.test(
+  return /(?:什么|怎么|为什么|为啥|哪[里儿个些]?|啥|多少|谁|何时|为何|如何|几[点个天]?|是什么|是啥|啥意思|解释一下|说清楚|展开说说?|告诉我|能不能告诉|可以说一下|讲讲|说说看|来点评|点评一下|点评|评价一下|评价下|评一下|对比一下|哪个好|哪个别好)/.test(
     bare,
   );
 }
@@ -1032,10 +1035,207 @@ export function processOnlyContentIssues(bubbles, snapshot) {
   ];
 }
 
+
+// Batch has a file/document with no perceived text (unreadable). She must not
+// claim she already finished reading or digesting its body.
+function batchHasUnreadDocument(snapshot) {
+  const batch = new Set(snapshot.batchIds || []);
+  for (const message of snapshot.messages || []) {
+    if (!(batch.has(message.id) || batch.has(Number(message.id)))) continue;
+    if (message.role !== "user") continue;
+    const files = (message.attachments || []).filter((item) =>
+      ["file", "document", "html", "text"].includes(item?.type),
+    );
+    const named =
+      files.length ||
+      /\.(?:html?|txt|md|markdown|pdf|docx?)(?:\s|$|】|）|\))/i.test(
+        message.text || "",
+      ) ||
+      /^\[文件[：:]/.test(String(message.text || "").trim());
+    if (!named) continue;
+    const perceived = (message.perceived || []).filter(Boolean);
+    if (!perceived.length) return true;
+    if (
+      perceived.every((p) =>
+        /扫描版|图片型\s*PDF|无可抽取文字|没打开|读不到/.test(String(p || "")),
+      )
+    )
+      return true;
+  }
+  return false;
+}
+
+// Live failure: files unread, reply still says "看完/读完…挺爽".
+export function claimedUnreadDocumentIssues(bubbles, snapshot) {
+  if (!batchHasUnreadDocument(snapshot)) return [];
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+  if (
+    /(?:还没|没有|没(?:有)?|尚未).{0,6}(?:看|读|打开)|没打开|打不开|看不清|文件名|读不到/.test(
+      reply,
+    )
+  )
+    return [];
+  // First-person finished-reading claim (not "你看完了吗").
+  const finished =
+    /(?:^|[^你您])(?:我)?(?:刚(?:才)?|已经)?(?:看|读|翻)完(?:了)?/.test(
+      reply,
+    ) || /(?:看|读)完(?:了)?(?:确实|挺|很|真)/.test(reply);
+  if (!finished) return [];
+  return [
+    "本轮文件内容没有读到；不要声称已经看完或评价正文，按没打开接话或只提文件名。",
+  ];
+}
+
+// Live failure: room moved on (秋招), reply keeps riding the prior thread
+// (看过/看完) she was just on — with no priority @ to justify it.
+export function stalePriorThreadIssues(bubbles, snapshot, decision = {}) {
+  if (!["speak", "react"].includes(decision.choice)) return [];
+  if (snapshot.initiative) return [];
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply || [...replyBareChars(reply)].length < 6) return [];
+
+  const cues = priorityCues(
+    snapshot.messages || [],
+    snapshot.batchIds || [],
+    snapshot.addressed?.messageIds || [],
+  );
+  // Direct @ / priority ask already covered by multiThreadLedgerIssues.
+  if (cues.some((c) => c.addressed)) return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const botIds = botSpeakers(snapshot);
+  const messages = snapshot.messages || [];
+  const humans = messages.filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) &&
+      m.role === "user" &&
+      !botIds.has(String(m.speaker)),
+  );
+  if (!humans.length) return [];
+  const humanText = humans.map((m) => m.text || "").join(" ");
+  const humanBare = String(humanText || "")
+    .replace(/\[(?:图片|表情|媒体|提及成员)\]/g, "")
+    .replace(/@\S+/g, "")
+    .trim();
+  if ([...humanBare.replace(/\s/g, "")].length < 4) return [];
+
+  const batchTimes = humans
+    .map((m) => m.time)
+    .filter((t) => Number.isFinite(t));
+  const batchStart = batchTimes.length ? Math.min(...batchTimes) : null;
+  const priorHumans = messages.filter(
+    (m) =>
+      m.role === "user" &&
+      !botIds.has(String(m.speaker)) &&
+      !(batch.has(m.id) || batch.has(Number(m.id))) &&
+      (!batchStart ||
+        !Number.isFinite(m.time) ||
+        m.time < batchStart),
+  );
+  if (!priorHumans.length) return [];
+  const priorText = priorHumans
+    .slice(-6)
+    .map((m) => m.text || "")
+    .join(" ");
+
+  const ovCurrent = termOverlap(reply, humanText);
+  const ovPrior = termOverlap(reply, priorText);
+  const roomMoved = termOverlap(humanText, priorText).length < 1;
+  const prevOwn = [...messages]
+    .reverse()
+    .find(
+      (m) =>
+        m.role === "assistant" &&
+        !(batch.has(m.id) || batch.has(Number(m.id))) &&
+        (!batchStart ||
+          !Number.isFinite(m.time) ||
+          m.time < batchStart),
+    );
+  const ovOwn = prevOwn ? termOverlap(reply, prevOwn.text || "") : [];
+
+  if (
+    roomMoved &&
+    ovCurrent.length < 1 &&
+    (ovPrior.length >= 1 || ovOwn.length >= 2)
+  )
+    return [
+      "本轮大家已经换了话题，回复却在续上一轮旧线；先接眼前新话，旧线除非被问起。",
+    ];
+  return [];
+}
+
+// Live failure: links fetched + review ask, reply never touches the page.
+export function linkReviewMissIssues(bubbles, snapshot, decision = {}) {
+  if (!["speak", "react"].includes(decision.choice)) return [];
+  const links = (snapshot.links || []).filter(
+    (l) => l && l.fetched && (l.title || l.site || l.url),
+  );
+  if (!links.length) return [];
+  const batch = new Set(snapshot.batchIds || []);
+  const humans = (snapshot.messages || []).filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  const reviewAsk = humans.some((m) => {
+    const bare = cueBare(m.text);
+    if (!bare) return false;
+    return (
+      asksForContent(bare) ||
+      /(?:来)?点评|评价一下|评价下|评一下|(?:怎么|咋)看|(?:怎么样|咋样)/.test(
+        bare,
+      )
+    );
+  });
+  if (!reviewAsk) return [];
+
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+
+  const linkBlob = links
+    .map((l) =>
+      [l.title, l.site, l.url, l.description, l.excerpt]
+        .filter(Boolean)
+        .join(" "),
+    )
+    .join(" ");
+  const ov = termOverlap(reply, linkBlob);
+  const titleBits = links.flatMap(
+    (l) => String(l.title || "").match(/[a-z0-9]{3,}/gi) || [],
+  );
+  const hitTitle = titleBits.some((t) =>
+    reply.toLowerCase().includes(String(t).toLowerCase()),
+  );
+  if (ov.length >= 1 || hitTitle) return [];
+
+  const bare = replyBareChars(reply);
+  const thin =
+    isHollowShortReply(reply) ||
+    isCounterQuestionDodge(reply) ||
+    /^(?:还行|一般|可以|看看|先看看|回头看|不错|不好说|再说|收到|记上)(?:吧|呀|呢|啦|了)?$/u.test(
+      bare,
+    ) ||
+    ([...bare].length <= 18 && !/[a-z0-9]{3,}/i.test(reply));
+  if (!thin) return [];
+  return [
+    "本轮已打开对方发的链接且对方在要评价；先碰到标题/项目本身再说，不要空洞敷衍。",
+  ];
+}
+
 // Catch the live failure mode: a picture from A gets titled with B's earlier
 // topic ("你这实装内容…路线图"), or "你这图" is aimed at someone who did not
 // send the picture in view.
 export function mediaAttributionIssues(bubbles, snapshot) {
+
   const text = (bubbles || [])
     .filter((line) => typeof line === "string")
     .join("\n");
