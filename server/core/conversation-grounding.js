@@ -527,6 +527,7 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
 
   issues.push(...mediaAttributionIssues(bubbles, snapshot));
   issues.push(...ungroundedVisionDetailIssues(bubbles, snapshot));
+  issues.push(...ungroundedVisionWatchIssues(bubbles, snapshot));
   issues.push(...misattributedImageAtIssues(bubbles, snapshot));
   issues.push(...documentPresenceIssues(bubbles, snapshot));
   issues.push(...claimedUnreadDocumentIssues(bubbles, snapshot));
@@ -764,7 +765,7 @@ function multiThreadLedgerIssues(bubbles, snapshot, decision, reply) {
     // Live: 「这个是你吗」→「瓜子没有…椅子」。只收身份确认类问句，避免
     // 「你为什么叫我主人」→「我没接住…」这类诚实承认被误杀。
     const identityAsk = focus.some((c) =>
-      /是你(?:吗|么)|是本人|这(?:个|张|号)?是你|认(?:得|识)我吗|哪位是你/.test(
+      /是你(?:吗|么)|是本人|这(?:个|张|号)?是你|认(?:得|识)我吗|哪位是你|你是谁|你叫什么|叫什么名字|你是什么(?:人|啊|呀)?|介绍一下你(?:自己)?/.test(
         cueBare(c.text),
       ),
     );
@@ -828,7 +829,7 @@ function isSubstantiveQuestionText(text) {
 function asksForContent(text) {
   const bare = cueBare(text);
   if (!bare) return false;
-  return /(?:什么|怎么|为什么|为啥|哪[里儿个些]?|啥|多少|谁|何时|为何|如何|几[点个天]?|是什么|是啥|啥意思|解释一下|说清楚|展开说说?|告诉我|能不能告诉|可以说一下|讲讲|说说看|来点评|点评一下|点评|评价一下|评价下|评一下|对比一下|哪个好|哪个别好|有招|怎么办|咋办|咋整|有没有办法|还是|二选一|选哪个|你更喜欢|更喜欢哪个|喜欢哪个)/.test(
+  return /(?:什么|怎么|为什么|为啥|哪[里儿个些]?|啥|多少|谁|何时|为何|如何|几[点个天]?|是什么|是啥|啥意思|解释一下|说清楚|展开说说?|告诉我|能不能告诉|可以说一下|讲讲|说说看|来点评|点评一下|点评|评价一下|评价下|评一下|对比一下|哪个好|哪个别好|有招|怎么办|咋办|咋整|有没有办法|还是|二选一|选哪个|你更喜欢|更喜欢哪个|喜欢哪个|怎么看|怎么想|你怎么看|觉得怎么样|怎么样啊|给点(?:参考)?意见|参考意见|给点建议|有没有推荐|推荐一下|求推荐)/.test(
     bare,
   );
 }
@@ -1379,6 +1380,67 @@ export function ungroundedVisionDetailIssues(bubbles, snapshot) {
   if (!unsupported.length) return [];
   return [
     `画面观察里没有「${unsupported[0].slice(0, 16)}」这类细节；不要捏造没看到的物件。`,
+  ];
+}
+
+// Live: image/@ in batch, no vision observation, reply still claims
+// "看完/看过/看这反应" as if she watched. Object nouns stay in V1.
+export function ungroundedVisionWatchIssues(bubbles, snapshot) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+  if (
+    /(?:还没|没有|没(?:有)?|尚未).{0,6}(?:看|读|打开)|没打开|打不开|看不清|瞅不清|看不出来/.test(
+      reply,
+    )
+  )
+    return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const messages = snapshot.messages || [];
+  const visualIds = new Set();
+  for (const message of messages) {
+    if (!(batch.has(message.id) || batch.has(Number(message.id)))) continue;
+    if (!isVisualMessage(message)) continue;
+    visualIds.add(message.id);
+    visualIds.add(Number(message.id));
+    visualIds.add(String(message.id));
+  }
+  if (!visualIds.size) return [];
+
+  let hasObs = false;
+  for (const obs of snapshot.vision?.observations || []) {
+    const mid = obs?.messageId;
+    if (
+      !(
+        visualIds.has(mid) ||
+        visualIds.has(Number(mid)) ||
+        visualIds.has(String(mid))
+      )
+    )
+      continue;
+    if (String(obs.description || "").trim()) {
+      hasObs = true;
+      break;
+    }
+  }
+  if (hasObs) return [];
+
+  // First-person / judgmental "I watched" claims — not "你看完了吗".
+  const watched =
+    /(?:^|[^你您])(?:我)?(?:刚(?:才)?|已经)?(?:看|读|翻)完(?:了)?/.test(reply) ||
+    /(?:看|读)完(?:了)?(?:确实|挺|很|真|感觉|爽)/.test(reply) ||
+    /看这(?:个|张|条)?反应/.test(reply) ||
+    /看你这(?:个)?精神状态/.test(reply) ||
+    /大概是真看过/.test(reply) ||
+    /(?:^|[，,。！？\s])看过了/.test(reply) ||
+    /这图我(?:看|瞅)了/.test(reply) ||
+    /看这图(?:就|也|还)/.test(reply);
+  if (!watched) return [];
+  return [
+    "本轮图片还没有可靠的画面观察；不要声称已经看完或凭空评价图面反应，可以说还没看清或只谈图外的话。",
   ];
 }
 
