@@ -203,6 +203,8 @@ const GLOSS_RULES = [
   { re: /报数/, glosses: ["报数", "点名", "报到"] },
   { re: /中转/, glosses: ["中转", "转发", "中继"] },
   { re: /情包/, glosses: ["表情包", "情包"] },
+  { re: /上号/, glosses: ["上线", "开打", "上号"] },
+  { re: /摸鱼/, glosses: ["偷懒", "划水", "摸鱼"] },
 ];
 
 export function speechGlosses(text) {

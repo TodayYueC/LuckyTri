@@ -1516,8 +1516,7 @@ export function wrongAddressedAtIssues(bubbles, snapshot, decision = {}) {
       /\[提及成员\]|@我\b/.test(m.text || "");
     if (hit) addressed.set(id, m.name || id);
   }
-  if (addressed.size !== 1) return [];
-  const [addrId, addrName] = [...addressed.entries()][0];
+  if (addressed.size < 1) return [];
 
   const replyLines = (bubbles || []).filter((line) => typeof line === "string");
   const reply = replyLines.join("\n");
@@ -1545,6 +1544,26 @@ export function wrongAddressedAtIssues(bubbles, snapshot, decision = {}) {
     if (id) atIds.add(id);
   }
   if (!atIds.size) return [];
+
+  // Multi-caller: do not @ an outsider who nobody calling you named.
+  if (addressed.size >= 2) {
+    const addrTextAll = batchMsgs
+      .filter((m) => addressed.has(String(m.speaker ?? m.userId ?? "")))
+      .map((m) => m.text || "")
+      .join(" ");
+    for (const wid of [...atIds].filter((id) => !addressed.has(id))) {
+      const wrongName =
+        [...people.entries()].find(([, id]) => id === wid)?.[0] || wid;
+      if (wrongName && addrTextAll.includes(wrongName)) continue;
+      const callerNames = [...addressed.values()].filter(Boolean).join("、") || "叫你的人";
+      return [
+        `本轮是${callerNames}在叫你，却@了${wrongName}；回应对方时请@叫你的人，不要@错人。`,
+      ];
+    }
+    return [];
+  }
+
+  const [addrId, addrName] = [...addressed.entries()][0];
   if ([...atIds].every((id) => id === addrId)) return [];
 
   const addrText = batchMsgs
@@ -1831,6 +1850,31 @@ export function misattributedNamedTraitIssues(bubbles, snapshot) {
       if (attrs.some((a) => a.trait === trait && a.who === who)) continue;
       attrs.push({ trait, who, reporter: String(m.speaker ?? m.userId ?? "") });
     }
+    // Bent: 「牢大这局急切值拉满了」— who + scene + trait + 拉满.
+    // Use 这局|本局 (not 这?局) so who does not swallow the 这.
+    for (const match of raw.matchAll(
+      /([\u4e00-\u9fffA-Za-z]{1,8})(?:这局|本局|今晚|现在)([\u4e00-\u9fff]{2,3})值?(?:拉满|爆表|满了|爆了|满格)/gu,
+    )) {
+      let who = match[1].replace(/(?:吧|啊|呀|呢)$/u, "").trim();
+      let trait = match[2].replace(/值$/u, "");
+      if ([...trait].length < 2 || [...who].length < 1) continue;
+      if (/^(?:你|我|他|她|它|你们|我们|他们|她们|大家|别人|什么|啥|谁)$/.test(who))
+        continue;
+      if (attrs.some((a) => a.trait === trait && a.who === who)) continue;
+      attrs.push({ trait, who, reporter: String(m.speaker ?? m.userId ?? "") });
+    }
+    // Bent: 「感觉今晚牢大比较急切」— soft compare without 的是.
+    for (const match of raw.matchAll(
+      /(?:感觉|觉得)?(?:今晚|这局|现在)?([\u4e00-\u9fffA-Za-z]{1,8})(?:比较|很|有点|太)([\u4e00-\u9fff]{2,4})/gu,
+    )) {
+      let who = match[1].replace(/(?:吧|啊|呀|呢)$/u, "").trim();
+      let trait = match[2].replace(/值$/u, "");
+      if ([...trait].length < 2 || [...who].length < 1) continue;
+      if (/^(?:你|我|他|她|它|你们|我们|他们|她们|大家|别人|什么|啥|谁)$/.test(who))
+        continue;
+      if (attrs.some((a) => a.trait === trait && a.who === who)) continue;
+      attrs.push({ trait, who, reporter: String(m.speaker ?? m.userId ?? "") });
+    }
   }
   if (!attrs.length) return [];
 
@@ -1894,8 +1938,11 @@ export function misattributedNamedTraitIssues(bubbles, snapshot) {
 // → continued owl-avatar joke with no "行/收到/不聊/喝茶" ack.
 const ROOM_STOP_CUE =
   /别在群里(?:讨论|聊)|咱们别在群里|能不能不要在.{0,8}群.{0,8}聊|不要在.{0,8}群.{0,8}聊这些|别聊这些|别讨论这些|想让我喝茶|喝茶吗|喝茶啊|这玩意儿私聊|私聊吧|私聊说|去tg那边|去tg.{0,8}讲|剩下的.{0,12}去tg|别发群里|别公开聊/;
+// Bare「注意/注意点/注意一下」is too soft: live replies embed it inside
+// continued banter and used to false-pass as an ack. Real confirmation uses
+// 收到/好的/私聊/不聊/换地方/喝茶/闭麦/懂了… (round 47).
 const ROOM_STOP_ACK =
-  /(?:收到(?:了)?|好的|好吧|行吧|行行|闭麦|不聊(?:了)?|换地方|喝茶|注意(?:点|一下)?|懂了|明白(?:了)?|私聊(?:吧)?|去tg|tg那边|那边讲|闭嘴|别说了|记下了|不讨论|换个地方|知道了)/;
+  /(?:收到(?:了)?|好的|好吧|行吧|行行|闭麦|不聊(?:了)?|换地方|喝茶|懂了|明白(?:了)?|私聊(?:吧)?|去tg|tg那边|那边讲|闭嘴|别说了|记下了|不讨论|换个地方|知道了)/;
 
 export function ignoredRoomStopIssues(bubbles, snapshot) {
   const reply = (bubbles || [])

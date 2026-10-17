@@ -176,7 +176,7 @@ test("E1: 括号玩笑收尾照镜子（阈值随轮下调）", () => {
   // 6/6 = 100% ≥ current joke threshold
   const mirror = expressionStrategy({ ownLines: lines, theirLines: ["hh"] });
   assert.ok(mirror?.jokeEndings, JSON.stringify(mirror));
-  // 1/12 ≈ 0.083 < 0.16 → no jokeEndings
+  // 1/12 ≈ 0.083 < 0.14 → no jokeEndings
   const low = expressionStrategy({
     ownLines: [
       "存货见底了（",
