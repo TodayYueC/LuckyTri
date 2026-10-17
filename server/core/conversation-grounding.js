@@ -543,6 +543,7 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   issues.push(...misattributedNamedTraitIssues(bubbles, snapshot));
   issues.push(...ignoredRoomStopIssues(bubbles, snapshot));
   issues.push(...hearsayCatchphraseIssues(bubbles, snapshot));
+  issues.push(...stickySelfGagIssues(bubbles, snapshot));
   return [...new Set(issues)];
 }
 
@@ -1983,6 +1984,98 @@ export function hearsayCatchphraseIssues(bubbles, snapshot) {
     ];
   }
   return [];
+}
+
+// Sticky self-gag hard-sell: recycle a distinctive phrase she invented in her
+// own recent speech into a turn whose batch cue never invited it (梯子很烂 →
+// 硬塞「充值页面凑龙珠」). Peers adopting the gag earlier does not license
+// stuffing it into an unrelated cue; if the cue itself contains the phrase,
+// continuing the joke is fine.
+const STICKY_GAG_PARTICLES =
+  /^(?:啊|呀|呢|吧|了|吗|的|是|不|在|有|这|那|我|你|他|她|也|就|都|很|太|更|还|又|嘛|啦|哦|嗯|哈)+$/;
+
+function stickyGagSpans(ownText, replyText, cueText) {
+  const ownN = normalized(ownText);
+  const replyN = normalized(replyText);
+  const cueN = normalized(cueText);
+  if (ownN.length < 4 || replyN.length < 4) return [];
+  const found = [];
+  const maxLen = Math.min(16, replyN.length);
+  for (let len = maxLen; len >= 2; len--) {
+    for (let i = 0; i + len <= replyN.length; i++) {
+      const span = replyN.slice(i, i + len);
+      if (!/[\u4e00-\u9fff]/.test(span) && !/[a-z]{3,}/.test(span)) continue;
+      if (STICKY_GAG_PARTICLES.test(span)) continue;
+      if (!ownN.includes(span)) continue;
+      if (cueN.includes(span)) continue;
+      // Span must carry at least one bigram the cue never used — otherwise it
+      // is just rephrasing the room's own words (e.g. 几个梯子 on a 梯子 cue).
+      let distinct = false;
+      for (let j = 0; j + 2 <= span.length; j++) {
+        const bi = span.slice(j, j + 2);
+        if (!cueN.includes(bi)) {
+          distinct = true;
+          break;
+        }
+      }
+      if (!distinct && span.length >= 2) continue;
+      found.push(span);
+    }
+  }
+  found.sort((a, b) => b.length - a.length);
+  const kept = [];
+  for (const span of found) {
+    if (kept.some((k) => k.includes(span))) continue;
+    kept.push(span);
+    if (kept.length >= 8) break;
+  }
+  return kept;
+}
+
+const WEAK_STICKY_SPAN =
+  /^(?:一起上阵|排队罢工|开个玩笑|顺口接|挺离谱|换一个|再试试|怎么办|有没有|看一下|这下是真|真的把)$/;
+
+export function stickySelfGagIssues(bubbles, snapshot) {
+  // Challenged memory: restating her own prior evidence is legitimate, not a gag.
+  if (claimChallenged(snapshot) || requestedRepeat(snapshot)) return [];
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply || reply.length < 10) return [];
+  const own = recentOwnMessages(snapshot, 6);
+  if (!own.length) return [];
+  const ownText = own.map((m) => m.text || "").join("\n");
+  if (normalized(ownText).length < 4) return [];
+
+  const botIds = botSpeakers(snapshot);
+  const batch = new Set(snapshot.batchIds || []);
+  const cueMsgs = (snapshot.messages || []).filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) &&
+      m.role === "user" &&
+      !botIds.has(String(m.speaker)),
+  );
+  // No human cue (initiative / empty batch): other gates handle dumps.
+  if (!cueMsgs.length) return [];
+  const cueText = cueMsgs.map((m) => m.text || "").join("\n");
+  const cueBare = String(cueText || "")
+    .replace(/\[(?:图片|表情|媒体|提及成员|文件)[^\]]*\]/g, "")
+    .replace(/@\S+/g, "")
+    .trim();
+  // Pure media / mention with no words: do not invent a "cue invite" fight.
+  if (cueBare.length < 2) return [];
+
+  const sticky = stickyGagSpans(ownText, reply, cueText).filter(
+    (s) => !WEAK_STICKY_SPAN.test(s),
+  );
+  const longHits = sticky.filter((s) => s.length >= 4);
+  // A ≥4 self-only motif with no cue invite is the hard-sell failure mode.
+  if (!longHits.length) return [];
+
+  return [
+    "本轮对方没提你自己刚编的那个梗，却又把上次的自造梗硬塞进来；先接眼前这句话，不把旧梗往新话上套。",
+  ];
 }
 
 export function mediaAttributionIssues(bubbles, snapshot) {

@@ -200,6 +200,9 @@ const GLOSS_RULES = [
   { re: /霓虹/, glosses: ["日本", "霓虹", "日系"] },
   { re: /虐文/, glosses: ["虐文", "虐恋", "虐心"] },
   { re: /哈吉米/, glosses: ["哈吉米", "hajimi", "哈基米"] },
+  { re: /报数/, glosses: ["报数", "点名", "报到"] },
+  { re: /中转/, glosses: ["中转", "转发", "中继"] },
+  { re: /情包/, glosses: ["表情包", "情包"] },
 ];
 
 export function speechGlosses(text) {
