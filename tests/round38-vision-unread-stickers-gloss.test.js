@@ -191,7 +191,7 @@ test("E1: 括号玩笑收尾 30% 即照镜子", () => {
   assert.equal(low?.jokeEndings, undefined);
 });
 
-test("S1: peerStickers 硬冷却约 2 分钟、playful-only 仍 4 分钟", async () => {
+test("S1: peerStickers 硬冷却约 90 秒、playful-only 仍 3 分钟", async () => {
   const db = new DatabaseSync(":memory:");
   const now = { t: 1_800_000_000_000 };
   const config = new Map([["stickers", { enabled: true }]]);
@@ -218,7 +218,7 @@ test("S1: peerStickers 硬冷却约 2 分钟、playful-only 仍 4 分钟", async
     status: "ready",
   });
   stickers.used({ stickerId: item.id, session: "s1", userId: "u1" });
-  now.t += 3 * 60000 + 1; // past 2m peer cool, still inside 4m playful cool
+  now.t += 2 * 60000 + 1; // past 90s peer cool, still inside 3m playful cool
 
   const playfulOnly = await stickers.candidates({
     session: "s1",
@@ -231,7 +231,7 @@ test("S1: peerStickers 硬冷却约 2 分钟、playful-only 仍 4 分钟", async
   assert.equal(
     playfulOnly.filter((s) => s.id === item.id).length,
     0,
-    "playful-only still 4m cool",
+    "playful-only still 3m cool",
   );
 
   const war = await stickers.candidates({

@@ -538,6 +538,7 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   issues.push(...linkReviewMissIssues(bubbles, snapshot, decision));
   issues.push(...wrongAddressedAtIssues(bubbles, snapshot, decision));
   issues.push(...batchOrphanReplyIssues(bubbles, snapshot, decision));
+  issues.push(...misdirectedSelfJabIssues(bubbles, snapshot));
   return [...new Set(issues)];
 }
 
@@ -1561,6 +1562,83 @@ export function batchOrphanReplyIssues(bubbles, snapshot, decision = {}) {
   return [
     "回复与本轮在场任何人的话几乎没有接点；先对齐本轮实际在说的事，不要另开一截无关话题。",
   ];
+}
+
+
+// Someone jabbed HER ("你个X"), but the reply hangs that label on a third person.
+export function misdirectedSelfJabIssues(bubbles, snapshot) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+
+  const messages = snapshot.messages || [];
+  const batch = new Set(snapshot.batchIds || []);
+  const batchMsgs = messages.filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  if (!batchMsgs.length) return [];
+
+  const jabs = [];
+  for (const m of batchMsgs) {
+    const raw = String(m.text || "");
+    const addressed =
+      m.relation === "direct" ||
+      m.mentioned === true ||
+      /\[提及成员\]|@我\b/.test(raw);
+    if (!addressed) continue;
+    const bare = raw.replace(/\[提及成员\]|@\S+/g, " ").trim();
+    // 你个扫货 / 你这复读机 / 你真是个傻子 / 你真扫货
+    const hit = bare.match(
+      /你(?:个|这|真(?:是|个)?)([\u4e00-\u9fffA-Za-z]{2,8})/,
+    );
+    if (!hit) continue;
+    const label = hit[1];
+    // Skip pure pronouns / filler that aren't jabs.
+    if (/^(?:这样|那样|什么|怎么|可以|知道|觉得|看看|说说)$/.test(label))
+      continue;
+    jabs.push({
+      label,
+      speaker: String(m.speaker ?? m.userId ?? ""),
+      name: m.name || "",
+    });
+  }
+  if (!jabs.length) return [];
+
+  const people = new Map();
+  for (const m of messages.slice(-48)) {
+    if (m.role === "assistant") continue;
+    const id = String(m.speaker ?? m.userId ?? "");
+    if (!id || !m.name) continue;
+    people.set(m.name, id);
+  }
+  for (const p of snapshot.canAt || []) {
+    if (p?.name) people.set(p.name, String(p.userId));
+  }
+  const names = [...people.keys()].sort((a, b) => b.length - a.length);
+
+  for (const jab of jabs) {
+    const label = jab.label;
+    // Patterns that hang the jab label on someone else.
+    for (const name of names) {
+      const victimId = people.get(name);
+      if (!victimId || victimId === jab.speaker) continue;
+      // name ... 被说是/被叫/被骂 label  OR  把 name 说成 label
+      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const labelEsc = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const reHang = new RegExp(
+        `${escaped}.{0,24}(?:被说是|被说成|被叫|被骂)${labelEsc}|把${escaped}.{0,12}(?:说成|说是)${labelEsc}`,
+      );
+      if (reHang.test(reply)) {
+        return [
+          `有人在怼你本人（「你个${label}」一类），却把「${label}」挂到${name}头上；回应对方的话，不要把怼你的词转嫁给别人。`,
+        ];
+      }
+    }
+  }
+  return [];
 }
 
 export function mediaAttributionIssues(bubbles, snapshot) {

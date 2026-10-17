@@ -182,6 +182,7 @@ const GLOSS_RULES = [
   { re: /\btgx\b/i, glosses: ["telegram", "tg", "tgx"] },
   { re: /豆包/, glosses: ["豆包", "字节模型", "大模型"] },
   { re: /发篇/, glosses: ["发文章", "发帖", "发篇"] },
+  { re: /扫货/, glosses: ["爱存图", "截图收藏", "收藏控", "扫货"] },
 ];
 
 export function speechGlosses(text) {
@@ -241,7 +242,7 @@ export function priorityCues(messages = [], batchIds = [], addressedIds = []) {
     if (
       !isQuestion &&
       !["proposal", "correction"].includes(hint) &&
-      !/[?？]|怎么|为什么|什么|哪|有没有|能不能|是什么|啥意思|啥|扫不了|过不了|解释一下|说清楚|讲讲|告诉我|说说看|来点评|点评一下|点评|评价一下|评价下|评一下|对比一下|哪个好/.test(
+      !/[?？]|怎么|为什么|什么|哪|有没有|能不能|是什么|啥意思|啥|扫不了|过不了|解释一下|说清楚|讲讲|告诉我|说说看|来点评|点评一下|点评|评价一下|评价下|评一下|对比一下|哪个好|记得|记不记得|帮我记/.test(
         value,
       )
     )
