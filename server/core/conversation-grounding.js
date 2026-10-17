@@ -526,6 +526,8 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   }
 
   issues.push(...mediaAttributionIssues(bubbles, snapshot));
+  issues.push(...documentPresenceIssues(bubbles, snapshot));
+  issues.push(...processOnlyContentIssues(bubbles, snapshot));
   issues.push(...understandingLedgerIssues(bubbles, snapshot, decision));
   issues.push(...unframedCreativeDumpIssues(bubbles, snapshot, decision));
   return [...new Set(issues)];
@@ -772,7 +774,7 @@ function isSubstantiveQuestionText(text) {
 function asksForContent(text) {
   const bare = cueBare(text);
   if (!bare) return false;
-  return /(?:什么|怎么|为什么|为啥|哪[里儿个些]?|啥|多少|谁|何时|为何|如何|几[点个天]?|是什么|是啥|啥意思|解释一下|说清楚|展开说说?|告诉我|能不能告诉|可以说一下|讲讲|说说看)/.test(
+  return /(?:什么|怎么|为什么|为啥|哪[里儿个些]?|啥|多少|谁|何时|为何|如何|几[点个天]?|是什么|是啥|啥意思|解释一下|说清楚|展开说说?|告诉我|能不能告诉|可以说一下|讲讲|说说看|点评|评价一下|对比一下|哪个好|哪个别好)/.test(
     bare,
   );
 }
@@ -911,6 +913,122 @@ export function unframedCreativeDumpIssues(bubbles, snapshot, decision = {}) {
 
   return [
     "本轮没有在谈写作，回复却以未标明的作品观感/情节为主；若要分享自己的稿，先用一句开场说明在分享，否则先回应眼前在聊的事。",
+  ];
+}
+
+// Batch already carries a file/document the room can see (attachment type or
+// a filename cue in text). Used so she does not ask to "send a file" again.
+function batchHasDocument(snapshot) {
+  const batch = new Set(snapshot.batchIds || []);
+  for (const message of snapshot.messages || []) {
+    if (!(batch.has(message.id) || batch.has(Number(message.id)))) continue;
+    if (message.role !== "user") continue;
+    const files = (message.attachments || []).filter((item) =>
+      ["file", "document", "html", "text"].includes(item?.type),
+    );
+    if (files.length) return true;
+    if (/\.(?:html?|txt|md|markdown|pdf|docx?)(?:\s|$|】|）|\))/i.test(message.text || ""))
+      return true;
+    if (/^\[文件[：:]/.test(String(message.text || "").trim())) return true;
+  }
+  return false;
+}
+
+// Live failure: files already in the batch, reply still asks them to send one.
+export function documentPresenceIssues(bubbles, snapshot) {
+  if (!batchHasDocument(snapshot)) return [];
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+  // Narrow: pretending nothing arrived / asking them to send, not "发错了再发一版".
+  if (
+    /发(?:个|来|一下|过来)?(?:文件|文档|附件)来?(?:看看|看一下|瞧瞧)?|发个文件来看看|把文件发(?:来|过来|一下)|还没发(?:文件|过来|附件)?|你发(?:一下|来|过来).{0,10}(?:文件|文档|看看|瞧瞧)|(?:有没有|有)文件吗|文件呢\b|发过来.{0,6}(?:我)?看/.test(
+      reply,
+    )
+  )
+    return [
+      "本轮已经有人发了文件；不要装作没收到或再要对方发文件，看见就读，读不到就说明读不到。",
+    ];
+  return [];
+}
+
+// Content/story ask answered only with writing-process / ledger talk.
+// User explicitly asking how they collate ("怎么对稿") is allowed.
+const PROCESS_HEAVY =
+  /(?:我们)?(?:在)?对稿|对稿流程|等稿|这笔记上|记上了|读完再说|等你写完|互相认下|原样还你|谁也不欠|按你算|站住(?:了)?|接上(?:了)?|对回去|那半句|结案|散庭|并案|立此存照|(?:只)?记账|认下了/;
+
+const STORY_SUBSTANCE =
+  /(?:她|他|人物|角色).{0,24}(?:把|在|没|未|推|说|走|开|写|看|量|拿|放|回|停)|(?:这一段|这段|片段里|情节|场景|门缝|屋顶)|(?:发生了|讲的是|写的是|读到)/;
+
+export function processOnlyContentIssues(bubbles, snapshot) {
+  const batch = new Set(snapshot.batchIds || []);
+  const botIds = new Set(conversationGrounding(snapshot).botMessageIds);
+  const latestHuman = (snapshot.messages || [])
+    .filter(
+      (m) =>
+        (batch.has(m.id) || batch.has(Number(m.id))) &&
+        m.role === "user" &&
+        !botIds.has(m.id),
+    )
+    .at(-1);
+  const latestText = latestHuman?.text || "";
+  // User is asking about the process itself — process talk is the answer.
+  // "不是你们怎么对稿" is a content ask that rejects process, not an allow.
+  const asksProcess =
+    /(?:怎么|如何|怎样).{0,10}(?:对稿|记账|认下|等稿)|(?:对稿|记账).{0,8}(?:流程|怎么)/.test(
+      latestText,
+    );
+  const rejectsProcess =
+    /(?:不是|没(?:有)?问|不要|别).{0,24}(?:对稿|记账|怎么对稿|等稿)/.test(
+      latestText,
+    );
+  if (asksProcess && !rejectsProcess) return [];
+
+  const previouslySharedExcerpt = (snapshot.messages || []).some(
+    (message) =>
+      !(batch.has(message.id) || batch.has(Number(message.id))) &&
+      message.role === "user" &&
+      String(message.text || "").length >= 24 &&
+      /(?:她|他|人物).{0,32}(?:把|在|没|未|又|继续|停|推|开|走|说|写|看|量|拿|放|回)/u.test(
+        message.text || "",
+      ),
+  );
+  const humanRepair = (snapshot.messages || []).some(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) &&
+      m.role === "user" &&
+      !botIds.has(m.id) &&
+      READABILITY_REQUEST.test(m.text || ""),
+  );
+  const asksAboutVisibleExcerpt =
+    previouslySharedExcerpt &&
+    /(?:不(?:是|用).{0,16}(?:猜|讲|说).{0,10}(?:主线|全文|整部)|(?:就|只)(?:说|讲|看).{0,10}(?:这段|这一段|片段)|(?:这段|这一段|片段).{0,12}(?:发生了什么|看到了什么|看到什么)|(?:这(?:篇|个)?(?:小说|故事)|小说|故事).{0,12}(?:发生了什么|讲了什么|讲什么)|(?:为什么|怎么).{0,12}(?:没|没有|不).{0,10}(?:进去|回应|抬头|停下)|(?:不知道|不确定).{0,8}(?:可以|也可以).{0,8}(?:说|讲|回答)|不是你们怎么对稿)/u.test(
+      latestText,
+    );
+  const asksStoryContent =
+    /(?:这(?:篇|个)?(?:小说|故事)|小说|故事|这段|这一段|片段).{0,16}(?:发生了什么|讲了什么|讲什么|看到了什么|写了什么)|发生了什么|讲了什么/.test(
+      latestText,
+    );
+  if (!(asksAboutVisibleExcerpt || asksStoryContent || (humanRepair && previouslySharedExcerpt)))
+    return [];
+
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply || reply.length > 96) return [];
+  if (!PROCESS_HEAVY.test(reply)) return [];
+  if (STORY_SUBSTANCE.test(reply)) return [];
+  // Mostly process tokens, little else.
+  const bare = replyBareChars(reply);
+  const processHits = (reply.match(PROCESS_HEAVY) || []).length;
+  if (processHits < 1) return [];
+  if (bare.length > 36 && processHits < 2 && !/^(?:等稿|记上了|读完再说|对稿|这笔记上)/.test(bare))
+    return [];
+  return [
+    "对方在问故事/片段内容，回复却只谈对稿、等稿、记账等流程；先答眼前内容，流程除非被问到。",
   ];
 }
 

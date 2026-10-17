@@ -1,9 +1,15 @@
 // Local / fetched text-like and light office attachments → short perceived notes.
 // Images stay with vision. PDF/DOCX use pure JS (no extra npm deps); failures
 // stay unreadable so she does not invent contents.
-import { readFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
 import { inflateRawSync, inflateSync } from "node:zlib";
 import { readable } from "../web/link-reader.js";
+
+const execFileAsync = promisify(execFile);
 
 const TEXT_LIKE =
   /\.(?:html?|txt|md|markdown|json|csv|log|xml|tsv|yaml|yml)$/i;
@@ -165,6 +171,36 @@ function zipReadFile(buf, wanted) {
   return null;
 }
 
+// Optional system fallback when pure JS yields nothing / scanned. No new npm
+// deps; skips quietly if `pdftotext` is missing from PATH. Not OCR.
+export async function extractPdfWithPdfToText(raw, { timeoutMs = 8000 } = {}) {
+  const buf = asBuffer(raw);
+  if (!buf?.length || buf.subarray(0, 5).toString("latin1") !== "%PDF-")
+    return null;
+  let dir;
+  try {
+    dir = await mkdtemp(join(tmpdir(), "luckytri-pdf-"));
+    const pdfPath = join(dir, "in.pdf");
+    await writeFile(pdfPath, buf);
+    const { stdout } = await execFileAsync(
+      "pdftotext",
+      ["-layout", "-enc", "UTF-8", "-nopgbrk", pdfPath, "-"],
+      { timeout: timeoutMs, maxBuffer: 512_000 },
+    );
+    const joined = String(stdout || "")
+      .replace(/[^\S\n]+/g, " ")
+      .replace(/\s+\n/g, "\n")
+      .trim();
+    if (joined.length < 8) return null;
+    return { kind: "pdf", title: "", text: joined.slice(0, MAX_CHARS), via: "pdftotext" };
+  } catch {
+    return null;
+  } finally {
+    if (dir)
+      await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 export function extractText(raw, fileName = "") {
   const label = String(fileName || "");
   const lower = label.toLowerCase();
@@ -285,13 +321,21 @@ export function registerFileTextPerceivers(perceivers, fetchMediaOf) {
       sessionId,
     });
     if (!bytes?.length) return null;
-    const extracted = extractText(bytes, name);
+    let extracted = extractText(bytes, name);
+    if (
+      /\.pdf$/i.test(name) &&
+      (!extracted || extracted.scanned || !extracted.text)
+    ) {
+      const via = await extractPdfWithPdfToText(bytes);
+      if (via?.text) extracted = via;
+    }
     if (!extracted) return null;
     const note = formatPerceived(extracted, name);
     if (!note) return null;
     return {
       text: note,
       ...(extracted.scanned ? { scanned: true } : {}),
+      ...(extracted.via ? { via: extracted.via } : {}),
     };
   };
   for (const type of ["file", "document", "html", "text"])
