@@ -526,8 +526,10 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   }
 
   issues.push(...mediaAttributionIssues(bubbles, snapshot));
+  issues.push(...ungroundedVisionDetailIssues(bubbles, snapshot));
   issues.push(...documentPresenceIssues(bubbles, snapshot));
   issues.push(...claimedUnreadDocumentIssues(bubbles, snapshot));
+  issues.push(...unreadDocumentReviewIssues(bubbles, snapshot));
   issues.push(...processOnlyContentIssues(bubbles, snapshot));
   issues.push(...understandingLedgerIssues(bubbles, snapshot, decision));
   issues.push(...unframedCreativeDumpIssues(bubbles, snapshot, decision));
@@ -1228,6 +1230,137 @@ export function linkReviewMissIssues(bubbles, snapshot, decision = {}) {
   if (!thin) return [];
   return [
     "本轮已打开对方发的链接且对方在要评价；先碰到标题/项目本身再说，不要空洞敷衍。",
+  ];
+}
+
+// Live failure: image in batch, reply invents concrete object/scene detail
+// with no vision observation (or observation that does not support it).
+// Example: "你手里那只妙脆角玩偶" while vision cache has nothing for the pic.
+function extractConcreteVisionClaims(reply) {
+  const value = String(reply || "");
+  const out = [];
+  const push = (frag) => {
+    const cleaned = String(frag || "")
+      .replace(/(?:倒是|挺|很|真|看着|感觉).*$/u, "")
+      .replace(/^(?:的|是|有)/u, "")
+      .trim();
+    if ([...cleaned].length >= 2) out.push(cleaned);
+  };
+  for (const match of value.matchAll(
+    /手里(?:那只|那个|这只|这个)?([^，。！？\n（）()]{1,18})/gu,
+  ))
+    push(match[1]);
+  for (const match of value.matchAll(
+    /那只([^，。！？\n（）()]{0,12}(?:玩偶|手办|公仔|毛绒))/gu,
+  ))
+    push(match[1]);
+  for (const match of value.matchAll(
+    /图里(?:的|是)?([^，。！？\n（）()]{1,16})/gu,
+  ))
+    push(match[1]);
+  for (const match of value.matchAll(
+    /画面里(?:的|是)?([^，。！？\n（）()]{1,16})/gu,
+  ))
+    push(match[1]);
+  for (const match of value.matchAll(
+    /(?:一只|一个|那位)?([^，。！？\n（）()]{1,10}(?:玩偶|手办|公仔))/gu,
+  ))
+    push(match[1]);
+  return [...new Set(out)];
+}
+
+export function ungroundedVisionDetailIssues(bubbles, snapshot) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+  const claims = extractConcreteVisionClaims(reply);
+  if (!claims.length) return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const messages = snapshot.messages || [];
+  const visualIds = new Set();
+  for (const message of messages) {
+    if (!(batch.has(message.id) || batch.has(Number(message.id)))) continue;
+    if (!isVisualMessage(message)) continue;
+    visualIds.add(message.id);
+    visualIds.add(Number(message.id));
+    visualIds.add(String(message.id));
+  }
+  if (!visualIds.size) return [];
+
+  const obsTexts = [];
+  for (const obs of snapshot.vision?.observations || []) {
+    const mid = obs?.messageId;
+    if (
+      visualIds.has(mid) ||
+      visualIds.has(Number(mid)) ||
+      visualIds.has(String(mid))
+    )
+      obsTexts.push(String(obs.description || ""));
+  }
+  if (!obsTexts.length) {
+    return [
+      "本轮图片还没有可靠的画面观察；不要捏造具体物件或画面细节，可以只谈图外的话或说还没看清。",
+    ];
+  }
+  const desc = obsTexts.join("\n");
+  const descTerms = interestTerms([desc]);
+  const unsupported = claims.filter((claim) => {
+    const terms = interestTerms([claim]);
+    return ![...terms].some(
+      (term) =>
+        term.length >= 2 && (desc.includes(term) || descTerms.has(term)),
+    );
+  });
+  if (!unsupported.length) return [];
+  return [
+    `画面观察里没有「${unsupported[0].slice(0, 16)}」这类细节；不要捏造没看到的物件。`,
+  ];
+}
+
+// Unreadable file + review/点评 intent: do not evaluate body text.
+export function unreadDocumentReviewIssues(bubbles, snapshot) {
+  if (!batchHasUnreadDocument(snapshot)) return [];
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+  if (
+    /(?:还没|没有|没(?:有)?|尚未).{0,6}(?:看|读|打开)|没打开|打不开|看不清|文件名|读不到/.test(
+      reply,
+    )
+  )
+    return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const ask = (snapshot.messages || []).some((m) => {
+    if (!(batch.has(m.id) || batch.has(Number(m.id)))) return false;
+    if (m.role !== "user") return false;
+    const bare = String(m.text || "")
+      .replace(/\[提及成员\]|@\S+/g, "")
+      .trim();
+    return (
+      asksForContent(bare) ||
+      /来点评|点评一下|点评|评价一下|评价下|评一下|看看写了什么|写了什么新东西/.test(
+        bare,
+      )
+    );
+  });
+  // Strong body-evaluation claims (with or without explicit 点评 ask).
+  const bodyEval =
+    /(?:这|该|这篇|这个|正文|内容|文(?:章|里)|html|小说).{0,16}(?:写得|写的|挺|很|真|太).{0,10}(?:好|棒|差|烂|爽|浅|深|有意思|精彩|唬人)/.test(
+      reply,
+    ) ||
+    /(?:挺|很|真)(?:好|爽|精彩|有意思)的?(?:文|小说|正文|故事)/.test(reply) ||
+    /(?:人物|情节|文笔|叙事).{0,8}(?:不错|很好|一般|挺)/.test(reply) ||
+    /正文.{0,10}(?:写|说|里)/.test(reply);
+  if (!bodyEval) return [];
+  if (!ask && !/(?:正文|情节|文笔|人物|叙事)/.test(reply)) return [];
+  return [
+    "本轮文件内容没有读到；不要评价正文，按没打开接话或只提文件名。",
   ];
 }
 

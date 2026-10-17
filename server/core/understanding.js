@@ -179,6 +179,8 @@ const GLOSS_RULES = [
   { re: /八股/, glosses: ["面试题", "算法题", "八股"] },
   { re: /御三家/, glosses: ["三巨头", "三强", "御三家"] },
   { re: /转正/, glosses: ["转正", "转全职"] },
+  { re: /\btgx\b/i, glosses: ["telegram", "tg", "tgx"] },
+  { re: /豆包/, glosses: ["豆包", "字节模型", "大模型"] },
 ];
 
 export function speechGlosses(text) {
