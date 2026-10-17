@@ -10,6 +10,52 @@ export function expressiveChannel(session) {
   }
 }
 
+const STICKER_TYPES = new Set([
+  "face",
+  "mface",
+  "market_face",
+  "sticker",
+  "bface",
+  "sface",
+]);
+
+function isPeerSticker(message) {
+  const text = String(message?.text || "").trim();
+  if (/^(?:\[表情\]\s*)+$/.test(text)) return true;
+  return (message?.attachments || []).some((attachment) => {
+    const type = String(attachment?.type || "").toLowerCase();
+    return (
+      STICKER_TYPES.has(type) ||
+      (type === "image" &&
+        Boolean(
+          attachment.emoji_id ||
+          attachment.emoji_package_id ||
+          (attachment.summary && attachment.key),
+        ))
+    );
+  });
+}
+
+// Only a received sticker or clear laughter lowers the candidate floor. A
+// photo, short answer, correction or question alone is not a sticker war.
+export function stickerContext(messages = []) {
+  const rows = Array.isArray(messages) ? messages : [];
+  const peerStickers = rows.some(isPeerSticker);
+  const serious = rows.some((message) =>
+    /[?？]|为什么|为啥|怎么|什么|不对|不是|别聊|别说|别发|不要|难受|难过|烦死|崩溃/.test(
+      String(message?.text || ""),
+    ),
+  );
+  const laughing =
+    !serious &&
+    rows.some((message) =>
+      /哈{2,}|h{2,}|233+|笑死|草{1,3}$|乐$|绷不住|xswl/i.test(
+        String(message?.text || ""),
+      ),
+    );
+  return { peerStickers, playful: peerStickers || laughing };
+}
+
 // Who she could call by name in this group: people who spoke recently. A
 // name nobody here has used is never offered, so an @ cannot land on a
 // stranger or on someone the room has not seen.
@@ -87,7 +133,7 @@ export function expressionInput(snapshot) {
         ? {
             stickers: stickers.map(({ id: _id, ...s }) => s),
             stickerNote:
-              '这些是你收藏的表情里此刻可能合适的几张。合适就用：返回 sticker:"ref"（一次最多一张，可以配文字，也可以只发表情，此时 say 留空）。withThisPerson 是你和这个人用它的经历。',
+              '这些是你收藏的表情里此刻可能合适的几张。合适就用，返回 sticker:"ref"（一次最多一张，可以配文字，也可以只发表情，此时 say 留空）；不合适就不用，别为了回应硬塞。withThisPerson 是你和这个人用它的经历。',
           }
         : {}),
       ...(canAt.length

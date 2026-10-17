@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 1.3.4 — 2026-10-17
+
+- Improve multi-speaker grounding, question priority, stop signals and continuity with earlier messages, reducing misdirected @ mentions, attribution errors and replies to stale questions.
+- Read PDF, DOCX and text attachments with bounded input and decompression sizes; she no longer claims to have read content that was unavailable.
+- Tighten checks against hollow acknowledgments, dodging questions and forced stickers, while reading short replies, questions and ordinary images in context.
+- Use DeepSeek's official Search API and correct the Responses API model and endpoint. Restore OneBot music-card status after restart and retry transient send failures.
+
 ## 1.3.3 — 2026-10-15
 
 - Give each turn a concrete understanding point and open-question cues. Preserve image ownership and unreadable-file state, and catch replies that attach a neighboring topic to the wrong image.

@@ -11,8 +11,6 @@ const fields = [
   "timeoutMs",
   "maxResults",
   "dailyLimit",
-  "model",
-  "maxUses",
   "reuseChatKey",
   "apiStyle",
 ];
@@ -24,10 +22,8 @@ const draft = reactive<any>({
   timeoutMs: 20000,
   maxResults: 5,
   dailyLimit: 12,
-  model: "deepseek-flash",
-  maxUses: 1,
   reuseChatKey: false,
-  apiStyle: "anthropic",
+  apiStyle: "search",
 });
 const active = ref<any>(null),
   busy = ref(false),
@@ -205,7 +201,7 @@ onUnmounted(() => {
             ]"
             @change="provider"
         /></label>
-        <label
+        <label v-if="draft.provider !== 'deepseek'"
           >{{ t("搜索地址")
           }}<input
             v-model="draft.baseUrl"
@@ -231,7 +227,7 @@ onUnmounted(() => {
         <p v-if="draft.provider === 'deepseek'" class="hint">
           {{
             t(
-              "DeepSeek 原生联网。默认 Anthropic 兼容 web_search；可选 Responses 接口。按 DeepSeek Search/Token 计费；需 API Key。默认搜索提供方仍是 Tavily。",
+              "DeepSeek 官方 Search API。可选复用已配置的 DeepSeek 对话密钥；搜索单独计费，价格以官方说明为准。默认搜索提供方仍是 Tavily。",
             )
           }}
         </p>
@@ -243,29 +239,12 @@ onUnmounted(() => {
           />{{ t("复用已配置的 DeepSeek 对话密钥") }}</label
         >
         <label v-if="draft.provider === 'deepseek'"
-          >{{ t("搜索模型")
-          }}<input
-            v-model="draft.model"
-            type="text"
-            :disabled="busy"
-            placeholder="deepseek-flash"
-        /></label>
-        <label v-if="draft.provider === 'deepseek'"
-          >{{ t("每次搜索次数上限")
-          }}<input
-            v-model.number="draft.maxUses"
-            type="number"
-            min="1"
-            max="5"
-            :disabled="busy"
-        /></label>
-        <label v-if="draft.provider === 'deepseek'"
           >{{ t("DeepSeek 接口")
           }}<Select
             v-model="draft.apiStyle"
             :options="[
-              { value: 'anthropic', label: t('Anthropic 兼容（默认）') },
-              { value: 'responses', label: t('Responses（可选）') },
+              { value: 'search', label: t('官方 Search API（默认）') },
+              { value: 'responses', label: t('Responses（V4 Pro）') },
             ]"
             :disabled="busy"
         /></label>

@@ -1,6 +1,7 @@
 import { searchSong } from "./music.js";
 import {
   musicSettings,
+  musicLastEvent,
   musicCardHint,
   deliverMusicCard,
 } from "./music-settings.js";
@@ -35,7 +36,7 @@ export function createOneBotChannel(
   let heartbeat = null;
   let wss = null;
   let directoryAt = 0;
-  let lastMusicEvent = null;
+  let lastMusicEvent = musicLastEvent(store);
   const checkedNames = new Map();
 
   function asList(data) {
@@ -362,17 +363,16 @@ export function createOneBotChannel(
         song,
         settings,
         lastEvent: lastMusicEvent,
-        sendCard: () =>
-          rpc(...actionCall(message, { ...action, song }), 8000),
+        sendCard: () => rpc(...actionCall(message, { ...action, song }), 8000),
         sendText: (text) =>
           rpc(...actionCall(message, { type: "text", text }), 8000),
         record: (event) => {
           lastMusicEvent = {
             at: Date.now(),
             sessionId: message.sessionId || "",
+            ...event,
             query: action.query,
             songId: song.id,
-            ...event,
           };
           try {
             const db = store.db;

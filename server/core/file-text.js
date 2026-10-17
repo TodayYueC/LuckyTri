@@ -2,17 +2,17 @@
 // Images stay with vision. PDF/DOCX use pure JS (no extra npm deps); failures
 // stay unreadable so she does not invent contents.
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import { inflateRawSync, inflateSync } from "node:zlib";
 import { readable } from "../web/link-reader.js";
 
 const execFileAsync = promisify(execFile);
 
-const TEXT_LIKE =
-  /\.(?:html?|txt|md|markdown|json|csv|log|xml|tsv|yaml|yml)$/i;
+const TEXT_LIKE = /\.(?:html?|txt|md|markdown|json|csv|log|xml|tsv|yaml|yml)$/i;
 const OFFICE_LIKE = /\.(?:pdf|docx)$/i;
 const MAX_BYTES = 400_000;
 const MAX_CHARS = 1200;
@@ -38,10 +38,33 @@ export function fileLabel(attachment = {}) {
 }
 
 function asBuffer(raw) {
-  if (Buffer.isBuffer(raw)) return raw;
-  if (typeof raw === "string") return Buffer.from(raw, "utf8");
-  if (raw instanceof Uint8Array) return Buffer.from(raw);
+  if (Buffer.isBuffer(raw) || raw instanceof Uint8Array) {
+    if (raw.byteLength > MAX_BYTES) return null;
+    return Buffer.from(raw);
+  }
+  if (typeof raw === "string") {
+    if (Buffer.byteLength(raw, "utf8") > MAX_BYTES) return null;
+    return Buffer.from(raw, "utf8");
+  }
   return null;
+}
+
+function boundedBase64(value) {
+  const encoded = String(value || "");
+  if (!encoded || encoded.length > Math.ceil((MAX_BYTES * 4) / 3) + 8)
+    return null;
+  const decoded = Buffer.from(encoded, "base64");
+  return decoded.length <= MAX_BYTES ? decoded : null;
+}
+
+function isPathLike(value) {
+  return /^(?:\/|\\\\|[a-z]:[\\/]|file:\/\/)/i.test(String(value || ""));
+}
+
+function localPath(value) {
+  return String(value || "").startsWith("file://")
+    ? fileURLToPath(value)
+    : String(value || "");
 }
 
 // Best-effort PDF text: inflate FlateDecode streams and pull Tj / TJ / ' / "
@@ -55,13 +78,16 @@ export function extractPdfText(raw) {
   const streamRe = /stream\r?\n([\s\S]*?)endstream/g;
   let match;
   while ((match = streamRe.exec(latin))) {
-    const body = Buffer.from(match[1].replace(/^\r?\n/, "").replace(/\r?\n$/, ""), "latin1");
+    const body = Buffer.from(
+      match[1].replace(/^\r?\n/, "").replace(/\r?\n$/, ""),
+      "latin1",
+    );
     let decoded = body;
     try {
-      decoded = inflateSync(body);
+      decoded = inflateSync(body, { maxOutputLength: MAX_BYTES });
     } catch {
       try {
-        decoded = inflateRawSync(body);
+        decoded = inflateRawSync(body, { maxOutputLength: MAX_BYTES });
       } catch {
         decoded = body;
       }
@@ -120,7 +146,8 @@ function unescapePdfString(value) {
 // DOCX = ZIP. Read local-file entries, inflate word/document.xml, collect w:t.
 export function extractDocxText(raw) {
   const buf = asBuffer(raw);
-  if (!buf?.length || buf.subarray(0, 2).toString("latin1") !== "PK") return null;
+  if (!buf?.length || buf.subarray(0, 2).toString("latin1") !== "PK")
+    return null;
   const xml = zipReadFile(buf, "word/document.xml");
   if (!xml) return null;
   const text = String(xml)
@@ -152,7 +179,9 @@ function zipReadFile(buf, wanted) {
     const compSize = buf.readUInt32LE(offset + 18);
     const nameLen = buf.readUInt16LE(offset + 26);
     const extraLen = buf.readUInt16LE(offset + 28);
-    const name = buf.subarray(offset + 30, offset + 30 + nameLen).toString("utf8");
+    const name = buf
+      .subarray(offset + 30, offset + 30 + nameLen)
+      .toString("utf8");
     const start = offset + 30 + nameLen + extraLen;
     const end = start + compSize;
     if (end > buf.length) break;
@@ -160,7 +189,10 @@ function zipReadFile(buf, wanted) {
       const payload = buf.subarray(start, end);
       try {
         if (method === 0) return payload.toString("utf8");
-        if (method === 8) return inflateRawSync(payload).toString("utf8");
+        if (method === 8)
+          return inflateRawSync(payload, {
+            maxOutputLength: MAX_BYTES,
+          }).toString("utf8");
       } catch {
         return null;
       }
@@ -192,27 +224,28 @@ export async function extractPdfWithPdfToText(raw, { timeoutMs = 8000 } = {}) {
       .replace(/\s+\n/g, "\n")
       .trim();
     if (joined.length < 8) return null;
-    return { kind: "pdf", title: "", text: joined.slice(0, MAX_CHARS), via: "pdftotext" };
+    return {
+      kind: "pdf",
+      title: "",
+      text: joined.slice(0, MAX_CHARS),
+      via: "pdftotext",
+    };
   } catch {
     return null;
   } finally {
-    if (dir)
-      await rm(dir, { recursive: true, force: true }).catch(() => {});
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 }
 
 export function extractText(raw, fileName = "") {
   const label = String(fileName || "");
   const lower = label.toLowerCase();
-  if (/\.pdf$/.test(lower)) return extractPdfText(raw);
-  if (/\.docx$/.test(lower)) return extractDocxText(raw);
+  const bytes = asBuffer(raw);
+  if (!bytes) return null;
+  if (/\.pdf$/.test(lower)) return extractPdfText(bytes);
+  if (/\.docx$/.test(lower)) return extractDocxText(bytes);
 
-  const source =
-    typeof raw === "string"
-      ? raw
-      : Buffer.isBuffer(raw)
-        ? raw.toString("utf8")
-        : "";
+  const source = typeof raw === "string" ? raw : bytes.toString("utf8");
   if (!source.trim()) return null;
   if (/\.html?$/.test(lower) || /^\s*</.test(source.slice(0, 200))) {
     const page = readable(source);
@@ -239,25 +272,31 @@ export function extractText(raw, fileName = "") {
   };
 }
 
-export async function bytesFromAttachment(attachment = {}) {
+export async function bytesFromAttachment(
+  attachment = {},
+  { allowLocalPath = false } = {},
+) {
   if (!attachment || typeof attachment !== "object") return null;
   if (typeof attachment.text === "string" && attachment.text.trim())
-    return Buffer.from(attachment.text, "utf8");
+    return asBuffer(attachment.text);
   if (typeof attachment.content === "string" && attachment.content.trim())
-    return Buffer.from(attachment.content, "utf8");
+    return asBuffer(attachment.content);
   if (typeof attachment.base64 === "string" && attachment.base64)
-    return Buffer.from(attachment.base64, "base64");
+    return boundedBase64(attachment.base64);
   for (const key of ["file", "url", "path"]) {
     const value = attachment[key];
     if (typeof value !== "string" || !value) continue;
     if (value.startsWith("base64://"))
-      return Buffer.from(value.slice("base64://".length), "base64");
-    if (value.startsWith("/") || value.startsWith("file://")) {
-      const path = value.startsWith("file://") ? value.slice(7) : value;
+      return boundedBase64(value.slice("base64://".length));
+    // A path in the incoming chat segment is user-controlled. Only read local
+    // paths returned by the authenticated channel's get_file operation.
+    if (allowLocalPath && isPathLike(value)) {
       try {
-        const buf = await readFile(path);
-        if (buf.length > MAX_BYTES) return buf.subarray(0, MAX_BYTES);
-        return buf;
+        const path = localPath(value);
+        const info = await lstat(path);
+        if (!info.isFile() || info.isSymbolicLink() || info.size > MAX_BYTES)
+          return null;
+        return asBuffer(await readFile(path));
       } catch {
         /* missing path */
       }
@@ -275,11 +314,16 @@ export async function resolveAttachmentBytes(
   const fileId = String(
     attachment?.file || attachment?.file_id || attachment?.id || "",
   );
-  if (!fileId || !fetchMedia) return null;
+  if (!fileId || !fetchMedia || isPathLike(fileId)) return null;
   try {
     const data = await fetchMedia(fileId, sessionId, "file");
     if (!data || typeof data !== "object") return null;
-    return bytesFromAttachment({ ...attachment, ...data });
+    return bytesFromAttachment(
+      { ...attachment, ...data },
+      {
+        allowLocalPath: true,
+      },
+    );
   } catch {
     return null;
   }

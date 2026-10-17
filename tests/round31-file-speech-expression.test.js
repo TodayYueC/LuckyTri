@@ -20,10 +20,16 @@ import {
   understandingLedgerIssues,
   groundingIssues,
 } from "../server/core/conversation-grounding.js";
-import { documentsInView, currentExchange } from "../server/core/dialogue-context.js";
+import {
+  documentsInView,
+  currentExchange,
+} from "../server/core/dialogue-context.js";
 import { expressionStrategy } from "../server/core/expression-strategy.js";
 import { Perceivers } from "../server/core/perceivers.js";
-import { mapDeepSeekSearchResults, SEARCH_DEFAULTS } from "../server/mind/time/search.js";
+import {
+  mapDeepSeekSearchResults,
+  SEARCH_DEFAULTS,
+} from "../server/mind/time/search.js";
 import { MODEL_CATALOG } from "../server/core/model-presets.js";
 
 test("F1: html/txt extract becomes readable perceived text", () => {
@@ -41,7 +47,7 @@ test("F1: html/txt extract becomes readable perceived text", () => {
   assert.match(formatPerceived(html, "novel-showcase.html"), /摘录/);
 });
 
-test("F1b: local file attachment resolves via path", async () => {
+test("F1b: local paths are read only from the authenticated file fetch", async () => {
   const dir = await mkdtemp(join(tmpdir(), "lt-r31-"));
   const path = join(dir, "明日有雨.html");
   await writeFile(
@@ -49,20 +55,39 @@ test("F1b: local file attachment resolves via path", async () => {
     "<html><body><article>局部有喜欢的段落在这里。</article></body></html>",
     "utf8",
   );
-  const bytes = await resolveAttachmentBytes({
+  const bytes = await resolveAttachmentBytes(
+    {
+      type: "file",
+      name: "明日有雨.html",
+      file: "uploaded-file-id",
+    },
+    {
+      fetchMedia: async (file, _sessionId, type) => {
+        assert.equal(file, "uploaded-file-id");
+        assert.equal(type, "file");
+        return { path };
+      },
+    },
+  );
+  assert.ok(bytes?.length);
+  const extracted = extractText(bytes, "明日有雨.html");
+  assert.match(extracted.text, /局部有喜欢/);
+
+  const untrustedPath = await resolveAttachmentBytes({
     type: "file",
     name: "明日有雨.html",
     file: path,
   });
-  assert.ok(bytes?.length);
-  const extracted = extractText(bytes, "明日有雨.html");
-  assert.match(extracted.text, /局部有喜欢/);
+  assert.equal(untrustedPath, null);
 });
 
 test("F1c: built-in perceiver fills perceived; documentsInView readable", async () => {
   const dir = await mkdtemp(join(tmpdir(), "lt-r31p-"));
   const path = join(dir, "index.html");
-  await writeFile(path, "<html><body><p>这本书写的是雨天的车站。</p></body></html>");
+  await writeFile(
+    path,
+    "<html><body><p>这本书写的是雨天的车站。</p></body></html>",
+  );
   const db = {
     prepare() {
       return {
@@ -74,14 +99,17 @@ test("F1c: built-in perceiver fills perceived; documentsInView readable", async 
     },
   };
   const perceivers = new Perceivers(db);
-  registerFileTextPerceivers(perceivers, () => null);
+  const fetchMedia = async () => ({ path });
+  registerFileTextPerceivers(perceivers, () => fetchMedia);
   const message = {
     id: 1,
     role: "user",
     speaker: "a",
     name: "多神",
     text: "[文件：index.html]",
-    attachments: [{ type: "file", name: "index.html", file: path }],
+    attachments: [
+      { type: "file", name: "index.html", file: "uploaded-file-id" },
+    ],
   };
   const snapshot = { batchIds: [1], messages: [message], sessionId: "g:1" };
   await perceivers.apply(snapshot);
@@ -185,7 +213,11 @@ test("U1b: priority cue answered via gloss still passes ledger", () => {
       },
     },
   );
-  assert.equal(ok.filter((x) => /优先|支线|空壳/.test(x)).length, 0, ok.join(";"));
+  assert.equal(
+    ok.filter((x) => /优先|支线|空壳/.test(x)).length,
+    0,
+    ok.join(";"),
+  );
 });
 
 test("E1: joke-ending and ultra-short peer length mirrors", () => {
@@ -222,7 +254,7 @@ test("S1: DeepSeek Responses catalog + map responses output", () => {
   assert.ok(hit);
   assert.equal(hit.apiProtocol, "responses");
   assert.equal(hit.model, "deepseek-v4-pro");
-  assert.equal(SEARCH_DEFAULTS.apiStyle, "anthropic");
+  assert.equal(SEARCH_DEFAULTS.apiStyle, "search");
   const mapped = mapDeepSeekSearchResults(
     {
       output: [

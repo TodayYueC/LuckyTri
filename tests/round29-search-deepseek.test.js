@@ -18,50 +18,41 @@ test("S1: DeepSeek provider mock 搜索映射结构化 results", async (t) => {
   });
   assert.equal(search.public().provider, "deepseek");
   assert.equal(search.public().mode, "web");
-  assert.match(search.profile().baseUrl, /deepseek\.com\/anthropic/);
+  assert.equal(
+    search.profile().baseUrl,
+    "https://api.deepseek.com/v1/tools/search",
+  );
 
   let called;
   search.fetch = async (url, input) => {
     called = { url: String(url), input };
     return Response.json({
-      content: [
+      results: [
         {
-          type: "server_tool_use",
-          name: "web_search",
-          input: { query: "ATRI" },
+          title: "ATRI -My Dear Moments-",
+          url: "https://example.com/atri",
+          snippet: "海面上升的未来世界。",
+          content: "海平面上升的未来世界中，机器人少女 ATRI 的故事。",
         },
         {
-          type: "web_search_tool_result",
-          tool_use_id: "toolu_1",
-          content: [
-            {
-              type: "web_search_result",
-              title: "ATRI -My Dear Moments-",
-              url: "https://example.com/atri",
-              snippet: "海面上升的未来世界。",
-            },
-            {
-              type: "web_search_result",
-              title: "ATRI wiki",
-              url: "https://example.org/atri-wiki",
-              content: "视觉小说简介",
-            },
-          ],
+          title: "ATRI wiki",
+          url: "https://example.org/atri-wiki",
+          summary: "视觉小说简介",
         },
       ],
     });
   };
   const rows = await search.query("ATRI 资料");
   assert.equal(called.input.method, "POST");
-  assert.equal(called.input.headers["x-api-key"], "ds-search-key");
-  assert.match(called.url, /\/messages$/);
+  assert.equal(called.input.headers.Authorization, "Bearer ds-search-key");
+  assert.equal(called.url, "https://api.deepseek.com/v1/tools/search");
   const body = JSON.parse(called.input.body);
-  assert.equal(body.model, "deepseek-flash");
-  assert.equal(body.tools[0].type, "web_search_20250305");
-  assert.equal(body.tools[0].max_uses, 1);
+  assert.equal(body.query, "ATRI 资料");
+  assert.equal(body.count, 5);
+  assert.equal(body.need_content, true);
   assert.equal(rows.length, 2);
   assert.equal(rows[0].url, "https://example.com/atri");
-  assert.match(rows[0].content, /海面|未来/);
+  assert.match(rows[0].content, /机器人少女/);
 });
 
 test("S1b: 无可用网页结果 → 明确错误", () => {
@@ -113,4 +104,17 @@ test("S2: validated 接受 deepseek，非法 provider 仍拒", async (t) => {
   assert.equal(search.validated({ provider: "deepseek" }).provider, "deepseek");
   assert.throws(() => search.validated({ provider: "bing" }), /提供方无效/);
   assert.equal(SEARCH_DEFAULTS.provider, "tavily");
+  assert.equal(SEARCH_DEFAULTS.apiStyle, "search");
+  assert.equal(
+    search.validated({ provider: "deepseek", apiStyle: "responses" }).baseUrl,
+    "https://api.deepseek.com",
+  );
+  assert.equal(
+    search.validated({
+      provider: "deepseek",
+      apiStyle: "search",
+      baseUrl: "http://127.0.0.1:9000/search",
+    }).baseUrl,
+    "https://api.deepseek.com/v1/tools/search",
+  );
 });

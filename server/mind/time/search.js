@@ -11,18 +11,17 @@ export const SEARCH_DEFAULTS = {
   timeoutMs: 20000,
   maxResults: 5,
   dailyLimit: 12,
-  // DeepSeek Anthropic-compatible web search (ignored by tavily/brave).
-  model: "deepseek-flash",
-  maxUses: 1,
   reuseChatKey: false,
-  // deepseek only: "anthropic" (default /messages) or "responses" (/responses).
-  apiStyle: "anthropic",
+  // DeepSeek official Search API by default; Responses web_search is optional.
+  apiStyle: "search",
 };
 const ENDPOINTS = {
   tavily: "https://api.tavily.com/search",
   brave: "https://api.search.brave.com/res/v1/web/search",
-  deepseek: "https://api.deepseek.com/anthropic/v1",
+  deepseek: "https://api.deepseek.com/v1/tools/search",
 };
+const DEEPSEEK_RESPONSES = "https://api.deepseek.com/responses";
+const DEEPSEEK_WEB_SEARCH_MODEL = "deepseek-v4-pro";
 export const SEARCH_PROVIDERS = Object.keys(ENDPOINTS);
 export const SEARCH_TEST_TOPIC = "ATRI 游戏 资料简介";
 export class Search {
@@ -75,6 +74,14 @@ export class Search {
       ...saved.profiles?.[chosen],
       provider: chosen,
     };
+    if (chosen === "deepseek") {
+      profile.apiStyle =
+        profile.apiStyle === "responses" ? "responses" : "search";
+      profile.baseUrl =
+        profile.apiStyle === "responses"
+          ? "https://api.deepseek.com"
+          : ENDPOINTS.deepseek;
+    }
     // Existing keys may have been pasted with padding before save normalized it.
     // Activity reads and connection tests must use the same credential bytes.
     return { ...profile, apiKey: profile.apiKey.trim() };
@@ -117,8 +124,6 @@ export class Search {
       hasApiKey: !!effectiveKey,
       keySource,
       reuseChatKey: !!full.reuseChatKey,
-      model: full.model || SEARCH_DEFAULTS.model,
-      maxUses: full.maxUses ?? SEARCH_DEFAULTS.maxUses,
       apiStyle: full.apiStyle || SEARCH_DEFAULTS.apiStyle,
       mode: this.mode(full),
       materialLabel:
@@ -146,6 +151,17 @@ export class Search {
       throw Error("搜索配置格式无效");
     if (!next.apiKey) next.apiKey = this.profile(provider).apiKey.trim();
     if (input.clearKey) next.apiKey = "";
+    if (provider === "deepseek") {
+      if (typeof next.reuseChatKey !== "boolean") next.reuseChatKey = false;
+      next.apiStyle = next.apiStyle === "responses" ? "responses" : "search";
+      next.baseUrl =
+        next.apiStyle === "responses"
+          ? "https://api.deepseek.com"
+          : ENDPOINTS.deepseek;
+    } else {
+      next.reuseChatKey = false;
+      next.apiStyle = SEARCH_DEFAULTS.apiStyle;
+    }
     const url = new URL(next.baseUrl);
     if (
       !["https:", "http:"].includes(url.protocol) ||
@@ -162,37 +178,6 @@ export class Search {
     ])
       if (!Number.isInteger(next[key]) || next[key] < min || next[key] > max)
         throw Error(key + " 超出范围");
-    if (provider === "deepseek") {
-      if (typeof next.reuseChatKey !== "boolean") next.reuseChatKey = false;
-      if (typeof next.model !== "string" || !next.model.trim())
-        next.model = SEARCH_DEFAULTS.model;
-      next.model = next.model.trim().slice(0, 80);
-      if (
-        !Number.isInteger(next.maxUses) ||
-        next.maxUses < 1 ||
-        next.maxUses > 5
-      )
-        throw Error("maxUses 超出范围");
-      next.apiStyle =
-        next.apiStyle === "responses" ? "responses" : "anthropic";
-      // Messages endpoint lives under /v1; Responses uses api.deepseek.com/responses.
-      const base = next.baseUrl.replace(/\/+$/, "");
-      if (!base.includes("deepseek.com"))
-        throw Error("DeepSeek 搜索地址无效");
-      if (next.apiStyle === "responses")
-        next.baseUrl = "https://api.deepseek.com";
-      else
-        next.baseUrl = base.endsWith("/v1")
-          ? base
-          : base.endsWith("/anthropic")
-            ? base + "/v1"
-            : ENDPOINTS.deepseek;
-    } else {
-      next.reuseChatKey = false;
-      next.model = SEARCH_DEFAULTS.model;
-      next.maxUses = SEARCH_DEFAULTS.maxUses;
-      next.apiStyle = SEARCH_DEFAULTS.apiStyle;
-    }
     const profile = Object.fromEntries(
       Object.keys(SEARCH_DEFAULTS).map((key) => [key, next[key]]),
     );
@@ -274,6 +259,12 @@ export class Search {
           ? this.resolveApiKey(profile)
           : profile.apiKey,
     };
+    if (
+      p.provider === "deepseek" &&
+      p.apiStyle !== "responses" &&
+      Array.from(topic).length > 128
+    )
+      throw Error("DeepSeek Search 查询最多 128 个字符");
     const id = Number(
       this.db
         .prepare(
@@ -293,23 +284,16 @@ export class Search {
             Authorization: "Bearer " + p.apiKey,
           }
         : p.provider === "deepseek"
-          ? p.apiStyle === "responses"
-            ? {
-                "Content-Type": "application/json",
-                Authorization: "Bearer " + p.apiKey,
-              }
-            : {
-                "Content-Type": "application/json",
-                "x-api-key": p.apiKey,
-                Authorization: "Bearer " + p.apiKey,
-                "anthropic-version": "2023-06-01",
-              }
+          ? {
+              "Content-Type": "application/json",
+              Authorization: "Bearer " + p.apiKey,
+            }
           : { "X-Subscription-Token": p.apiKey, Accept: "application/json" };
     let endpoint = new URL(
       p.provider === "deepseek"
         ? p.apiStyle === "responses"
-          ? "https://api.deepseek.com/responses"
-          : String(p.baseUrl).replace(/\/+$/, "") + "/messages"
+          ? DEEPSEEK_RESPONSES
+          : ENDPOINTS.deepseek
         : p.baseUrl,
     );
     let body;
@@ -325,32 +309,18 @@ export class Search {
       });
     } else if (p.provider === "deepseek") {
       method = "POST";
-      const style = p.apiStyle === "responses" ? "responses" : "anthropic";
-      if (style === "responses") {
-        // endpoint already set to https://api.deepseek.com/responses above.
+      if (p.apiStyle === "responses") {
         body = JSON.stringify({
-          model: p.model || "deepseek-v4-pro",
+          model: DEEPSEEK_WEB_SEARCH_MODEL,
           max_output_tokens: 1024,
           tools: [{ type: "web_search" }],
           input: `请检索并列出与下列主题最相关的公开网页资料，优先权威来源：${topic}`,
         });
       } else {
         body = JSON.stringify({
-          model: p.model || "deepseek-flash",
-          max_tokens: 1024,
-          tools: [
-            {
-              type: "web_search_20250305",
-              name: "web_search",
-              max_uses: p.maxUses || 1,
-            },
-          ],
-          messages: [
-            {
-              role: "user",
-              content: `请检索并列出与下列主题最相关的公开网页资料，优先权威来源：${topic}`,
-            },
-          ],
+          query: topic,
+          count: p.maxResults,
+          need_content: true,
         });
       }
     } else {
@@ -381,13 +351,15 @@ export class Search {
             (typeof data.error === "string" ? data.error : "");
           const hint = [401, 403].includes(response.status)
             ? p.provider === "deepseek"
-              ? "请核对 DeepSeek API Key，或开启「复用对话密钥」并确认对话模型已配置 DeepSeek"
+              ? "请核对 DeepSeek API Key 或「复用对话密钥」配置"
               : "请核对独立密钥与权限"
-            : [429, 432, 433].includes(response.status)
-              ? "提供方限制了请求频率或账户额度"
-              : [404, 405].includes(response.status)
-                ? "请核对提供方与完整搜索地址"
-                : "请检查搜索服务与请求配置";
+            : response.status === 402 && p.provider === "deepseek"
+              ? "DeepSeek Search 账户余额不足"
+              : [429, 432, 433].includes(response.status)
+                ? "提供方限制了请求频率或账户额度"
+                : [404, 405].includes(response.status)
+                  ? "请核对提供方与完整搜索地址"
+                  : "请检查搜索服务与请求配置";
           throw Error(`搜索接口 HTTP ${response.status}：${detail || hint}`);
         }
         const data = await response.json().catch(() => {
@@ -533,7 +505,11 @@ export function mapDeepSeekSearchResults(data, maxResults = 5) {
     const url = String(item?.url || item?.link || "");
     const title = text(item?.title || item?.url || "", 200);
     const snippet = text(
-      item?.snippet || item?.content || item?.description || "",
+      item?.content ||
+        item?.summary ||
+        item?.snippet ||
+        item?.description ||
+        "",
       6000,
     );
     const cited = Array.isArray(item?.citations) ? item.citations : [];
@@ -560,6 +536,8 @@ export function mapDeepSeekSearchResults(data, maxResults = 5) {
         content: snippet || title || url,
       });
   };
+  for (const item of Array.isArray(data?.results) ? data.results : [])
+    pushItem(item);
   const blocks = Array.isArray(data?.content) ? data.content : [];
   for (const block of blocks) {
     if (block?.type !== "web_search_tool_result") continue;
@@ -598,7 +576,13 @@ export function mapDeepSeekSearchResults(data, maxResults = 5) {
   const seen = new Set();
   for (const row of rows) {
     try {
-      if (!["https:", "http:"].includes(new URL(row.url).protocol)) continue;
+      const url = new URL(row.url);
+      if (
+        !["https:", "http:"].includes(url.protocol) ||
+        url.username ||
+        url.password
+      )
+        continue;
       if (!row.content || hasCredential(row.content)) continue;
       if (seen.has(row.url)) continue;
       seen.add(row.url);
@@ -610,7 +594,7 @@ export function mapDeepSeekSearchResults(data, maxResults = 5) {
   }
   if (!cleaned.length)
     throw Error(
-      "DeepSeek 未返回可用网页结果；请核对模型是否支持联网、API Key 权限、apiStyle（anthropic/responses）与 max_uses",
+      "DeepSeek 未返回可用网页结果；请核对 Search API 权限、账户余额和查询主题",
     );
   return cleaned;
 }

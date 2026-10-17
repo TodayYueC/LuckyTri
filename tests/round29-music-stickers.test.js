@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import sharp from "sharp";
 import { Stickers } from "../server/stickers/index.js";
-import { expressionInput } from "../server/stickers/offer.js";
+import { expressionInput, stickerContext } from "../server/stickers/offer.js";
 import {
   deliverMusicCard,
   musicSettings,
+  musicLastEvent,
   saveMusicSettings,
   MUSIC_DEFAULTS,
 } from "../server/channels/onebot/music-settings.js";
@@ -66,12 +67,17 @@ test("M1: music 卡片 RPC 失败有记录；链降级可关", async () => {
   assert.equal(events[0].degraded, "link");
   assert.match(events[0].reason, /无法解析/);
   assert.match(events[0].hint, /musicSignUrl|签名/);
+  assert.equal(events[0].signatureIssue, true);
 
   await assert.rejects(
     () =>
       deliverMusicCard({
         song,
-        settings: { ...MUSIC_DEFAULTS, failClosed: true, allowLinkFallback: false },
+        settings: {
+          ...MUSIC_DEFAULTS,
+          failClosed: true,
+          allowLinkFallback: false,
+        },
         sendCard: async () => {
           throw Error("签名失败");
         },
@@ -84,6 +90,33 @@ test("M1: music 卡片 RPC 失败有记录；链降级可关", async () => {
   );
   assert.equal(events.at(-1).status, "failed");
   assert.equal(events.at(-1).degraded, null);
+  assert.equal(events.at(-1).signatureIssue, true);
+});
+
+test("M1c: 音乐失败和降级事件可安全恢复，链接降级失败也会留痕", async () => {
+  const { store } = kernel();
+  const events = [];
+  await deliverMusicCard({
+    song: { id: 1, name: "歌", artist: "歌手" },
+    settings: { ...MUSIC_DEFAULTS },
+    sendCard: async () => {
+      throw Error("temporary network error");
+    },
+    sendText: async () => {
+      throw Error("network unavailable");
+    },
+    record: (event) => {
+      events.push(event);
+      store.saveConfig("onebot-music-last", {
+        at: Date.now(),
+        ...event,
+      });
+    },
+  }).catch((error) => assert.match(error.message, /音乐卡片与链接发送均失败/));
+  assert.equal(events[0].status, "failed");
+  assert.equal(events[0].signatureIssue, false);
+  assert.equal(musicLastEvent(store)?.status, "failed");
+  assert.equal(musicLastEvent(store)?.signatureIssue, false);
 });
 
 test("M1b: music 设置读写与三种策略", () => {
@@ -149,4 +182,27 @@ test("E1b: stickerNote 中性，不再强调不必为用而用", () => {
   }).expression.stickerNote;
   assert.match(note, /合适就用/);
   assert.equal(/不必为用而用/.test(note), false);
+});
+
+test("E1c: 普通图片、短句和问题不误判成斗图，收到表情或笑声才加入", () => {
+  assert.deepEqual(
+    stickerContext([{ text: "[图片]", attachments: [{ type: "image" }] }]),
+    { peerStickers: false, playful: false },
+  );
+  assert.deepEqual(stickerContext([{ text: "嗯" }]), {
+    peerStickers: false,
+    playful: false,
+  });
+  assert.deepEqual(stickerContext([{ text: "怎么回事？哈哈" }]), {
+    peerStickers: false,
+    playful: false,
+  });
+  assert.deepEqual(
+    stickerContext([{ text: "[表情]", attachments: [{ type: "mface" }] }]),
+    { peerStickers: true, playful: true },
+  );
+  assert.deepEqual(stickerContext([{ text: "哈哈好好笑" }]), {
+    peerStickers: false,
+    playful: true,
+  });
 });

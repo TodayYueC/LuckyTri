@@ -1,6 +1,10 @@
 import { mediaSettings } from "../stickers/api.js";
 import { ownerImageLimits } from "./image-preprocessor.js";
-import { atCandidates, expressiveChannel } from "../stickers/offer.js";
+import {
+  atCandidates,
+  expressiveChannel,
+  stickerContext,
+} from "../stickers/offer.js";
 import { actionOffer } from "../actions/index.js";
 import { voiceOffered, voiceSettings } from "../voice/index.js";
 import { speechLength } from "./speech-length.js";
@@ -472,28 +476,7 @@ export class TurnProcessor {
         try {
           const last = snapshot.batch.at(-1) || {};
           const batchText = snapshot.batch.map((m) => m.text || "").join("\n");
-          const peerStickers = snapshot.batch.some((m) => {
-            const bare = String(m.text || "")
-              .replace(/\[(?:提及成员)\]/g, "")
-              .trim();
-            return (
-              /^(?:\[(?:图片|表情|媒体)\]\s*)+$/.test(bare) ||
-              (m.attachments || []).some((a) =>
-                ["image", "mface", "market_face", "sticker"].includes(a?.type),
-              )
-            );
-          });
-          const shortBatch =
-            snapshot.batch.length > 0 &&
-            snapshot.batch.every(
-              (m) => Array.from(String(m.text || "").trim()).length <= 8,
-            );
-          const laughBatch = snapshot.batch.some((m) =>
-            /哈{2,}|h{2,}|233+|笑死|草{1,3}$|乐$|绷不住|xswl/i.test(
-              String(m.text || ""),
-            ),
-          );
-          const playful = peerStickers || shortBatch || laughBatch;
+          const { peerStickers, playful } = stickerContext(snapshot.batch);
           snapshot.stickers = await this.owner.stickers.candidates({
             session,
             text: batchText,

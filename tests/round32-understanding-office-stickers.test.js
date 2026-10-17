@@ -34,7 +34,9 @@ function zipStore(files) {
   let offset = 0;
   for (const [name, content] of Object.entries(files)) {
     const nameBuf = Buffer.from(name);
-    const data = Buffer.isBuffer(content) ? content : Buffer.from(content, "utf8");
+    const data = Buffer.isBuffer(content)
+      ? content
+      : Buffer.from(content, "utf8");
     const local = Buffer.alloc(30 + nameBuf.length);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(20, 4);
@@ -236,7 +238,12 @@ endstream
 %%EOF`);
   const db = {
     prepare() {
-      return { get() { return null; }, run() {} };
+      return {
+        get() {
+          return null;
+        },
+        run() {},
+      };
     },
   };
   const perceivers = new Perceivers(db);
@@ -261,14 +268,7 @@ endstream
 
 test("E1: 语气词收尾占比高 → particleEndings", () => {
   const style = expressionStrategy({
-    ownLines: [
-      "这样啊呢",
-      "可以吧",
-      "好呀",
-      "行嘛",
-      "去看看呢",
-      "再说吧",
-    ],
+    ownLines: ["这样啊呢", "可以吧", "好呀", "行嘛", "去看看呢", "再说吧"],
   });
   assert.ok(style?.particleEndings, JSON.stringify(style));
   assert.match(style.particleEndings.recent, /呢\/吧/);
@@ -276,13 +276,32 @@ test("E1: 语气词收尾占比高 → particleEndings", () => {
 
 // --- M1: skip card when known unsigned ---
 
-test("M1: 已知未签名时跳过卡片直链并记录", async () => {
+test("M1: 仅已确认的签名问题跳过卡片；临时错误会继续重试", async () => {
   assert.equal(
     shouldSkipCard(
       { ...MUSIC_DEFAULTS, musicSignUrl: "" },
-      { at: Date.now() - 1000, degraded: "link" },
+      {
+        at: Date.now() - 1000,
+        degraded: "link",
+        status: "sent",
+        signatureIssue: true,
+      },
     ),
     true,
+  );
+  assert.equal(
+    shouldSkipCard(
+      { ...MUSIC_DEFAULTS, musicSignUrl: "" },
+      { at: Date.now() - 1000, degraded: "link", status: "sent" },
+    ),
+    false,
+  );
+  assert.equal(
+    shouldSkipCard(
+      { ...MUSIC_DEFAULTS, musicSignUrl: "" },
+      { at: Date.now() - 1000, status: "failed", signatureIssue: false },
+    ),
+    false,
   );
   assert.equal(
     shouldSkipCard(
@@ -296,7 +315,12 @@ test("M1: 已知未签名时跳过卡片直链并记录", async () => {
   const out = await deliverMusicCard({
     song: { id: 1, name: "歌", artist: "歌手" },
     settings: { ...MUSIC_DEFAULTS },
-    lastEvent: { at: Date.now() - 5000, degraded: "link", status: "sent" },
+    lastEvent: {
+      at: Date.now() - 5000,
+      degraded: "link",
+      status: "sent",
+      signatureIssue: true,
+    },
     sendCard: async () => {
       cardCalls++;
       throw Error("should not call");

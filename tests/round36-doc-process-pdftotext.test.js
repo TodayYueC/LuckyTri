@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { deflateRawSync, deflateSync } from "node:zlib";
 import {
   groundingIssues,
   documentPresenceIssues,
@@ -10,6 +11,8 @@ import {
 import {
   extractPdfText,
   extractPdfWithPdfToText,
+  extractDocxText,
+  extractText,
   formatPerceived,
 } from "../server/core/file-text.js";
 import { speechGlosses } from "../server/core/understanding.js";
@@ -72,7 +75,10 @@ test("D1: 本轮已有文件却说「发个文件来看看」→ 拦截", () => 
     ["发个文件来看看写了什么新东西，总不会又是赛博跑路指南吧（"],
     snapshot,
   );
-  assert.ok(issues.some((x) => /已经有人发了文件/.test(x)), issues.join(";"));
+  assert.ok(
+    issues.some((x) => /已经有人发了文件/.test(x)),
+    issues.join(";"),
+  );
   assert.deepEqual(
     documentPresenceIssues(["这文件标题挺日轻的，我先翻两眼。"], snapshot),
     [],
@@ -84,10 +90,7 @@ test("D1b: 无文件时要文件 → 不误杀", () => {
     batchIds: [1],
     messages: [{ id: 1, role: "user", speaker: "a", text: "想听歌了" }],
   };
-  assert.deepEqual(
-    documentPresenceIssues(["发个文件来看看"], snapshot),
-    [],
-  );
+  assert.deepEqual(documentPresenceIssues(["发个文件来看看"], snapshot), []);
 });
 
 test("P1: 问小说发生了什么，只回「等稿/对稿」→ 拦截", () => {
@@ -108,13 +111,16 @@ test("P1: 问小说发生了什么，只回「等稿/对稿」→ 拦截", () =>
       },
     ],
   };
-  const hit = processOnlyContentIssues(["行，这笔记上，等稿，读完再说。"], snapshot);
-  assert.ok(hit.some((x) => /流程/.test(x)), hit.join(";"));
+  const hit = processOnlyContentIssues(
+    ["行，这笔记上，等稿，读完再说。"],
+    snapshot,
+  );
+  assert.ok(
+    hit.some((x) => /流程/.test(x)),
+    hit.join(";"),
+  );
   assert.deepEqual(
-    processOnlyContentIssues(
-      ["她推开门缝说了话，但没有走进去。"],
-      snapshot,
-    ),
+    processOnlyContentIssues(["她推开门缝说了话，但没有走进去。"], snapshot),
     [],
   );
 });
@@ -196,7 +202,10 @@ test("U1: asksForContent 扩 · 点评只回「好」仍 hollow", () => {
 
 test("G1: 老马 gloss", () => {
   const g = speechGlosses("我相信老马的能力");
-  assert.ok(g.some((x) => /马斯克|xai|grok/i.test(x)), g.join(","));
+  assert.ok(
+    g.some((x) => /马斯克|xai|grok/i.test(x)),
+    g.join(","),
+  );
 });
 
 test("F1: pdftotext 可选增强（有则读出字；无则跳过）", async () => {
@@ -222,4 +231,35 @@ test("F1b: 非 PDF / 坏缓冲 → pdftotext 返回 null", async () => {
 
 test("F1c: 纯 JS extractPdfText 对假 PDF 仍安全", () => {
   assert.equal(extractPdfText(Buffer.from("%PDF-1.4\n%%EOF")), null);
+});
+
+test("F1d: 文件大小和 PDF/DOCX 解压输出均有界", () => {
+  assert.equal(extractText("x".repeat(400_001), "large.txt"), null);
+
+  const xml = Buffer.from(
+    `<w:document><w:t>${"x".repeat(1_000_000)}</w:t></w:document>`,
+  );
+  const name = Buffer.from("word/document.xml");
+  const compressed = deflateRawSync(xml);
+  const header = Buffer.alloc(30 + name.length);
+  header.writeUInt32LE(0x04034b50, 0);
+  header.writeUInt16LE(8, 8);
+  header.writeUInt32LE(compressed.length, 18);
+  header.writeUInt32LE(xml.length, 22);
+  header.writeUInt16LE(name.length, 26);
+  name.copy(header, 30);
+  assert.equal(
+    extractDocxText(Buffer.concat([header, compressed])),
+    null,
+    "compressed DOCX text cannot expand beyond the extraction budget",
+  );
+
+  const pdfContent = Buffer.from(`BT (${"x".repeat(1_000_000)}) Tj ET`);
+  const pdfStream = deflateSync(pdfContent);
+  const pdf = Buffer.concat([
+    Buffer.from("%PDF-1.4\nstream\n"),
+    pdfStream,
+    Buffer.from("\nendstream\n%%EOF"),
+  ]);
+  assert.equal(extractPdfText(pdf), null);
 });

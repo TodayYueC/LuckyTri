@@ -157,15 +157,16 @@ export function understandingHints(messages = [], batchIds = []) {
   };
 }
 
-
-
 // Common chat slang / abbreviations seen in this room. Returned as data so
 // ledger overlap and the model share the same expansion — not as commands.
 const GLOSS_RULES = [
   { re: /梯子/, glosses: ["vpn", "代理", "节点", "翻墙"] },
   { re: /\btg\b|电报/i, glosses: ["telegram", "tg"] },
   { re: /\bds\b/i, glosses: ["deepseek", "ds"] },
-  { re: /扫不了|扫不动|扫码|二维码|(?:哪个|什么|啥)码/, glosses: ["二维码", "验证码", "邀请码"] },
+  {
+    re: /扫不了|扫不动|扫码|二维码|(?:哪个|什么|啥)码/,
+    glosses: ["二维码", "验证码", "邀请码"],
+  },
   { re: /牢大/, glosses: ["老大", "老哥"] },
   { re: /hh+|哈哈哈*/, glosses: ["笑", "哈哈"] },
   { re: /日轻/, glosses: ["日本轻小说", "轻小说"] },
