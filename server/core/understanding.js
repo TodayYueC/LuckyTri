@@ -181,6 +181,7 @@ const GLOSS_RULES = [
   { re: /转正/, glosses: ["转正", "转全职"] },
   { re: /\btgx\b/i, glosses: ["telegram", "tg", "tgx"] },
   { re: /豆包/, glosses: ["豆包", "字节模型", "大模型"] },
+  { re: /发篇/, glosses: ["发文章", "发帖", "发篇"] },
 ];
 
 export function speechGlosses(text) {

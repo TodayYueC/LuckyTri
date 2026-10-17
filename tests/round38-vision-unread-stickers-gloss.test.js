@@ -164,7 +164,7 @@ test("G1: tgx / 豆包 gloss", () => {
   assert.ok(speechGlosses("底层是不是豆包").includes("大模型"));
 });
 
-test("E1: 括号玩笑收尾 35% 即照镜子", () => {
+test("E1: 括号玩笑收尾 30% 即照镜子", () => {
   const lines = [
     "存货见底了（",
     "围观席热闹（",
@@ -173,14 +173,14 @@ test("E1: 括号玩笑收尾 35% 即照镜子", () => {
     "这注看来稳（",
     "字先倒贴（",
   ];
-  // 6/6 = 100% > 0.35
+  // 6/6 = 100% > 0.30
   const mirror = expressionStrategy({ ownLines: lines, theirLines: ["hh"] });
   assert.ok(mirror?.jokeEndings, JSON.stringify(mirror));
-  // 2/6 ≈ 0.33 < 0.35 → no jokeEndings
+  // 1/6 ≈ 0.17 < 0.30 → no jokeEndings
   const low = expressionStrategy({
     ownLines: [
       "存货见底了（",
-      "围观席热闹（",
+      "围观席热闹。",
       "下一轮撑不住。",
       "押右边稳。",
       "这注看来稳。",

@@ -527,6 +527,7 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
 
   issues.push(...mediaAttributionIssues(bubbles, snapshot));
   issues.push(...ungroundedVisionDetailIssues(bubbles, snapshot));
+  issues.push(...misattributedImageAtIssues(bubbles, snapshot));
   issues.push(...documentPresenceIssues(bubbles, snapshot));
   issues.push(...claimedUnreadDocumentIssues(bubbles, snapshot));
   issues.push(...unreadDocumentReviewIssues(bubbles, snapshot));
@@ -535,6 +536,8 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   issues.push(...unframedCreativeDumpIssues(bubbles, snapshot, decision));
   issues.push(...stalePriorThreadIssues(bubbles, snapshot, decision));
   issues.push(...linkReviewMissIssues(bubbles, snapshot, decision));
+  issues.push(...wrongAddressedAtIssues(bubbles, snapshot, decision));
+  issues.push(...batchOrphanReplyIssues(bubbles, snapshot, decision));
   return [...new Set(issues)];
 }
 
@@ -1367,6 +1370,199 @@ export function unreadDocumentReviewIssues(bubbles, snapshot) {
 // Catch the live failure mode: a picture from A gets titled with B's earlier
 // topic ("你这实装内容…路线图"), or "你这图" is aimed at someone who did not
 // send the picture in view.
+// Sole addresser A, reply @s B≠A while answering A's terms → wrong @.
+export function wrongAddressedAtIssues(bubbles, snapshot, decision = {}) {
+  const messages = snapshot.messages || [];
+  const batch = new Set(snapshot.batchIds || []);
+  const batchMsgs = messages.filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  if (!batchMsgs.length) return [];
+
+  const addressed = new Map();
+  const addrIds = idSet(snapshot.addressed?.messageIds || []);
+  for (const m of batchMsgs) {
+    const id = String(m.speaker ?? m.userId ?? "");
+    if (!id) continue;
+    const hit =
+      addrIds.has(m.id) ||
+      addrIds.has(Number(m.id)) ||
+      addrIds.has(String(m.id)) ||
+      m.relation === "direct" ||
+      m.mentioned === true ||
+      /\[提及成员\]|@我\b/.test(m.text || "");
+    if (hit) addressed.set(id, m.name || id);
+  }
+  if (addressed.size !== 1) return [];
+  const [addrId, addrName] = [...addressed.entries()][0];
+
+  const replyLines = (bubbles || []).filter((line) => typeof line === "string");
+  const reply = replyLines.join("\n");
+  if (!reply.trim()) return [];
+
+  const people = new Map();
+  for (const m of messages.slice(-48)) {
+    if (m.role === "assistant") continue;
+    const id = String(m.speaker ?? m.userId ?? "");
+    if (!id || !m.name) continue;
+    people.set(m.name, id);
+  }
+  for (const p of snapshot.canAt || []) {
+    if (p?.name) people.set(p.name, String(p.userId));
+  }
+  const names = [...people.keys()].sort((a, b) => b.length - a.length);
+  const atIds = new Set();
+  for (const line of replyLines) {
+    for (const name of names) {
+      if (String(line).includes(`@${name}`)) atIds.add(people.get(name));
+    }
+  }
+  for (const raw of decision.at || []) {
+    const id = String(raw?.userId ?? raw ?? "");
+    if (id) atIds.add(id);
+  }
+  if (!atIds.size) return [];
+  if ([...atIds].every((id) => id === addrId)) return [];
+
+  const addrText = batchMsgs
+    .filter((m) => String(m.speaker ?? m.userId) === addrId)
+    .map((m) => m.text || "")
+    .join(" ");
+
+  for (const wid of [...atIds].filter((id) => id !== addrId)) {
+    const wrongName =
+      [...people.entries()].find(([, id]) => id === wid)?.[0] || wid;
+    // Rina names 雾言 → @雾言 redirect is fine.
+    if (wrongName && addrText.includes(wrongName)) continue;
+    const wrongText = batchMsgs
+      .filter((m) => String(m.speaker ?? m.userId) === wid)
+      .map((m) => m.text || "")
+      .join(" ");
+    const ovAddr = termOverlap(reply, addrText);
+    const ovWrong = termOverlap(reply, wrongText);
+    const wrongBare = String(wrongText)
+      .replace(/\[(?:图片|表情|媒体|提及成员)\]|@\S+/g, "")
+      .trim();
+    if (
+      ovAddr.length >= 1 &&
+      (ovAddr.length > ovWrong.length || wrongBare.length < 2)
+    ) {
+      return [
+        `本轮是${addrName}在叫你，却@了${wrongName}；回应对方时请@叫你的人，不要@错人。`,
+      ];
+    }
+  }
+  return [];
+}
+
+// Talks about 这图/图里 while @ing someone who did not send the media.
+export function misattributedImageAtIssues(bubbles, snapshot) {
+  const replyLines = (bubbles || []).filter((line) => typeof line === "string");
+  const reply = replyLines.join("\n");
+  if (!reply.trim()) return [];
+  if (!/(?:这(?:张)?图|图里|这表情|表情包|截图|画面)/.test(reply)) return [];
+
+  const messages = snapshot.messages || [];
+  const batch = new Set(snapshot.batchIds || []);
+  const mediaOwners = new Map(); // speakerId -> name
+  for (const m of messages) {
+    if (!(batch.has(m.id) || batch.has(Number(m.id)))) continue;
+    if (!isVisualMessage(m)) continue;
+    const id = String(m.speaker ?? m.userId ?? "");
+    if (!id) continue;
+    mediaOwners.set(id, m.name || id);
+  }
+  for (const obs of snapshot.vision?.observations || []) {
+    const mid = obs?.messageId;
+    const message =
+      messages.find(
+        (m) => m.id === mid || String(m.id) === String(mid),
+      ) || null;
+    const id = String(obs.speaker ?? message?.speaker ?? "");
+    if (!id) continue;
+    if (
+      batch.has(mid) ||
+      batch.has(Number(mid)) ||
+      batch.has(String(mid)) ||
+      mediaOwners.size
+    )
+      mediaOwners.set(id, obs.name || message?.name || id);
+  }
+  if (!mediaOwners.size) return [];
+
+  const people = new Map();
+  for (const m of messages.slice(-48)) {
+    if (m.role === "assistant") continue;
+    const id = String(m.speaker ?? m.userId ?? "");
+    if (!id || !m.name) continue;
+    people.set(m.name, id);
+  }
+  for (const p of snapshot.canAt || []) {
+    if (p?.name) people.set(p.name, String(p.userId));
+  }
+  const names = [...people.keys()].sort((a, b) => b.length - a.length);
+  const atIds = new Set();
+  for (const line of replyLines) {
+    for (const name of names) {
+      if (String(line).includes(`@${name}`)) atIds.add(people.get(name));
+    }
+  }
+  if (!atIds.size) return [];
+  if ([...atIds].every((id) => mediaOwners.has(id))) return [];
+
+  const wrong = [...atIds].filter((id) => !mediaOwners.has(id));
+  if (!wrong.length) return [];
+  const ownerName = [...mediaOwners.values()][0] || "发图的人";
+  const wrongName =
+    [...people.entries()].find(([, id]) => id === wrong[0])?.[0] || wrong[0];
+  return [
+    `本轮的图/表情是${ownerName}发的，却@了${wrongName}并把图挂到对方头上；图归谁就对谁说，或别把别人的图说成对方的。`,
+  ];
+}
+
+// Long reply with zero term overlap against the batch — only in multi-speaker
+// rooms, so single-thread paraphrases (喜剧/释义) are not false-positive.
+export function batchOrphanReplyIssues(bubbles, snapshot, decision = {}) {
+  if (socialOnlyBatch(snapshot)) return [];
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+  if (routineSocialReply(reply, snapshot)) return [];
+  if ([...replyBareChars(reply)].length < 36) return [];
+
+  const messages = snapshot.messages || [];
+  const batch = new Set(snapshot.batchIds || []);
+  const humans = messages.filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  const speakers = new Set(
+    humans.map((m) => String(m.speaker ?? m.userId ?? "")).filter(Boolean),
+  );
+  // Need genuine multi-thread pressure; one-to-one paraphrase is not orphan.
+  if (speakers.size < 2) return [];
+
+  const humanText = humans
+    .map((m) =>
+      String(m.text || "")
+        .replace(/\[(?:图片|表情|媒体|提及成员|文件|语音)\]/g, " ")
+        .replace(/@\S+/g, " "),
+    )
+    .join(" ")
+    .trim();
+  if ([...humanText].filter((ch) => !/\s/.test(ch)).length < 6) return [];
+
+  if (termOverlap(reply, humanText).length >= 1) return [];
+  const point = String(decision.understanding?.point || "").trim();
+  if (point && termOverlap(reply, point).length >= 1) return [];
+  return [
+    "回复与本轮在场任何人的话几乎没有接点；先对齐本轮实际在说的事，不要另开一截无关话题。",
+  ];
+}
+
 export function mediaAttributionIssues(bubbles, snapshot) {
 
   const text = (bubbles || [])
