@@ -539,6 +539,7 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   issues.push(...wrongAddressedAtIssues(bubbles, snapshot, decision));
   issues.push(...batchOrphanReplyIssues(bubbles, snapshot, decision));
   issues.push(...misdirectedSelfJabIssues(bubbles, snapshot));
+  issues.push(...misattributedNamedTraitIssues(bubbles, snapshot));
   issues.push(...ignoredRoomStopIssues(bubbles, snapshot));
   issues.push(...hearsayCatchphraseIssues(bubbles, snapshot));
   return [...new Set(issues)];
@@ -753,6 +754,35 @@ function multiThreadLedgerIssues(bubbles, snapshot, decision, reply) {
     issues.push(
       "已点到优先提问，但回复过于含糊短促、没有碰到问题本身；先答具体内容。",
     );
+  } else if (
+    hit.length &&
+    focusIsQuestion &&
+    substantiveQ &&
+    noCueTouch &&
+    !agreementOk
+  ) {
+    // Live: 「这个是你吗」→「瓜子没有…椅子」。只收身份确认类问句，避免
+    // 「你为什么叫我主人」→「我没接住…」这类诚实承认被误杀。
+    const identityAsk = focus.some((c) =>
+      /是你(?:吗|么)|是本人|这(?:个|张|号)?是你|认(?:得|识)我吗|哪位是你/.test(
+        cueBare(c.text),
+      ),
+    );
+    if (identityAsk) {
+      const bare = replyBareChars(reply);
+      const bareLen = [...bare].length;
+      const shortOrNamed =
+        bareLen <= 12 ||
+        /[a-z0-9]{3,}/i.test(bare) ||
+        /^(?:不知道|不清楚|不晓得|没印象|忘了|记不清)(?:啊|呀|呢|啦|了)?$/u.test(
+          bare,
+        ) ||
+        /(?:是我|不是我|对就是我|嗯是我|本人|就是我)/.test(bare);
+      if (!shortOrNamed)
+        issues.push(
+          "已点到优先提问，但回复没有碰到问题本身；先答眼前被叫到的问题。",
+        );
+    }
   } else if (!hit.length && focusIsQuestion && focusOverlap.length < 1) {
     issues.push(
       "本轮优先提问的具体内容没有被回应；先答问题本身，再接气氛或其他支线。",
@@ -1608,7 +1638,7 @@ export function misdirectedSelfJabIssues(bubbles, snapshot) {
     // 你个扫货 / 你这复读机 / 你真是个傻子 / 你真扫货
     // 你也太扫货了 / 你怎么这么扫货
     const hit = bare.match(
-      /你(?:个|这|真(?:是|个)?|也太|怎么这么)([\u4e00-\u9fffA-Za-z]{2,8})/,
+      /你(?:个|这|真(?:是|个)?|也太|怎么这么|可真(?:是)?|倒是)([\u4e00-\u9fffA-Za-z]{2,8})/,
     );
     if (!hit) continue;
     const label = hit[1].replace(/(?:了|啊|呀|呢|嘛|啦)$/u, "");
@@ -1659,11 +1689,100 @@ export function misdirectedSelfJabIssues(bubbles, snapshot) {
 }
 
 
+
+// Named trait hung on the wrong person.
+// Live: Rina「急切值拉满的是牢大吧」→ reply @，，， with 急切值拉满.
+export function misattributedNamedTraitIssues(bubbles, snapshot) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const batchMsgs = (snapshot.messages || []).filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  if (!batchMsgs.length) return [];
+
+  const attrs = [];
+  for (const m of batchMsgs) {
+    const raw = String(m.text || "");
+    // 「急切值拉满的是牢大吧」— trait short, 值/拉满 optional, who is a short name.
+    for (const match of raw.matchAll(
+      /([\u4e00-\u9fff]{2,4})值?(?:拉满|爆表|满了|爆了)的是([\u4e00-\u9fffA-Za-z]{1,8})/gu,
+    )) {
+      let trait = match[1].replace(/值$/u, "");
+      let who = match[2].replace(/(?:吧|啊|呀|呢)$/u, "").trim();
+      if ([...trait].length < 2 || [...who].length < 1) continue;
+      if (/^(?:你|我|他|她|它|你们|我们|他们|她们|大家|别人)$/.test(who))
+        continue;
+      attrs.push({ trait, who, reporter: String(m.speaker ?? m.userId ?? "") });
+    }
+  }
+  if (!attrs.length) return [];
+
+  const people = new Map();
+  for (const m of (snapshot.messages || []).slice(-64)) {
+    if (m.role === "assistant") continue;
+    const id = String(m.speaker ?? m.userId ?? "");
+    if (!id || !m.name) continue;
+    people.set(m.name, id);
+  }
+  for (const p of snapshot.canAt || []) {
+    if (p?.name) people.set(p.name, String(p.userId));
+  }
+  // Longest names first so「北-我的学姐你别输啊」beats shorter fragments.
+  const names = [...people.keys()].sort((a, b) => b.length - a.length);
+
+  // Collect @ targets that match known display names (incl.「，，，」).
+  const atNames = [];
+  for (const name of names) {
+    const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`@${esc}(?=$|[\\s，,。！？!?（(])`).test(reply))
+      atNames.push(name);
+  }
+  if (!atNames.length) return [];
+
+  for (const attr of attrs) {
+    const traitEsc = attr.trait.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (!new RegExp(traitEsc).test(reply)) continue;
+    for (const atName of atNames) {
+      if (
+        atName === attr.who ||
+        atName.includes(attr.who) ||
+        attr.who.includes(atName)
+      )
+        continue;
+      const atId = people.get(atName);
+      const whoId = people.get(attr.who);
+      if (whoId && atId && whoId === atId) continue;
+      // Nickname alias: attributed who matches another known name of same id.
+      let same = false;
+      for (const name of names) {
+        const id = people.get(name);
+        if (!id || id !== atId) continue;
+        if (name.includes(attr.who) || attr.who.includes(name)) {
+          same = true;
+          break;
+        }
+      }
+      if (same) continue;
+      return [
+        `有人把「${attr.trait}」点名归给${attr.who}，却@${atName}并挂上同一特质；对齐点名对象，不要挂错人。`,
+      ];
+    }
+  }
+  return [];
+}
+
+
 // Room-stop / risk cue ignored: keep bantering with zero ack.
 // Live: 能不能不要在QQ群聊这些 / 你们想让我喝茶吗 / 咱们别在群里讨论了
 // → continued owl-avatar joke with no "行/收到/不聊/喝茶" ack.
 const ROOM_STOP_CUE =
-  /别在群里(?:讨论|聊)|咱们别在群里|能不能不要在.{0,8}群.{0,8}聊|不要在.{0,8}群.{0,8}聊这些|别聊这些|别讨论这些|想让我喝茶|喝茶吗|喝茶啊/;
+  /别在群里(?:讨论|聊)|咱们别在群里|能不能不要在.{0,8}群.{0,8}聊|不要在.{0,8}群.{0,8}聊这些|别聊这些|别讨论这些|想让我喝茶|喝茶吗|喝茶啊|这玩意儿私聊|私聊吧|私聊说|去tg那边|去tg.{0,8}讲|剩下的.{0,12}去tg|别发群里|别公开聊/;
 const ROOM_STOP_ACK =
   /(?:收到(?:了)?|好的|好吧|行吧|行行|闭麦|不聊(?:了)?|换地方|喝茶|注意(?:点|一下)?|懂了|明白(?:了)?|私聊(?:吧)?|去tg|tg那边|那边讲|闭嘴|别说了|记下了|不讨论|换个地方|知道了)/;
 
