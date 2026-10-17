@@ -189,6 +189,10 @@ const GLOSS_RULES = [
   { re: /反作弊/, glosses: ["反外挂", "检测外挂", "反作弊"] },
   { re: /许愿池/, glosses: ["许愿", "许愿池", "愿望清单"] },
   { re: /扣款认证/, glosses: ["付费验证", "扣费验证", "扣款认证"] },
+  { re: /防伪码/, glosses: ["防伪码", "验证码", "校验码"] },
+  { re: /宝宝认证/, glosses: ["宝宝认证", "身份认证", "认证"] },
+  { re: /咸鱼/, glosses: ["闲鱼", "二手", "咸鱼"] },
+  { re: /咬钩/, glosses: ["上钩", "中招", "咬钩"] },
 ];
 
 export function speechGlosses(text) {

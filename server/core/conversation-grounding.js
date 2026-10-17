@@ -768,9 +768,9 @@ function multiThreadLedgerIssues(bubbles, snapshot, decision, reply) {
         cueBare(c.text),
       ),
     );
+    const bare = replyBareChars(reply);
+    const bareLen = [...bare].length;
     if (identityAsk) {
-      const bare = replyBareChars(reply);
-      const bareLen = [...bare].length;
       const shortOrNamed =
         bareLen <= 12 ||
         /[a-z0-9]{3,}/i.test(bare) ||
@@ -779,6 +779,19 @@ function multiThreadLedgerIssues(bubbles, snapshot, decision, reply) {
         ) ||
         /(?:是我|不是我|对就是我|嗯是我|本人|就是我)/.test(bare);
       if (!shortOrNamed)
+        issues.push(
+          "已点到优先提问，但回复没有碰到问题本身；先答眼前被叫到的问题。",
+        );
+    } else if (contentAsk) {
+      // Live: 流水线题→搜中国扣款；怎么扫不了→喝茶玩笑。长跑题零接点。
+      // Carve-out: 短答、字母数字答、诚实承认没接住/不会。
+      const honest =
+        bareLen <= 14 ||
+        /[a-z0-9]{3,}/i.test(bare) ||
+        /(?:不知道|不清楚|不晓得|没印象|忘了|记不清|没接住|答不上(?:来)?|不会|不懂|没看懂|没听懂|想不起来|说乱了|我说乱了|前后不一致|我说错了|是我说错|说错了|是我猜的|只是猜的|我猜的|没有别的依据|没有依据|我自己先开口|是猜的)/.test(
+          bare,
+        );
+      if (!honest && bareLen > 14)
         issues.push(
           "已点到优先提问，但回复没有碰到问题本身；先答眼前被叫到的问题。",
         );
@@ -815,7 +828,7 @@ function isSubstantiveQuestionText(text) {
 function asksForContent(text) {
   const bare = cueBare(text);
   if (!bare) return false;
-  return /(?:什么|怎么|为什么|为啥|哪[里儿个些]?|啥|多少|谁|何时|为何|如何|几[点个天]?|是什么|是啥|啥意思|解释一下|说清楚|展开说说?|告诉我|能不能告诉|可以说一下|讲讲|说说看|来点评|点评一下|点评|评价一下|评价下|评一下|对比一下|哪个好|哪个别好)/.test(
+  return /(?:什么|怎么|为什么|为啥|哪[里儿个些]?|啥|多少|谁|何时|为何|如何|几[点个天]?|是什么|是啥|啥意思|解释一下|说清楚|展开说说?|告诉我|能不能告诉|可以说一下|讲讲|说说看|来点评|点评一下|点评|评价一下|评价下|评一下|对比一下|哪个好|哪个别好|有招|怎么办|咋办|咋整|有没有办法)/.test(
     bare,
   );
 }
@@ -1577,7 +1590,7 @@ export function batchOrphanReplyIssues(bubbles, snapshot, decision = {}) {
     .trim();
   if (!reply) return [];
   if (routineSocialReply(reply, snapshot)) return [];
-  if ([...replyBareChars(reply)].length < 36) return [];
+  if ([...replyBareChars(reply)].length < 28) return [];
 
   const messages = snapshot.messages || [];
   const batch = new Set(snapshot.batchIds || []);
@@ -1711,13 +1724,25 @@ export function misattributedNamedTraitIssues(bubbles, snapshot) {
     const raw = String(m.text || "");
     // 「急切值拉满的是牢大吧」— trait short, 值/拉满 optional, who is a short name.
     for (const match of raw.matchAll(
-      /([\u4e00-\u9fff]{2,4})值?(?:拉满|爆表|满了|爆了)的是([\u4e00-\u9fffA-Za-z]{1,8})/gu,
+      /([\u4e00-\u9fff]{2,4})值?(?:拉满|爆表|满了|爆了|满格)的(?:就)?是([\u4e00-\u9fffA-Za-z]{1,8})/gu,
     )) {
       let trait = match[1].replace(/值$/u, "");
       let who = match[2].replace(/(?:吧|啊|呀|呢)$/u, "").trim();
       if ([...trait].length < 2 || [...who].length < 1) continue;
       if (/^(?:你|我|他|她|它|你们|我们|他们|她们|大家|别人)$/.test(who))
         continue;
+      attrs.push({ trait, who, reporter: String(m.speaker ?? m.userId ?? "") });
+    }
+    // 「急切的是牢大吧」— no 拉满/爆表, but ends with 吧/啊 particle.
+    for (const match of raw.matchAll(
+      /([\u4e00-\u9fff]{2,4})的(?:就)?是([\u4e00-\u9fffA-Za-z]{1,8})(?:吧|啊|呀|呢)/gu,
+    )) {
+      let trait = match[1].replace(/值$/u, "");
+      let who = match[2].trim();
+      if ([...trait].length < 2 || [...who].length < 1) continue;
+      if (/^(?:你|我|他|她|它|你们|我们|他们|她们|大家|别人|什么|啥|谁)$/.test(who))
+        continue;
+      if (attrs.some((a) => a.trait === trait && a.who === who)) continue;
       attrs.push({ trait, who, reporter: String(m.speaker ?? m.userId ?? "") });
     }
   }
