@@ -542,10 +542,12 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   issues.push(...misdirectedSelfJabIssues(bubbles, snapshot));
   issues.push(...misattributedNamedTraitIssues(bubbles, snapshot));
   issues.push(...ignoredRoomStopIssues(bubbles, snapshot));
+  issues.push(...ignoredRoomHushIssues(bubbles, snapshot));
   issues.push(...hearsayCatchphraseIssues(bubbles, snapshot));
   issues.push(...stickySelfGagIssues(bubbles, snapshot));
   issues.push(...projectedMotiveIssues(bubbles, snapshot));
   issues.push(...opaqueMetaphorDumpIssues(bubbles, snapshot));
+  issues.push(...falseAwakePresenceIssues(bubbles, snapshot, decision));
   return [...new Set(issues)];
 }
 
@@ -2244,6 +2246,137 @@ export function opaqueMetaphorDumpIssues(bubbles, snapshot) {
     "这轮把话说成一串隐喻，同轮没有白话锚（意思是/直说/说白了…）；先用普通人听得懂的话点明在说什么，再决定要不要留比喻。",
   ];
 }
+
+
+// Room-level hush toward AI chatter ignored.
+// Live 2026-10-23 group:670380624 — 雾言「臭区你快闭嘴吧」后 LuckyTri 仍接旧线
+// 「这活本来就难干…」→「像个复读机」。explicitStop 只认点名她；ROOM_STOP 只认
+// 风险停聊。对房里 bot/AI 的嘘停也应让旁白旧线收住，除非本轮又有新的直接提问。
+const ROOM_HUSH_CUE =
+  /(?:快)?闭嘴(?:吧)?|别说了|不要再说了|别再说了|先别说话|闭麦|别复读|别吵了|(?:这)?傻子?AI|AI.{0,10}(?:开着|烧钱)|烧钱来的|别刷屏/;
+const ROOM_HUSH_ACK =
+  /(?:好好好|行行行|闭嘴|不说了|不聊了|收到|好的|好吧|行吧|嗯嗯|哦哦|闭麦|安静)/;
+const ROOM_HUSH_NEW_ASK =
+  /[?？]|吗\s*$|怎么|为什么|什么|哪|有没有|能不能|是什么|啥意思|告诉我|说说|你怎么看|你觉得|帮我|会不会|能不能/;
+
+export function ignoredRoomHushIssues(bubbles, snapshot) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+  if (ROOM_HUSH_ACK.test(reply)) return [];
+  if (routineSocialReply(reply, snapshot)) return [];
+  const bare = String(reply)
+    .replace(/\[提及成员\]|@\S+/g, "")
+    .replace(/[（(][^）)]{0,40}[）)]\s*$/u, "")
+    .trim();
+  if ([...bare].length < 12) return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const messages = snapshot.messages || [];
+  const batchUsers = messages.filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  const hushMsgs = batchUsers.filter((m) =>
+    ROOM_HUSH_CUE.test(String(m.text || "")),
+  );
+  if (!hushMsgs.length) return [];
+
+  // A fresh direct question in the same batch (after or alongside hush) may
+  // still deserve an answer — hush is not a permanent mute.
+  const addressed = new Set(snapshot.addressed?.messageIds || []);
+  for (const id of snapshot.addressed?.messageIds || []) {
+    const n = Number(id);
+    if (Number.isFinite(n)) addressed.add(n);
+  }
+  const hasNewAsk = batchUsers.some((m) => {
+    if (hushMsgs.some((h) => h.id === m.id)) return false;
+    const direct =
+      m.relation === "direct" ||
+      addressed.has(m.id) ||
+      addressed.has(Number(m.id)) ||
+      /\[提及成员\]|@我\b/.test(String(m.text || ""));
+    return direct && ROOM_HUSH_NEW_ASK.test(String(m.text || ""));
+  });
+  if (hasNewAsk) return [];
+
+  return [
+    "本轮有人嘘停房里的 AI/发言（闭嘴/别说了/烧钱一类）；先收住旧线旁白，不要无视继续复读刚才的元评论，除非又有人新点名问你。",
+  ];
+}
+
+
+// Live 2026-10-23 Tokyo DM: quiet after user spoke →「都两点半了还醒着」→
+// 「你从哪看出我还醒着的」。Presence must not be invented from her own clock
+// when she reopens after a quiet stretch (initiative or delayed revisit).
+const AWAKE_CLAIM =
+  /(?:还醒着|还没睡|还没困|这么晚还|这个点了你还|都.{0,6}了还醒|深夜还醒|大半夜还)/;
+
+function conversationNowMs(snapshot) {
+  const local = snapshot.conversation?.clock?.local;
+  if (local) {
+    const ms = Date.parse(String(local).replace(" ", "T") + "+08:00");
+    if (Number.isFinite(ms)) return ms;
+  }
+  if (Number.isFinite(snapshot.now)) return snapshot.now;
+  return null;
+}
+
+export function falseAwakePresenceIssues(bubbles, snapshot, decision = {}) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply || !AWAKE_CLAIM.test(reply)) return [];
+
+  // Their own words already established being up — fine to echo.
+  const batch = new Set(snapshot.batchIds || []);
+  const messages = snapshot.messages || [];
+  const batchUsers = messages.filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  if (
+    batchUsers.some((m) =>
+      /醒着|没睡|睡不着|熬夜|通宵|还在|在吗/.test(String(m.text || "")),
+    )
+  )
+    return [];
+
+  if (snapshot.initiative) {
+    return [
+      "这是自己先开口的一轮，不能把对方说成「还醒着」当在场证据；想关心就直接说，或承认是猜的/看时间。",
+    ];
+  }
+
+  const nowMs = conversationNowMs(snapshot);
+  const lastUser = [...batchUsers, ...messages.filter((m) => m.role === "user")]
+    .filter((m) => Number.isFinite(m.time))
+    .sort((a, b) => a.time - b.time)
+    .at(-1);
+  // Quiet reopen / delayed revisit: last human line is ≥45min before "now".
+  if (
+    nowMs &&
+    lastUser &&
+    nowMs - lastUser.time >= 45 * 60000
+  ) {
+    return [
+      "安静一阵后又开口，不能凭自己的时钟断言对方「还醒着」；没有对方刚表态在场时，别把夜深写成对方的状态。",
+    ];
+  }
+
+  // Fallback when clock missing: long gapMinutes on the conversation cue.
+  const gap = snapshot.conversation?.gapMinutes;
+  if (Number.isFinite(gap) && gap >= 45) {
+    return [
+      "隔了较久再开口，不能断言对方「还醒着」；没有新的在场线索就别替人报时态。",
+    ];
+  }
+  return [];
+}
+
 
 
 export function mediaAttributionIssues(bubbles, snapshot) {
