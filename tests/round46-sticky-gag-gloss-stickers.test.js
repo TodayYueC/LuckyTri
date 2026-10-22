@@ -162,7 +162,7 @@ test("B1: 报数·中转·情包 gloss", () => {
 
 // --- C: joke mirror 16% ---
 
-test("C1: 括号玩笑 14% 照镜子", () => {
+test("C1: 括号玩笑 12% 照镜子", () => {
   const low = expressionStrategy({
     ownLines: [
       "存货见底了（",
@@ -180,7 +180,7 @@ test("C1: 括号玩笑 14% 照镜子", () => {
     ],
     theirLines: ["hh"],
   });
-  // 1/12 ≈ 0.083 < 0.14
+  // 1/12 ≈ 0.083 < 0.12
   assert.equal(low?.jokeEndings, undefined);
   const hit = expressionStrategy({
     ownLines: [
@@ -199,13 +199,13 @@ test("C1: 括号玩笑 14% 照镜子", () => {
     ],
     theirLines: ["hh"],
   });
-  // 2/12 ≈ 0.167 >= 0.14
+  // 2/12 ≈ 0.167 >= 0.12
   assert.ok(hit?.jokeEndings, JSON.stringify(hit));
 });
 
 // --- D: peer cool 20s ---
 
-test("D1: peer 硬冷却约 15 秒后可再供给", async () => {
+test("D1: peer 硬冷却约 12 秒后可再供给", async () => {
   const db = new DatabaseSync(":memory:");
   const now = { t: 1_800_000_000_000 };
   const config = new Map([["stickers", { enabled: true }]]);
@@ -232,7 +232,7 @@ test("D1: peer 硬冷却约 15 秒后可再供给", async () => {
     status: "ready",
   });
   stickers.used({ stickerId: item.id, session: "s1", userId: "u1" });
-  now.t += 15 * 1000 + 1;
+  now.t += 12 * 1000 + 1;
   const war = await stickers.candidates({
     session: "s1",
     text: "哈哈哈好好笑",

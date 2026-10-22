@@ -229,7 +229,7 @@ export class Stickers {
       .all(session, now - 2 * 3600000);
     // Just sent here: not again so soon. Soft penalty still covers 2h.
     // Sticker-war: shorter hard cool; playful alone still 4m.
-    const hardCoolMs = peerStickers ? 15 * 1000 : playful ? 3 * 60000 : 6 * 60000;
+    const hardCoolMs = peerStickers ? 12 * 1000 : playful ? 3 * 60000 : 6 * 60000;
     const justUsed = new Set(
       recentRows
         .filter((r) => r.time > now - hardCoolMs)

@@ -192,7 +192,7 @@ export function conversationGrounding(snapshot) {
   // Rephrasing the same metaphor can evade literal n-gram matching. Require
   // several uses inside an uninterrupted bot exchange and no concrete event,
   // question or requested creative exercise before treating it as a loop.
-  const frame = /名下|落款|拎着|这半|那半|这笔|那笔|挂.{0,6}栏|掉了|公共账/;
+  const frame = /名下|落款|拎着|这半|那半|这笔|那笔|挂.{0,6}栏|掉了|公共账|磨痕|常开|那道|这道|底层|机制|擦.{0,6}痕|走过留下的痕/;
   const metaphorTail = tail.filter((m) => frame.test(m.text || "")).length;
   const literal =
     /\d|账单|转账|报销|会计|欠款|欠钱|借钱|元|块钱|合同|签名|灯具|灯泡|球|包裹/;
@@ -544,6 +544,8 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   issues.push(...ignoredRoomStopIssues(bubbles, snapshot));
   issues.push(...hearsayCatchphraseIssues(bubbles, snapshot));
   issues.push(...stickySelfGagIssues(bubbles, snapshot));
+  issues.push(...projectedMotiveIssues(bubbles, snapshot));
+  issues.push(...opaqueMetaphorDumpIssues(bubbles, snapshot));
   return [...new Set(issues)];
 }
 
@@ -2124,6 +2126,125 @@ export function stickySelfGagIssues(bubbles, snapshot) {
     "本轮对方没提你自己刚编的那个梗，却又把上次的自造梗硬塞进来；先接眼前这句话，不把旧梗往新话上套。",
   ];
 }
+
+
+// Live: C.「我只是…干完了而已」「你们也可以跟我一样」→ reply「这属于炫耀」→「你别栽赃我」.
+// Motive labels on a named person need clear boast cues in that person's own words.
+const MOTIVE_LABEL =
+  /(?:这属于|纯属|这就是|属于|在|开始|继续)?(?:炫耀|凡尔赛|装逼|装X|装(?:蒜|傻|懂|可怜)|阴阳怪气|故意装|显摆|秀优越)/;
+const BOAST_CUE =
+  /羡慕吧|学不来|吊打|秒了你们|你们不行|太强了吧我|凡尔赛|随便搞搞就|轻松拿下|碾压|吊着打|你们跟不上/;
+const DOWNPLAY_CUE =
+  /只是|而已|你们也可以|大家一起|也行|差不多|随便|先干完|提前把/;
+
+export function projectedMotiveIssues(bubbles, snapshot) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply || !MOTIVE_LABEL.test(reply)) return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const messages = snapshot.messages || [];
+  const batchMsgs = messages.filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  if (!batchMsgs.length) return [];
+
+  const people = new Map();
+  for (const m of messages.slice(-64)) {
+    if (m.role === "assistant") continue;
+    const id = String(m.speaker ?? m.userId ?? "");
+    if (!id || !m.name) continue;
+    people.set(m.name, id);
+  }
+  for (const p of snapshot.canAt || []) {
+    if (p?.name) people.set(p.name, String(p.userId));
+  }
+  // Prefer longer names first so "C." beats lone letters if both exist.
+  const names = [...people.keys()].sort((a, b) => b.length - a.length);
+  if (!names.length) return [];
+
+  for (const name of names) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // name ... 炫耀 / 至于 name ... 这属于炫耀 / name 这波凡尔赛
+    const tied = new RegExp(
+      `(?:至于)?${escaped}.{0,40}${MOTIVE_LABEL.source}|${MOTIVE_LABEL.source}.{0,24}${escaped}`,
+    );
+    if (!tied.test(reply)) continue;
+
+    const speakerId = people.get(name);
+    const ownLines = batchMsgs
+      .filter((m) => String(m.speaker ?? m.userId ?? "") === speakerId)
+      .map((m) => String(m.text || ""))
+      .join("\n");
+    // Also accept recent non-batch lines from same person within 3 minutes of batch end.
+    if (!ownLines.trim()) continue;
+
+    if (BOAST_CUE.test(ownLines)) continue;
+    // Soft: if they clearly downplay / invite others, treat as non-boast.
+    // Even without downplay, absence of boast cue is enough to block hard labels.
+    if (DOWNPLAY_CUE.test(ownLines) || ownLines.replace(/\[(?:图片|表情|媒体|提及成员)[^\]]*\]/g, "").trim().length >= 4) {
+      return [
+        `把「炫耀/凡尔赛/装X」一类动机扣到${name}头上，但对方本轮原话没有明确自夸线索；先复述对方实际说了什么，不要替人定性动机。`,
+      ];
+    }
+  }
+  return [];
+}
+
+
+// Live: 「门上有两道磨痕…常开那道」→「你在说什么」「怎么突然这么文艺」.
+// Dense self-metaphor without a plain-language anchor in the same turn.
+const METAPHOR_MARKERS = [
+  /磨痕/,
+  /常开/,
+  /那道|这道/,
+  /走过留下的痕|留下的痕/,
+  /落款|名下/,
+  /拎着|这半|那半|这笔|那笔/,
+  /公共账|挂.{0,6}栏/,
+  /底层|机制/,
+  /灯芯|量了.{0,4}灯/,
+];
+const PLAIN_ANCHOR =
+  /意思是|也就是|直说|说白了|简单说|换句话说|普通话|说人话|一句话|具体说|讲清楚/;
+const INVITE_METAPHOR =
+  /用比喻|写得文艺|写首|来首诗|续写|接龙|编个故事|写段对话|用隐喻/;
+
+export function opaqueMetaphorDumpIssues(bubbles, snapshot) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply || [...reply].length < 24) return [];
+  if (PLAIN_ANCHOR.test(reply)) return [];
+
+  const hits = METAPHOR_MARKERS.filter((re) => re.test(reply)).length;
+  if (hits < 2) return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const invited = (snapshot.messages || []).some(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) &&
+      m.role === "user" &&
+      INVITE_METAPHOR.test(m.text || ""),
+  );
+  if (invited) return [];
+  // Literal talk about doors/lamps/accounts: don't kill real topics.
+  if (
+    /账单|转账|报销|欠款|合同|灯具|灯泡|修门|门锁|内核|驱动程序|底层代码/.test(
+      reply,
+    )
+  )
+    return [];
+
+  return [
+    "这轮把话说成一串隐喻，同轮没有白话锚（意思是/直说/说白了…）；先用普通人听得懂的话点明在说什么，再决定要不要留比喻。",
+  ];
+}
+
 
 export function mediaAttributionIssues(bubbles, snapshot) {
 

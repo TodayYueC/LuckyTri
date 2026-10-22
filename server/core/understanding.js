@@ -206,6 +206,10 @@ const GLOSS_RULES = [
   { re: /情包/, glosses: ["表情包", "情包"] },
   { re: /上号/, glosses: ["上线", "开打", "上号"] },
   { re: /摸鱼/, glosses: ["偷懒", "划水", "摸鱼"] },
+  {
+    re: /面(?:着?呢?么|怎么)样/,
+    glosses: ["你怎么样", "最近怎么样", "近况"],
+  },
 ];
 
 export function speechGlosses(text) {
