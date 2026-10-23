@@ -210,6 +210,14 @@ const GLOSS_RULES = [
     re: /面(?:着?呢?么|怎么)样/,
     glosses: ["你怎么样", "最近怎么样", "近况"],
   },
+  {
+    re: /(?:剩\d+|还够|就剩).{0,4}心声|心声(?:还够|不够|抽)/,
+    glosses: ["抽卡资源", "抽卡代币", "心声"],
+  },
+  {
+    re: /(?:抽|又|刚).{0,8}歪(?:了|的)|歪成了|别歪|会歪吗|希望.{0,6}别歪/,
+    glosses: ["歪卡", "没出目标", "歪了"],
+  },
 ];
 
 export function speechGlosses(text) {
@@ -269,16 +277,22 @@ export function priorityCues(messages = [], batchIds = [], addressedIds = []) {
       );
     // Room hush toward AI/bots (not necessarily @her): 闭嘴/烧钱/傻子AI…
     const isRoomHush =
-      /(?:快)?闭嘴(?:吧)?|别说了|不要再说了|别再说了|先别说话|闭麦|别复读|别吵了|(?:这)?傻子?AI|AI.{0,10}(?:开着|烧钱)|烧钱来的|别刷屏/.test(
+      /(?:快)?闭嘴(?:吧)?|别说了|不要再说了|别再说了|先别说话|闭麦|别复读|别吵了|(?:这)?傻子?AI|AI.{0,10}(?:开着|烧钱)|烧钱来的|别刷屏|不知所云|太没用了|只会哈(?:人|气)|有啥用啊/.test(
         value,
       );
-    if (!isDirect && !isRoomStop && !isRoomHush) continue;
+    // Private/direct complaint: she keeps talking about herself.
+    const isCareRedirect =
+      isDirect &&
+      /总是在说你自己|老顾着讲自己|多关心关心我|能不能关心一下我|你也多关心/.test(
+        value,
+      );
+    if (!isDirect && !isRoomStop && !isRoomHush && !isCareRedirect) continue;
     const hint = intentHint(value);
     const isQuestion = hint === "question" || QUESTION.test(value);
     if (
       !isQuestion &&
       !["proposal", "correction"].includes(hint) &&
-      !/[?？]|怎么|为什么|什么|哪|有没有|能不能|是什么|啥意思|啥|扫不了|过不了|解释一下|说清楚|讲讲|告诉我|说说看|来点评|点评一下|点评|评价一下|评价下|评一下|对比一下|哪个好|还是|二选一|选哪个|你更喜欢|更喜欢哪个|喜欢哪个|怎么看|怎么想|你怎么看|觉得怎么样|怎么样啊|给点(?:参考)?意见|参考意见|给点建议|有没有推荐|推荐一下|求推荐|你是谁|你叫什么|叫什么名字|你是什么(?:人|啊|呀)?|介绍一下你(?:自己)?|记得|记不记得|帮我记|别在群里|别聊这些|别讨论这些|喝茶|私聊吧|私聊说|去tg|别发群|别公开聊|闭嘴|别说了|闭麦|烧钱|别复读|别刷屏|傻子AI/.test(
+      !/[?？]|怎么|为什么|什么|哪|有没有|能不能|是什么|啥意思|啥|扫不了|过不了|解释一下|说清楚|讲讲|告诉我|说说看|来点评|点评一下|点评|评价一下|评价下|评一下|对比一下|哪个好|还是|二选一|选哪个|你更喜欢|更喜欢哪个|喜欢哪个|怎么看|怎么想|你怎么看|觉得怎么样|怎么样啊|给点(?:参考)?意见|参考意见|给点建议|有没有推荐|推荐一下|求推荐|你是谁|你叫什么|叫什么名字|你是什么(?:人|啊|呀)?|介绍一下你(?:自己)?|记得|记不记得|帮我记|别在群里|别聊这些|别讨论这些|喝茶|私聊吧|私聊说|去tg|别发群|别公开聊|闭嘴|别说了|闭麦|烧钱|别复读|别刷屏|傻子AI|不知所云|太没用了|只会哈|有啥用|说你自己|多关心关心我/.test(
         value,
       )
     )
@@ -295,8 +309,10 @@ export function priorityCues(messages = [], batchIds = [], addressedIds = []) {
         : isRoomStop
           ? "本轮有人叫停群聊话题或提示风险"
           : isRoomHush
-            ? "本轮有人嘘停房里的 AI/发言，先收住旧线"
-            : "有人叫你提出请求或纠正",
+            ? "本轮有人嘘停/嫌不知所云，先收住旧线或短收"
+            : isCareRedirect
+              ? "对方说你老顾着讲自己，想要你关心近况"
+              : "有人叫你提出请求或纠正",
     });
   }
   if (!cues.length) {

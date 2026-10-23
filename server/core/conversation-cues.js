@@ -69,12 +69,22 @@ export function replyFocus(snapshot, decision) {
     return {
       kind: "initiative",
       instruction:
-        "这是自己想发起的一段话，不是补答最后一条历史消息。保留自己的动机和自然语气；结合最新情况，不催回复，不泄露私下的事。",
+        "这是自己想发起的一段话，不是补答最后一条历史消息。保留自己的动机和自然语气；结合最新情况，优先想到对方近况再决定要不要提自己的笔记；不催回复，不泄露私下的事，不凭时钟断言对方还醒着。",
     };
   const targets = snapshot.messages.filter((m) =>
     decision.targetMessageIds?.includes(m.id),
   );
   const latest = targets.at(-1)?.text || "";
+  if (
+    /总是在说你自己|老顾着讲自己|多关心关心我|能不能关心一下我|你也多关心/.test(
+      latest,
+    )
+  )
+    return {
+      kind: "care_redirect",
+      instruction:
+        "对方说你老顾着讲自己、想要你关心。先问对方近况或接住对方刚说的事；不要借机继续讲自己的笔记，也不要凭时钟断言对方还醒着/刚忙完之类状态。",
+    };
   if (
     /看不懂|没看懂|听不懂|太抽象|说人话|复读|别重复|好好说话|你在说什么|你在讲什么/.test(
       latest,

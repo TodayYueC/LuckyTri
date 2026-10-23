@@ -548,6 +548,9 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   issues.push(...projectedMotiveIssues(bubbles, snapshot));
   issues.push(...opaqueMetaphorDumpIssues(bubbles, snapshot));
   issues.push(...falseAwakePresenceIssues(bubbles, snapshot, decision));
+  issues.push(...unsupportedPeerStateIssues(bubbles, snapshot, decision));
+  issues.push(...selfCenteredOpenIssues(bubbles, snapshot, decision));
+  issues.push(...roomUselessCritiqueIssues(bubbles, snapshot));
   return [...new Set(issues)];
 }
 
@@ -2253,7 +2256,7 @@ export function opaqueMetaphorDumpIssues(bubbles, snapshot) {
 // 「这活本来就难干…」→「像个复读机」。explicitStop 只认点名她；ROOM_STOP 只认
 // 风险停聊。对房里 bot/AI 的嘘停也应让旁白旧线收住，除非本轮又有新的直接提问。
 const ROOM_HUSH_CUE =
-  /(?:快)?闭嘴(?:吧)?|别说了|不要再说了|别再说了|先别说话|闭麦|别复读|别吵了|(?:这)?傻子?AI|AI.{0,10}(?:开着|烧钱)|烧钱来的|别刷屏/;
+  /(?:快)?闭嘴(?:吧)?|别说了|不要再说了|别再说了|先别说话|闭麦|别复读|别吵了|(?:这)?傻子?AI|AI.{0,10}(?:开着|烧钱)|烧钱来的|别刷屏|不知所云|太没用了|只会哈(?:人|气)|有啥用啊/;
 const ROOM_HUSH_ACK =
   /(?:好好好|行行行|闭嘴|不说了|不聊了|收到|好的|好吧|行吧|嗯嗯|哦哦|闭麦|安静)/;
 const ROOM_HUSH_NEW_ASK =
@@ -2379,7 +2382,109 @@ export function falseAwakePresenceIssues(bubbles, snapshot, decision = {}) {
 
 
 
+
+// Live 2026-10-18 group: 月初吐槽库洛笔试难 →「刚考完出来吧」「心属库洛了？」→
+// 「你从哪看出来的」。同族于假醒着/乱扣动机：把弱线索升格成对方确定状态。
+const PEER_STATE_CLAIM =
+  /刚考完|刚考出来|这是刚考|心属|看得出你|我看你(?:肯定|就是|一定)|你肯定(?:在|是|会|要|刚)|所以是已经.{0,16}(?:了|吧|吗)|你这是刚(?:忙完|考完|下班)/;
+const PEER_STATE_SUPPORT =
+  /考完|出考场|刚考|考完了|考完出来|心属|就选(?:了|它)|我要去|奔着|认定|报了|就奔|已经选|就是想去|肯定会去|刚忙完|刚下班|熬夜|没睡|睡不着/;
+
+export function unsupportedPeerStateIssues(bubbles, snapshot, decision = {}) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply || !PEER_STATE_CLAIM.test(reply)) return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const messages = snapshot.messages || [];
+  const batchUsers = messages.filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  const corpus = batchUsers.map((m) => String(m.text || "")).join("\n");
+  if (PEER_STATE_SUPPORT.test(corpus)) return [];
+
+ // Soft softeners already present: treat as guess, not hard claim.
+  if (/(?:是不是|会不会|大概|可能|我猜|猜你|感觉像)/.test(reply) && !/心属|刚考完出来吧|所以是已经/.test(reply))
+    return [];
+
+  return [
+    "把对方说成确定状态（刚考完/心属/看得出你…），但本轮对方原话没有支撑；弱线索只能轻问或承认是猜的，不要替人定性处境。",
+  ];
+}
+
+
+// Live 2026-10-22 Tokyo DM: 隔一阵抛自己 Portal 笔记 →「你怎么总是在说你自己」
+// 「多关心关心我」。initiative / 长间隔开口应以对方为锚，而不是默认播报自己的阅读笔记。
+const SELF_NOTE_DUMP =
+  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔/;
+const CARE_ASK =
+  /你(?:今天|最近|那边|还好吗|怎么了|过得|吃了|忙啥|在干嘛)|今天过得怎么样|最近怎么样|还好吗|在干嘛|吃了没|忙完了吗/;
+
+export function selfCenteredOpenIssues(bubbles, snapshot, decision = {}) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply || !SELF_NOTE_DUMP.test(reply)) return [];
+  if (CARE_ASK.test(reply)) return [];
+
+  const gap = snapshot.conversation?.gapMinutes;
+  const longGap = Number.isFinite(gap) && gap >= 45;
+  if (!snapshot.initiative && !longGap) return [];
+
+ // If this batch already has a direct human question to her, answering with a
+ // side note can still be odd — but the live failure was unprompted reopen.
+  const batch = new Set(snapshot.batchIds || []);
+  const batchUsers = (snapshot.messages || []).filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  const askedHer = batchUsers.some(
+    (m) =>
+      m.relation === "direct" ||
+      /\[提及成员\]|@我\b|[?？]|怎么|为什么|什么/.test(String(m.text || "")),
+  );
+  if (askedHer && !snapshot.initiative) return [];
+
+  return [
+    "这是自己先开口/隔很久再开口的一轮，却几乎在播自己的阅读笔记，没有问对方近况；先关心对方或接住对方刚说的事，笔记有锚再提。",
+  ];
+}
+
+
+// Live 2026-10-22 group: 雾言「不知所云」「太没用了」「只会哈人」后仍
+// 「不知所云？我句句都在回应你啊」硬辩。负评应收到，不要元辩解加戏。
+const ROOM_USELESS_CRIT =
+  /不知所云|太没用了|只会哈(?:人|气)|有啥用啊|堪比只会|这傻子?AI/;
+const DEFENSIVE_META =
+  /我句句都在回应|不知所云[？?]|你要觉得没用|什么样的，直说|什么叫只有这时候|其余时间只是懒得|我拒绝人的时候最聪明/;
+
+export function roomUselessCritiqueIssues(bubbles, snapshot) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply || !DEFENSIVE_META.test(reply)) return [];
+  if (ROOM_HUSH_ACK.test(reply) && [...reply].length < 18) return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const batchUsers = (snapshot.messages || []).filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  if (!batchUsers.some((m) => ROOM_USELESS_CRIT.test(String(m.text || ""))))
+    return [];
+
+  return [
+    "本轮有人说你不知所云/没用/只会哈；先短收或问对方想听什么，不要用「我句句都在回应」一类元辩解加戏。",
+  ];
+}
+
 export function mediaAttributionIssues(bubbles, snapshot) {
+
 
   const text = (bubbles || [])
     .filter((line) => typeof line === "string")
