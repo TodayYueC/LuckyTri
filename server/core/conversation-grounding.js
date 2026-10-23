@@ -551,6 +551,7 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   issues.push(...unsupportedPeerStateIssues(bubbles, snapshot, decision));
   issues.push(...selfCenteredOpenIssues(bubbles, snapshot, decision));
   issues.push(...roomUselessCritiqueIssues(bubbles, snapshot));
+  issues.push(...coldVentCareIssues(bubbles, snapshot));
   return [...new Set(issues)];
 }
 
@@ -1337,6 +1338,15 @@ function extractConcreteVisionClaims(reply) {
     /二维码(?:里|上|是|就是)/gu,
   ))
     out.push("二维码");
+  // Live 2026-10-24: gacha screenshot →「粉色长发那个」with no observation.
+  for (const match of value.matchAll(
+    /((?:粉|红|金|白|黑|蓝|紫|银|绿)(?:色)?(?:长|短)?发)/gu,
+  ))
+    push(match[1]);
+  for (const match of value.matchAll(
+    /((?:粉毛|金毛|白毛|黑毛|蓝毛|紫毛))/gu,
+  ))
+    push(match[1]);
   return [...new Set(out)];
 }
 
@@ -2255,10 +2265,11 @@ export function opaqueMetaphorDumpIssues(bubbles, snapshot) {
 // Live 2026-10-23 group:670380624 — 雾言「臭区你快闭嘴吧」后 LuckyTri 仍接旧线
 // 「这活本来就难干…」→「像个复读机」。explicitStop 只认点名她；ROOM_STOP 只认
 // 风险停聊。对房里 bot/AI 的嘘停也应让旁白旧线收住，除非本轮又有新的直接提问。
+// Also English elongated STOP (live 2026-10-24: YueC「stoppp…」→ she asked「停什么」).
 const ROOM_HUSH_CUE =
-  /(?:快)?闭嘴(?:吧)?|别说了|不要再说了|别再说了|先别说话|闭麦|别复读|别吵了|(?:这)?傻子?AI|AI.{0,10}(?:开着|烧钱)|烧钱来的|别刷屏|不知所云|太没用了|只会哈(?:人|气)|有啥用啊/;
+  /(?:快)?闭嘴(?:吧)?|别说了|不要再说了|别再说了|先别说话|闭麦|别复读|别吵了|(?:这)?傻子?AI|AI.{0,10}(?:开着|烧钱)|烧钱来的|别刷屏|不知所云|太没用了|只会哈(?:人|气)|有啥用啊|stop{2,}|\bstop\b|shut\s*up/i;
 const ROOM_HUSH_ACK =
-  /(?:好好好|行行行|闭嘴|不说了|不聊了|收到|好的|好吧|行吧|嗯嗯|哦哦|闭麦|安静)/;
+  /(?:好好好|行行行|闭嘴|不说了|不聊了|收到|好的|好吧|行吧|嗯嗯|哦哦|闭麦|安静|收摊|停了|那就停|行，收)/;
 const ROOM_HUSH_NEW_ASK =
   /[?？]|吗\s*$|怎么|为什么|什么|哪|有没有|能不能|是什么|啥意思|告诉我|说说|你怎么看|你觉得|帮我|会不会|能不能/;
 
@@ -2418,8 +2429,10 @@ export function unsupportedPeerStateIssues(bubbles, snapshot, decision = {}) {
 
 // Live 2026-10-22 Tokyo DM: 隔一阵抛自己 Portal 笔记 →「你怎么总是在说你自己」
 // 「多关心关心我」。initiative / 长间隔开口应以对方为锚，而不是默认播报自己的阅读笔记。
+// Live 2026-10-24: unprompted multi-bubble essays「翻了下今天的排程」「又想了想…规矩停在哪儿」
+// after quiet — same self-centered family as reading-note dumps.
 const SELF_NOTE_DUMP =
-  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔/;
+  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌/;
 const CARE_ASK =
   /你(?:今天|最近|那边|还好吗|怎么了|过得|吃了|忙啥|在干嘛)|今天过得怎么样|最近怎么样|还好吗|在干嘛|吃了没|忙完了吗/;
 
@@ -2480,6 +2493,43 @@ export function roomUselessCritiqueIssues(bubbles, snapshot) {
 
   return [
     "本轮有人说你不知所云/没用/只会哈；先短收或问对方想听什么，不要用「我句句都在回应」一类元辩解加戏。",
+  ];
+}
+
+
+// Live 2026-10-24 group:1098056894 — YueC 倾诉 S赛「还是这么难受」→
+// 「自找难受」「关掉去睡吧，明天又不会变好」。倾诉要先接住情绪，不是睡眠说教。
+const VENT_FEELING =
+  /难受|崩溃|想哭|好心累|惩罚我|破破?防|为什么.{0,24}(?:难受|崩溃)|看了.{0,16}(?:还是|仍然).{0,8}难受|不想.{0,12}看到一坨/;
+const COLD_VENT_LECTURE =
+  /自找(?:难受|的)|关掉去睡|去睡吧|明天又不会变好|别看了.{0,8}睡|看完还睡不着/;
+
+export function coldVentCareIssues(bubbles, snapshot) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply || !COLD_VENT_LECTURE.test(reply)) return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const batchUsers = (snapshot.messages || []).filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  const corpus = batchUsers.map((m) => String(m.text || "")).join("\n");
+  if (!VENT_FEELING.test(corpus)) return [];
+
+  // Soft companion that also mentions rest is fine if it first joins the feeling.
+  if (
+    /(?:确实|是挺|真的).{0,6}(?:难受|烦|糟)|陪你|一起烦|懂这种|换我我也/.test(
+      reply,
+    ) &&
+    !/自找/.test(reply)
+  )
+    return [];
+
+  return [
+    "对方在倾诉难受/崩溃一类情绪；先接住情绪或陪着烦，不要用「自找难受」「去睡吧」「明天又不会变好」说教收尾。",
   ];
 }
 
