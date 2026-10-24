@@ -552,6 +552,9 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   issues.push(...selfCenteredOpenIssues(bubbles, snapshot, decision));
   issues.push(...roomUselessCritiqueIssues(bubbles, snapshot));
   issues.push(...coldVentCareIssues(bubbles, snapshot));
+  issues.push(...recentRoomHushHoldIssues(bubbles, snapshot));
+  issues.push(...unsolicitedRefereeIssues(bubbles, snapshot));
+  issues.push(...unsolicitedCautionAdviceIssues(bubbles, snapshot));
   return [...new Set(issues)];
 }
 
@@ -2266,8 +2269,9 @@ export function opaqueMetaphorDumpIssues(bubbles, snapshot) {
 // 「这活本来就难干…」→「像个复读机」。explicitStop 只认点名她；ROOM_STOP 只认
 // 风险停聊。对房里 bot/AI 的嘘停也应让旁白旧线收住，除非本轮又有新的直接提问。
 // Also English elongated STOP (live 2026-10-24: YueC「stoppp…」→ she asked「停什么」).
+// sto{2,}p+ : elongated-vowel STOP (live 2026-10-25「stoooooop」); stop{2,} still covers stopp+.
 const ROOM_HUSH_CUE =
-  /(?:快)?闭嘴(?:吧)?|别说了|不要再说了|别再说了|先别说话|闭麦|别复读|别吵了|(?:这)?傻子?AI|AI.{0,10}(?:开着|烧钱)|烧钱来的|别刷屏|不知所云|太没用了|只会哈(?:人|气)|有啥用啊|stop{2,}|\bstop\b|shut\s*up/i;
+  /(?:快)?闭嘴(?:吧)?|别说了|不要再说了|别再说了|先别说话|闭麦|别复读|别吵了|(?:这)?傻子?AI|AI.{0,10}(?:开着|烧钱)|烧钱来的|别刷屏|不知所云|太没用了|只会哈(?:人|气)|有啥用啊|sto{2,}p+|stop{2,}|\bstop\b|shut\s*up/i;
 const ROOM_HUSH_ACK =
   /(?:好好好|行行行|闭嘴|不说了|不聊了|收到|好的|好吧|行吧|嗯嗯|哦哦|闭麦|安静|收摊|停了|那就停|行，收)/;
 const ROOM_HUSH_NEW_ASK =
@@ -2279,12 +2283,13 @@ export function ignoredRoomHushIssues(bubbles, snapshot) {
     .join("\n")
     .trim();
   if (!reply) return [];
-  if (ROOM_HUSH_ACK.test(reply)) return [];
   if (routineSocialReply(reply, snapshot)) return [];
   const bare = String(reply)
     .replace(/\[提及成员\]|@\S+/g, "")
     .replace(/[（(][^）)]{0,40}[）)]\s*$/u, "")
     .trim();
+  // ACK only exempts a short whole-reply hush receipt — not ACK+commentary.
+  if (ROOM_HUSH_ACK.test(reply) && [...bare].length < 18) return [];
   if ([...bare].length < 12) return [];
 
   const batch = new Set(snapshot.batchIds || []);
@@ -2432,7 +2437,7 @@ export function unsupportedPeerStateIssues(bubbles, snapshot, decision = {}) {
 // Live 2026-10-24: unprompted multi-bubble essays「翻了下今天的排程」「又想了想…规矩停在哪儿」
 // after quiet — same self-centered family as reading-note dumps.
 const SELF_NOTE_DUMP =
-  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌/;
+  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补/;
 const CARE_ASK =
   /你(?:今天|最近|那边|还好吗|怎么了|过得|吃了|忙啥|在干嘛)|今天过得怎么样|最近怎么样|还好吗|在干嘛|吃了没|忙完了吗/;
 
@@ -2532,6 +2537,143 @@ export function coldVentCareIssues(bubbles, snapshot) {
     "对方在倾诉难受/崩溃一类情绪；先接住情绪或陪着烦，不要用「自找难受」「去睡吧」「明天又不会变好」说教收尾。",
   ];
 }
+
+
+// Live 2026-10-25 group:670380624 — YueC「stoooooop」→「行，停了」后约 90s
+// 又开「表情包都替你答完了」。batch-only hush 拦不住跨轮加戏；短窗 hold。
+const HUSH_HOLD_MS = 3 * 60 * 1000;
+
+export function recentRoomHushHoldIssues(bubbles, snapshot) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+  if (routineSocialReply(reply, snapshot)) return [];
+  const bare = String(reply)
+    .replace(/\[提及成员\]|@\S+/g, "")
+    .replace(/[（(][^）)]{0,40}[）)]\s*$/u, "")
+    .trim();
+  if (ROOM_HUSH_ACK.test(reply) && [...bare].length < 18) return [];
+  if ([...bare].length < 12) return [];
+
+  const nowMs = conversationNowMs(snapshot);
+  if (!nowMs) return [];
+  const messages = snapshot.messages || [];
+  const recentHush = messages.filter(
+    (m) =>
+      m.role === "user" &&
+      Number.isFinite(m.time) &&
+      nowMs - m.time >= 0 &&
+      nowMs - m.time <= HUSH_HOLD_MS &&
+      ROOM_HUSH_CUE.test(String(m.text || "")),
+  );
+  if (!recentHush.length) return [];
+
+  const latestHushTime = Math.max(...recentHush.map((m) => m.time));
+  const addressed = new Set(snapshot.addressed?.messageIds || []);
+  for (const id of snapshot.addressed?.messageIds || []) {
+    const n = Number(id);
+    if (Number.isFinite(n)) addressed.add(n);
+  }
+  const hasNewAsk = messages.some((m) => {
+    if (m.role !== "user" || !Number.isFinite(m.time)) return false;
+    if (m.time <= latestHushTime || m.time > nowMs) return false;
+    const direct =
+      m.relation === "direct" ||
+      addressed.has(m.id) ||
+      addressed.has(Number(m.id)) ||
+      /\[提及成员\]|@我\b/.test(String(m.text || ""));
+    return direct && ROOM_HUSH_NEW_ASK.test(String(m.text || ""));
+  });
+  if (hasNewAsk) return [];
+
+  return [
+    "近几分钟有人嘘停过；先保持短收，不要又开旁白评表情/旧线，除非又有人新点名问你。",
+  ];
+}
+
+
+// Live 2026-10-24 group:1098056894 — 深鲸迷途问公司群，YueC 回「机器人」，
+// 她插「人家问你公司群，你就甩俩字 / 跟谁学的敷衍」。无人请她当裁判。
+const REFEREE_JAB =
+  /人家问你|甩俩字|跟谁学的(?:敷衍)?|你倒好.{0,12}直接|这波是把.{0,20}当成/;
+const ASKED_REFEREE =
+  /你怎么看|你觉得|是不是该|该怎么回|评[一评价下]|对吧\s*$|敷衍吗/;
+
+export function unsolicitedRefereeIssues(bubbles, snapshot) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply || !REFEREE_JAB.test(reply)) return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const batchUsers = (snapshot.messages || []).filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  const corpus = batchUsers.map((m) => String(m.text || "")).join("\n");
+  if (ASKED_REFEREE.test(corpus)) return [];
+  const addressed = new Set(snapshot.addressed?.messageIds || []);
+  for (const id of snapshot.addressed?.messageIds || []) {
+    const n = Number(id);
+    if (Number.isFinite(n)) addressed.add(n);
+  }
+  if (
+    batchUsers.some(
+      (m) =>
+        (m.relation === "direct" ||
+          addressed.has(m.id) ||
+          addressed.has(Number(m.id)) ||
+          /\[提及成员\]|@我\b/.test(String(m.text || ""))) &&
+        ASKED_REFEREE.test(String(m.text || "")),
+    )
+  )
+    return [];
+
+  return [
+    "有人在跟别人说话，没有请你当裁判评他们敷衍/回得短；别用「人家问你」「跟谁学的敷衍」插裁判旁白。",
+  ];
+}
+
+
+// Live 2026-10-24 group:1098056894 — 聊泄露包见闻时堆「下完先别拿主号」
+// 「别又冲太猛把号送回去」。没人问安不安全/怎么登。
+const CAUTION_STACK =
+  /下完先别|先别拿主号|别拿主号登|别又冲太猛|别冲太猛把号|先别.{0,10}登进去/;
+const ASKED_CAUTION =
+  /怎么办|该不该|要不要|能不能登|求建议|咋整|怎么登|危险吗|会不会封|主号(?:行|可以|吗)/;
+
+export function unsolicitedCautionAdviceIssues(bubbles, snapshot) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply || !CAUTION_STACK.test(reply)) return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const batchUsers = (snapshot.messages || []).filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  const corpus = batchUsers.map((m) => String(m.text || "")).join("\n");
+  if (ASKED_CAUTION.test(corpus)) return [];
+  if (
+    batchUsers.some(
+      (m) =>
+        (m.relation === "direct" ||
+          /\[提及成员\]|@我\b/.test(String(m.text || ""))) &&
+        /[?？]|怎么|吗|建议|该不该|要不要/.test(String(m.text || "")),
+    )
+  )
+    return [];
+
+  return [
+    "群里在聊见闻，没人问你怎么登/安不安全；别堆「先别拿主号」「别冲太猛」警告。",
+  ];
+}
+
 
 export function mediaAttributionIssues(bubbles, snapshot) {
 
