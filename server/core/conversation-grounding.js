@@ -555,6 +555,9 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   issues.push(...recentRoomHushHoldIssues(bubbles, snapshot));
   issues.push(...unsolicitedRefereeIssues(bubbles, snapshot));
   issues.push(...unsolicitedCautionAdviceIssues(bubbles, snapshot));
+  issues.push(...softDistressProbeIssues(bubbles, snapshot));
+  issues.push(...emoteQuizPressureIssues(bubbles, snapshot));
+  issues.push(...softRefusalAccuseIssues(bubbles, snapshot));
   return [...new Set(issues)];
 }
 
@@ -2437,7 +2440,7 @@ export function unsupportedPeerStateIssues(bubbles, snapshot, decision = {}) {
 // Live 2026-10-24: unprompted multi-bubble essays「翻了下今天的排程」「又想了想…规矩停在哪儿」
 // after quiet — same self-centered family as reading-note dumps.
 const SELF_NOTE_DUMP =
-  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补/;
+  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补|刚冒头的念头|睡前想通|想通一件小事|顺手报个进度|收尾了一篇|补课笔记|笔记落下|补读收了尾|我早上收尾|跟你说个刚/;
 const CARE_ASK =
   /你(?:今天|最近|那边|还好吗|怎么了|过得|吃了|忙啥|在干嘛)|今天过得怎么样|最近怎么样|还好吗|在干嘛|吃了没|忙完了吗/;
 
@@ -2447,7 +2450,7 @@ export function selfCenteredOpenIssues(bubbles, snapshot, decision = {}) {
     .join("\n")
     .trim();
   if (!reply || !SELF_NOTE_DUMP.test(reply)) return [];
-  if (CARE_ASK.test(reply)) return [];
+  // Care-ask wrapper must not exempt a self-note dump (live: 「最近怎么样」+「顺手报个进度」).
 
   const gap = snapshot.conversation?.gapMinutes;
   const longGap = Number.isFinite(gap) && gap >= 45;
@@ -2671,6 +2674,119 @@ export function unsolicitedCautionAdviceIssues(bubbles, snapshot) {
 
   return [
     "群里在聊见闻，没人问你怎么登/安不安全；别堆「先别拿主号」「别冲太猛」警告。",
+  ];
+}
+
+
+
+// Live 2026-10-25 group:670380624 — 雾言「难受」→图→「破防了」时连环
+// 「表情不算答案哦 / 果然是试岗 / 说吧是被使唤过头了还是…」。软难受要先在场，
+// 不要把短词/表情当成未交卷去审讯。
+const SOFT_DISTRESS_CUE =
+  /难受|破防|心累|不想说|不想细说|崩溃|想哭|好累|累坏/;
+const DISTRESS_PROBE =
+  /表情不算答案|说吧[，,]?是|果然是(?:试岗|累)|身体不舒服还是|是被使唤|还是有人说了啥|咋了.{0,6}说说|遇上啥事了/;
+const SOFT_PRESENCE_OK =
+  /(?:不想细说就不说|我在的|陪你|在呢|嗯[，,]?(?:好|行)?\s*$|抱抱|心疼)/;
+
+export function softDistressProbeIssues(bubbles, snapshot) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply || !DISTRESS_PROBE.test(reply)) return [];
+  if (SOFT_PRESENCE_OK.test(reply) && !/表情不算答案|说吧[，,]?是|果然是/.test(reply))
+    return [];
+
+  const nowMs = conversationNowMs(snapshot);
+  const messages = snapshot.messages || [];
+  const batch = new Set(snapshot.batchIds || []);
+  const batchUsers = messages.filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  const recentDistress = messages.filter((m) => {
+    if (m.role !== "user") return false;
+    if (!SOFT_DISTRESS_CUE.test(String(m.text || ""))) return false;
+    if (!nowMs || !Number.isFinite(m.time)) return true;
+    return nowMs - m.time >= 0 && nowMs - m.time <= 8 * 60 * 1000;
+  });
+  const batchDistress = batchUsers.some((m) =>
+    SOFT_DISTRESS_CUE.test(String(m.text || "")),
+  );
+  if (!batchDistress && !recentDistress.length) return [];
+
+  return [
+    "对方在软难受/破防或刚用图表情代替细说；先短陪在场，不要用「表情不算答案」「说吧是A还是B」「果然是…」连环审讯。",
+  ];
+}
+
+
+// Live 2026-10-25 — 七张图后「表情收下了，但填空题还没答呢 / 看了啥，报来」。
+// 图/表情本身就是发言，不是欠文字作业。
+const EMOTE_QUIZ =
+  /填空题还没答|看了啥[，,]?报来|报来\s*$|说说看了啥|该不该也跟着空一下/;
+
+export function emoteQuizPressureIssues(bubbles, snapshot) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply || !EMOTE_QUIZ.test(reply)) return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const messages = snapshot.messages || [];
+  const nowMs = conversationNowMs(snapshot);
+  const visualRecent = messages.filter((m) => {
+    if (m.role !== "user") return false;
+    const t = String(m.text || "");
+    if (!/\[图片\]|\[表情|\[贴纸|\[动画表情/.test(t)) return false;
+    if (!nowMs || !Number.isFinite(m.time)) {
+      return batch.has(m.id) || batch.has(Number(m.id));
+    }
+    return nowMs - m.time >= 0 && nowMs - m.time <= 10 * 60 * 1000;
+  });
+  if (!visualRecent.length) return [];
+
+  return [
+    "对方刚用图/表情说话；那本身就是回应，不要用「填空题还没答」「报来」逼文字作业。",
+  ];
+}
+
+
+// Live 2026-10-25 — 「保密」→「上保密条款 / 猜你压根也是听来的」。
+// 软拒绝是边界，不是心虚把柄。
+const SOFT_REFUSAL_CUE =
+  /(?:^|[\s，,。！!？?])保密(?:$|[\s，,。！!？?])|不想说|不告诉你|不说了|别问了|算了吧|无可奉告/;
+const REFUSAL_ACCUSE =
+  /猜你压根也是听来的|压根也是听来的|还给我上保密条款|上保密条款|听来的吧/;
+
+export function softRefusalAccuseIssues(bubbles, snapshot) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply || !REFUSAL_ACCUSE.test(reply)) return [];
+
+  const nowMs = conversationNowMs(snapshot);
+  const messages = snapshot.messages || [];
+  const batch = new Set(snapshot.batchIds || []);
+  const recentRefusal = messages.filter((m) => {
+    if (m.role !== "user") return false;
+    if (!SOFT_REFUSAL_CUE.test(String(m.text || ""))) return false;
+    if (!nowMs || !Number.isFinite(m.time)) return true;
+    return nowMs - m.time >= 0 && nowMs - m.time <= 6 * 60 * 1000;
+  });
+  const batchRefusal = messages.some(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) &&
+      m.role === "user" &&
+      SOFT_REFUSAL_CUE.test(String(m.text || "")),
+  );
+  if (!batchRefusal && !recentRefusal.length) return [];
+
+  return [
+    "对方刚软拒绝细说（保密/不想说一类）；收下边界就好，不要用「保密条款」「猜你压根听来的」加戏栽赃。",
   ];
 }
 

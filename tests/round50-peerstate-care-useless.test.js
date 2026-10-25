@@ -92,20 +92,18 @@ test("B1: initiative 播自己笔记且无关心 → 拦", () => {
   assert.ok(hit.some((x) => /先开口|近况|笔记/.test(x)), hit.join(";"));
 });
 
-test("B1b: initiative 先问近况再提 → 放行", () => {
+test("B1b: initiative 先问近况仍夹笔记播报 → 拦（r53: CARE_ASK 不再豁免 dump）", () => {
   const snapshot = {
     initiative: true,
     batchIds: [],
     messages: [],
     conversation: { gapMinutes: 120 },
   };
-  assert.deepEqual(
-    selfCenteredOpenIssues(
-      ["今天过得怎么样", "对了之前读传送门2资料记了一笔，查到两种说法对不上"],
-      snapshot,
-    ),
-    [],
+  const hit = selfCenteredOpenIssues(
+    ["今天过得怎么样", "对了之前读传送门2资料记了一笔，查到两种说法对不上"],
+    snapshot,
   );
+  assert.ok(hit.some((x) => /先开口|近况|笔记/.test(x)), hit.join(";"));
 });
 
 test("B1c: 短间隔有人在聊 → 不误杀笔记", () => {

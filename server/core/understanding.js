@@ -226,6 +226,11 @@ const GLOSS_RULES = [
     re: /\bCBT\s*\d*\b|泄露(?:的)?包(?:体)?|内测包/i,
     glosses: ["测试包", "泄露包", "内测"],
   },
+  { re: /试岗/, glosses: ["试用", "试工", "试岗"] },
+  { re: /娅娅/, glosses: ["娅娅", "角色", "表情包角色"] },
+  { re: /三A|\b3A\b|3a游戏/i, glosses: ["3A游戏", "大作", "3A"] },
+  { re: /哈基咪|哈吉米/, glosses: ["哈基米", "hajimi", "哈吉米"] },
+  { re: /接盘侠/, glosses: ["接盘", "接盘侠", "兜底"] },
 ];
 
 export function speechGlosses(text) {

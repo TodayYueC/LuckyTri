@@ -205,20 +205,18 @@ test("C1b: initiative 又想了想规矩散文 → 拦", () => {
   assert.ok(hit.some((x) => /先开口|近况|笔记/.test(x)), hit.join(";"));
 });
 
-test("C1c: 先问近况再提排程 → 放行", () => {
+test("C1c: 先问近况仍夹排程笔记 → 拦（r53: CARE_ASK 不再豁免 dump）", () => {
   const snapshot = {
     initiative: true,
     batchIds: [],
     messages: [],
     conversation: { gapMinutes: 120 },
   };
-  assert.deepEqual(
-    selfCenteredOpenIssues(
-      ["今天过得怎么样", "对了中午翻了下排程，有两件叠在同一分钟"],
-      snapshot,
-    ),
-    [],
+  const hit = selfCenteredOpenIssues(
+    ["今天过得怎么样", "对了中午翻了下排程，有两件叠在同一分钟"],
+    snapshot,
   );
+  assert.ok(hit.some((x) => /先开口|近况|笔记/.test(x)), hit.join(";"));
 });
 
 // --- D: hair appearance invent without vision ---
