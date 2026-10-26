@@ -231,6 +231,10 @@ const GLOSS_RULES = [
   { re: /三A|\b3A\b|3a游戏/i, glosses: ["3A游戏", "大作", "3A"] },
   { re: /哈基咪|哈吉米/, glosses: ["哈基米", "hajimi", "哈吉米"] },
   { re: /接盘侠/, glosses: ["接盘", "接盘侠", "兜底"] },
+  { re: /续火/, glosses: ["续火", "活跃", "别冷场"] },
+  { re: /月畜/, glosses: ["月初", "月出", "YueC"] },
+  { re: /p4|P4|鸣上悠/i, glosses: ["女神异闻录4", "Persona4", "鸣上悠"] },
+  { re: /自拍/, glosses: ["自拍", "照片", "自拍照"] },
 ];
 
 export function speechGlosses(text) {

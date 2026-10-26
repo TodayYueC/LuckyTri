@@ -552,6 +552,7 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   issues.push(...unsupportedPeerStateIssues(bubbles, snapshot, decision));
   issues.push(...selfCenteredOpenIssues(bubbles, snapshot, decision));
   issues.push(...initiativeMonoActivityIssues(bubbles, snapshot, decision));
+  issues.push(...initiativeSoloChainIssues(bubbles, snapshot, decision));
   issues.push(...roomUselessCritiqueIssues(bubbles, snapshot));
   issues.push(...coldVentCareIssues(bubbles, snapshot));
   issues.push(...recentRoomHushHoldIssues(bubbles, snapshot));
@@ -2445,7 +2446,7 @@ export function unsupportedPeerStateIssues(bubbles, snapshot, decision = {}) {
 // activity-broadcast variants that escaped the note-dump phrase list. User: 主动
 // 10句有9句说自己、事还单一（焚化炉循环）.
 const SELF_NOTE_DUMP =
-  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补|刚冒头的念头|睡前想通|想通一件小事|顺手报个进度|收尾了一篇|补课笔记|笔记落下|补读收了尾|我早上收尾|跟你说个刚|跟你说个我自己|跟你说个下午|今晚三格|三格又连着|排焚化|推传送|刚写完焚化|想给你看看|界碑先立|哪天真跑起来|纯二手|押个宝|稿到哪读到哪|坐进来等|接着昨晚说的|今晚想做的两件|我读到《/;
+  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补|刚冒头的念头|睡前想通|想通一件小事|顺手报个进度|收尾了一篇|补课笔记|笔记落下|补读收了尾|我早上收尾|跟你说个刚|跟你说个我自己|跟你说个下午|今晚三格|三格又连着|排焚化|推传送|刚写完焚化|想给你看看|界碑先立|哪天真跑起来|纯二手|押个宝|稿到哪读到哪|坐进来等|接着昨晚说的|今晚想做的两件|我读到《|今天又想到一层|约定其实有两半|到场这半|记下一条|开价之前先掂兜|台阶底下不能是空的|不算催稿/;
 const SELF_ACTIVITY_MARK =
   /我(?:刚|早上|这边|自己|读|写|排|推|想|记|整理|翻|查|收尾|押|开价|许了)|今晚.{0,12}(?:三格|全是|排|读|写)|进度|节拍|补课|笔记/;
 const PEER_ANCHOR =
@@ -2548,6 +2549,73 @@ export function initiativeMonoActivityIssues(bubbles, snapshot, decision = {}) {
 
   return [
     "主动开口又在报同一作品/同一套活动进度（短窗内已说过同类题材）；换关心对方、接群里未竟线，或另一件真正不同的事，不要循环播报同一套自己的活动。",
+  ];
+}
+
+
+// Live 2026-10-26 Tokyo DM: 15:11 哲思约稿 → 18:42 漏检开价 → 19:13 传送门三格，
+// 中间几乎无对方实质接话。单条自说闸拦得住措辞，拦不住「自说后无人接又连播」。
+const SOFT_PEER_ACK =
+  /^(?:嗯+|好+|哦+|噢+|啊+|行|ok|OK|好的|对的对的|对对|晚安|哈哈哈*|是吗|收到|嗯嗯)+[.。!！?？~～]*$/;
+function isSoftPeerAck(text) {
+  const t = String(text || "").trim();
+  if (!t) return true;
+  if (t.length <= 2) return true;
+  return SOFT_PEER_ACK.test(t);
+}
+
+export function initiativeSoloChainIssues(bubbles, snapshot, decision = {}) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+
+  const gap = snapshot.conversation?.gapMinutes;
+  const longGap = Number.isFinite(gap) && gap >= 45;
+  if (!snapshot.initiative && !longGap) return [];
+
+  const dump =
+    SELF_NOTE_DUMP.test(reply) ||
+    SELF_PROGRESS.test(reply) ||
+    ((reply.match(SELF_ACTIVITY_MARK) || []).length >= 2 &&
+      /读|写|排|笔记|进度|传送|焚化|三格|节拍|补课|Portal|稿|开价|漏检/.test(
+        reply,
+      ));
+  if (!dump) return [];
+  // Pure peer care without self-dump phrasing is fine even in a quiet chain.
+  if (PEER_ANCHOR.test(reply) && !SELF_NOTE_DUMP.test(reply) && !SELF_PROGRESS.test(reply))
+    return [];
+
+  const nowMs = conversationNowMs(snapshot) || Date.now();
+  const history = [
+    ...(snapshot.messages || []),
+    ...(snapshot.history?.messages || []),
+  ];
+  const trailingSelf = [];
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i];
+    if (!m) continue;
+    if (m.role === "user") {
+      if (isSoftPeerAck(m.text)) continue;
+      break;
+    }
+    if (m.role !== "assistant") continue;
+    if (Number.isFinite(m.time) && nowMs - m.time > 6 * 3600000) break;
+    const t = String(m.text || "");
+    if (!t || t === reply) continue;
+    if (
+      SELF_NOTE_DUMP.test(t) ||
+      SELF_PROGRESS.test(t) ||
+      (t.match(SELF_ACTIVITY_MARK) || []).length >= 2
+    ) {
+      trailingSelf.push(t);
+    }
+  }
+  if (trailingSelf.length < 1) return [];
+
+  return [
+    "主动开口自说之后，对方还没认真接话，又连着播自己的进度/念头；先停一停或改问对方近况，不要一个人连播。",
   ];
 }
 
@@ -2676,7 +2744,7 @@ export function recentRoomHushHoldIssues(bubbles, snapshot) {
 // Live 2026-10-24 group:1098056894 — 深鲸迷途问公司群，YueC 回「机器人」，
 // 她插「人家问你公司群，你就甩俩字 / 跟谁学的敷衍」。无人请她当裁判。
 const REFEREE_JAB =
-  /人家问你|甩俩字|跟谁学的(?:敷衍)?|你倒好.{0,12}直接|这波是把.{0,20}当成/;
+  /人家问你|甩俩字|跟谁学的(?:敷衍)?|你倒好.{0,12}直接|这波是把.{0,20}当成|官司我判不了|我判不了|这官司|谁把原图甩出来谁赢|甩出来谁赢/;
 const ASKED_REFEREE =
   /你怎么看|你觉得|是不是该|该怎么回|评[一评价下]|对吧\s*$|敷衍吗/;
 
@@ -2831,11 +2899,12 @@ export function emoteQuizPressureIssues(bubbles, snapshot) {
 
 
 // Live 2026-10-25 — 「保密」→「上保密条款 / 猜你压根也是听来的」。
-// 软拒绝是边界，不是心虚把柄。
+// Live 2026-10-26 post-r53 — 「保密」→「别吊着，快发」；「隐私怎么能随便发」
+// →「特意跑来说保密的人，通常都巴不得再被追问两句哦」。软拒绝是边界，不是吊胃口。
 const SOFT_REFUSAL_CUE =
-  /(?:^|[\s，,。！!？?])保密(?:$|[\s，,。！!？?])|不想说|不告诉你|不说了|别问了|算了吧|无可奉告/;
+  /(?:^|[\s，,。！!？?])保密(?:$|[\s，,。！!？?])|不想说|不告诉你|不说了|别问了|算了吧|无可奉告|隐私怎么能|隐私保护|不能随便发|不给看|不给发/;
 const REFUSAL_ACCUSE =
-  /猜你压根也是听来的|压根也是听来的|还给我上保密条款|上保密条款|听来的吧/;
+  /猜你压根也是听来的|压根也是听来的|还给我上保密条款|上保密条款|听来的吧|巴不得再被追问|通常都巴不得|再被追问两句|别吊着(?:[，, ].{0,10})?快发|别吊着|故意吊着|吊着不发|巴不得.{0,6}追问/;
 
 export function softRefusalAccuseIssues(bubbles, snapshot) {
   const reply = (bubbles || [])
@@ -2862,7 +2931,7 @@ export function softRefusalAccuseIssues(bubbles, snapshot) {
   if (!batchRefusal && !recentRefusal.length) return [];
 
   return [
-    "对方刚软拒绝细说（保密/不想说一类）；收下边界就好，不要用「保密条款」「猜你压根听来的」加戏栽赃。",
+    "对方刚软拒绝细说（保密/隐私/不想说一类）；收下边界就好，不要用「保密条款」「猜你听来的」「别吊着快发」「巴不得再被追问」加戏追问或栽赃。",
   ];
 }
 
