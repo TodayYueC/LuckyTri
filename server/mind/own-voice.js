@@ -3,7 +3,7 @@ import { replyPrompt, prompts } from "../core/persona-manager.js";
 import { withFallback } from "../core/model-manager.js";
 import { HOUR, evidence, hasCredential, text } from "./util.js";
 import { isPrivateSession } from "./memory.js";
-import { sameRecentTheme } from "./novelty.js";
+import { sameRecentTheme, sameWorkFamily } from "./novelty.js";
 import { ownLife, sameSelf } from "./salience.js";
 import { conversationOrigin, originSummary } from "./conversation-origin.js";
 import {
@@ -257,6 +257,16 @@ export class OwnVoice {
         const linked = recentlySaid.some((t) => sources.includes(t.ref));
         let echoed = surfaceEcho;
         if (
+          !echoed &&
+          result.share === true &&
+          recentlySaid.some(
+            (t) =>
+              sameWorkFamily(t.said, words.join("\n")) ||
+              sameWorkFamily(t.content, content),
+          )
+        )
+          echoed = true;
+        if (
           !repeated &&
           !echoed &&
           result.share === true &&
@@ -266,7 +276,7 @@ export class OwnVoice {
             const verdict = await models.call(
               profile,
               "expression_novelty",
-              '比较一个人先前已分享的念头和现在想说的话。只判断核心话题与动机是否仍是同一件事；换词、补一个没有外部新经历的小步骤、换一个群分享，都算同一主题。真正换了关注对象或出现新的经历，才算新内容。不判断好坏。只输出 JSON：{"sameTheme":true或false,"reason":"一句依据"}。',
+              '比较一个人先前已分享的念头和现在想说的话。只判断核心话题与动机是否仍是同一件事；换词、补一个没有外部新经历的小步骤、换一个群分享、同一作品/游戏/写作项目的下一段或下一格进度，都算同一主题。真正换了关注对象或出现新的经历，才算新内容。不判断好坏。只输出 JSON：{"sameTheme":true或false,"reason":"一句依据"}。',
               {
                 candidate: { note: content, words, sources },
                 recentlySaid: recentlySaid.slice(0, 6),

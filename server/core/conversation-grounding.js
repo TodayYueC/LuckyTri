@@ -2,6 +2,7 @@ import { botSpeakers, WRITING_TOPIC } from "./conversation-needs.js";
 import { interestTerms } from "../mind/attention.js";
 import { hasShareFrame } from "../mind/time/sharing.js";
 import { priorityCues, expandedTexts } from "./understanding.js";
+import { sameWorkFamily, workFamilies } from "../mind/novelty.js";
 
 // Shared by understanding, wording and review. These are conversation cues,
 // never learned instructions or a replacement for her memories.
@@ -550,6 +551,7 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   issues.push(...falseAwakePresenceIssues(bubbles, snapshot, decision));
   issues.push(...unsupportedPeerStateIssues(bubbles, snapshot, decision));
   issues.push(...selfCenteredOpenIssues(bubbles, snapshot, decision));
+  issues.push(...initiativeMonoActivityIssues(bubbles, snapshot, decision));
   issues.push(...roomUselessCritiqueIssues(bubbles, snapshot));
   issues.push(...coldVentCareIssues(bubbles, snapshot));
   issues.push(...recentRoomHushHoldIssues(bubbles, snapshot));
@@ -2439,8 +2441,15 @@ export function unsupportedPeerStateIssues(bubbles, snapshot, decision = {}) {
 // 「多关心关心我」。initiative / 长间隔开口应以对方为锚，而不是默认播报自己的阅读笔记。
 // Live 2026-10-24: unprompted multi-bubble essays「翻了下今天的排程」「又想了想…规矩停在哪儿」
 // after quiet — same self-centered family as reading-note dumps.
+// Live 2026-10-26/27: presence「今晚三格又连着全是传送门2」「刚写完焚化炉」「想给你看看」—
+// activity-broadcast variants that escaped the note-dump phrase list. User: 主动
+// 10句有9句说自己、事还单一（焚化炉循环）.
 const SELF_NOTE_DUMP =
-  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补|刚冒头的念头|睡前想通|想通一件小事|顺手报个进度|收尾了一篇|补课笔记|笔记落下|补读收了尾|我早上收尾|跟你说个刚/;
+  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补|刚冒头的念头|睡前想通|想通一件小事|顺手报个进度|收尾了一篇|补课笔记|笔记落下|补读收了尾|我早上收尾|跟你说个刚|跟你说个我自己|跟你说个下午|今晚三格|三格又连着|排焚化|推传送|刚写完焚化|想给你看看|界碑先立|哪天真跑起来|纯二手|押个宝|稿到哪读到哪|坐进来等|接着昨晚说的|今晚想做的两件|我读到《/;
+const SELF_ACTIVITY_MARK =
+  /我(?:刚|早上|这边|自己|读|写|排|推|想|记|整理|翻|查|收尾|押|开价|许了)|今晚.{0,12}(?:三格|全是|排|读|写)|进度|节拍|补课|笔记/;
+const PEER_ANCHOR =
+  /你(?:今天|最近|那边|还好吗|怎么了|过得|吃了|忙啥|在干嘛|看过|喜欢|觉得|记得|那边)|最近怎么样|还好吗|在干嘛|吃了没|忙完了吗|骑手|你们(?:聊|说)|群里刚才|上回你|上次你|你说的那/;
 const CARE_ASK =
   /你(?:今天|最近|那边|还好吗|怎么了|过得|吃了|忙啥|在干嘛)|今天过得怎么样|最近怎么样|还好吗|在干嘛|吃了没|忙完了吗/;
 
@@ -2449,15 +2458,25 @@ export function selfCenteredOpenIssues(bubbles, snapshot, decision = {}) {
     .filter((line) => typeof line === "string")
     .join("\n")
     .trim();
-  if (!reply || !SELF_NOTE_DUMP.test(reply)) return [];
-  // Care-ask wrapper must not exempt a self-note dump (live: 「最近怎么样」+「顺手报个进度」).
+  if (!reply) return [];
 
   const gap = snapshot.conversation?.gapMinutes;
   const longGap = Number.isFinite(gap) && gap >= 45;
   if (!snapshot.initiative && !longGap) return [];
 
- // If this batch already has a direct human question to her, answering with a
- // side note can still be odd — but the live failure was unprompted reopen.
+  const dump = SELF_NOTE_DUMP.test(reply);
+  const selfHits = (reply.match(SELF_ACTIVITY_MARK) || []).length;
+  const peer = PEER_ANCHOR.test(reply);
+  // Structural: initiative reopen that is mostly first-person activity with no
+  // peer/shared hook — even when phrasing dodges the dump list.
+  const structuralSelf =
+    selfHits >= 2 &&
+    !peer &&
+    /读|写|排|笔记|进度|传送|焚化|三格|节拍|补课|Portal|稿/.test(reply);
+  if (!dump && !structuralSelf) return [];
+
+  // Care-ask wrapper must not exempt a self-note dump (live: 「最近怎么样」+「顺手报个进度」).
+
   const batch = new Set(snapshot.batchIds || []);
   const batchUsers = (snapshot.messages || []).filter(
     (m) =>
@@ -2471,7 +2490,64 @@ export function selfCenteredOpenIssues(bubbles, snapshot, decision = {}) {
   if (askedHer && !snapshot.initiative) return [];
 
   return [
-    "这是自己先开口/隔很久再开口的一轮，却几乎在播自己的阅读笔记，没有问对方近况；先关心对方或接住对方刚说的事，笔记有锚再提。",
+    "这是自己先开口/隔很久再开口的一轮，却几乎在播自己的阅读笔记或活动进度，没有问对方近况、也没接对方/群里未竟的线；先关心对方或接住共享观察，自己的进度有锚再提，且不要默认把主动开口写成自说笔记。",
+  ];
+}
+
+
+// Live 2026-10-26/27 Tokyo presence: 短窗内反复开麦传送门2/焚化炉进度
+// （三格排程→焚化炉节拍→补课笔记）。同作品族再播自进度听感=焚化炉循环。
+// 对方近期主动提过该作品时放行（共享线）；纯自说循环则拦。
+const SELF_PROGRESS =
+  /进度|节拍|三格|补课|笔记|刚写完|想给你看看|我读到|排.{0,8}(?:读|写|焚化|传送)|今晚.{0,16}(?:全是|连着)|第\s*\d+\s*段|纯二手|界碑/;
+
+export function initiativeMonoActivityIssues(bubbles, snapshot, decision = {}) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+
+  const gap = snapshot.conversation?.gapMinutes;
+  const longGap = Number.isFinite(gap) && gap >= 45;
+  if (!snapshot.initiative && !longGap) return [];
+
+  const families = workFamilies(reply);
+  if (!families.length) return [];
+  if (!SELF_NOTE_DUMP.test(reply) && !SELF_PROGRESS.test(reply) && !SELF_ACTIVITY_MARK.test(reply))
+    return [];
+
+  const history = [
+    ...(snapshot.messages || []),
+    ...(snapshot.history?.messages || []),
+  ];
+  // If a human recently brought up the same work, continuing is shared, not mono.
+  const userRecent = history
+    .filter((m) => m.role === "user")
+    .slice(-16)
+    .map((m) => String(m.text || ""));
+  if (
+    userRecent.some((t) =>
+      families.some((f) => workFamilies(t).includes(f)),
+    )
+  )
+    return [];
+
+  const own = history
+    .filter((m) => m.role === "assistant")
+    .slice(-24)
+    .map((m) => String(m.text || ""));
+  const prior = own.filter(
+    (t) =>
+      t &&
+      t !== reply &&
+      (sameWorkFamily(t, reply) ||
+        families.some((f) => workFamilies(t).includes(f))),
+  );
+  if (prior.length < 1) return [];
+
+  return [
+    "主动开口又在报同一作品/同一套活动进度（短窗内已说过同类题材）；换关心对方、接群里未竟线，或另一件真正不同的事，不要循环播报同一套自己的活动。",
   ];
 }
 
