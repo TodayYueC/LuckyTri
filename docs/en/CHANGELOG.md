@@ -2,6 +2,14 @@
 
 # Changelog
 
+## 1.3.5 — 2026-10-27
+
+- Honor a stop more cleanly. After a room tells her to be quiet, or someone says stop or shut up, she no longer continues the old thread. A short acknowledgment that she will stop does not turn into another message right away, and the hush lasts longer.
+- Add less when someone is hurting, refusing, or criticizing. Soft distress, or a picture or sticker standing in for words, gets a short presence instead of a string of questions or a demand to fill in the blank. A request to keep something private, or a plain refusal to say more, is accepted without probing the source, pushing them to send it, or guessing their motive. “I don’t follow” or “that’s useless” is taken in without arguing that every line was a reply. Venting is not closed with cold advice such as “you brought this on yourself,” “go to sleep,” or “tomorrow won’t be better.” She also no longer labels someone as showing off when their words do not say that.
+- Stop stating what she did not see or hear. She no longer asserts someone’s state, that they are still awake, or an appearance she did not observe. A dense metaphor needs a plain-language point in the same turn. She does not referee a dispute or stack safety warnings unless someone asked. When told she only talks about herself, she asks about them first.
+- When she speaks first, talk less about herself. After a long gap or on her own initiative, she picks up their unfinished thread or offers something they can answer, instead of broadcasting her notes, activity, or an unprompted essay. If they have not really replied, she does not chain another self-update, and she does not recycle the same work in a short window by rephrasing it. Recent slang, stickers, and parenthetical asides are read in context, including a greeting such as “面怎么样.”
+- A stop signal that arrives while a foreground update is handing over is forwarded to the replacement process.
+
 ## 1.3.4 — 2026-10-17
 
 - Improve multi-speaker grounding, question priority, stop signals and continuity with earlier messages, reducing misdirected @ mentions, attribution errors and replies to stale questions.
