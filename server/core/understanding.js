@@ -235,6 +235,14 @@ const GLOSS_RULES = [
   { re: /月畜/, glosses: ["月初", "月出", "YueC"] },
   { re: /p4|P4|鸣上悠/i, glosses: ["女神异闻录4", "Persona4", "鸣上悠"] },
   { re: /自拍/, glosses: ["自拍", "照片", "自拍照"] },
+  {
+    re: /还在焚化炉/,
+    glosses: ["还在讲焚化炉", "题材重复了", "别再播同一套进度"],
+  },
+  {
+    re: /还在(?:传送门|Portal)/i,
+    glosses: ["还在讲传送门", "题材重复了", "别再播同一套进度"],
+  },
 ];
 
 export function speechGlosses(text) {
@@ -303,13 +311,21 @@ export function priorityCues(messages = [], batchIds = [], addressedIds = []) {
       /总是在说你自己|老顾着讲自己|多关心关心我|能不能关心一下我|你也多关心/.test(
         value,
       );
-    if (!isDirect && !isRoomStop && !isRoomHush && !isCareRedirect) continue;
+    // Live 2026-10-25/27: 「还在焚化炉？」= fatigue pushback on mono topic, not invite.
+    const isTopicPushback =
+      isDirect &&
+      /还在.{0,16}(?:焚化炉|传送门|Portal|三格|补课|节拍)|怎么又(?:是|在).{0,12}(?:焚化|传送|Portal)|别(?:再)?(?:说|播).{0,8}(?:焚化|传送)/.test(
+        value,
+      );
+    if (!isDirect && !isRoomStop && !isRoomHush && !isCareRedirect && !isTopicPushback)
+      continue;
     const hint = intentHint(value);
     const isQuestion = hint === "question" || QUESTION.test(value);
     if (
       !isQuestion &&
       !["proposal", "correction"].includes(hint) &&
-      !/[?？]|怎么|为什么|什么|哪|有没有|能不能|是什么|啥意思|啥|扫不了|过不了|解释一下|说清楚|讲讲|告诉我|说说看|来点评|点评一下|点评|评价一下|评价下|评一下|对比一下|哪个好|还是|二选一|选哪个|你更喜欢|更喜欢哪个|喜欢哪个|怎么看|怎么想|你怎么看|觉得怎么样|怎么样啊|给点(?:参考)?意见|参考意见|给点建议|有没有推荐|推荐一下|求推荐|你是谁|你叫什么|叫什么名字|你是什么(?:人|啊|呀)?|介绍一下你(?:自己)?|记得|记不记得|帮我记|别在群里|别聊这些|别讨论这些|喝茶|私聊吧|私聊说|去tg|别发群|别公开聊|闭嘴|别说了|闭麦|烧钱|别复读|别刷屏|傻子AI|不知所云|太没用了|只会哈|有啥用|sto{2,}p+|stop{2,}|\bstop\b|shut\s*up|说你自己|多关心关心我/.test(
+      !isTopicPushback &&
+      !/[?？]|怎么|为什么|什么|哪|有没有|能不能|是什么|啥意思|啥|扫不了|过不了|解释一下|说清楚|讲讲|告诉我|说说看|来点评|点评一下|点评|评价一下|评价下|评一下|对比一下|哪个好|还是|二选一|选哪个|你更喜欢|更喜欢哪个|喜欢哪个|怎么看|怎么想|你怎么看|觉得怎么样|怎么样啊|给点(?:参考)?意见|参考意见|给点建议|有没有推荐|推荐一下|求推荐|你是谁|你叫什么|叫什么名字|你是什么(?:人|啊|呀)?|介绍一下你(?:自己)?|记得|记不记得|帮我记|别在群里|别聊这些|别讨论这些|喝茶|私聊吧|私聊说|去tg|别发群|别公开聊|闭嘴|别说了|闭麦|烧钱|别复读|别刷屏|傻子AI|不知所云|太没用了|只会哈|有啥用|sto{2,}p+|stop{2,}|\bstop\b|shut\s*up|说你自己|多关心关心我|还在焚化|还在传送/.test(
         value,
       )
     )
@@ -319,17 +335,19 @@ export function priorityCues(messages = [], batchIds = [], addressedIds = []) {
       speaker: m.speaker,
       name: m.name,
       text: value.slice(0, 120),
-      intentHint: isQuestion ? "question" : hint,
+      intentHint: isQuestion ? "question" : isTopicPushback ? "correction" : hint,
       addressed: true,
-      why: isQuestion
-        ? "有人叫你并在提问"
-        : isRoomStop
-          ? "本轮有人叫停群聊话题或提示风险"
-          : isRoomHush
-            ? "本轮有人嘘停/嫌不知所云，先收住旧线或短收"
-            : isCareRedirect
-              ? "对方说你老顾着讲自己，想要你关心近况"
-              : "有人叫你提出请求或纠正",
+      why: isTopicPushback
+        ? "对方在推回你反复讲的同一题材，不要当邀请续播"
+        : isQuestion
+          ? "有人叫你并在提问"
+          : isRoomStop
+            ? "本轮有人叫停群聊话题或提示风险"
+            : isRoomHush
+              ? "本轮有人嘘停/嫌不知所云，先收住旧线或短收"
+              : isCareRedirect
+                ? "对方说你老顾着讲自己，想要你关心近况"
+                : "有人叫你提出请求或纠正",
     });
   }
   if (!cues.length) {

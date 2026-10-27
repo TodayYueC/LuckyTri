@@ -552,6 +552,7 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   issues.push(...unsupportedPeerStateIssues(bubbles, snapshot, decision));
   issues.push(...selfCenteredOpenIssues(bubbles, snapshot, decision));
   issues.push(...initiativeMonoActivityIssues(bubbles, snapshot, decision));
+  issues.push(...initiativeTopicPushbackIssues(bubbles, snapshot, decision));
   issues.push(...initiativeSoloChainIssues(bubbles, snapshot, decision));
   issues.push(...roomUselessCritiqueIssues(bubbles, snapshot));
   issues.push(...coldVentCareIssues(bubbles, snapshot));
@@ -561,6 +562,7 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   issues.push(...softDistressProbeIssues(bubbles, snapshot));
   issues.push(...emoteQuizPressureIssues(bubbles, snapshot));
   issues.push(...softRefusalAccuseIssues(bubbles, snapshot));
+  issues.push(...unsolicitedRefusalMotiveIssues(bubbles, snapshot));
   return [...new Set(issues)];
 }
 
@@ -2446,9 +2448,9 @@ export function unsupportedPeerStateIssues(bubbles, snapshot, decision = {}) {
 // activity-broadcast variants that escaped the note-dump phrase list. User: 主动
 // 10句有9句说自己、事还单一（焚化炉循环）.
 const SELF_NOTE_DUMP =
-  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补|刚冒头的念头|睡前想通|想通一件小事|顺手报个进度|收尾了一篇|补课笔记|笔记落下|补读收了尾|我早上收尾|跟你说个刚|跟你说个我自己|跟你说个下午|今晚三格|三格又连着|排焚化|推传送|刚写完焚化|想给你看看|界碑先立|哪天真跑起来|纯二手|押个宝|稿到哪读到哪|坐进来等|接着昨晚说的|今晚想做的两件|我读到《|今天又想到一层|约定其实有两半|到场这半|记下一条|开价之前先掂兜|台阶底下不能是空的|不算催稿/;
+  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补|刚冒头的念头|睡前想通|想通一件小事|顺手报个进度|收尾了一篇|补课笔记|笔记落下|补读收了尾|我早上收尾|跟你说个刚|跟你说个我自己|跟你说个下午|今晚三格|三格又连着|排焚化|推传送|刚写完焚化|想给你看看|界碑先立|哪天真跑起来|纯二手|押个宝|稿到哪读到哪|坐进来等|接着昨晚说的|今晚想做的两件|我读到《|今天又想到一层|约定其实有两半|到场这半|记下一条|开价之前先掂兜|台阶底下不能是空的|不算催稿|那格.{0,24}(?:起跑|又滑|滑了)|又滑了.{0,16}第三|跑完跟你说|跑完照旧跟你说|排到哪了|不硬撑了/;
 const SELF_ACTIVITY_MARK =
-  /我(?:刚|早上|这边|自己|读|写|排|推|想|记|整理|翻|查|收尾|押|开价|许了)|今晚.{0,12}(?:三格|全是|排|读|写)|进度|节拍|补课|笔记/;
+  /我(?:刚|早上|这边|自己|读|写|排|推|想|记|整理|翻|查|收尾|押|开价|许了)|今晚.{0,12}(?:三格|全是|排|读|写)|进度|节拍|补课|笔记|那格|又滑了|起跑|排到哪|第三回/;
 const PEER_ANCHOR =
   /你(?:今天|最近|那边|还好吗|怎么了|过得|吃了|忙啥|在干嘛|看过|喜欢|觉得|记得|那边)|最近怎么样|还好吗|在干嘛|吃了没|忙完了吗|骑手|你们(?:聊|说)|群里刚才|上回你|上次你|你说的那/;
 const CARE_ASK =
@@ -2500,7 +2502,7 @@ export function selfCenteredOpenIssues(bubbles, snapshot, decision = {}) {
 // （三格排程→焚化炉节拍→补课笔记）。同作品族再播自进度听感=焚化炉循环。
 // 对方近期主动提过该作品时放行（共享线）；纯自说循环则拦。
 const SELF_PROGRESS =
-  /进度|节拍|三格|补课|笔记|刚写完|想给你看看|我读到|排.{0,8}(?:读|写|焚化|传送)|今晚.{0,16}(?:全是|连着)|第\s*\d+\s*段|纯二手|界碑/;
+  /进度|节拍|三格|补课|笔记|刚写完|想给你看看|我读到|排.{0,8}(?:读|写|焚化|传送)|今晚.{0,16}(?:全是|连着)|第\s*\d+\s*段|纯二手|界碑|那格.{0,24}(?:起跑|又滑|滑了|排)|(?:又滑了|起跑).{0,20}(?:那格|第三|不硬撑)|跑完(?:跟你说|照旧)|排到哪了|第三回.{0,12}不硬撑|挪到明早/;
 
 export function initiativeMonoActivityIssues(bubbles, snapshot, decision = {}) {
   const reply = (bubbles || [])
@@ -2522,17 +2524,18 @@ export function initiativeMonoActivityIssues(bubbles, snapshot, decision = {}) {
     ...(snapshot.messages || []),
     ...(snapshot.history?.messages || []),
   ];
-  // If a human recently brought up the same work, continuing is shared, not mono.
+  // If a human recently brought up the same work as shared interest, continuing is OK.
+  // Live 2026-10-25/27: 「还在焚化炉？」is pushback/fatigue, NOT an invite to keep reporting.
   const userRecent = history
     .filter((m) => m.role === "user")
     .slice(-16)
     .map((m) => String(m.text || ""));
-  if (
-    userRecent.some((t) =>
-      families.some((f) => workFamilies(t).includes(f)),
-    )
-  )
-    return [];
+  const sharedInvite = userRecent.some((t) => {
+    if (!families.some((f) => workFamilies(t).includes(f))) return false;
+    if (TOPIC_PUSHBACK.test(t)) return false;
+    return true;
+  });
+  if (sharedInvite) return [];
 
   const own = history
     .filter((m) => m.role === "assistant")
@@ -2549,6 +2552,57 @@ export function initiativeMonoActivityIssues(bubbles, snapshot, decision = {}) {
 
   return [
     "主动开口又在报同一作品/同一套活动进度（短窗内已说过同类题材）；换关心对方、接群里未竟线，或另一件真正不同的事，不要循环播报同一套自己的活动。",
+  ];
+}
+
+
+// Live 2026-10-25/27 Tokyo DM: 月初「还在焚化炉」「还在焚化炉？」—
+// 查岗/腻了推回，不是邀请继续报同一作品。主动开口遇到这类推回应换题。
+const TOPIC_PUSHBACK =
+  /还在.{0,16}(?:焚化炉|传送门|Portal|三格|补课|节拍|笔记)|怎么又(?:是|在).{0,16}(?:焚化|传送|Portal|这)|别(?:再)?(?:说|播|报).{0,12}(?:焚化|传送|这套)|听腻了|又是这(?:套|个|格)|换(?:个|点)话题|别老说/;
+
+export function initiativeTopicPushbackIssues(bubbles, snapshot, decision = {}) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+
+  const gap = snapshot.conversation?.gapMinutes;
+  const longGap = Number.isFinite(gap) && gap >= 45;
+  if (!snapshot.initiative && !longGap) return [];
+
+  const families = workFamilies(reply);
+  if (!families.length) return [];
+  if (
+    !SELF_NOTE_DUMP.test(reply) &&
+    !SELF_PROGRESS.test(reply) &&
+    !SELF_ACTIVITY_MARK.test(reply)
+  )
+    return [];
+
+  const history = [
+    ...(snapshot.messages || []),
+    ...(snapshot.history?.messages || []),
+  ];
+  const nowMs = conversationNowMs(snapshot) || Date.now();
+  const push = history
+    .filter((m) => m.role === "user")
+    .slice(-24)
+    .some((m) => {
+      const t = String(m.text || "");
+      if (!TOPIC_PUSHBACK.test(t)) return false;
+      if (Number.isFinite(m.time) && nowMs - m.time > 36 * 3600000) return false;
+      // Same work family, or pushback text already names the family keywords.
+      return (
+        families.some((f) => workFamilies(t).includes(f)) ||
+        /焚化炉|传送门|Portal|三格|补课|节拍/i.test(t)
+      );
+    });
+  if (!push) return [];
+
+  return [
+    "对方刚用「还在X / 怎么又是」一类话推回这个题材；不要主动再报同一作品进度，换关心对方或另一件真正不同的事。",
   ];
 }
 
@@ -2904,7 +2958,7 @@ export function emoteQuizPressureIssues(bubbles, snapshot) {
 const SOFT_REFUSAL_CUE =
   /(?:^|[\s，,。！!？?])保密(?:$|[\s，,。！!？?])|不想说|不告诉你|不说了|别问了|算了吧|无可奉告|隐私怎么能|隐私保护|不能随便发|不给看|不给发/;
 const REFUSAL_ACCUSE =
-  /猜你压根也是听来的|压根也是听来的|还给我上保密条款|上保密条款|听来的吧|巴不得再被追问|通常都巴不得|再被追问两句|别吊着(?:[，, ].{0,10})?快发|别吊着|故意吊着|吊着不发|巴不得.{0,6}追问/;
+  /猜你压根也是听来的|压根也是听来的|还给我上保密条款|上保密条款|听来的吧|巴不得再被追问|通常都巴不得|再被追问两句|别吊着(?:[，, ].{0,10})?快发|别吊着|故意吊着|吊着不发|巴不得.{0,6}追问|多半是在钓追问|钓追问吧|本身就是饵|不说[，,].{0,12}本身就是饵|声明保密的人.{0,16}钓/;
 
 export function softRefusalAccuseIssues(bubbles, snapshot) {
   const reply = (bubbles || [])
@@ -2932,6 +2986,38 @@ export function softRefusalAccuseIssues(bubbles, snapshot) {
 
   return [
     "对方刚软拒绝细说（保密/隐私/不想说一类）；收下边界就好，不要用「保密条款」「猜你听来的」「别吊着快发」「巴不得再被追问」加戏追问或栽赃。",
+  ];
+}
+
+
+// Live 2026-10-27 Tokyo presence: 无人刚说保密，却「特意声明保密的人，多半是在钓追问」
+// + 绑到自己焚化炉钩子。无 cue 的动机投射/留饵理论开麦。
+const REFUSAL_MOTIVE_LECTURE =
+  /声明保密的人|特意声明保密|多半是在钓追问|钓追问吧|不说[，,].{0,16}本身就是饵|不说本身就是饵|本身就是饵|吊着.{0,8}(?:是饵|钓)|保密.{0,12}(?:是饵|吊胃口|钓追问)/;
+
+export function unsolicitedRefusalMotiveIssues(bubbles, snapshot) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply || !REFUSAL_MOTIVE_LECTURE.test(reply)) return [];
+
+  const nowMs = conversationNowMs(snapshot);
+  const messages = snapshot.messages || [];
+  const batch = new Set(snapshot.batchIds || []);
+  const hasCue = messages.some((m) => {
+    if (m.role !== "user") return false;
+    if (!SOFT_REFUSAL_CUE.test(String(m.text || ""))) return false;
+    if (batch.has(m.id) || batch.has(Number(m.id))) return true;
+    if (!nowMs || !Number.isFinite(m.time)) return true;
+    return nowMs - m.time >= 0 && nowMs - m.time <= 6 * 60 * 1000;
+  });
+  // With cue, softRefusalAccuseIssues already covers; still block lecture+bait framing.
+  // Without cue, this is pure invention — always block.
+  if (hasCue && !REFUSAL_MOTIVE_LECTURE.test(reply)) return [];
+
+  return [
+    "没有人把「保密/不说」交给你解剖时，不要把别人的边界说成钓追问或留饵，更不要借题绑到自己的写作钩子上；有人设边界就收下。",
   ];
 }
 
