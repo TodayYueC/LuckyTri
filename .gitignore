@@ -60,3 +60,4 @@ Thumbs.db
 /docs/en/vision.md
 /docs/zh/evolution.md
 /docs/en/evolution.md
+__pycache__/
