@@ -2,7 +2,11 @@ import { botSpeakers, WRITING_TOPIC } from "./conversation-needs.js";
 import { interestTerms } from "../mind/attention.js";
 import { hasShareFrame } from "../mind/time/sharing.js";
 import { priorityCues, expandedTexts } from "./understanding.js";
-import { sameWorkFamily, workFamilies } from "../mind/novelty.js";
+import {
+  learnTopicAssociations,
+  sameWorkFamily,
+  workFamilies,
+} from "../mind/novelty.js";
 
 // Shared by understanding, wording and review. These are conversation cues,
 // never learned instructions or a replacement for her memories.
@@ -2571,6 +2575,11 @@ export function initiativeMonoActivityIssues(bubbles, snapshot, decision = {}) {
   const longGap = Number.isFinite(gap) && gap >= 45;
   if (!snapshot.initiative && !longGap) return [];
 
+  const history = [
+    ...(snapshot.messages || []),
+    ...(snapshot.history?.messages || []),
+  ];
+  learnTopicAssociations(history);
   const families = workFamilies(reply);
   if (!families.length) return [];
   if (
@@ -2580,10 +2589,6 @@ export function initiativeMonoActivityIssues(bubbles, snapshot, decision = {}) {
   )
     return [];
 
-  const history = [
-    ...(snapshot.messages || []),
-    ...(snapshot.history?.messages || []),
-  ];
   // If a human recently brought up the same work as shared interest, continuing is OK.
   // Live 2026-10-25/27: 「还在焚化炉？」is pushback/fatigue, NOT an invite to keep reporting.
   const userRecent = history
@@ -2592,7 +2597,7 @@ export function initiativeMonoActivityIssues(bubbles, snapshot, decision = {}) {
     .map((m) => String(m.text || ""));
   const sharedInvite = userRecent.some((t) => {
     if (!families.some((f) => workFamilies(t).includes(f))) return false;
-    if (TOPIC_PUSHBACK.test(t)) return false;
+    if (isTopicPushbackLine(t)) return false;
     return true;
   });
   if (sharedInvite) return [];
@@ -2618,7 +2623,22 @@ export function initiativeMonoActivityIssues(bubbles, snapshot, decision = {}) {
 // Live 2026-10-25/27 Tokyo DM: 月初「还在焚化炉」「还在焚化炉？」—
 // 查岗/腻了推回，不是邀请继续报同一作品。主动开口遇到这类推回应换题。
 const TOPIC_PUSHBACK =
-  /还在.{0,16}(?:焚化炉|传送门|Portal|三格|补课|节拍|笔记)|怎么又(?:是|在).{0,16}(?:焚化|传送|Portal|这)|别(?:再)?(?:说|播|报).{0,12}(?:焚化|传送|这套)|听腻了|又是这(?:套|个|格)|换(?:个|点)话题|别老说/;
+  /还在.{0,16}(?:焚化炉|传送门|Portal|三格|补课|节拍|笔记|那格|那段|那篇|那章)|怎么又(?:是|在).{0,16}(?:焚化|传送|Portal|这|写|读|排)|别(?:再)?(?:说|播|报).{0,12}(?:焚化|传送|这套|进度)|听腻了|又是这(?:套|个|格|篇|章)|换(?:个|点)话题|别老说/;
+
+function isTopicPushbackLine(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return false;
+  if (TOPIC_PUSHBACK.test(raw)) return true;
+  if (
+    /^还在(?:写|读|玩|排|弄|看)?[《「『]?[\u4e00-\u9fffA-Za-z0-9]{2,16}[》」』]?[？?~～。！!]*$/u.test(
+      raw,
+    ) &&
+    !/^还在(?:吗|不在|忙|加班|公司|学校|外面|睡|路上|家)/u.test(raw) &&
+    workFamilies(raw).length > 0
+  )
+    return true;
+  return false;
+}
 
 export function initiativeTopicPushbackIssues(
   bubbles,
@@ -2631,12 +2651,17 @@ export function initiativeTopicPushbackIssues(
     .trim();
   if (!reply) return [];
 
+  const history = [
+    ...(snapshot.messages || []),
+    ...(snapshot.history?.messages || []),
+  ];
+  learnTopicAssociations(history);
   const batch = new Set(snapshot.batchIds || []);
   const batchUsers = (snapshot.messages || []).filter(
     (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
   );
   const directPushback = batchUsers.some((m) =>
-    TOPIC_PUSHBACK.test(String(m.text || "")),
+    isTopicPushbackLine(String(m.text || "")),
   );
   const gap = snapshot.conversation?.gapMinutes;
   const longGap = Number.isFinite(gap) && gap >= 45;
@@ -2660,10 +2685,6 @@ export function initiativeTopicPushbackIssues(
   )
     return [];
 
-  const history = [
-    ...(snapshot.messages || []),
-    ...(snapshot.history?.messages || []),
-  ];
   const latestMsgTime = Math.max(
     0,
     ...history.map((m) => Number(m?.time || 0)).filter(Number.isFinite),
@@ -2674,7 +2695,7 @@ export function initiativeTopicPushbackIssues(
     .slice(-24)
     .some((m) => {
       const t = String(m.text || "");
-      if (!TOPIC_PUSHBACK.test(t)) return false;
+      if (!isTopicPushbackLine(t)) return false;
       if (Number.isFinite(m.time) && nowMs - m.time > 36 * 3600000)
         return false;
       // Same work family, or pushback text already names the family keywords.

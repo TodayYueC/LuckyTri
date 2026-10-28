@@ -3,7 +3,12 @@ import { replyPrompt, prompts } from "../core/persona-manager.js";
 import { withFallback } from "../core/model-manager.js";
 import { HOUR, evidence, hasCredential, text } from "./util.js";
 import { isPrivateSession } from "./memory.js";
-import { sameRecentTheme, sameWorkFamily } from "./novelty.js";
+import {
+  classifyTopicRelation,
+  learnTopicAssociations,
+  sameRecentTheme,
+  sameWorkFamily,
+} from "./novelty.js";
 import { ownLife, sameSelf } from "./salience.js";
 import { conversationOrigin, originSummary } from "./conversation-origin.js";
 import {
@@ -25,8 +30,8 @@ export class OwnVoice {
     this.mind = life.mind;
   }
   // What has come into her life since `after` that this loop did not write
-  // itself: thoughts from solitude, night memory or a review, and threads
-  // those revised. Her own expression write-backs are not new.
+  // itself: thoughts from solitude, night memory or a review, threads those
+  // revised, external observations, and newly due episodes or anticipations.
   arrived(after, until) {
     const thoughts = this.mind.db
       .prepare(
@@ -40,7 +45,28 @@ export class OwnVoice {
       )
       .all(after, until)
       .map((row) => `s:${row.thread}`);
-    return new Set([...thoughts, ...threads]);
+    const observations = this.mind.db
+      .prepare(
+        "SELECT id FROM mind_observations WHERE created>? AND created<=? AND revoked=0",
+      )
+      .all(after, until)
+      .map((row) => `o:${row.id}`);
+    const dueEpisodes = this.mind.db
+      .prepare(
+        "SELECT id FROM mind_episodes WHERE status='open' AND follow_up_at>? AND follow_up_at<=?",
+      )
+      .all(after, until)
+      .map((row) => `e:${row.id}`);
+    const dueAhead = this.mind.anticipations?.newlyDue(after, until)
+      ? ["a:due"]
+      : [];
+    return new Set([
+      ...thoughts,
+      ...threads,
+      ...observations,
+      ...dueEpisodes,
+      ...dueAhead,
+    ]);
   }
   // How many of her newest notes only took up the one before. A note is
   // anchored when it cites something that arrived after the previous note.
@@ -127,6 +153,8 @@ export class OwnVoice {
       .list({ before: now + 1, limit: 80 })
       .filter((t) => t.kind === "expression")
       .slice(0, 12);
+    learnTopicAssociations({ db: this.mind.db });
+    learnTopicAssociations(recent);
     const { mood, energyLabel, phaseLabel } = this.mind.affect.state(now, {
       nature,
     });
@@ -158,7 +186,12 @@ export class OwnVoice {
             now - t.created < 24 * HOUR &&
             (sameRecentTheme(t.said, label) ||
               sameWorkFamily(t.said, label) ||
-              sameWorkFamily(t.content, label)),
+              sameWorkFamily(t.content, label) ||
+              classifyTopicRelation(
+                { content: t.content, said: t.said, sources: t.sources, created: t.created },
+                { title: a.title, content: label, projectId: a.project, workId: a.work },
+                { db: this.mind.db, now },
+              ).suppress),
         );
       })
       .map(({ ref, title, why, activity, state, share }) => ({
@@ -266,6 +299,7 @@ export class OwnVoice {
           sources.some((s) => !valid.has(s))
         )
           throw Error("自己的念头含有无效来源或敏感内容，未保存");
+        let groundedWords = null;
         if (
           claimsLivedAction([content, ...words].join("\n")) ||
           claimsSharedHistory([content, result.reason, ...words].join("\n"))
@@ -290,6 +324,7 @@ export class OwnVoice {
               "新行动经历没有得到实际记录支持，未保存";
             return { status, reason, note: null };
           }
+          groundedWords = [...words];
           if (life.closed || this.mind.nature.version() !== nature.version) {
             status = "cancelled";
             reason = "核对期间状态已变化";
@@ -317,11 +352,18 @@ export class OwnVoice {
         if (
           !echoed &&
           result.share === true &&
-          recentlySaid.some(
-            (t) =>
+          recentlySaid.some((t) => {
+            const rel = classifyTopicRelation(
+              { content: t.content, said: t.said, created: t.created },
+              { content, words, sources, created: now },
+              { db: this.mind.db, now },
+            );
+            return (
+              rel.suppress ||
               sameWorkFamily(t.said, words.join("\n")) ||
-              sameWorkFamily(t.content, content),
-          )
+              sameWorkFamily(t.content, content)
+            );
+          })
         )
           echoed = true;
         if (
@@ -392,6 +434,7 @@ export class OwnVoice {
             // new encounter, its next paraphrase should not tour other rooms.
             share: result.share === true && words.length > 0 && !echoed,
             words,
+            ...(groundedWords ? { groundedWords } : {}),
             reason: text(result.reason, 300) || "想把这个念头说出来",
             audience: ["private", "group"].includes(result.audience)
               ? result.audience

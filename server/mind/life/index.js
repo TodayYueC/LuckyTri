@@ -7,9 +7,16 @@ import { elapsedLabel } from "../clock.js";
 import { isPrivateSession } from "../memory.js";
 import { lifeDayKey, rhythmPhase } from "../nature.js";
 import { THOUGHT_KINDS } from "../thoughts.js";
-import { sameRecentTheme, sameWorkFamily } from "../novelty.js";
+import {
+  classifyTopicRelation,
+  learnTopicAssociations,
+  sameRecentTheme,
+  sameWorkFamily,
+} from "../novelty.js";
+import { recentAftermathForSolitude } from "../aftermath.js";
 import { Initiative } from "../initiative.js";
 import { OwnVoice } from "../own-voice.js";
+import { LifeArbiter, classifyReasonCategory } from "./arbiter.js";
 import {
   DAY,
   HOUR,
@@ -77,6 +84,13 @@ export class Life {
     this.activities = new LifeActivities(this);
     this.ownDay = new OwnDay(this);
     this.planner = new DayPlanner(this);
+    this.arbiter = new LifeArbiter(this);
+  }
+  decisions(options) {
+    return this.arbiter.decisions(options);
+  }
+  arbiterStatus(now = this.now()) {
+    return this.arbiter.status(now);
   }
   settings() {
     return { ...LIFE_DEFAULTS, ...this.repo.config("life", {}) };
@@ -162,6 +176,11 @@ export class Life {
           : Number(c.usage?.total_tokens) || 0),
       0,
     );
+    const category = classifyReasonCategory(reason, status);
+    const enrichedSummary =
+      summary && typeof summary === "object"
+        ? { ...summary, category }
+        : { category };
     this.db
       .prepare(
         "UPDATE mind_runs SET finished=?,status=?,reason=?,tokens=?,model=?,summary=? WHERE id=?",
@@ -172,7 +191,7 @@ export class Life {
         String(reason).slice(0, 300),
         tokens,
         trace?.calls?.[0]?.model?.model || null,
-        summary ? JSON.stringify(summary) : null,
+        JSON.stringify(enrichedSummary),
         id,
       );
     this.db
@@ -194,17 +213,34 @@ export class Life {
     if (this.closed || this.busy)
       return { status: "skipped", reason: "已有后台任务或服务已停止" };
     const now = this.now();
-    this.mind.time.tasks.sync(now);
-    this.mind.time.tick(now);
-    this.mind.days.rollup(now);
+    this.arbiter.maintain(now);
+    const candidates = this.arbiter.candidates(now);
+    const note = (chosen, result) => {
+      if (!result) return result;
+      this.arbiter.recordDecision({
+        now: this.now(),
+        trigger: "tick",
+        chosen,
+        status: result.status,
+        reason: result.reason || "",
+        candidates,
+        runId: result.runId || null,
+        session: result.session || null,
+        task: result.task || null,
+      });
+      return result;
+    };
     const phase = this.phase(now).key;
     if (phase !== "asleep") {
       const woke = await this.wake(now);
-      if (woke) return woke;
+      if (woke) return note("wake", woke);
     }
     const due = this.diaryDue(now);
     if (this.mind.time.primary() && this.mind.time.attention.activityBusy)
-      return { status: "doing", reason: "正在推进自己的活动步骤" };
+      return note("activity_step", {
+        status: "doing",
+        reason: "正在推进自己的活动步骤",
+      });
     if (this.mind.time.primary() && (due || this.nightDue(now)))
       this.mind.time.tasks.control(
         this.mind.time.primary().id,
@@ -215,44 +251,52 @@ export class Life {
         },
         now,
       );
-    if (due) return this.review(due);
+    if (due) return note("diary", await this.review(due));
     const night = this.nightDue(now);
     if (night)
-      return night.kind === "memory"
-        ? this.rememberAtNight(night.session, night.day, now)
-        : this.reviewPeriod(now);
+      return note(
+        `night_${night.kind}`,
+        await (night.kind === "memory"
+          ? this.rememberAtNight(night.session, night.day, now)
+          : this.reviewPeriod(now)),
+      );
     const arrangement = await this.planner.run(now);
-    if (arrangement) return arrangement;
-    const care = await this.ownDay.run(now);
-    if (care) return care;
+    if (arrangement) return note("day_plan", arrangement);
+    const commitmentCare = await this.ownDay.run(now, { mode: "review" });
+    if (commitmentCare) return note("commitment_review", commitmentCare);
     const activity = await this.activities.run(now);
-    if (activity) return activity;
+    if (activity) return note("activity_step", activity);
     if (this.mind.time.primary())
-      return {
+      return note("activity_step", {
         status: "doing",
         reason: "自己的活动在继续，普通交流可以伴随进行",
-      };
+      });
+    const ownPlan = await this.ownDay.run(now, { mode: "plan" });
+    if (ownPlan) return note("own_plan", ownPlan);
     const outreach = await this.reachOut(now);
-    if (outreach) return outreach;
+    if (outreach) return note("outreach", outreach);
     const reason = this.eligible(now);
     if (!reason) {
       const reflection = await this.reflect();
       const growth = await this.evolve();
       // A wish for now is not silently turned into a wish for the next tick.
       const contact = await this.reachOut(this.now());
-      if (contact) return { ...contact, reflection, growth };
+      if (contact) return note("solitude", { ...contact, reflection, growth });
       const presence = await this.considerPresence(this.now());
-      return presence && presence.status !== "presence-silent"
-        ? { ...presence, reflection, growth }
-        : {
-            ...reflection,
-            ...(growth ? { growth } : {}),
-            ...(presence ? { expression: presence } : {}),
-          };
+      return note(
+        "solitude",
+        presence && presence.status !== "presence-silent"
+          ? { ...presence, reflection, growth }
+          : {
+              ...reflection,
+              ...(growth ? { growth } : {}),
+              ...(presence ? { expression: presence } : {}),
+            },
+      );
     }
     const presence = await this.considerPresence(now);
-    if (presence) return presence;
-    return { status: "skipped", reason };
+    if (presence) return note("presence", presence);
+    return note("none", { status: "skipped", reason });
   }
   // Direct messages that came in while she slept.
   async wake(now = this.now()) {
@@ -617,6 +661,11 @@ export class Life {
           before: now,
           limit: 6,
         }),
+        aftermath: recentAftermathForSolitude(this.db, {
+          since: last?.started || now - DAY,
+          now,
+          limit: 6,
+        }),
       };
       if (!input.missing.length) delete input.missing;
       if (input.fromWish?.length && input.missing)
@@ -629,6 +678,7 @@ export class Life {
       if (!input.ahead.length) delete input.ahead;
       if (!input.meetings.length) delete input.meetings;
       if (!input.world.length) delete input.world;
+      if (!input.aftermath.length) delete input.aftermath;
       while (
         estimateTokens(input) > SOLITUDE_INPUT_CAP &&
         input.experiences.some((e) => e.messages.length > 4)
@@ -704,6 +754,7 @@ export class Life {
           ...missing.map((p) => p.ref).filter(Boolean),
           ...ahead.map((a) => a.ref),
           ...(input.world || []).map((item) => item.ref),
+          ...(input.aftermath || []).flatMap((item) => item.refs || []),
         ]);
         if (chunk)
           this.mind.reading.record(chunk, result?.readingNote || "", id, now);
@@ -872,13 +923,20 @@ export class Life {
         return null;
     }
     const recent = this.mind.thoughts.list({ limit: 20 });
+    learnTopicAssociations({ db: this.db });
+    learnTopicAssociations(recent);
     const incomingRoots = evidenceRoots(this.db, sources, now);
     const repeated = recent.some(
       (t) =>
         similar(t.content, content) ||
         (now - t.created < 12 * HOUR &&
           (sameRecentTheme(t.content, content) ||
-            sameWorkFamily(t.content, content)) &&
+            sameWorkFamily(t.content, content) ||
+            classifyTopicRelation(
+              { content: t.content, sources: t.sources, created: t.created },
+              { content, sources, created: now },
+              { db: this.db, now },
+            ).suppress) &&
           incomingRoots.length > 0 &&
           incomingRoots.every((r) =>
             evidenceRoots(this.db, t.sources || [], now).includes(r),

@@ -167,3 +167,119 @@ export function describeAftermath(after) {
     parts.push(`主人的反馈：${after.feedback.join("、")}`);
   return parts.join("；");
 }
+
+// Pure read of recent interaction outcomes in a session, combining settled
+// `after` columns with any window that has already closed by `now`.
+export function sessionAftermathSummary(
+  db,
+  session,
+  now = Date.now(),
+  { limit = 12 } = {},
+) {
+  if (!db || !session) return null;
+  const rows = db
+    .prepare(
+      "SELECT id,created,session_id,choice,occasion,watermark,after FROM mind_choices WHERE session_id=? AND created<=? ORDER BY created DESC LIMIT ?",
+    )
+    .all(session, now, limit);
+  if (!rows.length) return null;
+  let proactiveTotal = 0;
+  let proactiveAnswered = 0;
+  let unpickedCount = 0;
+  let correctedCount = 0;
+  let calledWhenSilent = 0;
+  const tones = new Set();
+  const feedback = new Set();
+  const recent = [];
+
+  for (const row of rows) {
+    const after = row.after ? parse(row.after) : aftermathOf(db, row, now);
+    if (!after || !after.v) continue;
+    const isProactive = ["outreach", "presence"].includes(row.occasion);
+    if (isProactive && after.spoke) {
+      proactiveTotal++;
+      if (after.answered) proactiveAnswered++;
+      else if (after.others > 0) unpickedCount++;
+    } else if (after.spoke && !after.answered && after.others > 0) {
+      unpickedCount++;
+    }
+    if (after.corrected) correctedCount++;
+    if (!after.spoke && after.calledAgain) calledWhenSilent++;
+    for (const t of after.tone || []) tones.add(t);
+    for (const f of after.feedback || []) feedback.add(f);
+    if (recent.length < 3) {
+      const summary = describeAftermath(after);
+      if (summary) {
+        recent.push({
+          at: row.created,
+          choice: row.choice,
+          occasion: row.occasion || "turn",
+          summary,
+          answered: after.answered,
+          ...(after.refs?.length ? { refs: after.refs } : {}),
+        });
+      }
+    }
+  }
+
+  if (
+    !proactiveTotal &&
+    !unpickedCount &&
+    !correctedCount &&
+    !calledWhenSilent &&
+    !feedback.size &&
+    !recent.length
+  )
+    return null;
+
+  return {
+    proactiveTotal,
+    proactiveAnswered,
+    unpickedCount,
+    correctedCount,
+    calledWhenSilent,
+    ...(tones.size ? { tones: [...tones] } : {}),
+    ...(feedback.size ? { feedback: [...feedback] } : {}),
+    recent,
+  };
+}
+
+// Notable aftermath records across rooms since `since` for solitude reflection.
+export function recentAftermathForSolitude(
+  db,
+  { since = 0, now = Date.now(), limit = 6 } = {},
+) {
+  if (!db) return [];
+  const rows = db
+    .prepare(
+      "SELECT id,created,session_id,choice,occasion,watermark,after FROM mind_choices WHERE created>? AND created<=? ORDER BY created DESC LIMIT 40",
+    )
+    .all(since, now);
+  const out = [];
+  for (const row of rows) {
+    if (out.length >= limit) break;
+    const after = row.after ? parse(row.after) : aftermathOf(db, row, now);
+    if (!after || !after.v) continue;
+    const notable =
+      ["outreach", "presence"].includes(row.occasion) ||
+      after.corrected ||
+      after.calledAgain ||
+      (after.spoke && !after.answered && after.others > 0) ||
+      (after.feedback && after.feedback.length > 0);
+    if (!notable) continue;
+    const summary = describeAftermath(after);
+    if (!summary) continue;
+    out.push({
+      session: row.session_id,
+      at: row.created,
+      choice: row.choice,
+      occasion: row.occasion || "turn",
+      outcome: summary,
+      refs: [
+        ...(after.own ? [after.own] : []),
+        ...(Array.isArray(after.refs) ? after.refs : []),
+      ],
+    });
+  }
+  return out;
+}

@@ -3,7 +3,11 @@ import { prompts, replyPrompt } from "../core/persona-manager.js";
 import { localClock } from "../core/conversation-cues.js";
 import { evidence, similar, text, hasCredential } from "./util.js";
 import { sameSelf } from "./salience.js";
-import { sameWorkFamily } from "./novelty.js";
+import {
+  classifyTopicRelation,
+  learnTopicAssociations,
+  sameWorkFamily,
+} from "./novelty.js";
 import { CommitmentReview } from "./time/commitment-review.js";
 import { chosenSlot } from "./day-planner.js";
 import { activityEstimate } from "./time/activity-clock.js";
@@ -93,14 +97,18 @@ export class OwnDay {
     if (todayDone >= 2 && sincePlan < Math.max(baseMs, 6 * 3600000))
       return false;
     // Backoff when consecutive own-day plans returned resting/waiting/empty
-    // and no new user messages have arrived since the last check.
+    // and no new user messages or meaningful internal/world state changes
+    // have arrived since the last check.
     const freshAfterPlan =
       state.planAt &&
-      this.db
-        .prepare(
-          "SELECT 1 FROM core_events WHERE role='user' AND time>? AND time<=? AND COALESCE(json_extract(payload,'$.simulated'),0)=0 AND seq NOT IN (SELECT seq FROM mind_unlived) LIMIT 1",
-        )
-        .get(state.planAt, now);
+      (this.life.arbiter
+        ? this.life.arbiter.stateChangesSince(state.planAt, now)
+            .hasMeaningfulChange
+        : !!this.db
+            .prepare(
+              "SELECT 1 FROM core_events WHERE role='user' AND time>? AND time<=? AND COALESCE(json_extract(payload,'$.simulated'),0)=0 AND seq NOT IN (SELECT seq FROM mind_unlived) LIMIT 1",
+            )
+            .get(state.planAt, now));
     if (!freshAfterPlan && state.planAt) {
       let quietRuns = 0;
       for (const r of this.db
@@ -115,7 +123,7 @@ export class OwnDay {
     }
     return true;
   }
-  async run(now = this.life.now()) {
+  async run(now = this.life.now(), { mode = "both" } = {}) {
     const life = this.life,
       time = life.mind.time;
     if (
@@ -138,9 +146,12 @@ export class OwnDay {
     const state = this.state(),
       settings = time.settings(),
       reviewDue =
-        state.reviewRequested ||
-        now - (state.reviewAt || 0) >= settings.commitmentReviewMinutes * 60000;
-    const planDue = this.planReady(now, state, settings);
+        mode !== "plan" &&
+        (state.reviewRequested ||
+          now - (state.reviewAt || 0) >=
+            settings.commitmentReviewMinutes * 60000);
+    const planDue =
+      mode !== "review" && this.planReady(now, state, settings);
     if (!reviewDue && !planDue) return null;
     return time.attention.activity(async () => {
       let batch = null;
@@ -170,11 +181,39 @@ export class OwnDay {
       let status = "error",
         reason = "";
       try {
+        learnTopicAssociations({ db: this.db });
+        const recentlyWorkedProjects = new Set(
+          this.db
+            .prepare(
+              "SELECT DISTINCT t.project_id id FROM mind_time_events e JOIN mind_time_tasks t ON t.id=e.task_id WHERE t.project_id IS NOT NULL AND e.kind IN ('done','reference-experience','checkpoint') AND e.created>? AND e.created<=?",
+            )
+            .all(now - 3 * 3600000, now)
+            .map((r) => r.id),
+        );
+        const fulfilledWishes = new Set(
+          this.db
+            .prepare(
+              "SELECT json_extract(e.data,'$.wish') wish FROM mind_time_events e JOIN mind_time_tasks t ON t.id=e.task_id WHERE e.kind='own-choice' AND t.state='done' AND t.completed>? AND t.completed<=?",
+            )
+            .all(now - 2 * 86400000, now)
+            .map((r) => r.wish)
+            .filter(Boolean),
+        );
         const projects = time.works
           .projects({ limit: 12 })
-          .filter((p) => p.state === "active" && time.visible(p, "", now))
+          .filter(
+            (p) =>
+              p.state === "active" &&
+              !recentlyWorkedProjects.has(p.id) &&
+              time.visible(p, "", now),
+          )
           .slice(0, 4);
-        const self = life.selfView(now, { open: true }).slice(0, 8);
+        const self = life
+          .selfView(now, { open: true })
+          .filter(
+            (s) => s.kind !== "intention" || !fulfilledWishes.has(s.thread),
+          )
+          .slice(0, 8);
         const input = reviewing
           ? {
               review: batch.messages,
@@ -305,16 +344,33 @@ export class OwnDay {
           throw Error("需要自己选定要玩的游戏");
         const recentTasks = this.db
           .prepare(
-            "SELECT t.title,t.activity,t.state,t.updated FROM mind_time_tasks t WHERE t.kind='plan' AND t.state IN ('done','paused','waiting') AND t.updated>? AND t.updated<=? AND json_extract(t.checkpoint,'$.mergedInto') IS NULL ORDER BY t.updated DESC LIMIT 8",
+            "SELECT t.title,t.activity,t.state,t.updated,t.project_id,t.sources FROM mind_time_tasks t WHERE t.kind='plan' AND t.state IN ('done','paused','waiting') AND t.updated>? AND t.updated<=? AND json_extract(t.checkpoint,'$.mergedInto') IS NULL ORDER BY t.updated DESC LIMIT 8",
           )
           .all(now - 2 * 86400000, now);
+        learnTopicAssociations(recentTasks);
         if (
           recentTasks.some(
             (r) =>
               r.activity === plan.activity &&
               (similar(r.title, plan.title, 0.65) ||
                 (topic && gameTopic(r.title) === topic) ||
-                sameWorkFamily(r.title, plan.title)),
+                sameWorkFamily(r.title, plan.title) ||
+                classifyTopicRelation(
+                  {
+                    title: r.title,
+                    projectId: r.project_id,
+                    sources: r.sources,
+                    created: r.updated,
+                  },
+                  {
+                    title: plan.title,
+                    topic,
+                    projectId: project?.id || null,
+                    sources,
+                    created: now,
+                  },
+                  { db: this.db, now },
+                ).suppress),
           )
         ) {
           status = "resting";
