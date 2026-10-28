@@ -11,8 +11,17 @@ import {
   opaqueMetaphorDumpIssues,
   unframedCreativeDumpIssues,
   selfCenteredOpenIssues,
+  initiativeMonoActivityIssues,
   initiativeTopicPushbackIssues,
 } from "../server/core/conversation-grounding.js";
+import {
+  classifyTopicRelation,
+  learnTopicAssociations,
+  sameWorkFamily,
+  workFamilies,
+} from "../server/mind/novelty.js";
+import { settleAftermath } from "../server/mind/aftermath.js";
+import { buildContext } from "../server/core/context-builder.js";
 
 test("静默期节律：无新经历时即使模型返回心情或自引手记也计入退避，安静日不触发虚构日记", async (t) => {
   const w = world({ start: "2026-09-22T09:00:00+08:00", rhythm: true });
@@ -942,5 +951,391 @@ test("真实线上热点理解与表达回归（10-14～10-28 东京+新加坡�
       },
       { choice: "speak" },
     ).length > 0,
+  );
+});
+
+test("统一自主行为仲裁层 (LifeArbiter)：非消息状态变化打破静默退避、到期任务优先于新自发规划、8类诊断可追溯", async (t) => {
+  const w = world({ ownLife: true, paced: true, rhythm: true });
+  t.after(w.close);
+  w.open("private:10001", "阿明");
+
+  // 1. First OwnDay returns resting -> enters quiet backoff when nothing changes.
+  w.answers.reflection = { skip: true };
+  const firstCare = await w.life.ownDay.run();
+  assert.equal(firstCare.status, "resting");
+  w.advance(60 * MINUTE);
+  assert.equal(
+    w.life.ownDay.planReady(w.now()),
+    false,
+    "无新消息且无内部状态变化时保持静默退避",
+  );
+
+  // 2. An external observation (mind_observations) arrives WITHOUT any new user chat message:
+  // LifeArbiter.stateChangesSince detects it and wakes OwnDay.planReady() & OwnVoice.resting()!
+  w.mind.observations.add(
+    {
+      pluginId: "weather",
+      summary: "窗外开始飘起今年的第一场雪",
+    },
+    w.now(),
+  );
+  assert.equal(
+    w.life.ownDay.planReady(w.now()),
+    true,
+    "新的内部观察在无新用户消息时唤醒个人规划评估",
+  );
+  assert.equal(
+    w.life.ownVoice.resting(w.now()),
+    null,
+    "新的内部观察同样唤醒主动表达评估",
+  );
+
+  // 3. Ready scheduled task executes BEFORE OwnDay invents a new casual task in Life.tick()
+  const cue = w.say("private:10001", "10001", "帮我写篇雪夜小故事").seq;
+  const promiseId = w.mind.time.tasks.add({
+    kind: "promise",
+    activity: "write",
+    title: "给阿明写雪夜小故事",
+    subject: "10001",
+    session: "private:10001",
+    sources: [cue],
+  }).id;
+  w.mind.time.tasks.arrange(promiseId, {
+    startAt: w.now() + 5 * MINUTE,
+    durationMinutes: 10,
+    reason: "写雪夜故事",
+  });
+  w.advance(5 * MINUTE);
+  w.answers.reflection = {
+    done: true,
+    title: "雪夜街灯",
+    content: "雪花落在街灯玻璃罩上，发出一声轻轻的细响。",
+    summary: "写完雪夜故事",
+    duration: { minutes: 5 },
+  };
+  const tickRes = await w.life.tick();
+  assert.equal(tickRes.task, promiseId, "到期已排程任务优先于新建个人计划执行");
+
+  // 4. Verify LifeArbiter records structured decisions with canonical category & nextCheckAt
+  const status = w.life.arbiterStatus(w.now());
+  assert.ok(status.nextCheckAt > w.now());
+  assert.ok(Array.isArray(status.candidates));
+  const decisions = w.life.decisions({ now: w.now() });
+  assert.ok(decisions.length >= 1);
+  assert.equal(decisions[0].chosen, "activity_step");
+  assert.equal(decisions[0].category, "executing");
+});
+
+test("通用主题身份与五分类关系引擎 (novelty.js)：无需硬编码识别新作品同族，区分进度复读与新阅读发现", () => {
+  // 1. Unseen work《海边书店》+ scene「旧灯塔」co-occur in history -> automatically linked
+  const now = 1_700_000_000_000;
+  const snap = {
+    initiative: true,
+    now,
+    batchIds: [],
+    messages: [
+      {
+        id: 1,
+        role: "assistant",
+        text: "今晚在写《海边书店》第二章，21:30排旧灯塔节拍",
+        time: now - 3600000,
+      },
+      {
+        id: 2,
+        role: "user",
+        name: "Friend",
+        text: "还在旧灯塔？",
+        time: now - 3000000,
+      },
+    ],
+    conversation: { gapMinutes: 60 },
+  };
+  assert.ok(
+    initiativeMonoActivityIssues(["刚写完旧灯塔那段，想给你看看"], snap)
+      .length > 0,
+    "未硬编码作品《海边书店》与场景「旧灯塔」共现后识别为同族进度复读",
+  );
+  assert.ok(
+    initiativeTopicPushbackIssues(["旧灯塔那格今晚十点继续排"], snap).length >
+      0,
+    "通用识别「还在旧灯塔？」为话题推回",
+  );
+  assert.ok(sameWorkFamily("写《海边书店》大纲", "修改旧灯塔走廊场景"));
+
+  // Normal social questions starting with "还在" must NOT be mistaken for topic pushback
+  assert.equal(workFamilies("你还在加班吗？").length, 0);
+
+  // 2. Five-way relation classifier distinguishes stagnant progress vs new discovery vs peer continuation
+  learnTopicAssociations("探索《星际拓荒》与太阳站");
+  const prev = {
+    content: "今晚排《星际拓荒》太阳站第2段进度",
+    sources: ["s:w1"],
+    created: 1000,
+  };
+  const stagnant = classifyTopicRelation(prev, {
+    content: "太阳站那格十点又滑了，继续排第3段进度",
+    sources: ["s:w1"],
+    created: 2000,
+  });
+  assert.equal(stagnant.relation, "stagnant_progress");
+  assert.equal(stagnant.suppress, true);
+
+  const discovery = classifyTopicRelation(prev, {
+    content: "读完挪麦人在太阳站留下的碑文，突然理解他们面对宇宙结局时的坦然",
+    sources: ["r:chunk_sun_station"],
+    created: 2000,
+  });
+  assert.equal(discovery.relation, "new_discovery");
+  assert.equal(discovery.suppress, false);
+
+  const revived = classifyTopicRelation(prev, {
+    content: "聊到太阳站的时间循环机制",
+    sources: ["m:88"],
+    created: 2000,
+  });
+  assert.equal(revived.relation, "revived_by_experience");
+  assert.equal(revived.suppress, false);
+});
+
+test("Aftermath 长期交流反馈闭环与群聊实时氛围门控：群里无人接话降权、群聊热聊暂缓插话、独处可见反馈", async (t) => {
+  const w = world({ start: "2026-09-22T10:00:00+08:00" });
+  t.after(w.close);
+  w.open("group:9001", "热聊群");
+  w.open("private:10001", "阿明");
+
+  const m1 = w.say("group:9001", "10002", "大家早");
+  const m2 = w.say("private:10001", "10001", "早上好呀");
+  w.mind.bonds.meet(
+    [{ userId: "10001", name: "阿明" }],
+    "private:10001",
+    w.now(),
+  );
+  w.mind.bonds.record({
+    kind: "group",
+    id: "group:9001",
+    change: "interaction",
+    session: "group:9001",
+    origin: "group",
+    time: w.now(),
+  });
+
+  // Record 2 proactive choices in group:9001 where others kept talking without answering her
+  for (let i = 0; i < 2; i++) {
+    w.advance(3 * HOUR);
+    const wm = w.system.repo.latest("group:9001");
+    w.mind.choose({
+      session: "group:9001",
+      choice: "speak",
+      occasion: "presence",
+      reason: "自发分享",
+      watermark: wm,
+      time: w.now(),
+    });
+    w.say("group:9001", "bot", `自发分享话题${i}`);
+    w.advance(2 * MINUTE);
+    w.say("group:9001", "10002", "今天中午吃啥");
+    w.say("group:9001", "10003", "去吃牛肉面吧");
+  }
+  w.advance(3 * HOUR);
+  settleAftermath(w.mind.db, { now: w.now(), limit: 20 });
+
+  const groupCtx = w.life.initiative.context("group:9001", w.now());
+  assert.ok(groupCtx.aftermath, "群聊上下文包含结算后的 Aftermath 摘要");
+  assert.equal(groupCtx.aftermath.unpickedCount, 2);
+
+  // When group:9001 is in the middle of rapid unrelated chatter, outreach to it is deferred
+  w.say("group:9001", "10002", "你们觉得这道题选什么？");
+  w.say("group:9001", "10003", "我觉得选B，怎么算出来的？");
+  w.say("group:9001", "10004", "不对吧，为什么是B？");
+  const thoughtId = w.mind.thoughts.add({
+    kind: "reconnection",
+    content: "想分享一下旧书店的故事",
+    outreach: "刚写了一段旧书店的故事",
+    outreachSession: "group:9001",
+    sources: [m1.seq],
+    time: w.now(),
+  });
+  assert.equal(await w.life.reachOut(w.now()), null);
+  assert.match(
+    w.mind.thoughts.get(thoughtId).outreach_wait_reason,
+    /群里正在热聊别的事/,
+    "群聊正在热聊无关话题时暂缓主动插话",
+  );
+});
+
+test("记忆真实性、防自我强化循环、推测冲突保留与情景自动续接", async (t) => {
+  const w = world();
+  t.after(w.close);
+  w.open("group:1", "日常群");
+
+  // 1. Self-reinforcement loop prevention: self-originated wish/view cannot exceed NEW_CAP (0.35)
+  // by repeatedly citing her own assistant messages in solitude/diary without external evidence.
+  const wish = w.mind.self.propose(
+    { kind: "view", content: "我觉得独处比热闹更重要", sources: ["m:1"] },
+    { origin: "solitude", time: w.now() },
+  );
+  // First create a valid view with 1 user message
+  const u1 = w.say("group:1", "10001", "有时候独处确实挺好的");
+  const createdView = w.mind.self.propose(
+    {
+      kind: "view",
+      content: "独处能让人静下心来",
+      sources: [u1.seq],
+      strength: 0.35,
+    },
+    { origin: "solitude", time: w.now() },
+  );
+  assert.ok(createdView.id);
+  assert.equal(w.mind.self.history(createdView.thread).at(-1).strength, 0.35);
+
+  // Now she speaks on her own (no replyTargetIds) and tries to reinforce the view in solitude
+  w.advance(25 * HOUR);
+  const selfOutreach = w.say("group:1", "bot", "我还是觉得独处能让人静下心来");
+  w.mind.self.propose(
+    {
+      thread: createdView.thread,
+      content: "我越来越确信独处能让人静下心来",
+      sources: [selfOutreach.seq],
+      strength: 0.9,
+    },
+    { origin: "solitude", time: w.now() },
+  );
+  assert.equal(
+    w.mind.self.history(createdView.thread).at(-1).strength,
+    0.35,
+    "仅靠自身主动发言不能突破 NEW_CAP 自我强化为高强度核心执念",
+  );
+
+  // 2. Unverified inference (`inferred`) cannot supersede a `stated` fact; records conflict instead
+  const statedMsg = w.say("group:1", "10001", "我在上海工作");
+  w.answers.memory = {
+    summary: "阿明在上海工作",
+    facts: [
+      {
+        subject: "10001",
+        content: "在上海工作",
+        type: "profile",
+        certainty: "stated",
+        confidence: 0.9,
+        importance: 0.7,
+        sources: [statedMsg.seq],
+      },
+    ],
+    self: [],
+    anticipations: [],
+    episodes: [],
+  };
+  await w.mind.memory.consolidate(
+    "group:1",
+    w.system.models.profile(),
+    "整理",
+    { calls: [], steps: [] },
+    { force: true, now: w.now() },
+  );
+  w.advance(HOUR);
+  const guessMsg = w.say(
+    "group:1",
+    "10001",
+    "这周来杭州看西湖，以后可能在杭州工作",
+  );
+  w.answers.memory = (data) => ({
+    summary: "阿明去杭州",
+    facts: [
+      {
+        subject: "10001",
+        content: "以后在杭州工作",
+        type: "profile",
+        certainty: "inferred",
+        confidence: 0.6,
+        importance: 0.7,
+        sources: [guessMsg.seq],
+        supersedes: data.known.map((k) => k.ref),
+      },
+    ],
+    self: [],
+    anticipations: [],
+    episodes: [],
+  });
+  await w.mind.memory.consolidate(
+    "group:1",
+    w.system.models.profile(),
+    "整理",
+    { calls: [], steps: [] },
+    { force: true, now: w.now() },
+  );
+  const retrieved = w.mind.memory.retrieve(
+    "group:1",
+    [{ role: "user", userId: "10001", text: "我在哪工作来着" }],
+    w.now(),
+    { people: ["10001"] },
+  );
+  const shanghaiFact = retrieved.find((f) => f.content === "在上海工作");
+  const hangzhouFact = retrieved.find((f) => f.content === "以后在杭州工作");
+  assert.ok(shanghaiFact, "原亲口陈述的事实未被推断静默覆盖");
+  assert.ok(hangzhouFact, "新推断事实并存");
+  assert.equal(hangzhouFact.basis, "推断，不是对方明说的");
+  assert.match(shanghaiFact.conflictsWith || "", /以后在杭州工作/);
+
+  // Verify buildContext preserves `basis` in packedMemories
+  const ctx = buildContext(
+    w.system.repo,
+    "group:1",
+    guessMsg.seq,
+    w.system.models.profile(),
+    w.system.policy("group:1"),
+    [guessMsg.seq],
+    retrieved,
+    w.mind.nature.current(),
+    w.now(),
+  );
+  assert.equal(
+    ctx.memories.find((m) => m.content === "以后在杭州工作")?.basis,
+    "推断，不是对方明说的",
+    "buildContext 保留记忆真实性 basis 标签",
+  );
+});
+
+test("OwnVoice 与 takeTurn 共享已核实经历草稿，消除同轮重复 EXPRESSION_GROUNDING 调用", async (t) => {
+  const w = world({ start: "2026-09-22T14:00:00+08:00" });
+  t.after(w.close);
+  w.open("private:10001", "阿明");
+  const msg = w.say("private:10001", "10001", "今天聊聊天");
+  w.mind.look("private:10001", msg.seq, w.now());
+  w.advance(40 * MINUTE);
+
+  let groundingCalls = 0;
+  w.answers.expression = {
+    skip: false,
+    note: "我刚才写完了那篇短篇。今天那边怎么样？",
+    share: true,
+    words: ["我刚才写完了那篇短篇。今天那边怎么样？"],
+    reason: "分享刚完成的创作",
+    audience: "private",
+    sources: [],
+  };
+  w.answers.expression_grounding = () => {
+    groundingCalls++;
+    return { ok: true, reason: "有实际作品记录支持" };
+  };
+  w.answers.validation = (data) => {
+    if (data.candidate?.words) {
+      groundingCalls++;
+      return { ok: true, reason: "有实际作品记录支持" };
+    }
+    return { ok: true, issues: [] };
+  };
+  w.answers.turn = (data) => ({
+    choice: "speak",
+    appraisal: "分享创作",
+    reason: "想跟阿明说",
+    bubbles: data.context?.expression?.words,
+  });
+
+  const res = await w.life.considerPresence(w.now());
+  assert.equal(res.status, "presence-sent");
+  assert.equal(
+    groundingCalls,
+    1,
+    "OwnVoice 已核实的草稿在 takeTurn 与 ReplyDelivery 中不再重复调用 EXPRESSION_GROUNDING",
   );
 });

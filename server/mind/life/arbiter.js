@@ -90,6 +90,7 @@ export class LifeArbiter {
     this.life = life;
     this.db = life.db;
     this.decisionsLog = [];
+    this.decisionSeq = 0;
     this.lastAftermathSettledAt = 0;
   }
 
@@ -380,7 +381,7 @@ export class LifeArbiter {
       return prev;
     }
     const entry = {
-      id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
+      id: `d:${now}:${++this.decisionSeq}`,
       time: now,
       lastAt: now,
       count: 1,
@@ -414,9 +415,7 @@ export class LifeArbiter {
         )
         .get(d.session, d.time - MINUTE, d.lastAt + 5 * MINUTE);
       const after = choice?.after ? parse(choice.after, null) : null;
-      return after
-        ? { ...d, aftermath: describeAftermath(after) }
-        : d;
+      return after ? { ...d, aftermath: describeAftermath(after) } : d;
     });
   }
 

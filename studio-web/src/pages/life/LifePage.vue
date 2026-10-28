@@ -345,7 +345,9 @@ usePageActivity("life", load);
             </span>
             <span class="grow"
               >{{ d.reason
-              }}<template v-if="d.aftermath"> · {{ d.aftermath }}</template></span
+              }}<template v-if="d.aftermath">
+                · {{ d.aftermath }}</template
+              ></span
             >
             <small v-if="d.count > 1" class="faint">{{
               t("连续 {count} 次", { count: d.count })

@@ -188,8 +188,18 @@ export class OwnVoice {
               sameWorkFamily(t.said, label) ||
               sameWorkFamily(t.content, label) ||
               classifyTopicRelation(
-                { content: t.content, said: t.said, sources: t.sources, created: t.created },
-                { title: a.title, content: label, projectId: a.project, workId: a.work },
+                {
+                  content: t.content,
+                  said: t.said,
+                  sources: t.sources,
+                  created: t.created,
+                },
+                {
+                  title: a.title,
+                  content: label,
+                  projectId: a.project,
+                  workId: a.work,
+                },
                 { db: this.mind.db, now },
               ).suppress),
         );

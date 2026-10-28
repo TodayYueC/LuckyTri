@@ -21,9 +21,7 @@ export async function generate(
   const explain =
     options.plain === true ||
     issues.some((issue) => issue.startsWith("给提问者的解释仍没说清"));
-  const wordingContext = snapshot.initiative
-    ? null
-    : dialogueContext(snapshot);
+  const wordingContext = snapshot.initiative ? null : dialogueContext(snapshot);
   if (
     wordingContext &&
     issues.some((issue) =>

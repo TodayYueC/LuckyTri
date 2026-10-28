@@ -68,23 +68,23 @@ function resolveCanonical(key) {
 }
 
 function linkKeys(keys) {
-  const clean = [...new Set(keys.map((k) => String(k || "").trim()).filter(Boolean))];
+  const clean = [
+    ...new Set(keys.map((k) => String(k || "").trim()).filter(Boolean)),
+  ];
   if (clean.length < 2) return;
-  // Pick the most canonical representative (an alias value, a title: key, or the first key)
   const canonical =
-    clean.map(resolveCanonical).find((k) => !k.includes(":")) ||
-    clean.map(resolveCanonical).find((k) => k.startsWith("title:")) ||
-    resolveCanonical(clean[0]);
+    clean.find((k) => !k.includes(":")) ||
+    clean.find((k) => k.startsWith("title:")) ||
+    clean[0];
   for (const key of clean) {
-    const resolved = resolveCanonical(key);
-    if (resolved !== canonical) {
-      if (learnedLinks.size >= MAX_LEARNED_LINKS) {
-        const oldest = learnedLinks.keys().next().value;
-        if (oldest) learnedLinks.delete(oldest);
-      }
-      learnedLinks.set(key, canonical);
-      learnedLinks.set(resolved, canonical);
+    if (key === canonical) continue;
+    // Do not overwrite an already-established link to a different work family.
+    if (learnedLinks.has(key) && learnedLinks.get(key) !== canonical) continue;
+    if (learnedLinks.size >= MAX_LEARNED_LINKS) {
+      const oldest = learnedLinks.keys().next().value;
+      if (oldest) learnedLinks.delete(oldest);
     }
+    learnedLinks.set(key, canonical);
   }
 }
 
@@ -140,6 +140,14 @@ const GENERIC_STEMS = new Set([
   "内容",
   "方向",
   "场景",
+  "走廊",
+  "长廊",
+  "房间",
+  "大厅",
+  "客厅",
+  "卧室",
+  "教室",
+  "办公室",
 ]);
 
 function extractRawTopicKeys(text) {
@@ -147,10 +155,17 @@ function extractRawTopicKeys(text) {
   if (!raw.trim()) return [];
   const rawKeys = new Set();
 
-  // 1. Canonical alias hits (case-insensitive)
+  // 1. Canonical alias hits & already-learned topic keys
   const lower = raw.toLowerCase();
   for (const [alias, family] of CANONICAL_ALIASES.entries()) {
     if (lower.includes(alias)) rawKeys.add(family);
+  }
+  for (const [learnedKey, family] of learnedLinks.entries()) {
+    const bare = learnedKey.replace(/^title:/, "");
+    if (bare.length >= 2 && lower.includes(bare)) {
+      rawKeys.add(learnedKey);
+      rawKeys.add(family);
+    }
   }
 
   // 2. Explicit bracketed / quoted work titles: 《...》, 「...」, 『...』
@@ -168,7 +183,10 @@ function extractRawTopicKeys(text) {
   for (const m of raw.matchAll(
     /(?:读完|写完|玩完|看完|排完|正在读|正在写|正在玩|在读|在写|在玩|在看|在排|继续读|继续写|继续玩|继续排|准备读|准备写|打算读|打算写|读|写|玩|排|重温|补课|续写|接续)\s*[《「『]?([\u4e00-\u9fffA-Za-z0-9]{2,12}?)[》」』]?\s*(?:的)?(?:第\s*[\d零〇一二两三四五六七八九十百]+\s*[章节段幕格篇关卷回部]|节拍|进度|笔记|走廊|场景|那段|那格|那章|初稿|草稿|正文|结局|开篇|支线|主线)/giu,
   )) {
-    const stem = normalizeWorkStem(m[1]).replace(/^(?:全是|都是|一段|一篇|一格|一下|一点)/u, "");
+    const stem = normalizeWorkStem(m[1]).replace(
+      /^(?:全是|都是|一段|一篇|一格|一下|一点)/u,
+      "",
+    );
     if (stem.length >= 2 && !GENERIC_STEMS.has(stem)) {
       if (CANONICAL_ALIASES.has(stem)) rawKeys.add(CANONICAL_ALIASES.get(stem));
       else rawKeys.add(`title:${stem}`);
@@ -182,16 +200,18 @@ function extractRawTopicKeys(text) {
       raw,
     )
   ) {
-    for (const m of raw.matchAll(
-      /([\u4e00-\u9fff]{2,5}(?:炉|塔|站|馆|城|谷|岛|廊|墟|房|厅|室|传|记|剧|录))/gu,
+    const cleanedRaw = raw.replace(
+      /(?:修改|续写|接续|重温|补课|整理|准备|打算|继续|刚把|刚写完|写完|读完|玩完|看完|排完|还在|又是|那段|这段|那个|这个|今晚|今天|刚才|[在从到把给向对跟和与的了着过是让被由往于])/gu,
+      " ",
+    );
+    for (const m of cleanedRaw.matchAll(
+      /([\u4e00-\u9fff]{1,4}?(?:炉|塔|站|馆|城|谷|岛|廊|墟|房|厅|室|传|记|剧|录))/gu,
     )) {
-      const cleaned = m[1].replace(
-        /^(?:还在|又是|那段|这段|那个|这个|继续|今晚|今天|刚才|刚把|把|在|去|到|从|排|写|读|看|玩)+/u,
-        "",
-      );
+      const cleaned = m[1].replace(/^[把在去到从排写读看玩]+/u, "");
       const stem = normalizeWorkStem(cleaned);
       if (stem.length >= 2 && stem.length <= 6 && !GENERIC_STEMS.has(stem)) {
-        if (CANONICAL_ALIASES.has(stem)) rawKeys.add(CANONICAL_ALIASES.get(stem));
+        if (CANONICAL_ALIASES.has(stem))
+          rawKeys.add(CANONICAL_ALIASES.get(stem));
         else rawKeys.add(`title:${stem}`);
       }
     }
@@ -303,7 +323,8 @@ function textOfItem(item) {
 function sourcesOfItem(item) {
   if (!item || typeof item !== "object") return [];
   if (Array.isArray(item.sources)) return item.sources.map(String);
-  if (typeof item.sources === "string") return parse(item.sources, []).map(String);
+  if (typeof item.sources === "string")
+    return parse(item.sources, []).map(String);
   return [];
 }
 
@@ -379,7 +400,8 @@ export function classifyTopicRelation(previous, candidate, options = {}) {
     );
     if (
       distinctive.length >= 3 &&
-      distinctive.length / Math.min(leftTerms.size || 1, rightTerms.size || 1) >=
+      distinctive.length /
+        Math.min(leftTerms.size || 1, rightTerms.size || 1) >=
         0.35
     ) {
       subjectOverlap = true;
@@ -397,7 +419,9 @@ export function classifyTopicRelation(previous, candidate, options = {}) {
   }
 
   // Check whether the peer pushed back vs naturally engaged on this topic
-  const peerPushedBack = peerRecentTexts.some((t) => PUSHBACK_CUE.test(String(t || "")));
+  const peerPushedBack = peerRecentTexts.some((t) =>
+    PUSHBACK_CUE.test(String(t || "")),
+  );
   const peerMentionedTopic =
     !peerPushedBack &&
     (peerEngaged ||
@@ -405,8 +429,7 @@ export function classifyTopicRelation(previous, candidate, options = {}) {
         const line = String(t || "");
         if (!line || PUSHBACK_CUE.test(line)) return false;
         return (
-          sameWorkFamily(line, candText) ||
-          sameRecentTheme(line, candText)
+          sameWorkFamily(line, candText) || sameRecentTheme(line, candText)
         );
       }));
 
@@ -438,7 +461,11 @@ export function classifyTopicRelation(previous, candidate, options = {}) {
     : candRoots.filter(
         (r) =>
           !prevRoots.has(r) &&
-          (r.startsWith("m:") || r.startsWith("r:") || r.startsWith("o:") || r.startsWith("e:") || r.startsWith("a:")),
+          (r.startsWith("m:") ||
+            r.startsWith("r:") ||
+            r.startsWith("o:") ||
+            r.startsWith("e:") ||
+            r.startsWith("a:")),
       );
   const hasNewMessageOrEvent = freshExternalRoots.some(
     (r) =>

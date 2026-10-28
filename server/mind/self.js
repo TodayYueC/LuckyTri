@@ -501,8 +501,7 @@ export class Self {
       // (user messages, readings, completed activities, feedback, observations),
       // preventing self-reinforcement from her own words alone.
       strength =
-        rawStrength > Math.max(prior.strength, NEW_CAP) &&
-        !freshExternal.length
+        rawStrength > Math.max(prior.strength, NEW_CAP) && !freshExternal.length
           ? Math.max(prior.strength, NEW_CAP)
           : rawStrength;
       status =

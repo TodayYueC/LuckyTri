@@ -150,8 +150,7 @@ export class OwnDay {
         (state.reviewRequested ||
           now - (state.reviewAt || 0) >=
             settings.commitmentReviewMinutes * 60000);
-    const planDue =
-      mode !== "review" && this.planReady(now, state, settings);
+    const planDue = mode !== "review" && this.planReady(now, state, settings);
     if (!reviewDue && !planDue) return null;
     return time.attention.activity(async () => {
       let batch = null;

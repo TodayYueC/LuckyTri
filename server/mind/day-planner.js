@@ -82,11 +82,12 @@ export class DayPlanner {
       slot?.chosenAt && slot.endedAt <= now && !task.checkpoint.pendingStep;
     const maxReschedules = task.kind === "promise" ? 2 : 1;
     return (
-      task.activity === "unknown" ||
-      (task.activity === "game" && !gameName(time, task)) ||
-      !slot?.chosenAt ||
-      (expired && (slot.rescheduledCount || 0) < maxReschedules) ||
-      task.checkpoint.reschedule
+      !task.checkpoint.awaitedText &&
+      (task.activity === "unknown" ||
+        (task.activity === "game" && !gameName(time, task)) ||
+        !slot?.chosenAt ||
+        (expired && (slot.rescheduledCount || 0) < maxReschedules) ||
+        task.checkpoint.reschedule)
     );
   }
   context(task, now) {

@@ -294,9 +294,7 @@ export function mountMind(app, chat, life) {
           "SELECT * FROM mind_choices WHERE created>=? AND created<=? ORDER BY created DESC LIMIT 80",
         )
         .all(start, now)) {
-        const after = c.after
-          ? parse(c.after, null)
-          : aftermathOf(db, c, now);
+        const after = c.after ? parse(c.after, null) : aftermathOf(db, c, now);
         const aftermathText = after ? describeAftermath(after) : "";
         items.push({
           type: "choice",
