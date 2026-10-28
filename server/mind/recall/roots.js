@@ -150,7 +150,20 @@ export function mineFor(
         "SELECT * FROM mind_thoughts WHERE id=? AND hidden=0 AND created<=?",
       )
       .get(id.slice(8), now);
-    if (!row || !parse(row.sessions, []).includes(session)) continue;
+    if (!row) continue;
+    const sessions = parse(row.sessions, []);
+    const allowedInSession = sessions.length
+      ? sessions.includes(session)
+      : mind.meetings.stays(
+          {
+            ...row,
+            sources: parse(row.sources, []),
+            session_id: "",
+          },
+          session,
+          now,
+        );
+    if (!allowedInSession) continue;
     if (!fits(row.content) || !speaks(id, row.content)) continue;
     notes.set(row.id, row);
   }

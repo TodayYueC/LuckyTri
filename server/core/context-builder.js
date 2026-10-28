@@ -177,6 +177,8 @@ export function buildContext(
       ? { source: m.source === "这里" ? "就在这里" : m.source }
       : {}),
     ...(m.when ? { when: m.when } : {}),
+    ...(m.basis ? { basis: m.basis } : {}),
+    ...(m.confirmed ? { confirmed: m.confirmed } : {}),
     ...(m.discretion ? { discretion: m.discretion } : {}),
     ...(m.conflictsWith ? { conflictsWith: m.conflictsWith } : {}),
     ...(m.changedFrom ? { changedFrom: m.changedFrom } : {}),

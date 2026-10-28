@@ -410,12 +410,37 @@ export class Self {
     );
     const lasting = ["trait", "habit"].includes(prior?.kind || kind);
     const freshWords = fresh;
-    if (lasting)
-      fresh = fresh.filter((source) =>
-        externalEvidence(this.db, [source], time).some(
-          (root) => !spent.has(root),
-        ),
-      );
+    const freshExternal = fresh.filter((source) =>
+      externalEvidence(this.db, [source], time).some(
+        (root) => !spent.has(root),
+      ),
+    );
+    if (lasting) fresh = freshExternal;
+    else if (prior && origin !== "memory") {
+      // Prevent self-reinforcement loops: in solitude/diary/expression, citing
+      // only her own ungrounded assistant outreach or expression thoughts
+      // cannot count as fresh lived evidence to strengthen a thread above NEW_CAP.
+      fresh = fresh.filter((source) => {
+        if (
+          externalEvidence(this.db, [source], time).some(
+            (root) => !spent.has(root),
+          )
+        )
+          return true;
+        const roots = evidenceRoots(this.db, [source], time);
+        return roots.some((r) => {
+          if (spent.has(r)) return false;
+          if (!r.startsWith("m:")) return false;
+          const ev = this.db
+            .prepare("SELECT role, payload FROM core_events WHERE seq=?")
+            .get(Number(r.slice(2)));
+          if (!ev) return false;
+          if (ev.role === "user") return true;
+          const p = parse(ev.payload, {});
+          return Array.isArray(p.replyTargetIds) && p.replyTargetIds.length > 0;
+        });
+      });
+    }
     const spoken = content || prior?.content || "";
     // The same evidence cannot be spent again to make a thread stronger.
     // An unchanged sentence is not a new version. A rewording can stay,
@@ -469,9 +494,17 @@ export class Self {
           ? clamp(input.strength)
           : prior.strength + 0.05
         : prior.strength;
-      strength = fresh.length
+      const rawStrength = fresh.length
         ? clamp(prior.strength + clamp(wanted - prior.strength, -STEP, STEP))
         : prior.strength;
+      // Raising strength above NEW_CAP (0.35) requires real external evidence
+      // (user messages, readings, completed activities, feedback, observations),
+      // preventing self-reinforcement from her own words alone.
+      strength =
+        rawStrength > Math.max(prior.strength, NEW_CAP) &&
+        !freshExternal.length
+          ? Math.max(prior.strength, NEW_CAP)
+          : rawStrength;
       status =
         (prior?.kind || kind) === "trait" &&
         (days.length < 2 || strength < 0.35)
