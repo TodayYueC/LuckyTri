@@ -318,7 +318,10 @@ usePageActivity("now", load);
               </div>
               <p v-if="item.type === 'choice'">
                 {{ item.reason
-                }}<small v-if="item.appraisal"> · {{ item.appraisal }}</small>
+                }}<small v-if="item.appraisal"> · {{ item.appraisal }}</small
+                ><small v-if="item.aftermath" class="faint">
+                  · {{ item.aftermath }}</small
+                >
               </p>
               <p v-else-if="item.type === 'glance'" class="muted">
                 {{ item.reason || t("没什么需要 TA 细看的") }}

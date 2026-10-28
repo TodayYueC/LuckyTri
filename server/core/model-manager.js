@@ -29,6 +29,7 @@ const QUIET_STAGES = new Set([
   "summaryMerge",
   "memory",
   "expression_novelty",
+  "expression_grounding",
 ]);
 const STAGE_OUTPUT = {
   decision: 2048,

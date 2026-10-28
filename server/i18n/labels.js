@@ -565,6 +565,42 @@ export const LABELS = {
     "The connection timed out. Check the API URL or the network.",
   "无法连接模型服务，请检查地址或网络":
     "Could not reach the model service. Check the address or the network.",
+
+  // mind/life/arbiter.js
+  执行自主行为: "Carrying out an autonomous action",
+  主动选择休息: "Chose to rest",
+  没有形成新的动机: "No new motive formed",
+  缺乏执行条件: "Missing conditions to act",
+  关系或隐私限制: "Held back by relationship or privacy limits",
+  模型服务暂不可用: "Model service unavailable for now",
+  资源预算不足: "Resource budget used up",
+  已有任务正在执行: "An activity is already running",
+  行为因重复或无意义而被抑制: "Suppressed as repetitive or ungrounded",
+  随时可以自主安排: "Ready to arrange her own time",
+  睡着时收到了未读消息: "Unread messages arrived while she slept",
+  夜间整理积压对话记忆: "Sort pending conversation memories at night",
+  夜间阶段回顾: "Night period reflection",
+  已有到期安排或待分享成果可推进:
+    "A scheduled item or pending share is ready to advance",
+  可以安静独处整理近况: "Ready for quiet time alone to sort recent events",
+  "设想或作品情节，不是既成事实":
+    "Imagined or fictional plot, not an established fact",
+  "这件事最近刚做过或已搁置，先留一点空白":
+    "This was just done recently or set aside; leaving some open space first",
+  "之前选的时间已经过去，先搁置保留，等有空再看":
+    "The chosen time has passed; setting it aside to look at when free",
+  "群里正在热聊别的事，等空隙再看":
+    "The group is busy talking about something else; waiting for a gap",
+  "上次独处已经整理过这段经历，等新的经历":
+    "The last time alone already sorted this stretch; waiting for new experience",
+  "有点累了，先安静歇着": "A bit tired; resting quietly first",
+  "有点困倦，先安静歇着": "A little sleepy; resting quietly first",
+  "连着几次都没有想表达的新内容，先安静待着":
+    "Nothing new to express several times in a row; staying quiet for now",
+  "已经连续主动说过两次，等对方回应后再联系":
+    "Already spoke first twice in a row; waiting for a reply before reaching out again",
+  "对方刚推回过这个话题，不再主动续播":
+    "They just pushed back on this topic; not continuing to broadcast it",
 };
 
 // Wording that carries a value. `{0}`, `{1}` are filled with what the code put
@@ -647,4 +683,8 @@ export const LABEL_PATTERNS = [
   ["{0}，保存了《{1}》草稿", "{0}, saved a draft of “{1}”"],
   ["扫了一眼（{0}），没细看", "Glanced over it ({0}); did not look closely"],
   ["{0}知道的", "learned {0}"],
+  [
+    "有 {0} 条计划的主动联系到期",
+    "{0} planned proactive outreach items are due",
+  ],
 ];

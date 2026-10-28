@@ -21,14 +21,17 @@ export async function generate(
   const explain =
     options.plain === true ||
     issues.some((issue) => issue.startsWith("给提问者的解释仍没说清"));
-  const wordingContext = dialogueContext(snapshot);
+  const wordingContext = snapshot.initiative
+    ? null
+    : dialogueContext(snapshot);
   if (
+    wordingContext &&
     issues.some((issue) =>
       /本人承诺|本人真实发出|已核实.{0,10}相处|私聊.{0,10}约定/.test(issue),
     )
   )
     wordingContext.inner.continuity = snapshot.inner?.continuity;
-  if (explain) {
+  if (wordingContext && explain) {
     const keepOwn = new Set(
       (wordingContext.messages || [])
         .filter((m) => m.role === "assistant")

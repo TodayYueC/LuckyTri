@@ -327,6 +327,31 @@ usePageActivity("life", load);
             )
           }}
         </p>
+        <ul v-if="life.decisions?.length" class="list run-list">
+          <li v-for="d in life.decisions" :key="d.id" class="run-row">
+            <time class="faint">{{ when(d.lastAt || d.time, zone) }}</time>
+            <span
+              class="chip"
+              :data-tone="
+                d.category === 'executing'
+                  ? 'ok'
+                  : d.category === 'model_unavailable' ||
+                      d.category === 'budget_exhausted'
+                    ? 'danger'
+                    : 'quiet'
+              "
+            >
+              {{ d.categoryLabel }}
+            </span>
+            <span class="grow"
+              >{{ d.reason
+              }}<template v-if="d.aftermath"> · {{ d.aftermath }}</template></span
+            >
+            <small v-if="d.count > 1" class="faint">{{
+              t("连续 {count} 次", { count: d.count })
+            }}</small>
+          </li>
+        </ul>
       </details>
     </template>
   </div>
