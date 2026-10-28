@@ -65,6 +65,7 @@ export function attend({
   pressure = 0,
   initiative = 25,
   belongs = false,
+  overtalking = false,
   now = Date.now(),
 }) {
   const direct = batch.some((m) => m.relation === "direct");
@@ -101,9 +102,11 @@ export function attend({
     score += value;
     if (reason && value > 0) reasons.push(reason);
   };
-  if (lastSpokeAt && now - lastSpokeAt < 3 * MINUTE) add(3, "刚才还在聊");
-  else if (lastSpokeAt && now - lastSpokeAt < 10 * MINUTE)
-    add(1.5, "不久前说过话");
+  if (!overtalking) {
+    if (lastSpokeAt && now - lastSpokeAt < 3 * MINUTE) add(3, "刚才还在聊");
+    else if (lastSpokeAt && now - lastSpokeAt < 10 * MINUTE)
+      add(1.5, "不久前说过话");
+  }
   const texts = batch.map((m) => String(m.text || ""));
   if (
     batch.some(
@@ -160,6 +163,7 @@ export function attend({
   if (sideTalk) add(-1.5);
   const threshold =
     3 +
+    (overtalking ? 2 : 0) +
     (pressure > 0.7 ? 1.5 : 0) +
     (energy < 0.3 ? 1 : 0) +
     (phase === "sleepy" || phase === "waking" ? 0.5 : 0) -
@@ -177,11 +181,18 @@ export function attend({
     );
   if (heldHere) {
     reasons.push("上次的话碰到了我正在过的事");
-    if (pressure < 1 && score < threshold) score = threshold;
+    if (pressure < 1 && !overtalking && score < threshold) score = threshold;
   }
   // A room she already lives in is worth a real look, unless people are
   // talking only to each other or the day is out of words.
-  if (belongs && !sideTalk && !mediaOnly && pressure < 1 && score < threshold) {
+  if (
+    belongs &&
+    !overtalking &&
+    !sideTalk &&
+    !mediaOnly &&
+    pressure < 1 &&
+    score < threshold
+  ) {
     score = threshold;
     reasons.push("这是我在的地方");
   }
@@ -193,8 +204,10 @@ export function attend({
     threshold: Math.round(threshold * 10) / 10,
     reason: look
       ? reasons.join("，") || "看了一眼"
-      : reasons.length
-        ? `扫了一眼（${reasons.join("，")}），没细看`
-        : "扫了一眼，群友在聊别的",
+      : overtalking
+        ? "这阵子在群里说得够多了，先听大家聊"
+        : reasons.length
+          ? `扫了一眼（${reasons.join("，")}），没细看`
+          : "扫了一眼，群友在聊别的",
   };
 }

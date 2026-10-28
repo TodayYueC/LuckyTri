@@ -6,6 +6,7 @@ import { isPrivateSession } from "./memory.js";
 import {
   classifyTopicRelation,
   learnTopicAssociations,
+  sameInsightClaim,
   sameRecentTheme,
   sameWorkFamily,
 } from "./novelty.js";
@@ -133,7 +134,11 @@ export class OwnVoice {
       // is living.
       .filter((s) => s.kind !== "intention" || ownLife(s.content))
       .slice(0, 12);
-    const notes = this.mind.thoughts
+    const recent = this.mind.thoughts
+      .list({ before: now + 1, limit: 80 })
+      .filter((t) => t.kind === "expression")
+      .slice(0, 12);
+    const openNotes = this.mind.thoughts
       .open({ now, limit: 40 })
       .filter((t) =>
         this.mind.meetings.stays(
@@ -147,12 +152,21 @@ export class OwnVoice {
           "",
         ),
       )
-      .sort((a, b) => b.created - a.created)
+      .sort((a, b) => b.created - a.created);
+    const notes = openNotes
+      .filter(
+        (t) =>
+          !recent.some(
+            (r) =>
+              r.id !== t.id &&
+              now - r.created < 24 * HOUR &&
+              t.created <= r.created &&
+              (sameRecentTheme(r.content, t.content) ||
+                sameInsightClaim(r.content, t.content) ||
+                (r.said && sameInsightClaim(r.said, t.content))),
+          ),
+      )
       .slice(0, 6);
-    const recent = this.mind.thoughts
-      .list({ before: now + 1, limit: 80 })
-      .filter((t) => t.kind === "expression")
-      .slice(0, 12);
     learnTopicAssociations({ db: this.mind.db });
     learnTopicAssociations(recent);
     const { mood, energyLabel, phaseLabel } = this.mind.affect.state(now, {
@@ -348,11 +362,16 @@ export class OwnVoice {
           !sources.some((ref) => input.circling.fresh.includes(ref));
         const repeated =
           drifting ||
-          input.recentExpressions.some((t) =>
-            sameRecentTheme(t.content, content),
+          input.recentExpressions.some(
+            (t) =>
+              sameRecentTheme(t.content, content) ||
+              sameInsightClaim(t.content, content),
           );
         const surfaceEcho = input.recentExpressions.some(
-          (t) => t.said && sameRecentTheme(t.said, words.join("\n")),
+          (t) =>
+            t.said &&
+            (sameRecentTheme(t.said, words.join("\n")) ||
+              sameInsightClaim(t.said, words.join("\n"))),
         );
         const recentlySaid = input.recentExpressions.filter(
           (t) => t.said && now - t.created < 12 * 3600000,
