@@ -298,6 +298,75 @@ export function sameWorkFamily(a, b, context = null) {
   return left.some((key) => right.includes(key));
 }
 
+
+// Live 2026-10-28/29 Tokyo presence: portal2-caroline 族近义连播——读资料/看概要/翻笔记
+// 反复「惠特利背叛 vs 卡罗琳删除 / 停笔进稿子」。novelty 把新 `r:` 根当成 new_discovery，
+// 但主张指纹相同。结构上用实体+主张词重叠判定同一洞察，而不是堆一句黑名单。
+const CLAIM_ACTION_STEMS = new Set([
+  "删除",
+  "删了",
+  "删掉",
+  "背叛",
+  "停笔",
+  "进稿",
+  "进稿子",
+  "正主",
+  "护短",
+]);
+
+export function insightClaimStems(text) {
+  const raw = String(text || "");
+  if (!raw.trim()) return new Set();
+  const stems = new Set();
+  for (const t of interestTerms([raw])) {
+    if (!GENERIC_STEMS.has(t) && String(t).length >= 2) stems.add(t);
+  }
+  for (const w of raw.match(/[A-Za-z][A-Za-z0-9]{2,}/g) || []) {
+    stems.add(w.toLowerCase());
+  }
+  // Keep whole multi-char Chinese name/entity runs (not only bigrams) when distinctive.
+  for (const run of raw.match(/[\u4e00-\u9fff]{2,6}/g) || []) {
+    if (GENERIC_STEMS.has(run)) continue;
+    if (run.length >= 3) stems.add(run);
+  }
+  for (const action of CLAIM_ACTION_STEMS) {
+    if (raw.includes(action)) stems.add(action);
+  }
+  return stems;
+}
+
+export function sameInsightClaim(a, b) {
+  const left = insightClaimStems(a);
+  const right = insightClaimStems(b);
+  if (!left.size || !right.size) return false;
+  const shared = [...left].filter((s) => right.has(s));
+  if (!shared.length) return false;
+  const namedOrAction = shared.filter(
+    (s) =>
+      CLAIM_ACTION_STEMS.has(s) ||
+      s.length >= 3 ||
+      /^[a-z][a-z0-9]{2,}$/i.test(s),
+  );
+  // ≥2 distinctive entity/claim stems → same articulated insight.
+  if (namedOrAction.length >= 2) return true;
+  // High distinctive interestTerms overlap on named stems (paraphrase with soft wording drift).
+  const lt = interestTerms([String(a || "")]);
+  const rt = interestTerms([String(b || "")]);
+  const distinctive = [...lt].filter(
+    (t) => rt.has(t) && !GENERIC_STEMS.has(t) && t.length >= 2,
+  );
+  const denom = Math.min(lt.size || 1, rt.size || 1);
+  if (distinctive.length >= 4 && distinctive.length / denom >= 0.4) return true;
+  // One strong named stem + one claim-action is enough (卡罗琳+删除).
+  if (
+    namedOrAction.length >= 1 &&
+    shared.some((s) => CLAIM_ACTION_STEMS.has(s)) &&
+    shared.some((s) => s.length >= 3 || /^[a-z]/i.test(s))
+  )
+    return true;
+  return false;
+}
+
 const PROGRESS_BROADCAST_CUE =
   /进度|节拍|三格|补课|那格.{0,20}(?:起跑|又滑|滑了|排)|(?:又滑了|起跑).{0,20}(?:那格|第三|不硬撑)|跑完(?:跟你说|照旧)|排到哪了|第\s*[\d一二三四五六七八九十]+\s*(?:段|格|回)|存了\s*\d+\s*字|刚写完.{0,24}想给你看看|顺手报个进度/u;
 
@@ -496,6 +565,19 @@ export function classifyTopicRelation(previous, candidate, options = {}) {
       suppress: false,
       families: sharedFamilies,
       reason: "旧话题因新的外部经历或事件重新具有交流价值",
+    };
+  }
+
+  // Same articulated insight (entity+claim fingerprint) is a restatement even when a
+  // fresh reading root `r:` appeared — paraphrasing 惠特利背叛/卡罗琳删除 is not a discovery.
+  const claimSame = sameInsightClaim(prevText, candText);
+  if (claimSame && (workOverlap || themeOverlap || subjectOverlap)) {
+    return {
+      sameTopic: true,
+      relation: "repeat_restatement",
+      suppress: true,
+      families: sharedFamilies,
+      reason: "同一主张的近义复述；新阅读根不能把同一洞察当成新发现",
     };
   }
 

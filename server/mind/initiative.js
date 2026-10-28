@@ -482,6 +482,36 @@ export class Initiative {
       .map((row) => parse(row.payload, {}).text || "")
       .reverse();
   }
+
+  sessionSpeakShare(session, now = this.life.now()) {
+    if (!isGroupSession(session)) return null;
+    const since = now - 60 * 60000;
+    const rows = this.db
+      .prepare(
+        "SELECT role, COUNT(*) AS n FROM core_events WHERE session_id=? AND time>? AND time<=? AND seq NOT IN (SELECT seq FROM mind_unlived) AND COALESCE(json_extract(payload,'$.simulated'),0)=0 AND role IN ('user','assistant') GROUP BY role",
+      )
+      .all(session, since, now);
+    let assistantCount = 0;
+    let userCount = 0;
+    for (const r of rows) {
+      if (r.role === "assistant") assistantCount = Number(r.n) || 0;
+      if (r.role === "user") userCount = Number(r.n) || 0;
+    }
+    const recentUserTexts = this.db
+      .prepare(
+        "SELECT payload FROM core_events WHERE session_id=? AND role='user' AND time>? AND time<=? AND seq NOT IN (SELECT seq FROM mind_unlived) AND COALESCE(json_extract(payload,'$.simulated'),0)=0 ORDER BY seq DESC LIMIT 6",
+      )
+      .all(session, now - 10 * 60000, now)
+      .map((row) => String(parse(row.payload, {}).text || ""));
+    const defer = shouldDeferGroupSpeakShare({
+      assistantCount,
+      userCount,
+      recentUserTexts,
+    });
+    if (!defer) return null;
+    return { ...defer, retryAt: now + 25 * 60000 };
+  }
+
   blocked(session, now, settings) {
     if (!session || !this.life.chat.enabled(session, { simulated: false }))
       return { reason: "会话不可用", permanent: true };
@@ -508,6 +538,12 @@ export class Initiative {
       return {
         reason: "已经连续主动说过两次，等对方回应后再联系",
         retryAt: now + 6 * HOUR,
+      };
+    const speakShare = this.sessionSpeakShare(session, now);
+    if (speakShare)
+      return {
+        reason: speakShare.reason,
+        retryAt: speakShare.retryAt,
       };
     return null;
   }
@@ -571,6 +607,40 @@ export class Initiative {
       5 * 60000,
     );
   }
+}
+
+
+// Live 2026-10-29 Singapore 群：「怎么一晚上聊了六百多 / lucky酱在水」。
+// 近 1h 助手条数占比过高 → 主动开口先 defer；真关心/点名豁免。
+export function shouldDeferGroupSpeakShare({
+  assistantCount = 0,
+  userCount = 0,
+  recentUserTexts = [],
+  minTotal = 12,
+  threshold = 0.35,
+} = {}) {
+  const total = Number(assistantCount) + Number(userCount);
+  if (total < minTotal) return null;
+  const ratio = Number(assistantCount) / total;
+  if (!(ratio >= threshold)) return null;
+  const careExempt = (recentUserTexts || []).some((t) => {
+    const s = String(t || "");
+    if (!s.trim()) return false;
+    return (
+      /\[提及成员\]|@我\b|还好吗|怎么了|难受|崩溃|想你|关心|陪(?:陪|我)|帮我|你在吗|Lucky|lucky酱?/.test(
+        s,
+      ) ||
+      (/[?？]/.test(s) && /你|Lucky|lucky|琳/.test(s))
+    );
+  });
+  if (careExempt) return null;
+  return {
+    reason: "群里这阵子自己说得偏多，先听听别人",
+    ratio,
+    total,
+    assistantCount: Number(assistantCount),
+    userCount: Number(userCount),
+  };
 }
 
 const BOUNDARY =

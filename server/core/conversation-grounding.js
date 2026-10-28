@@ -4,6 +4,7 @@ import { hasShareFrame } from "../mind/time/sharing.js";
 import { priorityCues, expandedTexts } from "./understanding.js";
 import {
   learnTopicAssociations,
+  sameInsightClaim,
   sameWorkFamily,
   workFamilies,
 } from "../mind/novelty.js";
@@ -608,6 +609,8 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   issues.push(...initiativeMonoActivityIssues(bubbles, snapshot, decision));
   issues.push(...initiativeTopicPushbackIssues(bubbles, snapshot, decision));
   issues.push(...initiativeSoloChainIssues(bubbles, snapshot, decision));
+  issues.push(...initiativeTopicHijackIssues(bubbles, snapshot, decision));
+  issues.push(...sessionSpeakShareIssues(bubbles, snapshot, decision));
   issues.push(...roomUselessCritiqueIssues(bubbles, snapshot));
   issues.push(...coldVentCareIssues(bubbles, snapshot));
   issues.push(...recentRoomHushHoldIssues(bubbles, snapshot));
@@ -2351,6 +2354,39 @@ const ROOM_HUSH_ACK =
   /(?:好好好|行行行|闭嘴|不说了|不聊了|收到|好的|好吧|行吧|嗯嗯|哦哦|闭麦|安静|收摊|停了|那就停|行，收)/;
 const ROOM_HUSH_NEW_ASK =
   /[?？]|吗\s*$|怎么|为什么|什么|哪|有没有|能不能|是什么|啥意思|告诉我|说说|你怎么看|你觉得|帮我|会不会|能不能/;
+// Live 2026-10-28 Singapore: bare vent/insult「傻逼」后仍续旧面试线。
+// 短句发泄且无问号 → 当 hush hold；长串互怼玩笑不拦。
+function isBareVentHush(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return false;
+  const bare = raw
+    .replace(/\[提及成员\]|@\S+/g, "")
+    .trim();
+  if (!bare) return false;
+  if ([...bare].length > 8) return false;
+  if (/[?？]/.test(raw)) return false;
+  if (ROOM_HUSH_NEW_ASK.test(bare) && !/^(?:傻逼|滚)/u.test(bare)) return false;
+  return /^(?:傻逼|滚(?:开|啊|吧)?|有病|烦死了?|卧槽|我靠|我操)(?:啊|啦|呢|吧)?[.。!！~～]*$/u.test(
+    bare,
+  );
+}
+function isRoomHushLine(text) {
+  return ROOM_HUSH_CUE.test(String(text || "")) || isBareVentHush(text);
+}
+// ACK exemption is for a short whole-reply hush receipt only — not ACK+续旧线.
+function isShortHushAckOnly(reply) {
+  if (!ROOM_HUSH_ACK.test(String(reply || ""))) return false;
+  const stripped = String(reply || "")
+    .replace(/\[提及成员\]|@\S+/g, "")
+    .replace(
+      /(?:好好好|行行行|闭嘴|不说了|不聊了|收到|好的|好吧|行吧|嗯嗯|哦哦|闭麦|安静|收摊|停了|那就停|行，收)/g,
+      "",
+    )
+    .replace(/[（(][^）)]{0,40}[）)]\s*$/u, "")
+    .replace(/[\s~～。.!！?？,，、]+/g, "")
+    .trim();
+  return [...stripped].length <= 2;
+}
 
 export function ignoredRoomHushIssues(bubbles, snapshot) {
   const reply = (bubbles || [])
@@ -2364,7 +2400,7 @@ export function ignoredRoomHushIssues(bubbles, snapshot) {
     .replace(/[（(][^）)]{0,40}[）)]\s*$/u, "")
     .trim();
   // ACK only exempts a short whole-reply hush receipt — not ACK+commentary.
-  if (ROOM_HUSH_ACK.test(reply) && [...bare].length < 18) return [];
+  if (isShortHushAckOnly(reply)) return [];
   if ([...bare].length < 12) return [];
 
   const batch = new Set(snapshot.batchIds || []);
@@ -2373,7 +2409,7 @@ export function ignoredRoomHushIssues(bubbles, snapshot) {
     (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
   );
   const hushMsgs = batchUsers.filter((m) =>
-    ROOM_HUSH_CUE.test(String(m.text || "")),
+    isRoomHushLine(String(m.text || "")),
   );
   if (!hushMsgs.length) return [];
 
@@ -2506,7 +2542,7 @@ export function unsupportedPeerStateIssues(bubbles, snapshot, decision = {}) {
 // activity-broadcast variants that escaped the note-dump phrase list. User: 主动
 // 10句有9句说自己、事还单一（焚化炉循环）.
 const SELF_NOTE_DUMP =
-  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补|刚冒头的念头|睡前想通|想通一件小事|顺手报个进度|收尾了一篇|补课笔记|笔记落下|补读收了尾|我早上收尾|跟你说个刚|跟你说个我自己|跟你说个下午|今晚三格|三格又连着|排焚化|推传送|刚写完焚化|想给你看看|界碑先立|哪天真跑起来|纯二手|押个宝|稿到哪读到哪|坐进来等|接着昨晚说的|今晚想做的两件|我读到《|今天又想到一层|约定其实有两半|到场这半|记下一条|开价之前先掂兜|台阶底下不能是空的|不算催稿|那格.{0,24}(?:起跑|又滑|滑了)|又滑了.{0,16}第三|跑完跟你说|跑完照旧跟你说|排到哪了|不硬撑了/;
+  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补|刚冒头的念头|睡前想通|想通一件小事|顺手报个进度|收尾了一篇|补课笔记|笔记落下|补读收了尾|我早上收尾|跟你说个刚|跟你说个我自己|跟你说个下午|今晚三格|三格又连着|排焚化|推传送|刚写完焚化|想给你看看|界碑先立|哪天真跑起来|纯二手|押个宝|稿到哪读到哪|坐进来等|接着昨晚说的|今晚想做的两件|我读到《|今天又想到一层|约定其实有两半|到场这半|记下一条|开价之前先掂兜|台阶底下不能是空的|不算催稿|那格.{0,24}(?:起跑|又滑|滑了)|又滑了.{0,16}第三|跑完跟你说|跑完照旧跟你说|排到哪了|不硬撑了|定稿|回看完了?|刚回看|回看完了/;
 const SELF_ACTIVITY_MARK =
   /我(?:刚|早上|这边|自己|读|写|排|推|想|记|整理|翻|查|收尾|押|开价|许了)|今晚.{0,12}(?:三格|全是|排|读|写)|刚把.{0,16}(?:推到|写完|读完|收尾)|进度|节拍|补课|笔记|那格|又滑了|起跑|排到哪|第三回|总闸房/;
 const PEER_ANCHOR =
@@ -2562,7 +2598,7 @@ export function selfCenteredOpenIssues(bubbles, snapshot, decision = {}) {
 // （三格排程→焚化炉节拍→补课笔记）。同作品族再播自进度听感=焚化炉循环。
 // 对方近期主动提过该作品时放行（共享线）；纯自说循环则拦。
 const SELF_PROGRESS =
-  /进度|节拍|三格|补课|笔记|刚写完|想给你看看|我读到|排.{0,8}(?:读|写|焚化|传送)|今晚.{0,16}(?:全是|连着)|第\s*\d+\s*段|纯二手|界碑|那格.{0,24}(?:起跑|又滑|滑了|排)|(?:又滑了|起跑).{0,20}(?:那格|第三|不硬撑)|跑完(?:跟你说|照旧)|排到哪了|第三回.{0,12}不硬撑|挪到明早/;
+  /进度|节拍|三格|补课|笔记|刚写完|想给你看看|定稿|回看完了?|刚回看|我读到|排.{0,8}(?:读|写|焚化|传送)|今晚.{0,16}(?:全是|连着)|第\s*\d+\s*段|纯二手|界碑|那格.{0,24}(?:起跑|又滑|滑了|排)|(?:又滑了|起跑).{0,20}(?:那格|第三|不硬撑)|跑完(?:跟你说|照旧)|排到哪了|第三回.{0,12}不硬撑|挪到明早/;
 
 export function initiativeMonoActivityIssues(bubbles, snapshot, decision = {}) {
   const reply = (bubbles || [])
@@ -2582,12 +2618,6 @@ export function initiativeMonoActivityIssues(bubbles, snapshot, decision = {}) {
   learnTopicAssociations(history);
   const families = workFamilies(reply);
   if (!families.length) return [];
-  if (
-    !SELF_NOTE_DUMP.test(reply) &&
-    !SELF_PROGRESS.test(reply) &&
-    !SELF_ACTIVITY_MARK.test(reply)
-  )
-    return [];
 
   // If a human recently brought up the same work as shared interest, continuing is OK.
   // Live 2026-10-25/27: 「还在焚化炉？」is pushback/fatigue, NOT an invite to keep reporting.
@@ -2613,10 +2643,20 @@ export function initiativeMonoActivityIssues(bubbles, snapshot, decision = {}) {
       (sameWorkFamily(t, reply) ||
         families.some((f) => workFamilies(t).includes(f))),
   );
+  const claimPrior = prior.filter((t) => sameInsightClaim(t, reply));
+  const looksSelfProgress =
+    SELF_NOTE_DUMP.test(reply) ||
+    SELF_PROGRESS.test(reply) ||
+    SELF_ACTIVITY_MARK.test(reply);
+  // Live 2026-10-28/29: 卡罗琳/惠特利洞察近义连播不带「三格/节拍」排程词时，
+  // 旧 SELF_PROGRESS 门槛放行；同作品族 + 同主张指纹也应拦。
+  if (!looksSelfProgress && claimPrior.length < 1) return [];
   if (prior.length < 1) return [];
 
   return [
-    "主动开口又在报同一作品/同一套活动进度（短窗内已说过同类题材）；换关心对方、接群里未竟线，或另一件真正不同的事，不要循环播报同一套自己的活动。",
+    claimPrior.length
+      ? "主动开口又在复述同一作品上的同一洞察/主张（短窗内措辞微调连播）；换关心对方、接群里未竟线，或另一件真正不同的事，不要近义循环同一主张。"
+      : "主动开口又在报同一作品/同一套活动进度（短窗内已说过同类题材）；换关心对方、接群里未竟线，或另一件真正不同的事，不要循环播报同一套自己的活动。",
   ];
 }
 
@@ -2781,6 +2821,147 @@ export function initiativeSoloChainIssues(bubbles, snapshot, decision = {}) {
   ];
 }
 
+
+// Live 2026-10-28 Tokyo: 用户「感觉很像，我看看他的源码」→ 她塞传送门2/卡罗琳洞察。
+// 近窗用户线无该作品族时，把后台阅读洞察当话头 = 话头错位。
+const INSIGHT_DUMP =
+  /概要|资料|笔记|读到|翻.{0,6}(?:笔记|资料|概要)|看.{0,8}(?:概要|资料)|洞察|停笔|进稿|背叛|删除|定稿|回看完|想给你看看|我读|我刚(?:看|翻|读)|补课/;
+
+export function initiativeTopicHijackIssues(bubbles, snapshot, decision = {}) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+
+  const history = [
+    ...(snapshot.messages || []),
+    ...(snapshot.history?.messages || []),
+  ];
+  learnTopicAssociations(history);
+  const families = workFamilies(reply);
+  if (!families.length) return [];
+
+  const dump =
+    SELF_NOTE_DUMP.test(reply) ||
+    SELF_PROGRESS.test(reply) ||
+    SELF_ACTIVITY_MARK.test(reply) ||
+    INSIGHT_DUMP.test(reply);
+  if (!dump) return [];
+
+  // Pure peer care without work dump phrasing — keep.
+  if (
+    PEER_ANCHOR.test(reply) &&
+    !SELF_NOTE_DUMP.test(reply) &&
+    !SELF_PROGRESS.test(reply) &&
+    !INSIGHT_DUMP.test(reply)
+  )
+    return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const batchUsers = (snapshot.messages || []).filter(
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  const askedHer = batchUsers.some(
+    (m) =>
+      m.relation === "direct" ||
+      /\[提及成员\]|@我\b|[?？]|怎么|为什么|什么/.test(String(m.text || "")),
+  );
+  const userRecent = [
+    ...batchUsers.map((m) => String(m.text || "")),
+    ...history
+      .filter((m) => m.role === "user")
+      .slice(-8)
+      .map((m) => String(m.text || "")),
+  ].filter(Boolean);
+
+  const peerNamedWork = userRecent.some((t) => {
+    if (!t) return false;
+    if (isTopicPushbackLine(t)) return false;
+    return families.some((f) => workFamilies(t).includes(f));
+  });
+  if (peerNamedWork) return [];
+
+  // Direct short ask without insight dump — leave alone.
+  if (
+    askedHer &&
+    !snapshot.initiative &&
+    [...reply].length < 40 &&
+    !INSIGHT_DUMP.test(reply)
+  )
+    return [];
+
+  // Need at least one recent user line to hijack against; pure cold initiative
+  // without peer lines is handled by selfCenteredOpenIssues.
+  if (!userRecent.length) return [];
+
+  return [
+    "近窗对方在说别的事，你却插入自己的作品阅读洞察/进度；先接对方当下的话头，作品洞察等有共享锚或对方问起再提。",
+  ];
+}
+
+// Live 2026-10-29 Singapore 群反馈「lucky酱在水」：近窗自己占比过高时，
+// 非点名/非关心的回复也应收一收（主动门闩在 initiative；这里拦回复路径极端占比）。
+export function sessionSpeakShareIssues(bubbles, snapshot, decision = {}) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+  if (snapshot.initiative) return [];
+  const sessionId = snapshot.sessionId || "";
+  if (!sessionId || /(?:^|:)private:/.test(sessionId)) return [];
+
+  const nowMs = conversationNowMs(snapshot) || Date.now();
+  const history = [
+    ...(snapshot.messages || []),
+    ...(snapshot.history?.messages || []),
+  ].filter(
+    (m) =>
+      m &&
+      (m.role === "user" || m.role === "assistant") &&
+      Number.isFinite(m.time) &&
+      nowMs - m.time >= 0 &&
+      nowMs - m.time <= 60 * 60000,
+  );
+  if (history.length < 12) return [];
+  let assistantCount = 0;
+  let userCount = 0;
+  for (const m of history) {
+    if (m.role === "assistant") assistantCount++;
+    else userCount++;
+  }
+  const total = assistantCount + userCount;
+  if (total < 12) return [];
+  if (assistantCount / total < 0.35) return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const batchUsers = (snapshot.messages || []).filter(
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  const careOrAsk = batchUsers.some((m) => {
+    const t = String(m.text || "");
+    return (
+      m.relation === "direct" ||
+      /\[提及成员\]|@我\b|还好吗|怎么了|难受|崩溃|想你|陪|帮我|你在吗/.test(
+        t,
+      ) ||
+      (ROOM_HUSH_NEW_ASK.test(t) && /你|Lucky|lucky|琳/.test(t))
+    );
+  });
+  if (careOrAsk) return [];
+  if (
+    CARE_ASK.test(reply) &&
+    !SELF_NOTE_DUMP.test(reply) &&
+    !SELF_PROGRESS.test(reply)
+  )
+    return [];
+
+  return [
+    "这阵子群里自己说的占比已经偏高；先听听别人，非点名/非关心时少插一嘴，别把气氛聊成一个人在水。",
+  ];
+}
+
 // Live 2026-10-22 group: 雾言「不知所云」「太没用了」「只会哈人」后仍
 // 「不知所云？我句句都在回应你啊」硬辩。负评应收到，不要元辩解加戏。
 const ROOM_USELESS_CRIT =
@@ -2858,7 +3039,7 @@ export function recentRoomHushHoldIssues(bubbles, snapshot) {
     .replace(/\[提及成员\]|@\S+/g, "")
     .replace(/[（(][^）)]{0,40}[）)]\s*$/u, "")
     .trim();
-  if (ROOM_HUSH_ACK.test(reply) && [...bare].length < 18) return [];
+  if (isShortHushAckOnly(reply)) return [];
   if ([...bare].length < 12) return [];
 
   const nowMs = conversationNowMs(snapshot);
@@ -2870,7 +3051,7 @@ export function recentRoomHushHoldIssues(bubbles, snapshot) {
       Number.isFinite(m.time) &&
       nowMs - m.time >= 0 &&
       nowMs - m.time <= HUSH_HOLD_MS &&
-      ROOM_HUSH_CUE.test(String(m.text || "")),
+      isRoomHushLine(String(m.text || "")),
   );
   if (!recentHush.length) return [];
 
