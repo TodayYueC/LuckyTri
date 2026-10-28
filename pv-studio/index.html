@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LuckyTri Official PV Studio — 让她走过的日子算数</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      background: #070c18;
+      font-family: "Noto Sans CJK SC", "WenQuanYi Micro Hei", sans-serif;
+    }
+    #stage {
+      width: 1920px;
+      height: 1080px;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="stage" width="1920" height="1080"></canvas>
+  <script type="module">
+    import {
+      W,
+      H,
+      FPS,
+      TOTAL_DURATION,
+      TOTAL_FRAMES,
+      renderMasterFrame,
+      renderBrandPosterLayout,
+    } from "./src/composer.js";
+
+    const canvas = document.getElementById("stage");
+    const ctx = canvas.getContext("2d", { alpha: false });
+
+    function loadImage(src) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error(`Failed to load ${src}`));
+        img.src = src;
+      });
+    }
+
+    function canvasToBlob(type = "image/jpeg", quality = 0.94) {
+      return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+    }
+
+    async function runPreviewJob() {
+      // 1. Official Cover Poster
+      window.renderPoster();
+      const posterBlob = await canvasToBlob("image/png");
+      await fetch("/api/save-image?target=artifacts/LuckyTri-PV-cover.png", {
+        method: "POST",
+        body: posterBlob,
+      });
+
+      // 2. 15 Keyframe Previews across all 5 Acts
+      const samples = [
+        { name: "act1_shot01_reset.png", t: 3.5 },
+        { name: "act1_shot02_seed.png", t: 9.5 },
+        { name: "act1_shot03_heroine.png", t: 15.5 },
+        { name: "act2_shot04_oneher.png", t: 24.0 },
+        { name: "act2_shot05_attention.png", t: 33.0 },
+        { name: "act2_shot06_silence.png", t: 42.5 },
+        { name: "act3_shot07_clock.png", t: 52.5 },
+        { name: "act3_shot08_solitude.png", t: 59.0 },
+        { name: "act3_shot09_diary.png", t: 67.5 },
+        { name: "act4_shot10_salience.png", t: 81.0 },
+        { name: "act4_shot11_arbiter.png", t: 88.5 },
+        { name: "act4_shot12_moods.png", t: 98.0 },
+        { name: "act5_shot13_pillars.png", t: 106.5 },
+        { name: "act5_shot14_slogan.png", t: 114.5 },
+        { name: "act5_shot15_endcard.png", t: 121.0 },
+      ];
+
+      for (const s of samples) {
+        window.renderFrameAtTime(s.t);
+        const blob = await canvasToBlob("image/png");
+        await fetch(`/api/save-image?target=previews/${s.name}`, {
+          method: "POST",
+          body: blob,
+        });
+      }
+
+      await fetch("/api/done?worker=preview", { method: "POST" });
+    }
+
+    async function runChunkJob(workerId, startFrame, endFrame) {
+      for (let f = startFrame; f < endFrame; f++) {
+        window.renderFrameAtTime(f / FPS);
+        const blob = await canvasToBlob("image/jpeg", 0.94);
+        await fetch(`/api/frame?worker=${workerId}&f=${f}`, {
+          method: "POST",
+          body: blob,
+        });
+      }
+      await fetch(`/api/done?worker=${workerId}`, { method: "POST" });
+    }
+
+    async function initStudio() {
+      const [portrait, banner, palette, garden, home, timelineRes] = await Promise.all([
+        loadImage("/docs/brand/portrait.png"),
+        loadImage("/docs/brand/banner.png"),
+        loadImage("/docs/brand/palette.png"),
+        loadImage("/studio-web/src/assets/liquid-garden.png"),
+        loadImage("/studio-web/src/assets/luckytri-home.png"),
+        fetch("/pv-studio/audio/voice_timeline.json").then((r) => r.json()),
+      ]);
+
+      await document.fonts.ready;
+
+      const assets = { portrait, banner, palette, garden, home };
+      window.__PV_ASSETS__ = assets;
+      window.__PV_TIMELINE__ = timelineRes;
+
+      window.renderFrameAtTime = (t, opts = {}) => {
+        renderMasterFrame(ctx, assets, timelineRes, t, opts);
+      };
+
+      window.renderPoster = () => {
+        ctx.clearRect(0, 0, W, H);
+        renderBrandPosterLayout(ctx, assets, 120.0, { isPoster: true });
+      };
+
+      const params = new URLSearchParams(window.location.search);
+      const job = params.get("job");
+      if (job === "preview") {
+        await runPreviewJob();
+      } else if (job === "chunk") {
+        const worker = params.get("worker") || "1";
+        const start = parseInt(params.get("start") || "0", 10);
+        const end = parseInt(params.get("end") || "60", 10);
+        await runChunkJob(worker, start, end);
+      } else if (params.get("poster") === "1") {
+        window.renderPoster();
+      } else {
+        const t0 = parseFloat(params.get("t") || "15.0");
+        window.renderFrameAtTime(t0);
+      }
+
+      window.__PV_READY__ = true;
+    }
+
+    initStudio().catch((err) => {
+      console.error("Studio initialization failed:", err);
+      window.__PV_ERROR__ = String(err);
+    });
+  </script>
+</body>
+</html>
