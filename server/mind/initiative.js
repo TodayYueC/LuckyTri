@@ -281,7 +281,10 @@ export class Initiative {
       const penalty =
         (contact.awaitingReply ? 0.5 : 0) +
         (rec.soloStreak >= 2 ? 2.0 : rec.soloStreak === 1 ? 0.6 : 0) +
-        (rec.pushedBack ? 2.5 : 0);
+        (rec.pushedBack ? 2.5 : 0) +
+        (contact.kind === "group" && !rooted && !fit && kind === "either"
+          ? 1.2
+          : 0);
       return (
         rooted +
         fit +

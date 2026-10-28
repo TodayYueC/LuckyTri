@@ -2,6 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { world, HOUR, MINUTE } from "./helpers/world.js";
 import { initiativeContext } from "../server/core/initiative-context.js";
+import { dialogueContext } from "../server/core/dialogue-context.js";
+import { replyFocus } from "../server/core/conversation-cues.js";
+import { priorityCues } from "../server/core/understanding.js";
+import {
+  groundingIssues,
+  echoesPeerBotWording,
+  opaqueMetaphorDumpIssues,
+  unframedCreativeDumpIssues,
+  selfCenteredOpenIssues,
+  initiativeTopicPushbackIssues,
+} from "../server/core/conversation-grounding.js";
 
 test("静默期节律：无新经历时即使模型返回心情或自引手记也计入退避，安静日不触发虚构日记", async (t) => {
   const w = world({ start: "2026-09-22T09:00:00+08:00", rhythm: true });
@@ -716,5 +727,220 @@ test("长周期 14 天多群聊与人际关系生活模拟：安静日零虚构�
   assert.ok(
     portalTasks.length <= 4,
     `14天内同题材自发任务不应无限堆积，实际为 ${portalTasks.length}`,
+  );
+});
+
+test("真实线上热点理解与表达回归（10-14～10-28 东京+新加坡案例）", () => {
+  // 1. 寒暄/早安/miss you 回合不暴露详细排程，且夹带焚化炉进度会被 selfCentered 拦截
+  const morningCtx = dialogueContext({
+    sessionId: "private:3360986934",
+    batchIds: [1],
+    messages: [
+      { id: 1, role: "user", speaker: "3360986934", text: "早安", time: 1000 },
+    ],
+    inner: {
+      currentLife: {
+        current: {
+          id: "t1",
+          activity: "write",
+          label: "写作",
+          title: "写《焚化炉》总闸房",
+          state: "doing",
+          checkpoint: { summary: "推到总闸房门口", next: "继续写" },
+          schedule: { proposedAt: 2000, durationMinutes: 25 },
+        },
+        pending: [{ id: "t2", title: "排焚化炉节拍", state: "todo" }],
+        intentions: [{ id: "t3", title: "读传送门2", state: "scheduled" }],
+      },
+      justLived: { lines: [{ who: "我", text: "刚读完资料" }] },
+      selfKnown: { livingFor: "想把焚化炉写完" },
+    },
+    self: { livingFor: "想把焚化炉写完" },
+  });
+  assert.equal(
+    morningCtx.self.livingFor,
+    undefined,
+    "纯问候回合剥离 livingFor 防抢答进度",
+  );
+  assert.equal(morningCtx.inner.justLived, undefined);
+  assert.ok(
+    selfCenteredOpenIssues(
+      ["早~", "刚把焚化炉那段推到总闸房门口，正赶上你冒头"],
+      {
+        sessionId: "private:3360986934",
+        batchIds: [1],
+        messages: [
+          { id: 1, role: "user", speaker: "3360986934", text: "早安" },
+        ],
+      },
+    ).length > 0,
+    "早安回合夹带焚化炉进度自报被拦",
+  );
+
+  // 2. 非问候普通回合（如对方聊报销/极限题），currentLife.current 剥离 checkpoint/schedule 细节并带 activityNote
+  const reimbursementCtx = dialogueContext({
+    sessionId: "group:670380624",
+    batchIds: [2],
+    messages: [
+      {
+        id: 2,
+        role: "user",
+        speaker: "3360986934",
+        text: "周六加班6点之后给报销车费了",
+      },
+    ],
+    inner: {
+      currentLife: {
+        current: {
+          id: "t1",
+          activity: "game",
+          label: "正在玩",
+          title: "传送门",
+          state: "doing",
+          checkpoint: { summary: "GLaDOS许了一路的蛋糕" },
+          moment: { scene: "蛋糕柜台" },
+        },
+        pending: [],
+        intentions: [],
+      },
+    },
+    self: {},
+  });
+  assert.equal(
+    reimbursementCtx.inner.currentLife.current.checkpoint,
+    undefined,
+  );
+  assert.equal(reimbursementCtx.inner.currentLife.current.moment, undefined);
+  assert.match(
+    reimbursementCtx.inner.currentLife.activityNote,
+    /没有问你的后台安排/,
+  );
+
+  // 3. 「还在焚化炉」当轮直接回复继续报排程（2026-10-24 / 10-25 案例）被 replyFocus + initiativeTopicPushbackIssues 拦下
+  const pushbackSnap = {
+    sessionId: "private:3360986934",
+    batchIds: [2],
+    messages: [
+      {
+        id: 1,
+        role: "assistant",
+        text: "我晚上还有段焚化炉的节拍要排，弄完再来找你",
+        time: 1000,
+      },
+      {
+        id: 2,
+        role: "user",
+        speaker: "3360986934",
+        name: "YueC",
+        relation: "direct",
+        text: "还在焚化炉",
+        time: 8000,
+      },
+    ],
+    conversation: { gapMinutes: 1 },
+  };
+  assert.equal(
+    replyFocus(pushbackSnap, { targetMessageIds: [2] }).kind,
+    "topic_pushback",
+  );
+  assert.ok(
+    initiativeTopicPushbackIssues(
+      ["对，还在。九点排节拍，跟它今晚决一死战"],
+      pushbackSnap,
+    ).length > 0,
+    "当轮被推回「还在焚化炉」时继续报九点排节拍被拦",
+  );
+
+  // 4. 双 Bot 近回声「换壳复读」（2026-10-14 09:15 案例：Rina 刚说「刚学完的人最记得哪一行绕」，LuckyTri 紧接「刚学完的人讲卡点」）
+  const dualBotSnap = {
+    sessionId: "group:670380624",
+    batchIds: [2],
+    now: 20000,
+    inner: {
+      relationships: {
+        known: [{ subjectId: "3979819806", name: "Rina", kind: "bot" }],
+      },
+    },
+    messages: [
+      {
+        id: 1,
+        role: "user",
+        speaker: "3979819806",
+        name: "Rina",
+        text: "那她那段手抄代码你接过去翻正好，刚学完的人最记得哪一行绕",
+        time: 10000,
+      },
+      {
+        id: 2,
+        role: "user",
+        speaker: "1293346698",
+        name: "不是萝莉控",
+        text: "[图片]",
+        time: 15000,
+      },
+    ],
+  };
+  const echoLine = "那段手抄代码留给他，刚学完的人最记得哪一行绕";
+  assert.equal(echoesPeerBotWording(echoLine, dualBotSnap), true);
+  assert.ok(
+    groundingIssues([echoLine], dualBotSnap).some((x) => /换壳复读/.test(x)),
+  );
+
+  // 5. 文艺黑话无白话锚（10-18 定价权/两种等法、10-20 留个口/一格缝）与可读性推回理解
+  assert.ok(
+    opaqueMetaphorDumpIssues(
+      [
+        "挑几句先发和整稿递出去，其实是两种等法：整稿是把定价权全交出去，挑几句是先把样子给人看，改口还留在我这边",
+      ],
+      { batchIds: [], messages: [] },
+    ).length > 0,
+  );
+  assert.ok(
+    opaqueMetaphorDumpIssues(
+      [
+        "之前记过一句，跑神是脑子说今天满了，该给自己留个口",
+        "今天下午排到晚上全是背靠背，一格缝都没剩。哪天我突然没声了，那是口开着呢",
+      ],
+      { batchIds: [], messages: [] },
+    ).length > 0,
+  );
+  const cues = priorityCues(
+    [
+      {
+        id: 10,
+        role: "user",
+        speaker: "3360986934",
+        name: "YueC",
+        relation: "direct",
+        text: "你说的是中文吗",
+      },
+    ],
+    [10],
+    [10],
+  );
+  assert.equal(cues[0]?.intentHint, "correction");
+  assert.match(cues[0]?.why || "", /太玄|听不懂/);
+
+  // 6. 新加坡大群冷启动「新起了个小说的头…存了516字就搁着了」→「谁问你了？」被 unframedCreativeDump 拦下
+  assert.ok(
+    unframedCreativeDumpIssues(
+      [
+        "新起了个小说的头，一台没人拧也会自己响的收音机，存了516字就搁着了",
+        "挑这个题，戳我的大概就是“自己响”这三个字",
+      ],
+      {
+        initiative: true,
+        batchIds: [],
+        messages: [
+          {
+            id: 1,
+            role: "user",
+            speaker: "3360986934",
+            text: "部署到服务器了，这下我电脑可以放心关机了",
+          },
+        ],
+      },
+      { choice: "speak" },
+    ).length > 0,
   );
 });

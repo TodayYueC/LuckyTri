@@ -9,7 +9,12 @@ import {
 } from "./conversation-grounding.js";
 import { relevantContext } from "../mind/context-selection.js";
 import { interestTerms } from "../mind/attention.js";
-import { intentHint, openQuestions, priorityCues, speechGlosses } from "./understanding.js";
+import {
+  intentHint,
+  openQuestions,
+  priorityCues,
+  speechGlosses,
+} from "./understanding.js";
 
 // A small, factual tail after the larger memory context. It preserves message
 // ownership and quote chains; it does not guess intent from isolated keywords.
@@ -88,7 +93,11 @@ export function currentExchange(snapshot) {
         if (m.role !== "user") continue;
         const g = speechGlosses(m.text);
         if (g.length)
-          glosses.push({ messageId: m.id, text: String(m.text || "").slice(0, 80), glosses: g });
+          glosses.push({
+            messageId: m.id,
+            text: String(m.text || "").slice(0, 80),
+            glosses: g,
+          });
       }
       return glosses.length
         ? {
@@ -205,8 +214,9 @@ export function documentsInView(snapshot) {
   return rows;
 }
 
-// Direct "想你了" / affection: she should answer from the relationship, not
-// from a task board. Detected here so currentLife progress is not in view.
+// Direct "想你了" / affection / routine greeting: she should answer from the
+// relationship, not from a task board. Detected here so currentLife progress is
+// not in view.
 export function affectionBatch(snapshot) {
   const fresh = new Set(snapshot.batchIds || []);
   const privateChat = /(?:^|:)private:/.test(snapshot.sessionId || "");
@@ -215,7 +225,26 @@ export function affectionBatch(snapshot) {
       fresh.has(m.id) &&
       m.role === "user" &&
       (m.relation === "direct" || privateChat) &&
-      /(?:想你|喜欢你|爱你)/.test(m.text || ""),
+      /(?:想你|喜欢你|爱你|\bmiss\s*you\b)/i.test(m.text || ""),
+  );
+}
+
+export function activityAskedInBatch(snapshot) {
+  const fresh = new Set(snapshot.batchIds || []);
+  const currentWords = (snapshot.messages || [])
+    .filter((m) => fresh.has(m.id) && m.role === "user")
+    .map((m) => m.text || "")
+    .join(" ");
+  if (!currentWords) return false;
+  const works = snapshot.inner?.currentLife?.works || [];
+  if (
+    works.some((w) => w?.title?.length >= 2 && currentWords.includes(w.title))
+  )
+    return true;
+  const curTitle = snapshot.inner?.currentLife?.current?.title || "";
+  if (curTitle.length >= 2 && currentWords.includes(curTitle)) return true;
+  return /在干嘛|干啥|忙啥|在忙什么|做什么|写到|读到|玩到|写完了|读完了|发我看看|给我看看|小说|短篇|故事|稿子|作品|传送门|焚化炉|少女歌剧|ATRI|Rewrite/i.test(
+    currentWords,
   );
 }
 
@@ -373,6 +402,12 @@ export function dialogueContext(snapshot) {
     if (inner.state) inner.state = inner.state.replace(/（[^）]*）/g, "");
     if (inner.currentLife)
       inner.currentLife = { current: inner.currentLife.current };
+    delete inner.justLived;
+    if (self) delete self.livingFor;
+    if (inner.selfKnown && typeof inner.selfKnown === "object") {
+      const { livingFor: _wish, ...rest } = inner.selfKnown;
+      inner.selfKnown = rest;
+    }
   }
   if (self.here) {
     const recalled = relevantContext(
@@ -427,6 +462,7 @@ export function dialogueContext(snapshot) {
     }
   } else if (inner.currentLife) {
     const life = inner.currentLife;
+    const askedActivity = activityAskedInBatch(snapshot);
     const compact = (row) => ({
       id: row.id,
       title: row.title,
@@ -434,10 +470,27 @@ export function dialogueContext(snapshot) {
       ...(row.wait ? { wait: row.wait } : {}),
       ...(row.plannedFor ? { plannedFor: row.plannedFor } : {}),
     });
+    const compactCurrent =
+      life.current && !askedActivity
+        ? {
+            id: life.current.id,
+            activity: life.current.activity,
+            label: life.current.label,
+            title: life.current.title,
+            state: life.current.state,
+          }
+        : life.current;
     inner.currentLife = {
       ...life,
+      current: compactCurrent,
       pending: (life.pending || []).map(compact),
       intentions: (life.intentions || []).map(compact),
+      ...(askedActivity
+        ? {}
+        : {
+            activityNote:
+              "本轮对方没有问你的后台安排或作品进度；currentLife 仅作背景认知，不要在问候或日常聊天中主动播报排程、作品或阅读进度。",
+          }),
       worksCoverage:
         "以下是按本轮话题选出的作品片段，不是全部历史；缺少一篇不能证明从未写过或读过。",
     };

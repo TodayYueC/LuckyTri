@@ -19,7 +19,7 @@ export const EXTERNAL_FACT_RULE =
   "【外部事实与推测】不了解某个软件、模型或别人项目的具体实现时，不把常见的技术路线说成它实际采用的路线。知道一般原理就说明一般原理，同时讲清自己不了解它的细节；‘好像’和‘应该’不能替无依据的细节作证。作品里的人物、辈分、章节也一样：只确定名字就只答名字，不用一串不确定的设定充实答案，更不拿‘隔太久没重看’编造自己的经历。当前角色或称呼还拿不准时，可以问原名或哪位；不先猜一个候选，再补一串“我记得”的辈分或剧情来显得认识。自己的后台记录只证明自己的能力，不证明其他系统怎么运行。appraisal与reason也写这轮具体理解和选择，不用隐喻或猜别人隐藏的动机。";
 
 export const READABILITY_REQUEST =
-  /看不懂|听不懂|没听懂|没看懂|没懂|听得懂|看得懂|说人话|正常话|太抽象|好好说话|照顾.{0,3}我/;
+  /看不懂|听不懂|没听懂|没看懂|没懂|听得懂|看得懂|说人话|正常话|太抽象|好好说话|照顾.{0,3}我|你在说什么|你在讲什么|你说的是中文吗|怎么突然这么文艺/;
 
 const normalized = (value) =>
   String(value || "")
@@ -123,6 +123,45 @@ export function echoesRecentWording(candidate, previous) {
   return common >= 4 && common / Math.min(a.size, b.size) >= 0.6;
 }
 
+export function echoesPeerBotWording(candidate, snapshot) {
+  const line = String(candidate || "").trim();
+  if (!line || [...replyBareChars(line)].length < 10) return false;
+  if (routineSocialReply(line, snapshot)) return false;
+  const botIds = botSpeakers(snapshot);
+  const messages = (snapshot.messages || []).filter((m) => !m.referenceOnly);
+  const nowMs = conversationNowMs(snapshot) || messages.at(-1)?.time || 0;
+  const recentPeerBots = messages
+    .filter(
+      (m) =>
+        m.role === "user" &&
+        (botIds.has(String(m.speaker)) ||
+          /^(?:Rina|LuckyTri|LuckyBot)$/i.test(String(m.name || ""))) &&
+        (!nowMs || !Number.isFinite(m.time) || nowMs - m.time <= 10 * 60000),
+    )
+    .slice(-8);
+  if (!recentPeerBots.length) return false;
+  const a4 = grams(line);
+  const aTerms = interestTerms([line]);
+  for (const peer of recentPeerBots) {
+    const pText = String(peer.text || "");
+    if (!pText || [...replyBareChars(pText)].length < 10) continue;
+    if (echoesRecentWording(line, pText)) return true;
+    const b4 = grams(pText);
+    const shared4 = [...a4].filter((g) => b4.has(g)).length;
+    const bTerms = interestTerms([pText]);
+    const sharedTerms = [...aTerms].filter(
+      (t) => t.length >= 2 && bTerms.has(t),
+    ).length;
+    if (
+      shared4 >= 2 &&
+      sharedTerms >= 4 &&
+      sharedTerms / Math.min(aTerms.size || 1, bTerms.size || 1) >= 0.5
+    )
+      return true;
+  }
+  return false;
+}
+
 export function bubblePreference(snapshot) {
   const botIds = botSpeakers(snapshot);
   const humanMessages = (snapshot.messages || []).filter(
@@ -193,7 +232,8 @@ export function conversationGrounding(snapshot) {
   // Rephrasing the same metaphor can evade literal n-gram matching. Require
   // several uses inside an uninterrupted bot exchange and no concrete event,
   // question or requested creative exercise before treating it as a loop.
-  const frame = /名下|落款|拎着|这半|那半|这笔|那笔|挂.{0,6}栏|掉了|公共账|磨痕|常开|那道|这道|底层|机制|擦.{0,6}痕|走过留下的痕/;
+  const frame =
+    /名下|落款|拎着|这半|那半|这笔|那笔|挂.{0,6}栏|掉了|公共账|磨痕|常开|那道|这道|底层|机制|擦.{0,6}痕|走过留下的痕/;
   const metaphorTail = tail.filter((m) => frame.test(m.text || "")).length;
   const literal =
     /\d|账单|转账|报销|会计|欠款|欠钱|借钱|元|块钱|合同|签名|灯具|灯泡|球|包裹/;
@@ -524,6 +564,16 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
           "与近期自己的话大部分相同，只换词或追加收尾；回应本轮具体新内容，没有新内容就收住",
         );
     }
+    if (
+      !routineSocialReply(line, snapshot) &&
+      !requestedRepeat(snapshot) &&
+      !claimChallenged(snapshot) &&
+      echoesPeerBotWording(line, snapshot)
+    ) {
+      issues.push(
+        "与群里另一位机器人刚说过的话换壳复读（意思和关键短语几乎相同）；如果没有新的角度或补充，先不出声或换自己的新点。",
+      );
+    }
   }
 
   issues.push(...mediaAttributionIssues(bubbles, snapshot));
@@ -744,8 +794,7 @@ function multiThreadLedgerIssues(bubbles, snapshot, decision, reply) {
   const contentAsk = focus.some((c) => asksForContent(c.text));
   // Agreement-only ("好"/"行") is a valid yes/no answer; still hollow for
   // content questions ("啥模型"/"吃什么").
-  const agreementOk =
-    isAgreementOnly(reply) && !contentAsk;
+  const agreementOk = isAgreementOnly(reply) && !contentAsk;
   const noCueTouch =
     focusOverlap.length < 1 &&
     !(point && termOverlap(reply, point).length >= 1);
@@ -768,9 +817,7 @@ function multiThreadLedgerIssues(bubbles, snapshot, decision, reply) {
       "回复像在接另一条支线，却没有碰到优先提问里的具体意思；先回眼前被叫到的问题。",
     );
   } else if (hit.length && banterOnly) {
-    issues.push(
-      "已点到优先提问，但回复只接气氛玩笑；先答问题本身，再接支线。",
-    );
+    issues.push("已点到优先提问，但回复只接气氛玩笑；先答问题本身，再接支线。");
   } else if (hollowDodge || counterDodge) {
     issues.push(
       "已点到优先提问，但回复过于含糊短促、没有碰到问题本身；先答具体内容。",
@@ -837,9 +884,7 @@ function cueBare(text) {
 function isSubstantiveQuestionText(text) {
   const bare = cueBare(text);
   if (!bare) return false;
-  if (
-    /^(?:在吗|在不在|还在吗|你好|嗨|哈喽|早|晚安|hello)$/i.test(bare)
-  )
+  if (/^(?:在吗|在不在|还在吗|你好|嗨|哈喽|早|晚安|hello)$/i.test(bare))
     return false;
   return [...bare].length >= 4;
 }
@@ -892,7 +937,9 @@ function isCounterQuestionDodge(reply) {
   const bare = replyBareChars(raw);
   if (!bare) return false;
   // Real unknown is a valid content answer; do not treat as dodge.
-  if (/^(?:不知道|不清楚|不晓得|忘了|没印象)(?:啊|呀|呢|啦|了|哦)?$/u.test(bare))
+  if (
+    /^(?:不知道|不清楚|不晓得|忘了|没印象)(?:啊|呀|呢|啦|了|哦)?$/u.test(bare)
+  )
     return false;
   // Contentful alphanumeric answers are never a bounce-back.
   if (/[a-z0-9]{2,}/i.test(bare)) return false;
@@ -921,7 +968,6 @@ function isVisualMessage(message) {
     ["image", "mface", "market_face", "sticker"].includes(item?.type),
   );
 }
-
 
 // Ordinary speak/react/initiative must not 0-frame dump fiction imagery when
 // the room is not talking about writing and the reply has no share frame.
@@ -961,12 +1007,15 @@ export function unframedCreativeDumpIssues(bubbles, snapshot, decision = {}) {
   if (writingTalk) return [];
 
   // Structural fiction dump: chapter/passage review, or third-person scene
-  // commentary with aesthetic judgment — without naming it as a share.
+  // commentary with aesthetic judgment, or cold "I just started a novel/draft
+  // of N chars and left it there" — without naming it as a share.
   const passageReview =
     /(?:看到|读到|写到|回看|刚写).{0,28}(?:那段|那节|这一节|这一段|第.{1,4}[章节段])/.test(
       reply,
     ) ||
-    /第.{1,4}[章节段].{0,24}(?:觉得|挺|很|特别)/.test(reply);
+    /第.{1,4}[章节段].{0,24}(?:觉得|挺|很|特别)/.test(reply) ||
+    /(?:新起|刚起|起了)了个?(?:小说|故事|短篇|稿子)的?头/.test(reply) ||
+    /存了\s*\d+\s*字.{0,12}(?:搁着|放着|停着|留着)/.test(reply);
   const sceneDump =
     /(?:她|他).{0,10}(?:在|把|从|朝|向).{0,36}(?:记|走|看|说|写|推|停|量|拿|放|回).{0,48}(?:那段|觉得|特别|挺|安心|踏实)/.test(
       reply,
@@ -1002,7 +1051,11 @@ function batchHasDocument(snapshot) {
       ["file", "document", "html", "text"].includes(item?.type),
     );
     if (files.length) return true;
-    if (/\.(?:html?|txt|md|markdown|pdf|docx?)(?:\s|$|】|）|\))/i.test(message.text || ""))
+    if (
+      /\.(?:html?|txt|md|markdown|pdf|docx?)(?:\s|$|】|）|\))/i.test(
+        message.text || "",
+      )
+    )
       return true;
     if (/^\[文件[：:]/.test(String(message.text || "").trim())) return true;
   }
@@ -1086,7 +1139,11 @@ export function processOnlyContentIssues(bubbles, snapshot) {
     /(?:这(?:篇|个)?(?:小说|故事)|小说|故事|这段|这一段|片段).{0,16}(?:发生了什么|讲了什么|讲什么|看到了什么|写了什么)|发生了什么|讲了什么/.test(
       latestText,
     );
-  if (!(asksAboutVisibleExcerpt || asksStoryContent || (humanRepair && previouslySharedExcerpt)))
+  if (!(
+    asksAboutVisibleExcerpt ||
+    asksStoryContent ||
+    (humanRepair && previouslySharedExcerpt)
+  ))
     return [];
 
   const reply = (bubbles || [])
@@ -1100,13 +1157,16 @@ export function processOnlyContentIssues(bubbles, snapshot) {
   const bare = replyBareChars(reply);
   const processHits = (reply.match(PROCESS_HEAVY) || []).length;
   if (processHits < 1) return [];
-  if (bare.length > 36 && processHits < 2 && !/^(?:等稿|记上了|读完再说|对稿|这笔记上)/.test(bare))
+  if (
+    bare.length > 36 &&
+    processHits < 2 &&
+    !/^(?:等稿|记上了|读完再说|对稿|这笔记上)/.test(bare)
+  )
     return [];
   return [
     "对方在问故事/片段内容，回复却只谈对稿、等稿、记账等流程；先答眼前内容，流程除非被问到。",
   ];
 }
-
 
 // Batch has a file/document with no perceived text (unreadable). She must not
 // claim she already finished reading or digesting its body.
@@ -1207,9 +1267,7 @@ export function stalePriorThreadIssues(bubbles, snapshot, decision = {}) {
       m.role === "user" &&
       !botIds.has(String(m.speaker)) &&
       !(batch.has(m.id) || batch.has(Number(m.id))) &&
-      (!batchStart ||
-        !Number.isFinite(m.time) ||
-        m.time < batchStart),
+      (!batchStart || !Number.isFinite(m.time) || m.time < batchStart),
   );
   if (!priorHumans.length) return [];
   const priorText = priorHumans
@@ -1226,9 +1284,7 @@ export function stalePriorThreadIssues(bubbles, snapshot, decision = {}) {
       (m) =>
         m.role === "assistant" &&
         !(batch.has(m.id) || batch.has(Number(m.id))) &&
-        (!batchStart ||
-          !Number.isFinite(m.time) ||
-          m.time < batchStart),
+        (!batchStart || !Number.isFinite(m.time) || m.time < batchStart),
     );
   const ovOwn = prevOwn ? termOverlap(reply, prevOwn.text || "") : [];
 
@@ -1252,8 +1308,7 @@ export function linkReviewMissIssues(bubbles, snapshot, decision = {}) {
   if (!links.length) return [];
   const batch = new Set(snapshot.batchIds || []);
   const humans = (snapshot.messages || []).filter(
-    (m) =>
-      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
   );
   const reviewAsk = humans.some((m) => {
     const bare = cueBare(m.text);
@@ -1337,26 +1392,18 @@ function extractConcreteVisionClaims(reply) {
   ))
     push(match[1]);
   // Readable code claims invented from a picture with no OCR/observation.
-  for (const match of value.matchAll(
-    /码就在(?:那|这)(?:呢|里|面)?/gu,
-  ))
+  for (const match of value.matchAll(/码就在(?:那|这)(?:呢|里|面)?/gu))
     out.push("二维码");
-  for (const match of value.matchAll(
-    /复制(?:一下)?(?:这个|那个|这|那)?码/gu,
-  ))
+  for (const match of value.matchAll(/复制(?:一下)?(?:这个|那个|这|那)?码/gu))
     out.push("二维码");
-  for (const match of value.matchAll(
-    /二维码(?:里|上|是|就是)/gu,
-  ))
+  for (const match of value.matchAll(/二维码(?:里|上|是|就是)/gu))
     out.push("二维码");
   // Live 2026-10-24: gacha screenshot →「粉色长发那个」with no observation.
   for (const match of value.matchAll(
     /((?:粉|红|金|白|黑|蓝|紫|银|绿)(?:色)?(?:长|短)?发)/gu,
   ))
     push(match[1]);
-  for (const match of value.matchAll(
-    /((?:粉毛|金毛|白毛|黑毛|蓝毛|紫毛))/gu,
-  ))
+  for (const match of value.matchAll(/((?:粉毛|金毛|白毛|黑毛|蓝毛|紫毛))/gu))
     push(match[1]);
   return [...new Set(out)];
 }
@@ -1442,13 +1489,11 @@ export function ungroundedVisionWatchIssues(bubbles, snapshot) {
   let hasObs = false;
   for (const obs of snapshot.vision?.observations || []) {
     const mid = obs?.messageId;
-    if (
-      !(
-        visualIds.has(mid) ||
-        visualIds.has(Number(mid)) ||
-        visualIds.has(String(mid))
-      )
-    )
+    if (!(
+      visualIds.has(mid) ||
+      visualIds.has(Number(mid)) ||
+      visualIds.has(String(mid))
+    ))
       continue;
     if (String(obs.description || "").trim()) {
       hasObs = true;
@@ -1459,7 +1504,9 @@ export function ungroundedVisionWatchIssues(bubbles, snapshot) {
 
   // First-person / judgmental "I watched" claims — not "你看完了吗".
   const watched =
-    /(?:^|[^你您])(?:我)?(?:刚(?:才)?|已经)?(?:看|读|翻)完(?:了)?/.test(reply) ||
+    /(?:^|[^你您])(?:我)?(?:刚(?:才)?|已经)?(?:看|读|翻)完(?:了)?/.test(
+      reply,
+    ) ||
     /(?:看|读)完(?:了)?(?:确实|挺|很|真|感觉|爽)/.test(reply) ||
     /看这(?:个|张|条)?反应/.test(reply) ||
     /看你这(?:个)?精神状态/.test(reply) ||
@@ -1512,9 +1559,7 @@ export function unreadDocumentReviewIssues(bubbles, snapshot) {
     /正文.{0,10}(?:写|说|里)/.test(reply);
   if (!bodyEval) return [];
   if (!ask && !/(?:正文|情节|文笔|人物|叙事)/.test(reply)) return [];
-  return [
-    "本轮文件内容没有读到；不要评价正文，按没打开接话或只提文件名。",
-  ];
+  return ["本轮文件内容没有读到；不要评价正文，按没打开接话或只提文件名。"];
 }
 
 // Catch the live failure mode: a picture from A gets titled with B's earlier
@@ -1525,8 +1570,7 @@ export function wrongAddressedAtIssues(bubbles, snapshot, decision = {}) {
   const messages = snapshot.messages || [];
   const batch = new Set(snapshot.batchIds || []);
   const batchMsgs = messages.filter(
-    (m) =>
-      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
   );
   if (!batchMsgs.length) return [];
 
@@ -1583,7 +1627,8 @@ export function wrongAddressedAtIssues(bubbles, snapshot, decision = {}) {
       const wrongName =
         [...people.entries()].find(([, id]) => id === wid)?.[0] || wid;
       if (wrongName && addrTextAll.includes(wrongName)) continue;
-      const callerNames = [...addressed.values()].filter(Boolean).join("、") || "叫你的人";
+      const callerNames =
+        [...addressed.values()].filter(Boolean).join("、") || "叫你的人";
       return [
         `本轮是${callerNames}在叫你，却@了${wrongName}；回应对方时请@叫你的人，不要@错人。`,
       ];
@@ -1645,9 +1690,8 @@ export function misattributedImageAtIssues(bubbles, snapshot) {
   for (const obs of snapshot.vision?.observations || []) {
     const mid = obs?.messageId;
     const message =
-      messages.find(
-        (m) => m.id === mid || String(m.id) === String(mid),
-      ) || null;
+      messages.find((m) => m.id === mid || String(m.id) === String(mid)) ||
+      null;
     const id = String(obs.speaker ?? message?.speaker ?? "");
     if (!id) continue;
     if (
@@ -1705,8 +1749,7 @@ export function batchOrphanReplyIssues(bubbles, snapshot, decision = {}) {
   const messages = snapshot.messages || [];
   const batch = new Set(snapshot.batchIds || []);
   const humans = messages.filter(
-    (m) =>
-      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
   );
   const speakers = new Set(
     humans.map((m) => String(m.speaker ?? m.userId ?? "")).filter(Boolean),
@@ -1732,7 +1775,6 @@ export function batchOrphanReplyIssues(bubbles, snapshot, decision = {}) {
   ];
 }
 
-
 // Someone jabbed HER ("你个X"), but the reply hangs that label on a third person.
 export function misdirectedSelfJabIssues(bubbles, snapshot) {
   const reply = (bubbles || [])
@@ -1744,8 +1786,7 @@ export function misdirectedSelfJabIssues(bubbles, snapshot) {
   const messages = snapshot.messages || [];
   const batch = new Set(snapshot.batchIds || []);
   const batchMsgs = messages.filter(
-    (m) =>
-      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
   );
   if (!batchMsgs.length) return [];
 
@@ -1811,8 +1852,6 @@ export function misdirectedSelfJabIssues(bubbles, snapshot) {
   return [];
 }
 
-
-
 // Named trait hung on the wrong person.
 // Live: Rina「急切值拉满的是牢大吧」→ reply @，，， with 急切值拉满.
 export function misattributedNamedTraitIssues(bubbles, snapshot) {
@@ -1824,8 +1863,7 @@ export function misattributedNamedTraitIssues(bubbles, snapshot) {
 
   const batch = new Set(snapshot.batchIds || []);
   const batchMsgs = (snapshot.messages || []).filter(
-    (m) =>
-      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
   );
   if (!batchMsgs.length) return [];
 
@@ -1850,7 +1888,11 @@ export function misattributedNamedTraitIssues(bubbles, snapshot) {
       let trait = match[1].replace(/值$/u, "");
       let who = match[2].trim();
       if ([...trait].length < 2 || [...who].length < 1) continue;
-      if (/^(?:你|我|他|她|它|你们|我们|他们|她们|大家|别人|什么|啥|谁)$/.test(who))
+      if (
+        /^(?:你|我|他|她|它|你们|我们|他们|她们|大家|别人|什么|啥|谁)$/.test(
+          who,
+        )
+      )
         continue;
       if (attrs.some((a) => a.trait === trait && a.who === who)) continue;
       attrs.push({ trait, who, reporter: String(m.speaker ?? m.userId ?? "") });
@@ -1862,7 +1904,11 @@ export function misattributedNamedTraitIssues(bubbles, snapshot) {
       let trait = match[1].replace(/值$/u, "");
       let who = match[2].replace(/(?:吧|啊|呀|呢)$/u, "").trim();
       if ([...trait].length < 2 || [...who].length < 1) continue;
-      if (/^(?:你|我|他|她|它|你们|我们|他们|她们|大家|别人|什么|啥|谁)$/.test(who))
+      if (
+        /^(?:你|我|他|她|它|你们|我们|他们|她们|大家|别人|什么|啥|谁)$/.test(
+          who,
+        )
+      )
         continue;
       if (attrs.some((a) => a.trait === trait && a.who === who)) continue;
       attrs.push({ trait, who, reporter: String(m.speaker ?? m.userId ?? "") });
@@ -1873,7 +1919,11 @@ export function misattributedNamedTraitIssues(bubbles, snapshot) {
       let trait = match[1].replace(/值$/u, "");
       let who = match[2].replace(/(?:吧|啊|呀|呢)$/u, "").trim();
       if ([...trait].length < 2 || [...who].length < 1) continue;
-      if (/^(?:你|我|他|她|它|你们|我们|他们|她们|大家|别人|什么|啥|谁)$/.test(who))
+      if (
+        /^(?:你|我|他|她|它|你们|我们|他们|她们|大家|别人|什么|啥|谁)$/.test(
+          who,
+        )
+      )
         continue;
       if (attrs.some((a) => a.trait === trait && a.who === who)) continue;
       attrs.push({ trait, who, reporter: String(m.speaker ?? m.userId ?? "") });
@@ -1886,7 +1936,11 @@ export function misattributedNamedTraitIssues(bubbles, snapshot) {
       let who = match[1].replace(/(?:吧|啊|呀|呢)$/u, "").trim();
       let trait = match[2].replace(/值$/u, "");
       if ([...trait].length < 2 || [...who].length < 1) continue;
-      if (/^(?:你|我|他|她|它|你们|我们|他们|她们|大家|别人|什么|啥|谁)$/.test(who))
+      if (
+        /^(?:你|我|他|她|它|你们|我们|他们|她们|大家|别人|什么|啥|谁)$/.test(
+          who,
+        )
+      )
         continue;
       if (attrs.some((a) => a.trait === trait && a.who === who)) continue;
       attrs.push({ trait, who, reporter: String(m.speaker ?? m.userId ?? "") });
@@ -1898,7 +1952,11 @@ export function misattributedNamedTraitIssues(bubbles, snapshot) {
       let who = match[1].replace(/(?:吧|啊|呀|呢)$/u, "").trim();
       let trait = match[2].replace(/值$/u, "");
       if ([...trait].length < 2 || [...who].length < 1) continue;
-      if (/^(?:你|我|他|她|它|你们|我们|他们|她们|大家|别人|什么|啥|谁)$/.test(who))
+      if (
+        /^(?:你|我|他|她|它|你们|我们|他们|她们|大家|别人|什么|啥|谁)$/.test(
+          who,
+        )
+      )
         continue;
       if (attrs.some((a) => a.trait === trait && a.who === who)) continue;
       attrs.push({ trait, who, reporter: String(m.speaker ?? m.userId ?? "") });
@@ -1960,7 +2018,6 @@ export function misattributedNamedTraitIssues(bubbles, snapshot) {
   return [];
 }
 
-
 // Room-stop / risk cue ignored: keep bantering with zero ack.
 // Live: 能不能不要在QQ群聊这些 / 你们想让我喝茶吗 / 咱们别在群里讨论了
 // → continued owl-avatar joke with no "行/收到/不聊/喝茶" ack.
@@ -2011,8 +2068,7 @@ export function hearsayCatchphraseIssues(bubbles, snapshot) {
 
   const batch = new Set(snapshot.batchIds || []);
   const batchMsgs = (snapshot.messages || []).filter(
-    (m) =>
-      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
   );
   if (!batchMsgs.length) return [];
 
@@ -2153,7 +2209,6 @@ export function stickySelfGagIssues(bubbles, snapshot) {
   ];
 }
 
-
 // Live: C.「我只是…干完了而已」「你们也可以跟我一样」→ reply「这属于炫耀」→「你别栽赃我」.
 // Motive labels on a named person need clear boast cues in that person's own words.
 const MOTIVE_LABEL =
@@ -2173,8 +2228,7 @@ export function projectedMotiveIssues(bubbles, snapshot) {
   const batch = new Set(snapshot.batchIds || []);
   const messages = snapshot.messages || [];
   const batchMsgs = messages.filter(
-    (m) =>
-      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
   );
   if (!batchMsgs.length) return [];
 
@@ -2211,7 +2265,11 @@ export function projectedMotiveIssues(bubbles, snapshot) {
     if (BOAST_CUE.test(ownLines)) continue;
     // Soft: if they clearly downplay / invite others, treat as non-boast.
     // Even without downplay, absence of boast cue is enough to block hard labels.
-    if (DOWNPLAY_CUE.test(ownLines) || ownLines.replace(/\[(?:图片|表情|媒体|提及成员)[^\]]*\]/g, "").trim().length >= 4) {
+    if (
+      DOWNPLAY_CUE.test(ownLines) ||
+      ownLines.replace(/\[(?:图片|表情|媒体|提及成员)[^\]]*\]/g, "").trim()
+        .length >= 4
+    ) {
       return [
         `把「炫耀/凡尔赛/装X」一类动机扣到${name}头上，但对方本轮原话没有明确自夸线索；先复述对方实际说了什么，不要替人定性动机。`,
       ];
@@ -2220,8 +2278,9 @@ export function projectedMotiveIssues(bubbles, snapshot) {
   return [];
 }
 
-
 // Live: 「门上有两道磨痕…常开那道」→「你在说什么」「怎么突然这么文艺」.
+// Live: 「挑几句先发和整稿递出去…定价权全交出去」→「你在说什么」「听不懂」.
+// Live: 「跑神是脑子说今天满了，该给自己留个口…口开着呢」→「你说的是中文吗」.
 // Dense self-metaphor without a plain-language anchor in the same turn.
 const METAPHOR_MARKERS = [
   /磨痕/,
@@ -2233,6 +2292,11 @@ const METAPHOR_MARKERS = [
   /公共账|挂.{0,6}栏/,
   /底层|机制/,
   /灯芯|量了.{0,4}灯/,
+  /定价权|反悔的价/,
+  /两种等法|把样子给人看/,
+  /留个口|口开着呢/,
+  /一格缝|真空白/,
+  /拆梁|承重的那个/,
 ];
 const PLAIN_ANCHOR =
   /意思是|也就是|直说|说白了|简单说|换句话说|普通话|说人话|一句话|具体说|讲清楚/;
@@ -2271,7 +2335,6 @@ export function opaqueMetaphorDumpIssues(bubbles, snapshot) {
   ];
 }
 
-
 // Room-level hush toward AI chatter ignored.
 // Live 2026-10-23 group:670380624 — 雾言「臭区你快闭嘴吧」后 LuckyTri 仍接旧线
 // 「这活本来就难干…」→「像个复读机」。explicitStop 只认点名她；ROOM_STOP 只认
@@ -2303,8 +2366,7 @@ export function ignoredRoomHushIssues(bubbles, snapshot) {
   const batch = new Set(snapshot.batchIds || []);
   const messages = snapshot.messages || [];
   const batchUsers = messages.filter(
-    (m) =>
-      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
   );
   const hushMsgs = batchUsers.filter((m) =>
     ROOM_HUSH_CUE.test(String(m.text || "")),
@@ -2334,7 +2396,6 @@ export function ignoredRoomHushIssues(bubbles, snapshot) {
   ];
 }
 
-
 // Live 2026-10-23 Tokyo DM: quiet after user spoke →「都两点半了还醒着」→
 // 「你从哪看出我还醒着的」。Presence must not be invented from her own clock
 // when she reopens after a quiet stretch (initiative or delayed revisit).
@@ -2362,8 +2423,7 @@ export function falseAwakePresenceIssues(bubbles, snapshot, decision = {}) {
   const batch = new Set(snapshot.batchIds || []);
   const messages = snapshot.messages || [];
   const batchUsers = messages.filter(
-    (m) =>
-      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
   );
   if (
     batchUsers.some((m) =>
@@ -2384,11 +2444,7 @@ export function falseAwakePresenceIssues(bubbles, snapshot, decision = {}) {
     .sort((a, b) => a.time - b.time)
     .at(-1);
   // Quiet reopen / delayed revisit: last human line is ≥45min before "now".
-  if (
-    nowMs &&
-    lastUser &&
-    nowMs - lastUser.time >= 45 * 60000
-  ) {
+  if (nowMs && lastUser && nowMs - lastUser.time >= 45 * 60000) {
     return [
       "安静一阵后又开口，不能凭自己的时钟断言对方「还醒着」；没有对方刚表态在场时，别把夜深写成对方的状态。",
     ];
@@ -2403,9 +2459,6 @@ export function falseAwakePresenceIssues(bubbles, snapshot, decision = {}) {
   }
   return [];
 }
-
-
-
 
 // Live 2026-10-18 group: 月初吐槽库洛笔试难 →「刚考完出来吧」「心属库洛了？」→
 // 「你从哪看出来的」。同族于假醒着/乱扣动机：把弱线索升格成对方确定状态。
@@ -2424,21 +2477,22 @@ export function unsupportedPeerStateIssues(bubbles, snapshot, decision = {}) {
   const batch = new Set(snapshot.batchIds || []);
   const messages = snapshot.messages || [];
   const batchUsers = messages.filter(
-    (m) =>
-      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
   );
   const corpus = batchUsers.map((m) => String(m.text || "")).join("\n");
   if (PEER_STATE_SUPPORT.test(corpus)) return [];
 
- // Soft softeners already present: treat as guess, not hard claim.
-  if (/(?:是不是|会不会|大概|可能|我猜|猜你|感觉像)/.test(reply) && !/心属|刚考完出来吧|所以是已经/.test(reply))
+  // Soft softeners already present: treat as guess, not hard claim.
+  if (
+    /(?:是不是|会不会|大概|可能|我猜|猜你|感觉像)/.test(reply) &&
+    !/心属|刚考完出来吧|所以是已经/.test(reply)
+  )
     return [];
 
   return [
     "把对方说成确定状态（刚考完/心属/看得出你…），但本轮对方原话没有支撑；弱线索只能轻问或承认是猜的，不要替人定性处境。",
   ];
 }
-
 
 // Live 2026-10-22 Tokyo DM: 隔一阵抛自己 Portal 笔记 →「你怎么总是在说你自己」
 // 「多关心关心我」。initiative / 长间隔开口应以对方为锚，而不是默认播报自己的阅读笔记。
@@ -2450,7 +2504,7 @@ export function unsupportedPeerStateIssues(bubbles, snapshot, decision = {}) {
 const SELF_NOTE_DUMP =
   /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补|刚冒头的念头|睡前想通|想通一件小事|顺手报个进度|收尾了一篇|补课笔记|笔记落下|补读收了尾|我早上收尾|跟你说个刚|跟你说个我自己|跟你说个下午|今晚三格|三格又连着|排焚化|推传送|刚写完焚化|想给你看看|界碑先立|哪天真跑起来|纯二手|押个宝|稿到哪读到哪|坐进来等|接着昨晚说的|今晚想做的两件|我读到《|今天又想到一层|约定其实有两半|到场这半|记下一条|开价之前先掂兜|台阶底下不能是空的|不算催稿|那格.{0,24}(?:起跑|又滑|滑了)|又滑了.{0,16}第三|跑完跟你说|跑完照旧跟你说|排到哪了|不硬撑了/;
 const SELF_ACTIVITY_MARK =
-  /我(?:刚|早上|这边|自己|读|写|排|推|想|记|整理|翻|查|收尾|押|开价|许了)|今晚.{0,12}(?:三格|全是|排|读|写)|进度|节拍|补课|笔记|那格|又滑了|起跑|排到哪|第三回/;
+  /我(?:刚|早上|这边|自己|读|写|排|推|想|记|整理|翻|查|收尾|押|开价|许了)|今晚.{0,12}(?:三格|全是|排|读|写)|刚把.{0,16}(?:推到|写完|读完|收尾)|进度|节拍|补课|笔记|那格|又滑了|起跑|排到哪|第三回|总闸房/;
 const PEER_ANCHOR =
   /你(?:今天|最近|那边|还好吗|怎么了|过得|吃了|忙啥|在干嘛|看过|喜欢|觉得|记得|那边)|最近怎么样|还好吗|在干嘛|吃了没|忙完了吗|骑手|你们(?:聊|说)|群里刚才|上回你|上次你|你说的那/;
 const CARE_ASK =
@@ -2465,25 +2519,28 @@ export function selfCenteredOpenIssues(bubbles, snapshot, decision = {}) {
 
   const gap = snapshot.conversation?.gapMinutes;
   const longGap = Number.isFinite(gap) && gap >= 45;
-  if (!snapshot.initiative && !longGap) return [];
+  const socialOnly = socialOnlyBatch(snapshot);
+  if (!snapshot.initiative && !longGap && !socialOnly) return [];
 
   const dump = SELF_NOTE_DUMP.test(reply);
   const selfHits = (reply.match(SELF_ACTIVITY_MARK) || []).length;
   const peer = PEER_ANCHOR.test(reply);
-  // Structural: initiative reopen that is mostly first-person activity with no
-  // peer/shared hook — even when phrasing dodges the dump list.
+  // Structural: initiative reopen (or greeting/affection batch) that is mostly
+  // first-person activity with no peer/shared hook — even when phrasing dodges
+  // the dump list.
   const structuralSelf =
-    selfHits >= 2 &&
+    (selfHits >= 2 || (socialOnly && selfHits >= 1)) &&
     !peer &&
-    /读|写|排|笔记|进度|传送|焚化|三格|节拍|补课|Portal|稿/.test(reply);
+    /读|写|排|笔记|进度|传送|焚化|三格|节拍|补课|Portal|稿|总闸房|推到/.test(
+      reply,
+    );
   if (!dump && !structuralSelf) return [];
 
   // Care-ask wrapper must not exempt a self-note dump (live: 「最近怎么样」+「顺手报个进度」).
 
   const batch = new Set(snapshot.batchIds || []);
   const batchUsers = (snapshot.messages || []).filter(
-    (m) =>
-      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
   );
   const askedHer = batchUsers.some(
     (m) =>
@@ -2496,7 +2553,6 @@ export function selfCenteredOpenIssues(bubbles, snapshot, decision = {}) {
     "这是自己先开口/隔很久再开口的一轮，却几乎在播自己的阅读笔记或活动进度，没有问对方近况、也没接对方/群里未竟的线；先关心对方或接住共享观察，自己的进度有锚再提，且不要默认把主动开口写成自说笔记。",
   ];
 }
-
 
 // Live 2026-10-26/27 Tokyo presence: 短窗内反复开麦传送门2/焚化炉进度
 // （三格排程→焚化炉节拍→补课笔记）。同作品族再播自进度听感=焚化炉循环。
@@ -2517,7 +2573,11 @@ export function initiativeMonoActivityIssues(bubbles, snapshot, decision = {}) {
 
   const families = workFamilies(reply);
   if (!families.length) return [];
-  if (!SELF_NOTE_DUMP.test(reply) && !SELF_PROGRESS.test(reply) && !SELF_ACTIVITY_MARK.test(reply))
+  if (
+    !SELF_NOTE_DUMP.test(reply) &&
+    !SELF_PROGRESS.test(reply) &&
+    !SELF_ACTIVITY_MARK.test(reply)
+  )
     return [];
 
   const history = [
@@ -2555,29 +2615,48 @@ export function initiativeMonoActivityIssues(bubbles, snapshot, decision = {}) {
   ];
 }
 
-
 // Live 2026-10-25/27 Tokyo DM: 月初「还在焚化炉」「还在焚化炉？」—
 // 查岗/腻了推回，不是邀请继续报同一作品。主动开口遇到这类推回应换题。
 const TOPIC_PUSHBACK =
   /还在.{0,16}(?:焚化炉|传送门|Portal|三格|补课|节拍|笔记)|怎么又(?:是|在).{0,16}(?:焚化|传送|Portal|这)|别(?:再)?(?:说|播|报).{0,12}(?:焚化|传送|这套)|听腻了|又是这(?:套|个|格)|换(?:个|点)话题|别老说/;
 
-export function initiativeTopicPushbackIssues(bubbles, snapshot, decision = {}) {
+export function initiativeTopicPushbackIssues(
+  bubbles,
+  snapshot,
+  decision = {},
+) {
   const reply = (bubbles || [])
     .filter((line) => typeof line === "string")
     .join("\n")
     .trim();
   if (!reply) return [];
 
+  const batch = new Set(snapshot.batchIds || []);
+  const batchUsers = (snapshot.messages || []).filter(
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  const directPushback = batchUsers.some((m) =>
+    TOPIC_PUSHBACK.test(String(m.text || "")),
+  );
   const gap = snapshot.conversation?.gapMinutes;
   const longGap = Number.isFinite(gap) && gap >= 45;
-  if (!snapshot.initiative && !longGap) return [];
+  if (!snapshot.initiative && !longGap && !directPushback) return [];
 
   const families = workFamilies(reply);
-  if (!families.length) return [];
+  if (
+    !families.length &&
+    !(
+      directPushback &&
+      (SELF_PROGRESS.test(reply) ||
+        /排节拍|九点排|一口气烧完|等正文能读/.test(reply))
+    )
+  )
+    return [];
   if (
     !SELF_NOTE_DUMP.test(reply) &&
     !SELF_PROGRESS.test(reply) &&
-    !SELF_ACTIVITY_MARK.test(reply)
+    !SELF_ACTIVITY_MARK.test(reply) &&
+    !/排节拍|九点排|一口气烧完|等正文能读/.test(reply)
   )
     return [];
 
@@ -2585,14 +2664,19 @@ export function initiativeTopicPushbackIssues(bubbles, snapshot, decision = {}) 
     ...(snapshot.messages || []),
     ...(snapshot.history?.messages || []),
   ];
-  const nowMs = conversationNowMs(snapshot) || Date.now();
+  const latestMsgTime = Math.max(
+    0,
+    ...history.map((m) => Number(m?.time || 0)).filter(Number.isFinite),
+  );
+  const nowMs = conversationNowMs(snapshot) || latestMsgTime || Date.now();
   const push = history
     .filter((m) => m.role === "user")
     .slice(-24)
     .some((m) => {
       const t = String(m.text || "");
       if (!TOPIC_PUSHBACK.test(t)) return false;
-      if (Number.isFinite(m.time) && nowMs - m.time > 36 * 3600000) return false;
+      if (Number.isFinite(m.time) && nowMs - m.time > 36 * 3600000)
+        return false;
       // Same work family, or pushback text already names the family keywords.
       return (
         families.some((f) => workFamilies(t).includes(f)) ||
@@ -2605,7 +2689,6 @@ export function initiativeTopicPushbackIssues(bubbles, snapshot, decision = {}) 
     "对方刚用「还在X / 怎么又是」一类话推回这个题材；不要主动再报同一作品进度，换关心对方或另一件真正不同的事。",
   ];
 }
-
 
 // Live 2026-10-26 Tokyo DM: 15:11 哲思约稿 → 18:42 漏检开价 → 19:13 传送门三格，
 // 中间几乎无对方实质接话。单条自说闸拦得住措辞，拦不住「自说后无人接又连播」。
@@ -2638,7 +2721,11 @@ export function initiativeSoloChainIssues(bubbles, snapshot, decision = {}) {
       ));
   if (!dump) return [];
   // Pure peer care without self-dump phrasing is fine even in a quiet chain.
-  if (PEER_ANCHOR.test(reply) && !SELF_NOTE_DUMP.test(reply) && !SELF_PROGRESS.test(reply))
+  if (
+    PEER_ANCHOR.test(reply) &&
+    !SELF_NOTE_DUMP.test(reply) &&
+    !SELF_PROGRESS.test(reply)
+  )
     return [];
 
   const nowMs = conversationNowMs(snapshot) || Date.now();
@@ -2673,7 +2760,6 @@ export function initiativeSoloChainIssues(bubbles, snapshot, decision = {}) {
   ];
 }
 
-
 // Live 2026-10-22 group: 雾言「不知所云」「太没用了」「只会哈人」后仍
 // 「不知所云？我句句都在回应你啊」硬辩。负评应收到，不要元辩解加戏。
 const ROOM_USELESS_CRIT =
@@ -2691,8 +2777,7 @@ export function roomUselessCritiqueIssues(bubbles, snapshot) {
 
   const batch = new Set(snapshot.batchIds || []);
   const batchUsers = (snapshot.messages || []).filter(
-    (m) =>
-      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
   );
   if (!batchUsers.some((m) => ROOM_USELESS_CRIT.test(String(m.text || ""))))
     return [];
@@ -2701,7 +2786,6 @@ export function roomUselessCritiqueIssues(bubbles, snapshot) {
     "本轮有人说你不知所云/没用/只会哈；先短收或问对方想听什么，不要用「我句句都在回应」一类元辩解加戏。",
   ];
 }
-
 
 // Live 2026-10-24 group:1098056894 — YueC 倾诉 S赛「还是这么难受」→
 // 「自找难受」「关掉去睡吧，明天又不会变好」。倾诉要先接住情绪，不是睡眠说教。
@@ -2719,8 +2803,7 @@ export function coldVentCareIssues(bubbles, snapshot) {
 
   const batch = new Set(snapshot.batchIds || []);
   const batchUsers = (snapshot.messages || []).filter(
-    (m) =>
-      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
   );
   const corpus = batchUsers.map((m) => String(m.text || "")).join("\n");
   if (!VENT_FEELING.test(corpus)) return [];
@@ -2738,7 +2821,6 @@ export function coldVentCareIssues(bubbles, snapshot) {
     "对方在倾诉难受/崩溃一类情绪；先接住情绪或陪着烦，不要用「自找难受」「去睡吧」「明天又不会变好」说教收尾。",
   ];
 }
-
 
 // Live 2026-10-25 group:670380624 — YueC「stoooooop」→「行，停了」后约 90s
 // 又开「表情包都替你答完了」。batch-only hush 拦不住跨轮加戏；短窗 hold。
@@ -2794,7 +2876,6 @@ export function recentRoomHushHoldIssues(bubbles, snapshot) {
   ];
 }
 
-
 // Live 2026-10-24 group:1098056894 — 深鲸迷途问公司群，YueC 回「机器人」，
 // 她插「人家问你公司群，你就甩俩字 / 跟谁学的敷衍」。无人请她当裁判。
 const REFEREE_JAB =
@@ -2811,8 +2892,7 @@ export function unsolicitedRefereeIssues(bubbles, snapshot) {
 
   const batch = new Set(snapshot.batchIds || []);
   const batchUsers = (snapshot.messages || []).filter(
-    (m) =>
-      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
   );
   const corpus = batchUsers.map((m) => String(m.text || "")).join("\n");
   if (ASKED_REFEREE.test(corpus)) return [];
@@ -2838,7 +2918,6 @@ export function unsolicitedRefereeIssues(bubbles, snapshot) {
   ];
 }
 
-
 // Live 2026-10-24 group:1098056894 — 聊泄露包见闻时堆「下完先别拿主号」
 // 「别又冲太猛把号送回去」。没人问安不安全/怎么登。
 const CAUTION_STACK =
@@ -2855,8 +2934,7 @@ export function unsolicitedCautionAdviceIssues(bubbles, snapshot) {
 
   const batch = new Set(snapshot.batchIds || []);
   const batchUsers = (snapshot.messages || []).filter(
-    (m) =>
-      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
   );
   const corpus = batchUsers.map((m) => String(m.text || "")).join("\n");
   if (ASKED_CAUTION.test(corpus)) return [];
@@ -2875,13 +2953,10 @@ export function unsolicitedCautionAdviceIssues(bubbles, snapshot) {
   ];
 }
 
-
-
 // Live 2026-10-25 group:670380624 — 雾言「难受」→图→「破防了」时连环
 // 「表情不算答案哦 / 果然是试岗 / 说吧是被使唤过头了还是…」。软难受要先在场，
 // 不要把短词/表情当成未交卷去审讯。
-const SOFT_DISTRESS_CUE =
-  /难受|破防|心累|不想说|不想细说|崩溃|想哭|好累|累坏/;
+const SOFT_DISTRESS_CUE = /难受|破防|心累|不想说|不想细说|崩溃|想哭|好累|累坏/;
 const DISTRESS_PROBE =
   /表情不算答案|说吧[，,]?是|果然是(?:试岗|累)|身体不舒服还是|是被使唤|还是有人说了啥|咋了.{0,6}说说|遇上啥事了/;
 const SOFT_PRESENCE_OK =
@@ -2893,15 +2968,17 @@ export function softDistressProbeIssues(bubbles, snapshot) {
     .join("\n")
     .trim();
   if (!reply || !DISTRESS_PROBE.test(reply)) return [];
-  if (SOFT_PRESENCE_OK.test(reply) && !/表情不算答案|说吧[，,]?是|果然是/.test(reply))
+  if (
+    SOFT_PRESENCE_OK.test(reply) &&
+    !/表情不算答案|说吧[，,]?是|果然是/.test(reply)
+  )
     return [];
 
   const nowMs = conversationNowMs(snapshot);
   const messages = snapshot.messages || [];
   const batch = new Set(snapshot.batchIds || []);
   const batchUsers = messages.filter(
-    (m) =>
-      (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
   );
   const recentDistress = messages.filter((m) => {
     if (m.role !== "user") return false;
@@ -2918,7 +2995,6 @@ export function softDistressProbeIssues(bubbles, snapshot) {
     "对方在软难受/破防或刚用图表情代替细说；先短陪在场，不要用「表情不算答案」「说吧是A还是B」「果然是…」连环审讯。",
   ];
 }
-
 
 // Live 2026-10-25 — 七张图后「表情收下了，但填空题还没答呢 / 看了啥，报来」。
 // 图/表情本身就是发言，不是欠文字作业。
@@ -2950,7 +3026,6 @@ export function emoteQuizPressureIssues(bubbles, snapshot) {
     "对方刚用图/表情说话；那本身就是回应，不要用「填空题还没答」「报来」逼文字作业。",
   ];
 }
-
 
 // Live 2026-10-25 — 「保密」→「上保密条款 / 猜你压根也是听来的」。
 // Live 2026-10-26 post-r53 — 「保密」→「别吊着，快发」；「隐私怎么能随便发」
@@ -2989,7 +3064,6 @@ export function softRefusalAccuseIssues(bubbles, snapshot) {
   ];
 }
 
-
 // Live 2026-10-27 Tokyo presence: 无人刚说保密，却「特意声明保密的人，多半是在钓追问」
 // + 绑到自己焚化炉钩子。无 cue 的动机投射/留饵理论开麦。
 const REFUSAL_MOTIVE_LECTURE =
@@ -3021,10 +3095,7 @@ export function unsolicitedRefusalMotiveIssues(bubbles, snapshot) {
   ];
 }
 
-
 export function mediaAttributionIssues(bubbles, snapshot) {
-
-
   const text = (bubbles || [])
     .filter((line) => typeof line === "string")
     .join("\n");
