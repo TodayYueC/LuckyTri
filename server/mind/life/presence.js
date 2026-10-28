@@ -128,6 +128,14 @@ export class LifePresence {
         this.owner.mind.thoughts.setOutreach(t.id, "declined");
         continue;
       }
+      if (this.owner.initiative.pushedBackOnTopic(t, session, now)) {
+        this.owner.mind.thoughts.setOutreach(
+          t.id,
+          "declined",
+          "对方刚推回过这个话题，不再主动续播",
+        );
+        continue;
+      }
       const block = this.owner.outreachBlocked(session, now, s);
       if (block) {
         if (block.permanent)

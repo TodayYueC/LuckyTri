@@ -30,7 +30,7 @@ export class OwnVoice {
   arrived(after, until) {
     const thoughts = this.mind.db
       .prepare(
-        "SELECT id FROM mind_thoughts WHERE created>? AND created<=? AND kind!='expression' AND hidden=0",
+        "SELECT id FROM mind_thoughts WHERE created>? AND created<=? AND kind!='expression' AND hidden=0 AND COALESCE(run_id,'') NOT IN (SELECT id FROM mind_runs WHERE kind='activity')",
       )
       .all(after, until)
       .map((row) => `t:${row.id}`);
@@ -63,11 +63,36 @@ export class OwnVoice {
   // written several notes that only continue her last one, and nothing she
   // could take up has come in since.
   resting(now) {
-    const { run } = this.circling(now);
-    if (run < STREAK) return null;
-    const { circling } = this.material(now);
-    if (circling?.fresh.length) return null;
-    return `连着 ${run} 条念头都只在接自己上一条，还没有新的东西可接`;
+    if (this.mind.affect.state(now).energy < 0.22)
+      return "有点困倦，先安静歇着";
+    const { run, latest } = this.circling(now);
+    if (run >= STREAK) {
+      const { circling } = this.material(now);
+      if (!circling?.fresh.length)
+        return `连着 ${run} 条念头都只在接自己上一条，还没有新的东西可接`;
+    }
+    const lastAttempt = this.life.repo.config("own-voice", {}).attemptedAt;
+    if (lastAttempt && (!latest || latest.created <= lastAttempt)) {
+      let silentStreak = 0;
+      for (const r of this.mind.db
+        .prepare(
+          "SELECT status FROM mind_runs WHERE kind='expression' AND started<=? ORDER BY started DESC LIMIT 8",
+        )
+        .all(now)) {
+        if (r.status !== "empty") break;
+        silentStreak++;
+      }
+      const hasNew =
+        this.arrived(lastAttempt, now).size > 0 ||
+        this.mind.db
+          .prepare(
+            "SELECT 1 FROM core_events WHERE role='user' AND time>? AND time<=? AND COALESCE(json_extract(payload,'$.simulated'),0)=0 AND seq NOT IN (SELECT seq FROM mind_unlived) LIMIT 1",
+          )
+          .get(lastAttempt, now);
+      if (!hasNew && silentStreak >= 2)
+        return "连着几次都没有想表达的新内容，先安静待着";
+    }
+    return null;
   }
   material(now) {
     const nature = this.mind.nature.current(now);
@@ -118,15 +143,48 @@ export class OwnVoice {
       ...threads.map((s) => `s:${s.thread}`),
       ...notes.map((t) => `t:${t.id}`),
     ].filter((ref) => arrived.has(ref));
-    return {
-      ...(run >= 2 ? { circling: { notes: run, fresh } } : {}),
-      clock: localClock(now, this.mind.timeZone()),
-      currentLife: this.mind.time.view({ session: "", now }),
-      actions: this.mind.time.lived({
+    const currentView = this.mind.time.view({ session: "", now });
+    const recentActions = this.mind.time
+      .lived({
         session: "",
         before: now,
         since: now - 86400000,
-      }),
+      })
+      .filter((a) => {
+        const label = `${a.title || ""} ${a.why || ""}`;
+        return !recent.some(
+          (t) =>
+            t.said &&
+            now - t.created < 24 * HOUR &&
+            (sameRecentTheme(t.said, label) ||
+              sameWorkFamily(t.said, label) ||
+              sameWorkFamily(t.content, label)),
+        );
+      })
+      .map(({ ref, title, why, activity, state, share }) => ({
+        ref,
+        title,
+        why,
+        activity,
+        state,
+        share,
+      }));
+    return {
+      ...(run >= 2 ? { circling: { notes: run, fresh } } : {}),
+      clock: localClock(now, this.mind.timeZone()),
+      currentLife: {
+        current: currentView.current
+          ? {
+              id: currentView.current.id,
+              activity: currentView.current.activity,
+              label: currentView.current.label,
+              title: currentView.current.title,
+              state: currentView.current.state,
+            }
+          : null,
+        works: currentView.works || [],
+      },
+      actions: recentActions,
       mood: { feeling: mood, energy: energyLabel, phase: phaseLabel },
       interests: nature.interests || [],
       self: threads.map((s) => ({

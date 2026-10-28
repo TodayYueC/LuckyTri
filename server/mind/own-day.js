@@ -1,7 +1,9 @@
 import { withFallback } from "../core/model-manager.js";
 import { prompts, replyPrompt } from "../core/persona-manager.js";
 import { localClock } from "../core/conversation-cues.js";
-import { evidence, text, hasCredential } from "./util.js";
+import { evidence, similar, text, hasCredential } from "./util.js";
+import { sameSelf } from "./salience.js";
+import { sameWorkFamily } from "./novelty.js";
 import { CommitmentReview } from "./time/commitment-review.js";
 import { chosenSlot } from "./day-planner.js";
 import { activityEstimate } from "./time/activity-clock.js";
@@ -50,6 +52,69 @@ export class OwnDay {
       last: last || null,
     };
   }
+  planReady(
+    now,
+    state = this.state(),
+    settings = this.life.mind.time.settings(),
+  ) {
+    const ownOpen = this.db
+      .prepare(
+        "SELECT id,checkpoint FROM mind_time_tasks WHERE kind='plan' AND state IN ('todo','scheduled','doing') AND json_extract(checkpoint,'$.mergedInto') IS NULL",
+      )
+      .all()
+      .filter((row) => {
+        const slot = JSON.parse(row.checkpoint || "{}").schedule;
+        return !slot?.endedAt || slot.endedAt > now;
+      }).length;
+    if (ownOpen >= 2) return false;
+    const baseMs = settings.ownPlanMinutes * 60000;
+    const sincePlan = now - (state.planAt || 0);
+    if (sincePlan < baseMs) return false;
+    const affect = this.life.mind.affect.state(now);
+    if (affect.energy < 0.25) return false;
+    // After completing or progressing an own activity, give her natural
+    // breathing room instead of immediately refilling the task queue.
+    const recentWork = this.db
+      .prepare(
+        "SELECT MAX(e.created) t FROM mind_time_events e JOIN mind_time_tasks t ON t.id=e.task_id WHERE t.kind='plan' AND e.kind IN ('done','reference-experience','checkpoint') AND e.created<=?",
+      )
+      .get(now)?.t;
+    const minBreath = Math.max(
+      baseMs,
+      ownOpen >= 1 ? 3 * 3600000 : 2 * 3600000,
+    );
+    if (recentWork && now - recentWork < minBreath) return false;
+    const todayStart = this.life.dayStart(now);
+    const todayDone = this.db
+      .prepare(
+        "SELECT COUNT(DISTINCT e.task_id) n FROM mind_time_events e JOIN mind_time_tasks t ON t.id=e.task_id WHERE t.kind='plan' AND e.kind IN ('done','reference-experience') AND e.created>=? AND e.created<=?",
+      )
+      .get(todayStart, now).n;
+    if (todayDone >= 2 && sincePlan < Math.max(baseMs, 6 * 3600000))
+      return false;
+    // Backoff when consecutive own-day plans returned resting/waiting/empty
+    // and no new user messages have arrived since the last check.
+    const freshAfterPlan =
+      state.planAt &&
+      this.db
+        .prepare(
+          "SELECT 1 FROM core_events WHERE role='user' AND time>? AND time<=? AND COALESCE(json_extract(payload,'$.simulated'),0)=0 AND seq NOT IN (SELECT seq FROM mind_unlived) LIMIT 1",
+        )
+        .get(state.planAt, now);
+    if (!freshAfterPlan && state.planAt) {
+      let quietRuns = 0;
+      for (const r of this.db
+        .prepare(
+          "SELECT status FROM mind_runs WHERE kind='day-care' AND status NOT IN ('reviewed','interrupted') AND started<=? ORDER BY started DESC LIMIT 8",
+        )
+        .all(now)) {
+        if (!["resting", "waiting", "empty"].includes(r.status)) break;
+        quietRuns++;
+      }
+      if (quietRuns >= 1) return false;
+    }
+    return true;
+  }
   async run(now = this.life.now()) {
     const life = this.life,
       time = life.mind.time;
@@ -75,14 +140,7 @@ export class OwnDay {
       reviewDue =
         state.reviewRequested ||
         now - (state.reviewAt || 0) >= settings.commitmentReviewMinutes * 60000;
-    const ownOpen = this.db
-      .prepare(
-        "SELECT count(*) n FROM mind_time_tasks WHERE kind='plan' AND state IN ('todo','scheduled','doing','paused') AND json_extract(checkpoint,'$.mergedInto') IS NULL",
-      )
-      .get().n;
-    const planDue =
-      ownOpen < 3 &&
-      now - (state.planAt || 0) >= settings.ownPlanMinutes * 60000;
+    const planDue = this.planReady(now, state, settings);
     if (!reviewDue && !planDue) return null;
     return time.attention.activity(async () => {
       let batch = null;
@@ -245,6 +303,24 @@ export class OwnDay {
             : "";
         if (plan.activity === "game" && !topic)
           throw Error("需要自己选定要玩的游戏");
+        const recentTasks = this.db
+          .prepare(
+            "SELECT t.title,t.activity,t.state,t.updated FROM mind_time_tasks t WHERE t.kind='plan' AND t.state IN ('done','paused','waiting') AND t.updated>? AND t.updated<=? AND json_extract(t.checkpoint,'$.mergedInto') IS NULL ORDER BY t.updated DESC LIMIT 8",
+          )
+          .all(now - 2 * 86400000, now);
+        if (
+          recentTasks.some(
+            (r) =>
+              r.activity === plan.activity &&
+              (similar(r.title, plan.title, 0.65) ||
+                (topic && gameTopic(r.title) === topic) ||
+                sameWorkFamily(r.title, plan.title)),
+          )
+        ) {
+          status = "resting";
+          reason = "这件事最近刚做过或已搁置，先留一点空白";
+          return { status, reason };
+        }
         const slot = chosenSlot(
           {
             ...plan,
@@ -262,16 +338,28 @@ export class OwnDay {
         );
         this.db.exec("SAVEPOINT own_choice");
         try {
-          const wish = life.mind.self.propose(
-            {
-              kind: "intention",
-              content: `我想${text(plan.title, 100)}`,
-              sources,
-              strength: 0.25,
-            },
-            { valid, origin: "solitude", time: life.now() },
-          );
-          if (!wish.thread) throw Error(wish.rejected || "愿望未保存");
+          const existingThread =
+            sources.find((s) => s.startsWith("s:"))?.slice(2) ||
+            self.find(
+              (s) =>
+                sameSelf(s.content, `我想${plan.title}`) ||
+                (topic && s.content.includes(topic)),
+            )?.thread ||
+            null;
+          let wishThread = existingThread;
+          if (!wishThread) {
+            const wish = life.mind.self.propose(
+              {
+                kind: "intention",
+                content: `我想${text(plan.title, 100)}`,
+                sources,
+                strength: 0.25,
+              },
+              { valid, origin: "solitude", time: life.now() },
+            );
+            if (!wish.thread) throw Error(wish.rejected || "愿望未保存");
+            wishThread = wish.thread;
+          }
           const result = time.tasks.add(
             {
               kind: "plan",
@@ -281,7 +369,13 @@ export class OwnDay {
                   ? `${plan.title} ·《${topic}》`
                   : plan.title,
               why: plan.why,
-              sources: [`s:${wish.thread}`, ...(project?.sources || [])],
+              sources: [
+                ...new Set([
+                  `s:${wishThread}`,
+                  ...sources,
+                  ...(project?.sources || []),
+                ]),
+              ],
               projectId: project?.id || null,
               origin: "own-day",
             },
@@ -295,11 +389,11 @@ export class OwnDay {
               id,
               "own-choice",
               "空下来时自己想做的事",
-              { wish: wish.thread },
+              { wish: wishThread },
               life.now(),
             );
-          status = id ? "planned" : "empty";
-          reason = id ? "给自己留下一件想做的事" : "这件事已经有所安排";
+          status = result.id ? "planned" : "empty";
+          reason = result.id ? "给自己留下一件想做的事" : "这件事已经有所安排";
           return { status, reason, task: id };
         } catch (error) {
           this.db.exec("ROLLBACK TO own_choice");

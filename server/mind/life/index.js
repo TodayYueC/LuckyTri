@@ -7,6 +7,7 @@ import { elapsedLabel } from "../clock.js";
 import { isPrivateSession } from "../memory.js";
 import { lifeDayKey, rhythmPhase } from "../nature.js";
 import { THOUGHT_KINDS } from "../thoughts.js";
+import { sameRecentTheme, sameWorkFamily } from "../novelty.js";
 import { Initiative } from "../initiative.js";
 import { OwnVoice } from "../own-voice.js";
 import {
@@ -351,19 +352,30 @@ export class Life {
       !shelf &&
       !ahead;
     if (onlyTime && last) {
+      if (this.mind.affect.state(now).energy < 0.25)
+        return "有点累了，先安静歇着";
+      if (fresh === 0 && last.status === "written")
+        return "上次独处已经整理过这段经历，等新的经历";
       let empties = 0;
       for (const run of this.db
         .prepare(
-          "SELECT status FROM mind_runs WHERE kind='solitude' AND status NOT IN ('interrupted') ORDER BY started DESC LIMIT 6",
+          "SELECT status,summary FROM mind_runs WHERE kind='solitude' AND status NOT IN ('interrupted') ORDER BY started DESC LIMIT 12",
         )
         .all()) {
-        if (run.status !== "empty") break;
+        const sum = parse(run.summary, null);
+        const ungrounded =
+          sum &&
+          Number(sum.freshMessages || 0) === 0 &&
+          !sum.read &&
+          !sum.outreach;
+        if (run.status !== "empty" && run.status !== "state" && !ungrounded)
+          break;
         empties++;
       }
       if (
-        empties >= 2 &&
-        now - last.started <
-          Math.min(6 * HOUR, s.intervalMinutes * MINUTE * 2 ** (empties - 1))
+        empties >= 3 ||
+        (empties >= 2 &&
+          now - last.started < s.intervalMinutes * MINUTE * 2 ** (empties - 1))
       )
         return "连着几次独处都没有新的理解，等新的经历";
     }
@@ -860,15 +872,30 @@ export class Life {
         return null;
     }
     const recent = this.mind.thoughts.list({ limit: 20 });
-    const repeated = recent.some((t) => similar(t.content, content));
+    const incomingRoots = evidenceRoots(this.db, sources, now);
+    const repeated = recent.some(
+      (t) =>
+        similar(t.content, content) ||
+        (now - t.created < 12 * HOUR &&
+          (sameRecentTheme(t.content, content) ||
+            sameWorkFamily(t.content, content)) &&
+          incomingRoots.length > 0 &&
+          incomingRoots.every((r) =>
+            evidenceRoots(this.db, t.sources || [], now).includes(r),
+          )),
+    );
     if (repeated && !reach) return null;
     if (
       reach &&
       recent.some(
         (t) =>
           t.outreach_session === reach.session &&
-          ["planned", "sending", "uncertain"].includes(t.outreach_status) &&
-          similar(t.outreach, reach.text),
+          (["planned", "sending", "uncertain"].includes(t.outreach_status) ||
+            (t.outreach_status === "sent" && now - t.created < 12 * HOUR)) &&
+          (similar(t.outreach, reach.text) ||
+            (now - t.created < 12 * HOUR &&
+              (sameRecentTheme(t.outreach, reach.text) ||
+                sameWorkFamily(t.outreach, reach.text)))),
       )
     )
       return null;

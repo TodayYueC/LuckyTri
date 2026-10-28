@@ -526,15 +526,18 @@ export class Games {
         },
         finished,
       );
-      life.mind.thoughts.add({
-        kind: "reflection",
-        content: `我读到《${topic}》的第 ${next.segment} 段内容，留下自己的感受与记录。`,
-        sources: evidence([`x:${task.id}`, ...task.sources]),
-        sessions: task.session_id ? [task.session_id] : [],
-        runId,
-        time: finished,
-        importance: 0.3,
-      });
+      if (next.segment <= 1)
+        life.mind.thoughts.add({
+          kind: "reflection",
+          content: checkpoint.actualPlay
+            ? `我玩了《${topic}》的第 ${next.segment} 段，留下自己的游玩记录。`
+            : `我读到《${topic}》的第 ${next.segment} 段内容，留下自己的感受与记录。`,
+          sources: evidence([`x:${task.id}`, ...task.sources]),
+          sessions: task.session_id ? [task.session_id] : [],
+          runId,
+          time: finished,
+          importance: 0.3,
+        });
       if (result.feeling?.feeling)
         life.mind.affect.feel({
           ...result.feeling,
@@ -545,12 +548,21 @@ export class Games {
           origin: "activity",
           time: finished,
         });
-      if (result.continue === false && !contract?.stopAfterNote)
+      const satiated =
+        !contract?.stopAfterNote &&
+        task.kind === "plan" &&
+        next.segment >= 2 &&
+        !(checkpoint.readWindow && checkpoint.readWindow.to < 1);
+      if ((result.continue === false || satiated) && !contract?.stopAfterNote)
         time.tasks.control(
           task.id,
           {
             action: "pause",
-            reason: text(result.next, 240) || "自己决定暂时放下",
+            reason:
+              text(result.next, 240) ||
+              (satiated
+                ? "这一阵已经推进了好几段，先停下来消化一会儿"
+                : "自己决定暂时放下"),
           },
           finished,
         );

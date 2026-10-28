@@ -391,19 +391,20 @@ export class TimeExecutor {
                 task.discretion,
                 runId,
               );
-            mind.thoughts.add({
-              // Narrative remains in the work. Only the act becomes an experience.
-              kind: "reflection",
-              content:
-                task.activity === "write"
-                  ? `我完成了《${title}》的第 ${work.ordinal} 篇，正文保存在作品库；其中情节和人物是创作。`
-                  : text(`${title}：${content}`, 600),
-              sources: evidence([`x:${task.id}`, ...sources]),
-              sessions: task.session_id ? [task.session_id] : [],
-              runId,
-              time: finished,
-              importance: 0.4,
-            });
+            if (task.activity !== "write" || work.ordinal <= 1)
+              mind.thoughts.add({
+                // Narrative remains in the work. Only the act becomes an experience.
+                kind: "reflection",
+                content:
+                  task.activity === "write"
+                    ? `我完成了《${title}》的第 ${work.ordinal} 篇，正文保存在作品库；其中情节和人物是创作。`
+                    : text(`${title}：${content}`, 600),
+                sources: evidence([`x:${task.id}`, ...sources]),
+                sessions: task.session_id ? [task.session_id] : [],
+                runId,
+                time: finished,
+                importance: 0.4,
+              });
             time.complete(
               task,
               { creation, workId: work.id, sources },
@@ -415,26 +416,21 @@ export class TimeExecutor {
               )
               .run(creation, work.id);
             const project = time.works.project(task.project_id);
-            if (
-              project.serial &&
-              result.next &&
-              (!result.projectState || result.projectState === "active")
-            )
-              time.tasks.add(
-                {
-                  kind: "plan",
-                  activity: task.activity,
-                  title: `接续《${project.title}》第 ${work.ordinal + 1} 篇`,
-                  why: text(result.reason || result.next, 240),
-                  sources: [`x:${task.id}`],
-                  session: task.session_id,
-                  discretion: task.discretion,
-                  projectId: project.id,
-                  readyAt: finished + time.settings().breakMinutes * 60000,
-                  activeOnly: true,
-                },
-                finished,
-              );
+            if (project?.serial && result.next) {
+              const nextTitle = `接续《${project.title}》第 ${work.ordinal + 1} 篇`;
+              this.db
+                .prepare(
+                  "UPDATE mind_time_projects SET summary=?,updated=? WHERE id=?",
+                )
+                .run(
+                  text(
+                    `${project.summary || ""}（${nextTitle}：${result.next}）`,
+                    500,
+                  ),
+                  finished,
+                  project.id,
+                );
+            }
             if (result.share?.choice && task.session_id)
               time.sharing.choose(
                 work.id,

@@ -30,6 +30,25 @@ export function initiativeContext(snapshot, occasion = snapshot.initiative) {
       reason: occasion?.wantedBecause,
     };
   const timeZone = snapshot.conversation?.clock?.timeZone || "Asia/Shanghai";
+  const inner = background.inner ? { ...background.inner } : undefined;
+  if (inner?.currentLife) {
+    const cur = inner.currentLife.current;
+    inner.currentLife = {
+      current: cur
+        ? {
+            id: cur.id,
+            activity: cur.activity,
+            label: cur.label,
+            title: cur.title,
+            state: cur.state,
+          }
+        : null,
+      works: inner.currentLife.works || [],
+      ...(inner.currentLife.activityRecall?.length
+        ? { activityRecall: inner.currentLife.activityRecall }
+        : {}),
+    };
+  }
   return {
     sessionId: snapshot.sessionId,
     conversation: snapshot.conversation,
@@ -44,6 +63,8 @@ export function initiativeContext(snapshot, occasion = snapshot.initiative) {
       awaitingReply: !!situation.awaitingReply,
       lastInitiatedAt: situation.lastInitiatedAt,
       returned: occasion?.returned || [],
+      ...(situation.reciprocity ? { reciprocity: situation.reciprocity } : {}),
+      ...(situation.seeds?.length ? { seeds: situation.seeds } : {}),
     },
     expression: {
       ...expression,
@@ -58,7 +79,7 @@ export function initiativeContext(snapshot, occasion = snapshot.initiative) {
       })),
     },
     ...(snapshot.self ? { self: background.self } : {}),
-    ...(snapshot.inner ? { inner: background.inner } : {}),
+    ...(inner ? { inner } : {}),
     history: {
       use: "只核对过去、避免重复和捏造；这里没有本轮收到的消息，不是待回复的问题",
       messages: history,
