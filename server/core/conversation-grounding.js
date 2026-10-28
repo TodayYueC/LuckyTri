@@ -128,6 +128,9 @@ export function echoesRecentWording(candidate, previous) {
   return common >= 4 && common / Math.min(a.size, b.size) >= 0.6;
 }
 
+const ZERO_INFO_BOT_PIGGYBACK =
+  /(?:我(?:刚)?也在(?:催|问|看|等|想|说)|我(?:也)?刚在(?:问|催|说|想)|我哪知道[，,\s]*我也|我也(?:还没看|不知道|答不上来|正想问|刚想问)|这都被你(?:看出来|猜中|发现)了)/;
+
 export function echoesPeerBotWording(candidate, snapshot) {
   const line = String(candidate || "").trim();
   if (!line || [...replyBareChars(line)].length < 10) return false;
@@ -149,6 +152,13 @@ export function echoesPeerBotWording(candidate, snapshot) {
   const aTerms = interestTerms([line]);
   for (const peer of recentPeerBots) {
     const pText = String(peer.text || "");
+    if (
+      peer.name &&
+      line.includes(`@${peer.name}`) &&
+      peer.relation !== "direct" &&
+      ZERO_INFO_BOT_PIGGYBACK.test(line)
+    )
+      return true;
     if (!pText || [...replyBareChars(pText)].length < 10) continue;
     if (echoesRecentWording(line, pText)) return true;
     const b4 = grams(pText);
@@ -1022,7 +1032,10 @@ export function unframedCreativeDumpIssues(bubbles, snapshot, decision = {}) {
     ) ||
     /第.{1,4}[章节段].{0,24}(?:觉得|挺|很|特别)/.test(reply) ||
     /(?:新起|刚起|起了)了个?(?:小说|故事|短篇|稿子)的?头/.test(reply) ||
-    /存了\s*\d+\s*字.{0,12}(?:搁着|放着|停着|留着)/.test(reply);
+    /存了\s*\d+\s*字.{0,12}(?:搁着|放着|停着|留着)/.test(reply) ||
+    /(?:结尾停在|空档期就是这章的疑点).{0,28}(?:下一章|下一节|这章)|(?:这章|那章|下一章).{0,16}(?:疑点|伏笔|主线).{0,16}(?:打算从哪|就该去)/.test(
+      reply,
+    );
   const sceneDump =
     /(?:她|他).{0,10}(?:在|把|从|朝|向).{0,36}(?:记|走|看|说|写|推|停|量|拿|放|回).{0,48}(?:那段|觉得|特别|挺|安心|踏实)/.test(
       reply,
@@ -2359,9 +2372,7 @@ const ROOM_HUSH_NEW_ASK =
 function isBareVentHush(text) {
   const raw = String(text || "").trim();
   if (!raw) return false;
-  const bare = raw
-    .replace(/\[提及成员\]|@\S+/g, "")
-    .trim();
+  const bare = raw.replace(/\[提及成员\]|@\S+/g, "").trim();
   if (!bare) return false;
   if ([...bare].length > 8) return false;
   if (/[?？]/.test(raw)) return false;
@@ -2617,14 +2628,33 @@ export function initiativeMonoActivityIssues(bubbles, snapshot, decision = {}) {
   ];
   learnTopicAssociations(history);
   const families = workFamilies(reply);
-  if (!families.length) return [];
-
-  // If a human recently brought up the same work as shared interest, continuing is OK.
-  // Live 2026-10-25/27: 「还在焚化炉？」is pushback/fatigue, NOT an invite to keep reporting.
+  const own = history
+    .filter((m) => m.role === "assistant")
+    .slice(-24)
+    .map((m) => String(m.text || ""));
   const userRecent = history
     .filter((m) => m.role === "user")
     .slice(-16)
     .map((m) => String(m.text || ""));
+
+  // Even when no work title is extracted (e.g. meta-banter 「正主/行行行」 loop),
+  // repeating the same articulated claim/insight across initiative bubbles is mono spam.
+  const anyClaimPrior = own.filter(
+    (t) => t && t !== reply && sameInsightClaim(t, reply),
+  );
+  if (
+    anyClaimPrior.length >= 1 &&
+    !userRecent.some((t) => sameInsightClaim(t, reply))
+  ) {
+    return [
+      "主动开口又在复述同一作品上的同一洞察/主张（短窗内措辞微调连播）；换关心对方、接群里未竟线，或另一件真正不同的事，不要近义循环同一主张。",
+    ];
+  }
+
+  if (!families.length) return [];
+
+  // If a human recently brought up the same work as shared interest, continuing is OK.
+  // Live 2026-10-25/27: 「还在焚化炉？」is pushback/fatigue, NOT an invite to keep reporting.
   const sharedInvite = userRecent.some((t) => {
     if (!families.some((f) => workFamilies(t).includes(f))) return false;
     if (isTopicPushbackLine(t)) return false;
@@ -2632,10 +2662,6 @@ export function initiativeMonoActivityIssues(bubbles, snapshot, decision = {}) {
   });
   if (sharedInvite) return [];
 
-  const own = history
-    .filter((m) => m.role === "assistant")
-    .slice(-24)
-    .map((m) => String(m.text || ""));
   const prior = own.filter(
     (t) =>
       t &&
@@ -2821,11 +2847,14 @@ export function initiativeSoloChainIssues(bubbles, snapshot, decision = {}) {
   ];
 }
 
-
 // Live 2026-10-28 Tokyo: 用户「感觉很像，我看看他的源码」→ 她塞传送门2/卡罗琳洞察。
-// 近窗用户线无该作品族时，把后台阅读洞察当话头 = 话头错位。
+// Live 2026-10-28 Singapore: 群聊拍手女仆/日常，她冷塞「那段定稿我刚回看完了，想给你看看」
+// 或「结尾停在苏晚往本子上写'陈守'两个字，下一章就该去桥那头了」。
+// 近窗用户线无该作品族/无写作锚时，把后台阅读洞察或定稿进度当话头 = 话头错位。
 const INSIGHT_DUMP =
   /概要|资料|笔记|读到|翻.{0,6}(?:笔记|资料|概要)|看.{0,8}(?:概要|资料)|洞察|停笔|进稿|背叛|删除|定稿|回看完|想给你看看|我读|我刚(?:看|翻|读)|补课/;
+const UNFAMILIED_WORK_DUMP =
+  /(?:第\s*[\d一二三四五六七八九十百]+\s*[章节段篇]|那段|那节|那篇|这段)?(?:定稿|初稿|草稿|正文|稿子)?(?:我)?(?:刚)?(?:写完|改完|回看完|整理完)了?.{0,12}(?:想给你看看|发给你看看|给你看看)|(?:结尾停在|空档期就是这章的疑点).{0,28}(?:下一章|下一节|这章)|(?:这章|那章|下一章).{0,16}(?:疑点|伏笔|主线).{0,16}(?:打算从哪|就该去)/;
 
 export function initiativeTopicHijackIssues(bubbles, snapshot, decision = {}) {
   const reply = (bubbles || [])
@@ -2840,9 +2869,11 @@ export function initiativeTopicHijackIssues(bubbles, snapshot, decision = {}) {
   ];
   learnTopicAssociations(history);
   const families = workFamilies(reply);
-  if (!families.length) return [];
+  const unfamiliedDump = UNFAMILIED_WORK_DUMP.test(reply);
+  if (!families.length && !unfamiliedDump) return [];
 
   const dump =
+    unfamiliedDump ||
     SELF_NOTE_DUMP.test(reply) ||
     SELF_PROGRESS.test(reply) ||
     SELF_ACTIVITY_MARK.test(reply) ||
@@ -2852,6 +2883,7 @@ export function initiativeTopicHijackIssues(bubbles, snapshot, decision = {}) {
   // Pure peer care without work dump phrasing — keep.
   if (
     PEER_ANCHOR.test(reply) &&
+    !unfamiliedDump &&
     !SELF_NOTE_DUMP.test(reply) &&
     !SELF_PROGRESS.test(reply) &&
     !INSIGHT_DUMP.test(reply)
@@ -2878,7 +2910,16 @@ export function initiativeTopicHijackIssues(bubbles, snapshot, decision = {}) {
   const peerNamedWork = userRecent.some((t) => {
     if (!t) return false;
     if (isTopicPushbackLine(t)) return false;
-    return families.some((f) => workFamilies(t).includes(f));
+    if (families.length && families.some((f) => workFamilies(t).includes(f)))
+      return true;
+    if (
+      unfamiliedDump &&
+      (WRITING_TOPIC.test(t) ||
+        /定稿|初稿|草稿|第.{1,4}[章节]|写完|给你看|发我看/.test(t) ||
+        termOverlap(reply, t).length >= 2)
+    )
+      return true;
+    return false;
   });
   if (peerNamedWork) return [];
 
@@ -2887,7 +2928,8 @@ export function initiativeTopicHijackIssues(bubbles, snapshot, decision = {}) {
     askedHer &&
     !snapshot.initiative &&
     [...reply].length < 40 &&
-    !INSIGHT_DUMP.test(reply)
+    !INSIGHT_DUMP.test(reply) &&
+    !unfamiliedDump
   )
     return [];
 

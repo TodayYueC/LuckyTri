@@ -403,7 +403,10 @@ export function dialogueContext(snapshot) {
     if (inner.currentLife)
       inner.currentLife = { current: inner.currentLife.current };
     delete inner.justLived;
-    if (self) delete self.livingFor;
+    if (self) {
+      delete self.livingFor;
+      delete self.readLately;
+    }
     if (inner.selfKnown && typeof inner.selfKnown === "object") {
       const { livingFor: _wish, ...rest } = inner.selfKnown;
       inner.selfKnown = rest;
@@ -455,7 +458,10 @@ export function dialogueContext(snapshot) {
     // answered with a reading report or a work-volume question.
     delete inner.currentLife;
     delete inner.justLived;
-    if (self) delete self.livingFor;
+    if (self) {
+      delete self.livingFor;
+      delete self.readLately;
+    }
     if (inner.selfKnown && typeof inner.selfKnown === "object") {
       const { livingFor: _wish, ...rest } = inner.selfKnown;
       inner.selfKnown = rest;
@@ -463,6 +469,14 @@ export function dialogueContext(snapshot) {
   } else if (inner.currentLife) {
     const life = inner.currentLife;
     const askedActivity = activityAskedInBatch(snapshot);
+    const keepTask = (row) =>
+      askedActivity ||
+      recallAsked ||
+      snapshot.initiative ||
+      relevantContext(
+        [{ content: `${row?.title || ""} ${row?.state || ""}` }],
+        { cues, limit: 1, requireOverlap: true },
+      ).length > 0;
     const compact = (row) => ({
       id: row.id,
       title: row.title,
@@ -483,8 +497,8 @@ export function dialogueContext(snapshot) {
     inner.currentLife = {
       ...life,
       current: compactCurrent,
-      pending: (life.pending || []).map(compact),
-      intentions: (life.intentions || []).map(compact),
+      pending: (life.pending || []).filter(keepTask).map(compact),
+      intentions: (life.intentions || []).filter(keepTask).map(compact),
       ...(askedActivity
         ? {}
         : {
@@ -494,6 +508,42 @@ export function dialogueContext(snapshot) {
       worksCoverage:
         "以下是按本轮话题选出的作品片段，不是全部历史；缺少一篇不能证明从未写过或读过。",
     };
+    if (!snapshot.initiative && !askedActivity && !recallAsked) {
+      if (Array.isArray(self?.readLately)) {
+        self.readLately = relevantContext(
+          self.readLately.map((content) => ({
+            content: String(content || ""),
+          })),
+          { cues, limit: 2, requireOverlap: true },
+        ).map((item) => item.content);
+        if (!self.readLately.length) delete self.readLately;
+      }
+      if (
+        inner.selfKnown &&
+        typeof inner.selfKnown === "object" &&
+        inner.selfKnown.livingFor &&
+        !relevantContext([{ content: String(inner.selfKnown.livingFor) }], {
+          cues,
+          limit: 1,
+          requireOverlap: true,
+        }).length
+      ) {
+        const { livingFor: _wish, ...rest } = inner.selfKnown;
+        inner.selfKnown = rest;
+      }
+    }
+  } else if (
+    !snapshot.initiative &&
+    !activityAskedInBatch(snapshot) &&
+    !recallAsked
+  ) {
+    if (Array.isArray(self?.readLately)) {
+      self.readLately = relevantContext(
+        self.readLately.map((content) => ({ content: String(content || "") })),
+        { cues, limit: 2, requireOverlap: true },
+      ).map((item) => item.content);
+      if (!self.readLately.length) delete self.readLately;
+    }
   }
   if (Array.isArray(context.summaries))
     context.summaries = softenRelationDenialSummaries(

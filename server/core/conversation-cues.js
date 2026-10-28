@@ -188,6 +188,21 @@ export function replyFocus(snapshot, decision) {
       instruction:
         "对方只是确认已知内容，话题暂时结束。极短回应即可，不重新描述事情、不追加问题。最多一个气泡。",
     };
+  const bareLatest = String(latest || "")
+    .replace(/\[提及成员\]|@\S+/g, "")
+    .trim();
+  if (
+    !/[?？]/.test(bareLatest) &&
+    (/^(?:傻逼|sb|滚(?:开|蛋|吧|啊)?|有病(?:吧|啊)?|神经病(?:吧|啊)?|脑残|弱智|白痴|智障|去死(?:吧你|吧)?|没有你的事(?:情)?|关你屁事|少管我|谁问你(?:了|啊)?|没人问你|(?:快)?闭嘴(?:吧)?|别说了|不要再说了|别再说了|先别说话|闭麦|sto{2,}p+|stop{2,}|\bstop\b|shut\s*up)[.。!！~～\s]*$/i.test(
+      bareLatest,
+    ) ||
+      /没有你的事(?:情)?|谁问你(?:了|啊)?|没人问你|去死吧你/.test(bareLatest))
+  )
+    return {
+      kind: "hush",
+      instruction:
+        "对方在发泄情绪、骂人或明确叫停/嫌多嘴；用极短的一句收住或直接沉默，不要当成赞同去接着上一轮的面试或旧话题继续往下聊，也不要反唇相讥或元辩解。最多一个气泡。",
+    };
   if (/别给建议|不要建议|让我骂|只想吐槽/.test(latest))
     return {
       kind: "vent",

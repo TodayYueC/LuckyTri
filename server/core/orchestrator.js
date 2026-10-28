@@ -27,6 +27,8 @@ import { invalidateSpeakerNames } from "./speaker-names.js";
 import { demoReply } from "./local-demo.js";
 import { Mind } from "../mind/index.js";
 import { attend, interestTerms } from "../mind/attention.js";
+import { shouldDeferGroupSpeakShare } from "../mind/initiative.js";
+import { isPrivateSession } from "../mind/memory.js";
 import { crisisSignal } from "../mind/guard.js";
 const TRACE_PRUNE_INTERVAL_MS = 3600000;
 const BATCH_LIMIT = 30;
@@ -365,6 +367,33 @@ export class ChatSystem {
         row.thread,
       ))
         held.add(id);
+    const overtalking = (() => {
+      if (!session || isPrivateSession(session)) return false;
+      const recentHour = resolved.filter(
+        (m) =>
+          !m.referenceOnly &&
+          (m.role === "user" || m.role === "assistant") &&
+          Number.isFinite(m.time) &&
+          now - m.time >= 0 &&
+          now - m.time <= 60 * 60000,
+      );
+      if (recentHour.length < 12) return false;
+      let assistantCount = 0;
+      let userCount = 0;
+      for (const m of recentHour) {
+        if (m.role === "assistant") assistantCount++;
+        else userCount++;
+      }
+      return Boolean(
+        shouldDeferGroupSpeakShare({
+          assistantCount,
+          userCount,
+          recentUserTexts: rows
+            .filter((m) => m.role !== "assistant")
+            .map((m) => m.text || ""),
+        }),
+      );
+    })();
     const decision = attend({
       batch: rows,
       unread: seqs.length,
@@ -382,6 +411,7 @@ export class ChatSystem {
           !!this.mind.faces.current(session, now)
         );
       })(),
+      overtalking,
       phase: affect.phase,
       energy: affect.energy,
       interests,

@@ -32,6 +32,11 @@ const CANONICAL_ALIASES = new Map([
   ["老光圈", "portal-fanfic"],
   ["rattmann", "portal-fanfic"],
   ["补课笔记", "portal-fanfic"],
+  ["卡罗琳", "portal-fanfic"],
+  ["caroline", "portal-fanfic"],
+  ["惠特利", "portal-fanfic"],
+  ["wheatley", "portal-fanfic"],
+  ["glados", "portal-fanfic"],
   ["空洞骑士", "hollow-knight"],
   ["守梦者", "hollow-knight"],
   ["赫拉", "hollow-knight"],
@@ -298,7 +303,6 @@ export function sameWorkFamily(a, b, context = null) {
   return left.some((key) => right.includes(key));
 }
 
-
 // Live 2026-10-28/29 Tokyo presence: portal2-caroline 族近义连播——读资料/看概要/翻笔记
 // 反复「惠特利背叛 vs 卡罗琳删除 / 停笔进稿子」。novelty 把新 `r:` 根当成 new_discovery，
 // 但主张指纹相同。结构上用实体+主张词重叠判定同一洞察，而不是堆一句黑名单。
@@ -324,6 +328,12 @@ export function insightClaimStems(text) {
   for (const w of raw.match(/[A-Za-z][A-Za-z0-9]{2,}/g) || []) {
     stems.add(w.toLowerCase());
   }
+  for (const m of raw.matchAll(/[「『“"]([^」』”"\n]{2,10})[」』”"]/g)) {
+    const quoted = m[1].trim();
+    if (quoted.length >= 2 && !GENERIC_STEMS.has(quoted)) {
+      stems.add(`quote:${quoted}`);
+    }
+  }
   // Keep whole multi-char Chinese name/entity runs (not only bigrams) when distinctive.
   for (const run of raw.match(/[\u4e00-\u9fff]{2,6}/g) || []) {
     if (GENERIC_STEMS.has(run)) continue;
@@ -344,6 +354,7 @@ export function sameInsightClaim(a, b) {
   const namedOrAction = shared.filter(
     (s) =>
       CLAIM_ACTION_STEMS.has(s) ||
+      s.startsWith("quote:") ||
       s.length >= 3 ||
       /^[a-z][a-z0-9]{2,}$/i.test(s),
   );
@@ -477,7 +488,9 @@ export function classifyTopicRelation(previous, candidate, options = {}) {
     }
   }
 
-  if (!themeOverlap && !workOverlap && !subjectOverlap) {
+  const claimSame = sameInsightClaim(prevText, candText);
+
+  if (!themeOverlap && !workOverlap && !subjectOverlap && !claimSame) {
     return {
       sameTopic: false,
       relation: "unrelated",
@@ -570,8 +583,7 @@ export function classifyTopicRelation(previous, candidate, options = {}) {
 
   // Same articulated insight (entity+claim fingerprint) is a restatement even when a
   // fresh reading root `r:` appeared — paraphrasing 惠特利背叛/卡罗琳删除 is not a discovery.
-  const claimSame = sameInsightClaim(prevText, candText);
-  if (claimSame && (workOverlap || themeOverlap || subjectOverlap)) {
+  if (claimSame) {
     return {
       sameTopic: true,
       relation: "repeat_restatement",

@@ -8,6 +8,8 @@ import {
   sessionSpeakShareIssues,
   ignoredRoomHushIssues,
   recentRoomHushHoldIssues,
+  unframedCreativeDumpIssues,
+  echoesPeerBotWording,
 } from "../server/core/conversation-grounding.js";
 import {
   classifyTopicRelation,
@@ -16,6 +18,14 @@ import {
   workFamilies,
 } from "../server/mind/novelty.js";
 import { shouldDeferGroupSpeakShare } from "../server/mind/initiative.js";
+import { dialogueContext } from "../server/core/dialogue-context.js";
+import {
+  intentHint,
+  messageCues,
+  priorityCues,
+} from "../server/core/understanding.js";
+import { replyFocus } from "../server/core/conversation-cues.js";
+import { attend } from "../server/mind/attention.js";
 
 // --- A: same-insight claim fingerprint / novelty ---
 
@@ -34,10 +44,7 @@ test("A1: sameInsightClaim 卡罗琳/惠特利/删除/背叛 近义 → true", (
 
 test("A2: sameInsightClaim 不同主张 → false", () => {
   assert.equal(
-    sameInsightClaim(
-      PORTAL_READ_A,
-      "今晚读空洞骑士，守梦者那段光影挺好看",
-    ),
+    sameInsightClaim(PORTAL_READ_A, "今晚读空洞骑士，守梦者那段光影挺好看"),
     false,
   );
 });
@@ -75,10 +82,13 @@ test("A4: classifyTopicRelation 同作品但新主张可走 new_discovery 路径
   );
   // May be stagnant_progress or new_discovery depending on themeOverlap;
   // must NOT falsely claim sameInsightClaim-driven restatement without shared stems.
-  assert.equal(sameInsightClaim(
-    "今晚读传送门2第1段，光圈实验室走廊挺空",
-    "传送门2里刚看到一个全新的机关命名法，跟以前笔记无关",
-  ), false);
+  assert.equal(
+    sameInsightClaim(
+      "今晚读传送门2第1段，光圈实验室走廊挺空",
+      "传送门2里刚看到一个全新的机关命名法，跟以前笔记无关",
+    ),
+    false,
+  );
   assert.ok(rel.sameTopic);
 });
 
@@ -98,7 +108,10 @@ test("A5: mono 同洞察近义（无排程词）仍拦", () => {
     conversation: { gapMinutes: 60 },
   };
   const hit = initiativeMonoActivityIssues([PORTAL_READ_B], snapshot);
-  assert.ok(hit.some((x) => /同一洞察|同一主张|同一作品|循环/.test(x)), hit.join(";"));
+  assert.ok(
+    hit.some((x) => /同一洞察|同一主张|同一作品|循环/.test(x)),
+    hit.join(";"),
+  );
 });
 
 // --- B: cold open 定稿/回看完了/想给你看看 ---
@@ -108,20 +121,23 @@ test("B1: 定稿回看完了想给你看看 initiative → selfCentered 拦", ()
     ["焚化炉那段定稿我刚回看完了，想给你看看。"],
     { initiative: true, messages: [], batchIds: [] },
   );
-  assert.ok(hit.some((x) => /自己先开口|活动进度|近况|未竟/.test(x)), hit.join(";"));
+  assert.ok(
+    hit.some((x) => /自己先开口|活动进度|近况|未竟/.test(x)),
+    hit.join(";"),
+  );
 });
 
 test("B2: 第五章写完了想给你看看 → 拦", () => {
-  const hit = selfCenteredOpenIssues(
-    ["第五章写完了，想给你看看。"],
-    {
-      initiative: true,
-      messages: [],
-      batchIds: [],
-      conversation: { gapMinutes: 90 },
-    },
+  const hit = selfCenteredOpenIssues(["第五章写完了，想给你看看。"], {
+    initiative: true,
+    messages: [],
+    batchIds: [],
+    conversation: { gapMinutes: 90 },
+  });
+  assert.ok(
+    hit.some((x) => /自己先开口|活动进度|近况|未竟/.test(x)),
+    hit.join(";"),
   );
-  assert.ok(hit.some((x) => /自己先开口|活动进度|近况|未竟/.test(x)), hit.join(";"));
 });
 
 // --- C: topic hijack ---
@@ -151,7 +167,10 @@ test("C1: 源码线 → 传送门2卡罗琳洞察 = hijack", () => {
     ],
     snapshot,
   );
-  assert.ok(hit.some((x) => /话头|阅读洞察|共享锚/.test(x)), hit.join(";"));
+  assert.ok(
+    hit.some((x) => /话头|阅读洞察|共享锚/.test(x)),
+    hit.join(";"),
+  );
 });
 
 test("C2: 拍手女仆 → 焚化炉定稿 = hijack", () => {
@@ -171,7 +190,10 @@ test("C2: 拍手女仆 → 焚化炉定稿 = hijack", () => {
     ["焚化炉那段定稿我刚回看完了，想给你看看。"],
     snapshot,
   );
-  assert.ok(hit.some((x) => /话头|阅读洞察|共享锚/.test(x)), hit.join(";"));
+  assert.ok(
+    hit.some((x) => /话头|阅读洞察|共享锚/.test(x)),
+    hit.join(";"),
+  );
 });
 
 test("C3: 对方刚提传送门 → 不误杀", () => {
@@ -217,7 +239,10 @@ test("C4: groundingIssues 串起 hijack", () => {
     snapshot,
     { choice: "speak" },
   );
-  assert.ok(hit.some((x) => /话头|阅读洞察|共享锚/.test(x)), hit.join(";"));
+  assert.ok(
+    hit.some((x) => /话头|阅读洞察|共享锚/.test(x)),
+    hit.join(";"),
+  );
 });
 
 // --- D: group volume density ---
@@ -305,7 +330,10 @@ test("D5: sessionSpeakShareIssues 群高占比非点名 → 拦", () => {
     now,
   };
   const hit = sessionSpeakShareIssues(["Suno那个也能去水印吗"], snapshot);
-  assert.ok(hit.some((x) => /占比|听听别人|在水/.test(x)), hit.join(";"));
+  assert.ok(
+    hit.some((x) => /占比|听听别人|在水/.test(x)),
+    hit.join(";"),
+  );
 });
 
 test("D6: sessionSpeakShareIssues 被点名关心 → 豁免", () => {
@@ -332,10 +360,7 @@ test("D6: sessionSpeakShareIssues 被点名关心 → 豁免", () => {
     messages,
     now,
   };
-  assert.deepEqual(
-    sessionSpeakShareIssues(["还行，你呢"], snapshot),
-    [],
-  );
+  assert.deepEqual(sessionSpeakShareIssues(["还行，你呢"], snapshot), []);
 });
 
 // --- E: vent hush ---
@@ -358,11 +383,11 @@ test("E1: 傻逼 → 续旧面试线 = hush", () => {
       },
     ],
   };
-  const hit = ignoredRoomHushIssues(
-    ["好好好，明天面完回来报喜"],
-    snapshot,
+  const hit = ignoredRoomHushIssues(["好好好，明天面完回来报喜"], snapshot);
+  assert.ok(
+    hit.some((x) => /嘘停|收住|旧线/.test(x)),
+    hit.join(";"),
   );
-  assert.ok(hit.some((x) => /嘘停|收住|旧线/.test(x)), hit.join(";"));
 });
 
 test("E2: 滚 → hush hold 窗内续聊拦", () => {
@@ -383,7 +408,10 @@ test("E2: 滚 → hush hold 窗内续聊拦", () => {
     ["好好好，明天面完回来跟你说结果"],
     snapshot,
   );
-  assert.ok(hit.some((x) => /嘘停|短收|旧线/.test(x)), hit.join(";"));
+  assert.ok(
+    hit.some((x) => /嘘停|短收|旧线/.test(x)),
+    hit.join(";"),
+  );
 });
 
 test("E3: 长串互怼玩笑不误杀", () => {
@@ -398,10 +426,7 @@ test("E3: 长串互怼玩笑不误杀", () => {
       },
     ],
   };
-  assert.deepEqual(
-    ignoredRoomHushIssues(["那我继续说刚才那事"], snapshot),
-    [],
-  );
+  assert.deepEqual(ignoredRoomHushIssues(["那我继续说刚才那事"], snapshot), []);
 });
 
 test("E4: 带问号的短句不当时 vent hush", () => {
@@ -416,13 +441,205 @@ test("E4: 带问号的短句不当时 vent hush", () => {
       },
     ],
   };
-  assert.deepEqual(
-    ignoredRoomHushIssues(["诶你骂谁呢"], snapshot),
-    [],
-  );
+  assert.deepEqual(ignoredRoomHushIssues(["诶你骂谁呢"], snapshot), []);
 });
 
 test("smoke: sameWorkFamily portal still holds", () => {
   assert.ok(sameWorkFamily("传送门2", "焚化炉"));
   assert.ok(workFamilies("传送门2卡罗琳").includes("portal-fanfic"));
+});
+
+// --- F: Post-r57 structural understanding & dialogue-context root-cause audit ---
+
+test("F1: dialogueContext 在非作品问询轮裁剪无关 readLately 与 pending/intentions", () => {
+  const snapshot = {
+    sessionId: "onebot:group:1001",
+    batchIds: [10],
+    messages: [
+      {
+        id: 10,
+        role: "user",
+        speaker: "u1",
+        name: "YueC",
+        text: "感觉很像，我看看他的源码",
+        time: 1_700_000_000_000,
+      },
+    ],
+    self: {
+      livingFor: "把焚化炉那段定稿写完",
+      readLately: ["读过《传送门2》第 12 段：惠特利是背叛，卡罗琳是被删掉"],
+    },
+    inner: {
+      selfKnown: {
+        livingFor: "把焚化炉那段定稿写完",
+      },
+      currentLife: {
+        current: {
+          id: "t1",
+          activity: "read",
+          label: "读资料",
+          title: "传送门2",
+          state: "读到第12段",
+        },
+        pending: [
+          { id: "p1", title: "焚化炉那段定稿", state: "待回看" },
+          { id: "p2", title: "看看源码结构", state: "刚记下" },
+        ],
+        intentions: [{ id: "i1", title: "把第五章写完", state: "排今晚" }],
+        works: [],
+      },
+    },
+  };
+  const ctx = dialogueContext(snapshot);
+  assert.equal(ctx.self.readLately, undefined);
+  assert.equal(ctx.inner.selfKnown.livingFor, undefined);
+  assert.deepEqual(
+    ctx.inner.currentLife.pending.map((p) => p.id),
+    ["p2"],
+  );
+  assert.deepEqual(ctx.inner.currentLife.intentions, []);
+});
+
+test("F2: 卡罗琳无书名变体与「正主/行行行」4连复读均被 sameInsightClaim + mono 拦截", () => {
+  const carolineNoTitleA =
+    "背叛好歹还有得吵，删除连反驳的机会都不给，安静得多。难怪我几篇笔记每次停笔都停在卡罗琳那儿，先记着，说不定能进稿子";
+  const carolineNoTitleB =
+    "刚翻笔记又停在卡罗琳那儿：背叛还能吵，被删除连反驳机会都没，先记着进稿子";
+  assert.ok(workFamilies(carolineNoTitleA).includes("portal-fanfic"));
+  assert.ok(sameInsightClaim(carolineNoTitleA, carolineNoTitleB));
+
+  const zhengzhuA =
+    "@LuckyTri 上一句还说想叫得先哄好正主，下一句就「行行行」了，我这正主被卖得也太快了（";
+  const zhengzhuB =
+    "@LuckyTri 上一句还帮我护短说得先哄好正主，下一句就「行行行」松口了，我这正主当得也太没排面了（";
+  const zhengzhuC =
+    "@LuckyTri 上一句还拿我当挡箭牌说得先哄好正主，下一句自己先「行行行」投降了，合着我就只配活在前半句里是吧";
+  assert.ok(sameInsightClaim(zhengzhuA, zhengzhuB));
+  assert.ok(sameInsightClaim(zhengzhuB, zhengzhuC));
+
+  const rel = classifyTopicRelation(
+    { content: zhengzhuA, said: zhengzhuA },
+    { content: zhengzhuB, words: [zhengzhuB] },
+    { now: Date.now() },
+  );
+  assert.equal(rel.relation, "repeat_restatement");
+  assert.equal(rel.suppress, true);
+
+  const monoIssues = initiativeMonoActivityIssues([zhengzhuB], {
+    initiative: true,
+    batchIds: [],
+    messages: [{ id: 1, role: "assistant", text: zhengzhuA, time: 1000 }],
+    conversation: { gapMinutes: 60 },
+  });
+  assert.ok(monoIssues.some((x) => /同一洞察|同一主张/.test(x)));
+});
+
+test("F3: 无书名定稿/章节推进在无关群聊话头下被 initiativeTopicHijackIssues 与 unframedCreativeDumpIssues 拦截", () => {
+  const snapshot = {
+    batchIds: [1],
+    messages: [
+      {
+        id: 1,
+        role: "user",
+        speaker: "u1",
+        text: "这个拍手女仆好可爱",
+        time: 1_700_000_000_000,
+      },
+    ],
+  };
+  const hit1 = initiativeTopicHijackIssues(
+    ["那段定稿我刚回看完了，想给你看看。"],
+    snapshot,
+  );
+  assert.ok(hit1.some((x) => /话头|阅读洞察/.test(x)));
+
+  const hit2 = initiativeTopicHijackIssues(
+    ["结尾停在苏晚往本子上写“陈守”两个字，下一章就该去桥那头了。"],
+    snapshot,
+  );
+  assert.ok(hit2.some((x) => /话头|阅读洞察/.test(x)));
+
+  const hit3 = unframedCreativeDumpIssues(
+    ["结尾停在苏晚往本子上写“陈守”两个字，下一章就该去桥那头了。"],
+    snapshot,
+  );
+  assert.ok(hit3.some((x) => /没有在谈写作|作品观感/.test(x)));
+});
+
+test("F4: 上游理解（intentHint / priorityCues / replyFocus）识别「傻逼 / 滚 / 没有你的事情」叫停与发泄", () => {
+  assert.equal(intentHint("傻逼"), "correction");
+  assert.equal(intentHint("没有你的事情"), "correction");
+  assert.ok(messageCues("傻逼").tone.includes("complaining"));
+
+  const messages = [
+    { id: 1, role: "assistant", text: "明天面试加油", time: 1000 },
+    { id: 2, role: "user", speaker: "u1", name: "A", text: "傻逼", time: 2000 },
+  ];
+  const cues = priorityCues(messages, [2], []);
+  assert.equal(cues.length, 1);
+  assert.equal(cues[0].intentHint, "correction");
+  assert.match(cues[0].why, /嘘停|收住/);
+
+  const focus = replyFocus(
+    { messages, batchIds: [2] },
+    { targetMessageIds: [2] },
+  );
+  assert.equal(focus.kind, "hush");
+  assert.match(focus.instruction, /不要当成赞同|旧话题/);
+});
+
+test("F5: attend 在群高频占比（overtalking）时抬高门槛并取消 belongs 自动保底，点名与危机仍放行", () => {
+  const normal = attend({
+    batch: [{ id: 1, role: "user", userId: "u1", text: "今天天气不错" }],
+    belongs: true,
+    overtalking: false,
+  });
+  assert.equal(normal.look, true);
+
+  const throttled = attend({
+    batch: [{ id: 1, role: "user", userId: "u1", text: "今天天气不错" }],
+    belongs: true,
+    overtalking: true,
+  });
+  assert.equal(throttled.look, false);
+  assert.match(throttled.reason, /说得够多了/);
+
+  const direct = attend({
+    batch: [
+      {
+        id: 1,
+        role: "user",
+        userId: "u1",
+        relation: "direct",
+        text: "@Rina 你觉得呢",
+      },
+    ],
+    belongs: true,
+    overtalking: true,
+  });
+  assert.equal(direct.look, true);
+});
+
+test("F6: echoesPeerBotWording 拦截跨 bot 未被点名时的零信息附和（「我刚也在催 / 我也刚在问 / 我也还没看」）", () => {
+  const snapshot = {
+    batchIds: [1],
+    messages: [
+      {
+        id: 1,
+        role: "user",
+        speaker: "bot2",
+        name: "LuckyTri",
+        text: "药到了吱一声",
+        time: 1_700_000_000_000,
+      },
+    ],
+  };
+  assert.equal(
+    echoesPeerBotWording("@LuckyTri 我刚也在催了，她还没回", snapshot),
+    true,
+  );
+  assert.equal(
+    echoesPeerBotWording("@LuckyTri 我哪知道，我也刚在问他", snapshot),
+    true,
+  );
 });
