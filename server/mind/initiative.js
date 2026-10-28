@@ -2,7 +2,7 @@ import { HOUR, parse, text } from "./util.js";
 import { identityAliases } from "../core/persona-manager.js";
 import { isPrivateSession } from "./memory.js";
 import { parseSessionKey, isGroupSession } from "../channels/session-key.js";
-import { sameRecentTheme } from "./novelty.js";
+import { sameRecentTheme, sameWorkFamily } from "./novelty.js";
 import { initiativeAudience, originSummary } from "./conversation-origin.js";
 
 // A chance to start something is different from a request to answer someone.
@@ -43,28 +43,37 @@ export class Initiative {
     const { mind } = this.life;
     const messages = this.db
       .prepare(
-        "SELECT seq,time,role,payload FROM core_events WHERE session_id=? AND seq NOT IN (SELECT seq FROM mind_unlived) AND COALESCE(json_extract(payload,'$.simulated'),0)=0 ORDER BY seq DESC LIMIT 6",
+        "SELECT seq,time,role,payload FROM core_events WHERE session_id=? AND seq NOT IN (SELECT seq FROM mind_unlived) AND COALESCE(json_extract(payload,'$.simulated'),0)=0 ORDER BY seq DESC LIMIT 8",
       )
       .all(session)
       .reverse();
     const last = messages.at(-1);
     const lastUser = this.db
       .prepare(
-        "SELECT time t FROM core_events WHERE session_id=? AND role='user' AND seq NOT IN (SELECT seq FROM mind_unlived) AND COALESCE(json_extract(payload,'$.simulated'),0)=0 ORDER BY seq DESC LIMIT 1",
+        "SELECT time t,payload FROM core_events WHERE session_id=? AND role='user' AND seq NOT IN (SELECT seq FROM mind_unlived) AND COALESCE(json_extract(payload,'$.simulated'),0)=0 ORDER BY seq DESC LIMIT 1",
       )
-      .get(session)?.t;
+      .get(session);
     const sent = this.lastSent(session);
+    const awaitingReply = !!(sent && (!lastUser?.t || lastUser.t <= sent));
+    const reciprocity = this.reciprocity(session, messages, now);
+    const seeds = this.contactSeeds(session, now);
     return {
       session,
       quietMinutes: last
         ? Math.max(0, Math.floor((now - last.time) / 60000))
         : null,
-      sinceUserMinutes: lastUser
-        ? Math.max(0, Math.floor((now - lastUser) / 60000))
+      sinceUserMinutes: lastUser?.t
+        ? Math.max(0, Math.floor((now - lastUser.t) / 60000))
         : null,
       lastInitiatedAt: sent || null,
-      awaitingReply: !!(sent && (!lastUser || lastUser <= sent)),
-      recent: messages.map((m) => {
+      awaitingReply,
+      ...(reciprocity.soloStreak > 0 ||
+      reciprocity.pushedBack ||
+      reciprocity.lukewarm
+        ? { reciprocity }
+        : {}),
+      ...(seeds.length ? { seeds } : {}),
+      recent: messages.slice(-6).map((m) => {
         const p = parse(m.payload, {});
         return {
           ref: `m:${m.seq}`,
@@ -96,6 +105,94 @@ export class Initiative {
           established: row.status === "active",
         })),
     };
+  }
+  reciprocity(session, messages = null, now = this.life.now()) {
+    const rows =
+      messages ||
+      this.db
+        .prepare(
+          "SELECT seq,time,role,payload FROM core_events WHERE session_id=? AND seq NOT IN (SELECT seq FROM mind_unlived) AND COALESCE(json_extract(payload,'$.simulated'),0)=0 ORDER BY seq DESC LIMIT 12",
+        )
+        .all(session)
+        .reverse();
+    let soloStreak = 0;
+    let lukewarm = false;
+    let pushedBack = false;
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const m = rows[i];
+      const words = String(parse(m.payload, {}).text || "").trim();
+      if (m.role === "user") {
+        if (
+          now - m.time <= 24 * HOUR &&
+          /还在.{0,16}(?:焚化炉|传送门|Portal|三格|补课|节拍|笔记)|怎么又(?:是|在)|别(?:再)?(?:说|播|报)|听腻了|换(?:个|点)话题|总是在说你自己|多关心关心我/i.test(
+            words,
+          )
+        )
+          pushedBack = true;
+        if (
+          /^(?:嗯+|哦+|好(?:的|吧)?|行|对|知道了|收到|ok)+[.。!！?？~～]*$/i.test(
+            words,
+          )
+        ) {
+          lukewarm = true;
+          continue;
+        }
+        break;
+      }
+      if (m.role === "assistant" && now - m.time <= 12 * HOUR) soloStreak++;
+    }
+    return { soloStreak, lukewarm, pushedBack };
+  }
+  contactSeeds(session, now = this.life.now()) {
+    const { mind } = this.life;
+    const seeds = [];
+    let peerId = "";
+    try {
+      const parsed = parseSessionKey(session);
+      if (parsed.kind === "private") peerId = String(parsed.nativeId);
+    } catch {}
+    for (const ep of mind.episodes.due(now, 4)) {
+      const who = parse(ep.participants, []).map(String);
+      if (
+        mind.episodes.visible(ep, session) &&
+        (ep.session_id === session || (peerId && who.includes(peerId)))
+      )
+        seeds.push({
+          kind: "episode_followup",
+          ref: `e:${ep.id}`,
+          title: ep.title,
+          summary: text(ep.outcome || ep.content, 120),
+        });
+    }
+    for (const a of mind.anticipations.upcoming({
+      now,
+      people: peerId ? [peerId] : [],
+      session,
+      limit: 3,
+    }))
+      seeds.push({
+        kind: "anticipation",
+        ref: `a:${a.id}`,
+        summary: text(a.text, 120),
+      });
+    if (peerId) {
+      const bond = mind.bonds.person(peerId, now, { room: session });
+      if (
+        bond &&
+        bond.closeness >= 0.35 &&
+        (bond.awayDays >= 3 || bond.absentDays >= 3)
+      )
+        seeds.push({
+          kind: "relational_care",
+          who: bond.name,
+          feel: bond.feel,
+          summary:
+            bond.awayDays >= 3
+              ? `好几天没见到${bond.name}了`
+              : `和${bond.name}有一阵没好好聊了`,
+        });
+    }
+    return seeds.slice(0, 4);
   }
   contacts(now = this.life.now(), { ready = false, limit = 5 } = {}) {
     const tried = this.life.repo.config("presence", {});
@@ -173,15 +270,31 @@ export class Initiative {
       )
         ? 0.5
         : 0;
+      const seedFit = (contact.seeds || []).some((s) =>
+        sameRecentTheme(s.summary || s.title || "", note.words?.join("\n")),
+      )
+        ? 1.5
+        : contact.seeds?.length
+          ? 0.35
+          : 0;
+      const rec = contact.reciprocity || {};
+      const penalty =
+        (contact.awaitingReply ? 0.5 : 0) +
+        (rec.soloStreak >= 2 ? 2.0 : rec.soloStreak === 1 ? 0.6 : 0) +
+        (rec.pushedBack ? 2.5 : 0) +
+        (contact.kind === "group" && !rooted && !fit && kind === "either"
+          ? 1.2
+          : 0);
       return (
         rooted +
         fit +
+        seedFit +
         closeness * 2 +
         Number(bond?.relationalWeight || 0) * 2 +
         familiarity +
         Math.min(5, talked) * 0.08 -
         tension * 2 -
-        (contact.awaitingReply ? 0.35 : 0)
+        penalty
       );
     };
     return candidates
@@ -353,7 +466,52 @@ export class Initiative {
     const interval = settings.proactiveIntervalHours * HOUR;
     if (sent && now - sent < interval)
       return { reason: "刚主动说过，愿望仍保留", retryAt: sent + interval };
+    const unanswered = this.unansweredInitiatives(session, now);
+    if (unanswered >= 2)
+      return {
+        reason: "已经连续主动说过两次，等对方回应后再联系",
+        retryAt: now + 6 * HOUR,
+      };
     return null;
+  }
+  unansweredInitiatives(session, now = this.life.now()) {
+    const userRows = this.db
+      .prepare(
+        "SELECT time,payload FROM core_events WHERE session_id=? AND role='user' AND time<=? AND seq NOT IN (SELECT seq FROM mind_unlived) AND COALESCE(json_extract(payload,'$.simulated'),0)=0 ORDER BY seq DESC LIMIT 8",
+      )
+      .all(session, now);
+    let sinceTime = now - 12 * HOUR;
+    for (const row of userRows) {
+      const words = String(parse(row.payload, {}).text || "").trim();
+      if (
+        /^(?:嗯+|哦+|好(?:的|吧)?|行|对|知道了|收到|ok)+[.。!！?？~～]*$/i.test(
+          words,
+        )
+      )
+        continue;
+      sinceTime = Math.max(sinceTime, row.time);
+      break;
+    }
+    return this.db
+      .prepare(
+        "SELECT COUNT(DISTINCT o.trace_id) n FROM core_outbox o JOIN core_traces tr ON tr.id=o.trace_id WHERE o.session_id=? AND o.time>? AND o.time<=? AND o.status IN ('sending','confirmed','uncertain') AND json_extract(tr.data,'$.path') IN ('outreach','presence')",
+      )
+      .get(session, sinceTime, now).n;
+  }
+  pushedBackOnTopic(thought, session, now = this.life.now()) {
+    const rec = this.reciprocity(session, null, now);
+    if (!rec.pushedBack) return false;
+    const candidate = `${thought?.content || ""} ${thought?.outreach || ""}`;
+    const ownRecent = this.db
+      .prepare(
+        "SELECT payload FROM core_events WHERE session_id=? AND role='assistant' AND time>=? AND time<=? ORDER BY seq DESC LIMIT 8",
+      )
+      .all(session, now - 24 * HOUR, now)
+      .map((r) => String(parse(r.payload, {}).text || ""));
+    return ownRecent.some(
+      (line) =>
+        sameWorkFamily(line, candidate) || sameRecentTheme(line, candidate),
+    );
   }
 }
 

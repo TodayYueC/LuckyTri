@@ -449,6 +449,9 @@ export class Tasks {
         reason: text(reason, 240),
         focusMinutes: durationMinutes,
         outcome: task.checkpoint.schedule?.outcome || "",
+        rescheduledCount: task.checkpoint.schedule?.chosenAt
+          ? (task.checkpoint.schedule.rescheduledCount || 0) + 1
+          : 0,
       },
       ...(topic ? { topic: text(topic, 80) } : {}),
     };
