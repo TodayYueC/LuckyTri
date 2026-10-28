@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { deflateRawSync, deflateSync } from "node:zlib";
 import {
   groundingIssues,
@@ -14,17 +13,10 @@ import {
   extractDocxText,
   extractText,
   formatPerceived,
+  hasPdftotext,
+  probePdftotext,
 } from "../server/core/file-text.js";
 import { speechGlosses } from "../server/core/understanding.js";
-
-function hasPdftotext() {
-  try {
-    execFileSync("pdftotext", ["-v"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 // Minimal PDF with a text stream that pdftotext can read (uncompressed).
 function tinyTextPdf(body = "Hello LuckyTri excerpt for round36") {
@@ -224,9 +216,29 @@ test("F1: pdftotext 可选增强（有则读出字；无则跳过）", async () 
   assert.match(note, /摘录/);
 });
 
-test("F1b: 非 PDF / 坏缓冲 → pdftotext 返回 null", async () => {
+test("F1b: 非 PDF / 坏缓冲 → pdftotext 返回 null，且 Windows 非零退出码探测一致", async () => {
   assert.equal(await extractPdfWithPdfToText(Buffer.from("not a pdf")), null);
   assert.equal(await extractPdfWithPdfToText(null), null);
+  // Windows Xpdf/Poppler `pdftotext -v` exits with status 99 and version banner on stderr
+  assert.equal(
+    probePdftotext(() => {
+      const err = new Error("Command failed: pdftotext -v");
+      err.status = 99;
+      err.stderr = Buffer.from(
+        "pdftotext version 24.02.0\nCopyright 2005-2024 The Poppler Developers",
+      );
+      throw err;
+    }),
+    true,
+  );
+  assert.equal(
+    probePdftotext(() => {
+      const err = new Error("spawn pdftotext ENOENT");
+      err.code = "ENOENT";
+      throw err;
+    }),
+    false,
+  );
 });
 
 test("F1c: 纯 JS extractPdfText 对假 PDF 仍安全", () => {

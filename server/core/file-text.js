@@ -1,7 +1,7 @@
 // Local / fetched text-like and light office attachments → short perceived notes.
 // Images stay with vision. PDF/DOCX use pure JS (no extra npm deps); failures
 // stay unreadable so she does not invent contents.
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { lstat, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -203,12 +203,34 @@ function zipReadFile(buf, wanted) {
   return null;
 }
 
+// Probe whether `pdftotext` is available on PATH. Some Windows builds (Xpdf /
+// Poppler / MiKTeX) print version info to stderr and exit with status 99 or 1
+// on `-v`, so a non-ENOENT exit that outputs version text still means present.
+export function probePdftotext(runner = execFileSync) {
+  try {
+    runner("pdftotext", ["-v"], { stdio: "pipe", timeout: 3000 });
+    return true;
+  } catch (error) {
+    if (!error || error.code === "ENOENT" || error.code === "EACCES")
+      return false;
+    const out = `${String(error.stdout || "")}\n${String(error.stderr || "")}`;
+    return /pdftotext|poppler|xpdf|glyph|copyright/i.test(out);
+  }
+}
+
+let cachedHasPdftotext = null;
+export function hasPdftotext() {
+  if (cachedHasPdftotext === null) cachedHasPdftotext = probePdftotext();
+  return cachedHasPdftotext;
+}
+
 // Optional system fallback when pure JS yields nothing / scanned. No new npm
 // deps; skips quietly if `pdftotext` is missing from PATH. Not OCR.
 export async function extractPdfWithPdfToText(raw, { timeoutMs = 8000 } = {}) {
   const buf = asBuffer(raw);
   if (!buf?.length || buf.subarray(0, 5).toString("latin1") !== "%PDF-")
     return null;
+  if (!hasPdftotext()) return null;
   let dir;
   try {
     dir = await mkdtemp(join(tmpdir(), "luckytri-pdf-"));
