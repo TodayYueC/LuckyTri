@@ -90,6 +90,7 @@ export default {
   "独处、日记与夜里的记录 · {length}":
     "Time alone, diary and night records · {length}",
   未调用模型: "No model was called",
+  "连续 {count} 次": "{count} times in a row",
   "安静本身不会留下记录；TA 真正独处、写日记或在夜里整理时才会记下。":
     "Quiet itself leaves no record; it is noted only when TA actually spends time alone, writes a diary, or sorts things at night.",
 } as Record<string, string>;

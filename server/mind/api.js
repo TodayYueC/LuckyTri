@@ -6,6 +6,7 @@ import { agoLabel, elapsedLabel, JUST_NOW } from "./clock.js";
 import { diffSnapshots } from "./index.js";
 import { SELF_KINDS } from "./self.js";
 import { THOUGHT_KINDS } from "./thoughts.js";
+import { aftermathOf, describeAftermath } from "./aftermath.js";
 import { dayKey, parse, text } from "./util.js";
 import {
   displayNames,
@@ -292,7 +293,9 @@ export function mountMind(app, chat, life) {
         .prepare(
           "SELECT * FROM mind_choices WHERE created>=? AND created<=? ORDER BY created DESC LIMIT 80",
         )
-        .all(start, now))
+        .all(start, now)) {
+        const after = c.after ? parse(c.after, null) : aftermathOf(db, c, now);
+        const aftermathText = after ? describeAftermath(after) : "";
         items.push({
           type: "choice",
           time: c.created,
@@ -300,8 +303,10 @@ export function mountMind(app, chat, life) {
           reason: c.reason,
           appraisal: c.appraisal,
           occasion: c.occasion,
+          ...(aftermathText ? { aftermath: aftermathText } : {}),
           ...where(c.session_id),
         });
+      }
       for (const a of db
         .prepare(
           "SELECT * FROM mind_affect WHERE created>=? AND created<=? ORDER BY created DESC LIMIT 60",
@@ -320,14 +325,17 @@ export function mountMind(app, chat, life) {
         .prepare(
           "SELECT * FROM mind_runs WHERE started>=? AND started<=? AND NOT (kind='activity' AND status IN ('reading','engaged')) ORDER BY started DESC LIMIT 30",
         )
-        .all(start, now))
+        .all(start, now)) {
+        const sum = parse(r.summary, null);
         items.push({
           type: "run",
           time: r.started,
           kind: r.kind,
           status: r.status,
           reason: r.reason,
+          ...(sum?.category ? { category: sum.category } : {}),
         });
+      }
       for (const t of db
         .prepare(
           "SELECT session_id,time,json_extract(data,'$.reason') reason FROM core_traces WHERE status='glanced' AND time>=? AND time<=? ORDER BY time DESC LIMIT 40",
@@ -606,6 +614,8 @@ export function mountMind(app, chat, life) {
         readings: mind.reading.recent({ limit: 30 }),
         unread: mind.reading.unreadCount(),
         runs: life.runs(60),
+        decisions: life.decisions({ limit: 30, now }),
+        arbiter: life.arbiterStatus(now),
       });
     }),
   );

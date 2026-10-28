@@ -130,6 +130,7 @@ export function mountTime(app, life) {
         today: time.today(),
         agenda: time.agenda.view(life.now()),
         care: life.ownDay.status(),
+        arbiter: life.arbiterStatus(life.now()),
         next: time.tasks
           .ready()
           .slice(0, 5)

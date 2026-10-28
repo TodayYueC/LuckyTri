@@ -143,6 +143,12 @@ export function externalEvidence(db, sources, before) {
           "SELECT 1 FROM mind_readings WHERE chunk_id=? AND created<=? LIMIT 1",
         )
         .get(id, before);
+    if (ref.startsWith("o:"))
+      return !!db
+        .prepare(
+          "SELECT 1 FROM mind_observations WHERE id=? AND revoked=0 AND created<=? LIMIT 1",
+        )
+        .get(id, before);
     return false;
   });
 }

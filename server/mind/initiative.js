@@ -2,8 +2,16 @@ import { HOUR, parse, text } from "./util.js";
 import { identityAliases } from "../core/persona-manager.js";
 import { isPrivateSession } from "./memory.js";
 import { parseSessionKey, isGroupSession } from "../channels/session-key.js";
-import { sameRecentTheme, sameWorkFamily } from "./novelty.js";
+import {
+  classifyTopicRelation,
+  learnTopicAssociations,
+  sameRecentTheme,
+  sameWorkFamily,
+  workFamilies,
+} from "./novelty.js";
 import { initiativeAudience, originSummary } from "./conversation-origin.js";
+import { sessionAftermathSummary } from "./aftermath.js";
+import { roomBusyUnrelated } from "./time/sharing.js";
 
 // A chance to start something is different from a request to answer someone.
 // Time changes what she can notice; it never increments a loneliness score or
@@ -57,6 +65,7 @@ export class Initiative {
     const awaitingReply = !!(sent && (!lastUser?.t || lastUser.t <= sent));
     const reciprocity = this.reciprocity(session, messages, now);
     const seeds = this.contactSeeds(session, now);
+    const aftermath = sessionAftermathSummary(this.db, session, now);
     return {
       session,
       quietMinutes: last
@@ -73,6 +82,7 @@ export class Initiative {
         ? { reciprocity }
         : {}),
       ...(seeds.length ? { seeds } : {}),
+      ...(aftermath ? { aftermath } : {}),
       recent: messages.slice(-6).map((m) => {
         const p = parse(m.payload, {});
         return {
@@ -118,15 +128,27 @@ export class Initiative {
     let soloStreak = 0;
     let lukewarm = false;
     let pushedBack = false;
+    learnTopicAssociations({ db: this.db });
+    for (const r of rows) {
+      const p = parse(r.payload, {});
+      if (p.text) learnTopicAssociations(p.text);
+    }
     for (let i = rows.length - 1; i >= 0; i--) {
       const m = rows[i];
       const words = String(parse(m.payload, {}).text || "").trim();
       if (m.role === "user") {
         if (
           now - m.time <= 24 * HOUR &&
-          /还在.{0,16}(?:焚化炉|传送门|Portal|三格|补课|节拍|笔记)|怎么又(?:是|在)|别(?:再)?(?:说|播|报)|听腻了|换(?:个|点)话题|总是在说你自己|多关心关心我/i.test(
+          (/还在.{0,16}(?:焚化炉|传送门|Portal|三格|补课|节拍|笔记|那格|那段|那篇|那章)|怎么又(?:是|在)|别(?:再)?(?:说|播|报)|听腻了|换(?:个|点)话题|总是在说你自己|多关心关心我/i.test(
             words,
-          )
+          ) ||
+            (/^还在(?:写|读|玩|排|弄|看)?[《「『]?[\u4e00-\u9fffA-Za-z0-9]{2,16}[》」』]?[？?~～。！!]*$/u.test(
+              words,
+            ) &&
+              !/^还在(?:吗|不在|忙|加班|公司|学校|外面|睡|路上|家)/u.test(
+                words,
+              ) &&
+              workFamilies(words).length > 0))
         )
           pushedBack = true;
         if (
@@ -278,10 +300,24 @@ export class Initiative {
           ? 0.35
           : 0;
       const rec = contact.reciprocity || {};
+      const after = contact.aftermath || {};
+      const unpickedGroupPenalty =
+        contact.kind === "group" &&
+        !rooted &&
+        !seedFit &&
+        (after.unpickedCount || 0) >= 2 &&
+        (after.proactiveAnswered || 0) === 0
+          ? 2.0
+          : 0;
+      const engagedBonus =
+        (after.proactiveAnswered || 0) > 0
+          ? Math.min(0.6, after.proactiveAnswered * 0.2)
+          : 0;
       const penalty =
         (contact.awaitingReply ? 0.5 : 0) +
         (rec.soloStreak >= 2 ? 2.0 : rec.soloStreak === 1 ? 0.6 : 0) +
         (rec.pushedBack ? 2.5 : 0) +
+        unpickedGroupPenalty +
         (contact.kind === "group" && !rooted && !fit && kind === "either"
           ? 1.2
           : 0);
@@ -289,6 +325,7 @@ export class Initiative {
         rooted +
         fit +
         seedFit +
+        engagedBonus +
         closeness * 2 +
         Number(bond?.relationalWeight || 0) * 2 +
         familiarity +
@@ -508,9 +545,30 @@ export class Initiative {
       )
       .all(session, now - 24 * HOUR, now)
       .map((r) => String(parse(r.payload, {}).text || ""));
+    learnTopicAssociations(ownRecent);
     return ownRecent.some(
       (line) =>
-        sameWorkFamily(line, candidate) || sameRecentTheme(line, candidate),
+        sameWorkFamily(line, candidate) ||
+        sameRecentTheme(line, candidate) ||
+        classifyTopicRelation(line, candidate, { db: this.db, now }).sameTopic,
+    );
+  }
+  // Checks whether a group room is currently in the middle of rapid unrelated
+  // conversation where an uninvited self-topic would barge in.
+  groupAtmosphereBusy(thought, session, now = this.life.now()) {
+    if (!isGroupSession(session)) return false;
+    const recent = this.life.repo.recentEvents(session, 20, {
+      simulated: false,
+      role: "user",
+    });
+    return roomBusyUnrelated(
+      recent,
+      {
+        title: thought?.outreach || thought?.content || "",
+        summary: thought?.outreach_reason || "",
+      },
+      now,
+      5 * 60000,
     );
   }
 }

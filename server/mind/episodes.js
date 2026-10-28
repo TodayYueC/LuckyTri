@@ -1,6 +1,7 @@
 import { PRIVATELY_KNOWN } from "./discretion.js";
 import { randomUUID } from "node:crypto";
 import { applySpeakerNames } from "../core/speaker-names.js";
+import { interestTerms } from "./attention.js";
 import { elapsedLabel } from "./clock.js";
 import { secretRequest } from "./guard.js";
 import { isPrivateSession } from "./memory.js";
@@ -129,7 +130,6 @@ export class Episodes {
         : status === "resolved"
           ? "resolves"
           : "continues";
-      const previous = raw.continues ? refs.get(String(raw.continues)) : null;
       const speakers = new Set(
         cited.filter((m) => m.role === "user").map((m) => String(m.userId)),
       );
@@ -141,6 +141,30 @@ export class Episodes {
             .filter((id) => block.some((m) => String(m.userId) === id)),
         ]),
       ];
+      let previous = raw.continues ? refs.get(String(raw.continues)) : null;
+      if (!previous && refs.size) {
+        const candTerms = interestTerms([raw.title, content, outcome]);
+        for (const openEp of refs.values()) {
+          const openWho = new Set(parse(openEp.participants, []).map(String));
+          const sameWho =
+            !participants.length ||
+            participants.some((p) => openWho.has(String(p))) ||
+            openEp.session_id === session;
+          if (!sameWho) continue;
+          const titleTerms = interestTerms([openEp.title]);
+          const openTerms = interestTerms([openEp.title, openEp.content]);
+          const titleOverlap = [...titleTerms].filter((t) =>
+            candTerms.has(t),
+          ).length;
+          const totalOverlap = [...openTerms].filter((t) =>
+            candTerms.has(t),
+          ).length;
+          if (titleOverlap >= 1 && totalOverlap >= 2) {
+            previous = openEp;
+            break;
+          }
+        }
+      }
       const quiet = block.some(
         (m) =>
           m.role === "user" &&

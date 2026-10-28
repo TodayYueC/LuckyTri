@@ -113,9 +113,10 @@ export function normalizeAct(raw, trace) {
   };
 }
 
-export function recallWording(snapshot) {
+export function recallWording(snapshot, builtDialogue = null) {
   if (snapshot.initiative) return null;
-  const continuity = dialogueContext(snapshot).inner?.continuity;
+  const continuity = (builtDialogue || dialogueContext(snapshot)).inner
+    ?.continuity;
   const notes = [];
   if (
     continuity?.people?.some(
@@ -170,17 +171,20 @@ export async function takeTurn(
     extra.occasion && ["presence", "outreach"].includes(extra.occasion.type)
       ? `${system}\n${INITIATIVE_PROMPT}`
       : system;
+  const builtContext = initiating
+    ? trace?.snapshot?.initiative
+      ? trace.snapshot
+      : initiativeContext(snapshot, extra.occasion)
+    : dialogueContext(snapshot);
+  const guidance = initiating ? null : recallWording(snapshot, builtContext);
   const turnInput = {
-    context: initiating
-      ? initiativeContext(snapshot, extra.occasion)
-      : dialogueContext(snapshot),
+    context: builtContext,
     ...(extra.occasion
       ? {
           occasion: initiating
             ? {
                 ...extra.occasion,
-                initiative: initiativeContext(snapshot, extra.occasion)
-                  .initiative,
+                initiative: builtContext.initiative,
               }
             : extra.occasion,
         }
@@ -188,7 +192,7 @@ export async function takeTurn(
     ...(imageGuide ? { imageGuide } : {}),
     ...(linkGuide ? { linkGuide } : {}),
     ...(extra.pressure ? { pressure: extra.pressure } : {}),
-    ...(recallWording(snapshot) ? { guidance: recallWording(snapshot) } : {}),
+    ...(guidance ? { guidance } : {}),
     ...(!initiating ? { exchange: currentExchange(snapshot) } : {}),
     ...turnGuides(snapshot),
     ...expressionInput(snapshot),
@@ -229,46 +233,62 @@ export async function takeTurn(
     raw?.choice === "speak" &&
     claimsLivedAction(words.join("\n"))
   ) {
-    // Reject a fictional action before experience() can turn its appraisal
-    // into a new memory. A self-initiated message has no unanswered request
-    // that would justify filling in a different story through rewrites.
-    let grounded;
-    try {
-      grounded = await models.call(
-        profile,
-        "validation",
-        EXPRESSION_GROUNDING,
-        {
-          candidate: { words },
-          currentLife: snapshot.inner?.currentLife || {},
-          notes: [],
-          self: [],
-        },
-        trace,
-      );
-    } catch (error) {
-      trace?.steps?.push(`主动经历核对暂不可用，先不分享：${error.message}`);
+    // If OwnVoice.form() already grounded these exact words against currentLife,
+    // reuse that verdict instead of paying a duplicate model call.
+    const preGroundedWords = extra.occasion?.expression?.groundedWords;
+    if (
+      Array.isArray(preGroundedWords) &&
+      preGroundedWords.length > 0 &&
+      preGroundedWords.join("\n") === words.join("\n")
+    ) {
+      if (trace)
+        trace.experienceReview = {
+          words: [...words],
+          ok: true,
+          reason: "形成念头时已核实实际经历",
+        };
+    } else {
+      // Reject a fictional action before experience() can turn its appraisal
+      // into a new memory. A self-initiated message has no unanswered request
+      // that would justify filling in a different story through rewrites.
+      let grounded;
+      try {
+        grounded = await models.call(
+          profile,
+          "validation",
+          EXPRESSION_GROUNDING,
+          {
+            candidate: { words },
+            currentLife: snapshot.inner?.currentLife || {},
+            notes: [],
+            self: [],
+          },
+          trace,
+        );
+      } catch (error) {
+        trace?.steps?.push(`主动经历核对暂不可用，先不分享：${error.message}`);
+      }
+      if (trace)
+        trace.experienceReview = {
+          words: [...words],
+          ok: grounded?.ok === true,
+          reason: grounded?.reason || "实际经历尚未核实",
+        };
+      if (grounded?.ok !== true)
+        return {
+          ...raw,
+          choice: "silent",
+          bubbles: [],
+          appraisal: "",
+          feelings: [],
+          bonds: [],
+          contribution: {
+            kind: "none",
+            point: "旧草稿中的新行动尚无实际记录支持",
+          },
+          reason: "这段念头的经历依据还没有核实，先留在自己这里",
+        };
     }
-    if (trace)
-      trace.experienceReview = {
-        words: [...words],
-        ok: grounded?.ok === true,
-        reason: grounded?.reason || "实际经历尚未核实",
-      };
-    if (grounded?.ok !== true)
-      return {
-        ...raw,
-        choice: "silent",
-        bubbles: [],
-        appraisal: "",
-        feelings: [],
-        bonds: [],
-        contribution: {
-          kind: "none",
-          point: "旧草稿中的新行动尚无实际记录支持",
-        },
-        reason: "这段念头的经历依据还没有核实，先留在自己这里",
-      };
   }
   const exchange = botExchange(snapshot, raw);
   if (
@@ -520,9 +540,7 @@ export function normalizeTurn(raw, snapshot, trace, { speech } = {}) {
         batch.filter((m) => m.role === "user").length > 0 &&
         batch
           .filter((m) => m.role === "user")
-          .every((m) =>
-            conversationGrounding(snapshot).botMessageIds.includes(m.id),
-          )));
+          .every((m) => grounding.botMessageIds.includes(m.id))));
   const botYield = botLoop || botFollowupLimit;
   if (botYield) {
     choice = "silent";

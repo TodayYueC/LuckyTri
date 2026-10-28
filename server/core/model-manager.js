@@ -328,10 +328,12 @@ function protocolRequest(body, profile, stage) {
       output.thinking = body.thinking;
     if (
       body.reasoning_effort &&
-      (profile.thinkingStyle === "deepseek" ||
-        profile.provider === "deepseek")
+      (profile.thinkingStyle === "deepseek" || profile.provider === "deepseek")
     )
-      output.reasoning = { ...(output.reasoning || {}), effort: body.reasoning_effort };
+      output.reasoning = {
+        ...(output.reasoning || {}),
+        effort: body.reasoning_effort,
+      };
     if (body.temperature !== undefined) output.temperature = body.temperature;
     if (body.top_p !== undefined) output.top_p = body.top_p;
     if (body.response_format)

@@ -65,6 +65,7 @@ export function initiativeContext(snapshot, occasion = snapshot.initiative) {
       returned: occasion?.returned || [],
       ...(situation.reciprocity ? { reciprocity: situation.reciprocity } : {}),
       ...(situation.seeds?.length ? { seeds: situation.seeds } : {}),
+      ...(situation.aftermath ? { aftermath: situation.aftermath } : {}),
     },
     expression: {
       ...expression,
