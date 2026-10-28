@@ -4,7 +4,7 @@
 
 <h1 align="center">LuckyTri</h1>
 
-<p align="center"><strong>让她走过的日子算数。</strong></p>
+<p align="center"><strong>日子还长，慢慢认识。</strong></p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/luckytri"><img alt="npm version" src="https://img.shields.io/npm/v/luckytri?color=ff8fb1"></a>

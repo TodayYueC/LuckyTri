@@ -4,7 +4,7 @@
 
 <h1 align="center">LuckyTri</h1>
 
-<p align="center"><strong>Let the days she lives count.</strong></p>
+<p align="center"><strong>We Have Time to Get to Know Each Other.</strong></p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/luckytri"><img alt="npm version" src="https://img.shields.io/npm/v/luckytri?color=ff8fb1"></a>
