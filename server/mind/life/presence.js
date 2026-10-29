@@ -133,6 +133,22 @@ export class LifePresence {
         this.owner.mind.thoughts.setOutreach(t.id, "declined");
         continue;
       }
+      if (this.owner.initiative.recentlyToldSameClaim(t, now)) {
+        this.owner.mind.thoughts.setOutreach(
+          t.id,
+          "declined",
+          "同一主张近期已经说过，先留给自己",
+        );
+        continue;
+      }
+      if (this.owner.initiative.outreachFamilySaturated(t, now)) {
+        this.owner.mind.thoughts.deferOutreach(
+          t.id,
+          "这阵子同一作品族说得偏多，先换换别的",
+          now + 3 * 3600000,
+        );
+        continue;
+      }
       if (this.owner.initiative.pushedBackOnTopic(t, session, now)) {
         this.owner.mind.thoughts.setOutreach(
           t.id,

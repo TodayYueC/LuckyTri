@@ -306,6 +306,8 @@ export function sameWorkFamily(a, b, context = null) {
 // Live 2026-10-28/29 Tokyo presence: portal2-caroline 族近义连播——读资料/看概要/翻笔记
 // 反复「惠特利背叛 vs 卡罗琳删除 / 停笔进稿子」。novelty 把新 `r:` 根当成 new_discovery，
 // 但主张指纹相同。结构上用实体+主张词重叠判定同一洞察，而不是堆一句黑名单。
+// Live 2026-10-29 Singapore: 「deletion 比背叛狠 / 灯芯不说破把余地留着」连播——
+// 英文 deletion 与中文「删除」本是同一主张动作，须归一，否则跨语近义漏检。
 const CLAIM_ACTION_STEMS = new Set([
   "删除",
   "删了",
@@ -316,17 +318,36 @@ const CLAIM_ACTION_STEMS = new Set([
   "进稿子",
   "正主",
   "护短",
+  "余地",
+  "不说破",
 ]);
+
+const CLAIM_ACTION_ALIASES = new Map([
+  ["deletion", "删除"],
+  ["delete", "删除"],
+  ["deleted", "删除"],
+  ["betrayal", "背叛"],
+  ["betray", "背叛"],
+]);
+
+function normalizeClaimStem(stem) {
+  const s = String(stem || "");
+  if (CLAIM_ACTION_ALIASES.has(s)) return CLAIM_ACTION_ALIASES.get(s);
+  if (CLAIM_ACTION_ALIASES.has(s.toLowerCase()))
+    return CLAIM_ACTION_ALIASES.get(s.toLowerCase());
+  return s;
+}
 
 export function insightClaimStems(text) {
   const raw = String(text || "");
   if (!raw.trim()) return new Set();
   const stems = new Set();
   for (const t of interestTerms([raw])) {
-    if (!GENERIC_STEMS.has(t) && String(t).length >= 2) stems.add(t);
+    if (!GENERIC_STEMS.has(t) && String(t).length >= 2)
+      stems.add(normalizeClaimStem(t));
   }
   for (const w of raw.match(/[A-Za-z][A-Za-z0-9]{2,}/g) || []) {
-    stems.add(w.toLowerCase());
+    stems.add(normalizeClaimStem(w.toLowerCase()));
   }
   for (const m of raw.matchAll(/[「『“"]([^」』”"\n]{2,10})[」』”"]/g)) {
     const quoted = m[1].trim();
@@ -337,12 +358,29 @@ export function insightClaimStems(text) {
   // Keep whole multi-char Chinese name/entity runs (not only bigrams) when distinctive.
   for (const run of raw.match(/[\u4e00-\u9fff]{2,6}/g) || []) {
     if (GENERIC_STEMS.has(run)) continue;
-    if (run.length >= 3) stems.add(run);
+    if (run.length >= 3) stems.add(normalizeClaimStem(run));
   }
   for (const action of CLAIM_ACTION_STEMS) {
     if (raw.includes(action)) stems.add(action);
   }
+  // Explicit bilingual action cues even when interestTerms missed the token.
+  for (const [en, zh] of CLAIM_ACTION_ALIASES) {
+    if (new RegExp(`\\b${en}\\b`, "i").test(raw)) stems.add(zh);
+  }
   return stems;
+}
+
+/** Recent outreach / lived labels dominated by one work family → saturated. */
+export function saturatedWorkFamilies(texts = [], { minHits = 3 } = {}) {
+  const counts = new Map();
+  for (const raw of texts || []) {
+    for (const f of workFamilies(raw)) {
+      counts.set(f, (counts.get(f) || 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .filter(([, n]) => n >= minHits)
+    .map(([f]) => f);
 }
 
 export function sameInsightClaim(a, b) {

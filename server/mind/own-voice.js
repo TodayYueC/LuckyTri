@@ -272,8 +272,18 @@ export class OwnVoice {
         ref: `t:${t.id}`,
         created: t.created,
         content: t.content,
-        said: t.outreach_status === "sent" ? t.outreach : "",
-        where: t.outreach_status === "sent" ? t.outreach_session : "",
+        // Live 2026-10-29: 连发形成时前一条还在 planned/sending，若只认 sent
+        // 则 surfaceEcho 看不到在途主张，deletion/背叛 会连播。在途也算「已说」。
+        said: ["sent", "sending", "planned", "uncertain"].includes(
+          t.outreach_status,
+        )
+          ? t.outreach || ""
+          : "",
+        where: ["sent", "sending", "planned", "uncertain"].includes(
+          t.outreach_status,
+        )
+          ? t.outreach_session || ""
+          : "",
       })),
     };
   }
@@ -360,18 +370,21 @@ export class OwnVoice {
         const drifting =
           (input.circling?.notes ?? 0) >= STREAK &&
           !sources.some((ref) => input.circling.fresh.includes(ref));
+        const spoken = words.join("\n");
         const repeated =
           drifting ||
           input.recentExpressions.some(
             (t) =>
               sameRecentTheme(t.content, content) ||
-              sameInsightClaim(t.content, content),
+              sameInsightClaim(t.content, content) ||
+              (t.said && sameInsightClaim(t.said, content)) ||
+              (t.said && spoken && sameInsightClaim(t.said, spoken)),
           );
         const surfaceEcho = input.recentExpressions.some(
           (t) =>
             t.said &&
-            (sameRecentTheme(t.said, words.join("\n")) ||
-              sameInsightClaim(t.said, words.join("\n"))),
+            (sameRecentTheme(t.said, spoken) ||
+              sameInsightClaim(t.said, spoken)),
         );
         const recentlySaid = input.recentExpressions.filter(
           (t) => t.said && now - t.created < 12 * 3600000,

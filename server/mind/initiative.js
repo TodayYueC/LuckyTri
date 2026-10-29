@@ -5,8 +5,10 @@ import { parseSessionKey, isGroupSession } from "../channels/session-key.js";
 import {
   classifyTopicRelation,
   learnTopicAssociations,
+  sameInsightClaim,
   sameRecentTheme,
   sameWorkFamily,
+  saturatedWorkFamilies,
   workFamilies,
 } from "./novelty.js";
 import { initiativeAudience, originSummary } from "./conversation-origin.js";
@@ -350,18 +352,87 @@ export class Initiative {
     if (!isGroupSession(thought?.outreach_session)) return false;
     const earlier = this.db
       .prepare(
-        "SELECT id,outreach,sources,outreach_session FROM mind_thoughts WHERE outreach_status='sent' AND created>=? AND created<? ORDER BY created DESC LIMIT 40",
+        "SELECT id,content,outreach,sources,outreach_session FROM mind_thoughts WHERE outreach_status='sent' AND created>=? AND created<? ORDER BY created DESC LIMIT 40",
       )
       .all(now - 12 * HOUR, now);
+    const candidate = `${thought?.content || ""} ${thought?.outreach || ""}`;
     return earlier.some(
       (row) =>
         row.id !== thought.id &&
         isGroupSession(row.outreach_session) &&
         row.outreach_session !== thought.outreach_session &&
         (sameRecentTheme(row.outreach, thought.outreach) ||
+          sameInsightClaim(row.outreach || row.content, candidate) ||
           (thought.sources || []).includes(`t:${row.id}`) ||
           parse(row.sources, []).includes(`t:${thought.id}`)),
     );
+  }
+
+  // Live 2026-10-29 Singapore: 同一「deletion/背叛/余地」主张 3h 内跨会话连播 7 次。
+  // 会话级 lastSent / 跨群 sameRecentTheme 都拦不住——需要全局主张指纹饱足。
+  recentlyToldSameClaim(thought, now = this.life.now()) {
+    const candidate = `${thought?.content || ""} ${thought?.outreach || ""} ${(Array.isArray(thought?.outreach_draft) ? thought.outreach_draft : []).join(" ")}`;
+    if (!String(candidate).trim()) return false;
+    const earlier = this.db
+      .prepare(
+        "SELECT id,content,outreach,outreach_status FROM mind_thoughts WHERE kind='expression' AND outreach_status IN ('sent','sending','planned','uncertain') AND created>=? AND created<? ORDER BY created DESC LIMIT 80",
+      )
+      .all(now - 8 * HOUR, now);
+    return earlier.some((row) => {
+      if (row.id === thought?.id) return false;
+      const prior = `${row.outreach || ""} ${row.content || ""}`;
+      return (
+        sameInsightClaim(prior, candidate) ||
+        sameInsightClaim(row.content || "", thought?.content || "")
+      );
+    });
+  }
+
+  // Live 2026-10-30: 生活库任务/分享被 portal-fanfic 单极占满时，新 outreach 若仍落在
+  // 已饱和作品族且无 peer 新锚，应 defer，逼开口去找别的经历/关系线。
+  outreachFamilySaturated(thought, now = this.life.now()) {
+    const candidate = `${thought?.content || ""} ${thought?.outreach || ""}`;
+    const families = workFamilies(candidate);
+    if (!families.length) return false;
+    const recent = this.db
+      .prepare(
+        "SELECT outreach,content FROM mind_thoughts WHERE kind='expression' AND outreach_status IN ('sent','sending') AND created>=? AND created<? ORDER BY created DESC LIMIT 40",
+      )
+      .all(now - 24 * HOUR, now)
+      .map((r) => `${r.outreach || ""} ${r.content || ""}`);
+    const saturated = new Set(saturatedWorkFamilies(recent, { minHits: 3 }));
+    return families.some((f) => saturated.has(f));
+  }
+
+  // 群内近窗助手互 @ 乒乓、中间没有人类实质新话头 → 主动开口先 defer。
+  crossBotPingPong(session, now = this.life.now()) {
+    if (!isGroupSession(session)) return null;
+    const rows = this.db
+      .prepare(
+        "SELECT role,payload FROM core_events WHERE session_id=? AND time>? AND time<=? AND seq NOT IN (SELECT seq FROM mind_unlived) AND COALESCE(json_extract(payload,'$.simulated'),0)=0 AND role IN ('user','assistant') ORDER BY seq DESC LIMIT 14",
+      )
+      .all(session, now - 25 * 60000, now);
+    if (rows.length < 6) return null;
+    const CROSS = /@(?:Rina|Lucky|雾言|琉璃|LuckyTri)\b/i;
+    let botAt = 0;
+    let humanSubstance = 0;
+    for (const row of rows) {
+      const t = String(parse(row.payload, {}).text || "");
+      if (row.role === "assistant") {
+        if (CROSS.test(t)) botAt++;
+      } else {
+        const bare = t.replace(/\[(?:提及成员|图片|表情|媒体)\]/g, "").replace(/@\S+/g, "").trim();
+        if (bare.length >= 8 && !/^(?:早+|晚安+|哈哈+|嗯+|哦+|行+|好+)$/.test(bare))
+          humanSubstance++;
+      }
+    }
+    if (botAt >= 3 && humanSubstance <= 1) {
+      return {
+        reason: "群里这阵子主要是机器人互 @，先等人类把话头续上",
+        retryAt: now + 20 * 60000,
+      };
+    }
+    return null;
   }
   sourceMaterial(thought, now = this.life.now()) {
     const self = this.life.mind.self.latest(now);
@@ -545,6 +616,8 @@ export class Initiative {
         reason: speakShare.reason,
         retryAt: speakShare.retryAt,
       };
+    const pingPong = this.crossBotPingPong(session, now);
+    if (pingPong) return pingPong;
     return null;
   }
   unansweredInitiatives(session, now = this.life.now()) {

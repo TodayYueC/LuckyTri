@@ -7,6 +7,7 @@ import { parseSessionKey } from "../../channels/session-key.js";
 import { leaks } from "../guard.js";
 import { displayNames } from "../../studio/display-names.js";
 import { interestTerms } from "../attention.js";
+import { saturatedWorkFamilies, workFamilies } from "../novelty.js";
 
 // Recent human chatter that is not about this work: stickers, open questions,
 // or a busy thread. A share can wait; it should not barge in mid-fight.
@@ -271,6 +272,39 @@ export class Sharing {
           )
           .run(reason, life.now() + 15 * 60000, share.id);
         return { status: "waiting", reason };
+      }
+    }
+    // Live 2026-10-30: 生活库 portal/焚化炉 分享队列过密时，同作品族再投递会把主动开口锁死。
+    // 记忆与作品保留；只把投递延后，逼开口去找别的经历。
+    {
+      const fams = workFamilies(
+        `${work.title || ""} ${work.summary || ""} ${work.project_title || ""}`,
+      );
+      if (fams.length) {
+        const recentSaid = life.db
+          .prepare(
+            "SELECT outreach,content FROM mind_thoughts WHERE kind='expression' AND outreach_status IN ('sent','sending') AND created>=? ORDER BY created DESC LIMIT 40",
+          )
+          .all(life.now() - 24 * 3600000)
+          .map((r) => `${r.outreach || ""} ${r.content || ""}`);
+        const saturated = new Set(
+          saturatedWorkFamilies(recentSaid, { minHits: 3 }),
+        );
+        if (fams.some((f) => saturated.has(f))) {
+          const reason = "这阵子同一作品族已经分享偏多，先换换别的再说";
+          this.db
+            .prepare(
+              "UPDATE mind_time_shares SET reason=?,next_step=? WHERE id=? AND state='pending'",
+            )
+            .run(reason, life.now() + 4 * 3600000, share.id);
+          if (work.task_id)
+            this.db
+              .prepare(
+                "UPDATE mind_time_tasks SET share_reason=?,next_step=?,share_state='deferred' WHERE id=?",
+              )
+              .run(reason, life.now() + 4 * 3600000, work.task_id);
+          return { status: "waiting", reason };
+        }
       }
     }
     // Room busy with something else: defer delivery, do not barge in.
