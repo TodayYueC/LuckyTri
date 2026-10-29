@@ -202,7 +202,7 @@ npm start
 
 ## 连接 QQ：二选一
 
-两种方式下她的记忆、心情和行为完全一致，区别只在消息怎么到达。同一时间只启用一个，在「系统 → 连接 QQ」里切换，运行中不需要重启。
+两种方式共用同一套心智。同一时间只启用一个，在「系统 → 连接 QQ」里切换，运行中不需要重启。官方机器人在主动开口和群聊范围上限制多得多，不能当成现有 OneBot 接入的替代品，见 [能力对照](docs/zh/qq-official-bot.md)。
 
 |                | OneBot 11                                           | QQ 官方机器人                                                              |
 | -------------- | --------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -215,7 +215,7 @@ npm start
 
 **OneBot 11**：在接入端启用反向 WebSocket 客户端，地址 `ws://127.0.0.1:3210/onebot/v11/ws`，消息格式选「数组」。同一台电脑上的连接无需另设令牌，已有地址与登录可以沿用；远程接入可使用管理密码，旧远程令牌仍兼容。
 
-**QQ 官方机器人**：在 QQ 开放平台创建机器人并取得 AppID 与 AppSecret，在「系统 → 连接 QQ」选择「QQ 官方机器人」填入并保存（或设置 `QQBOT_APP_ID` 与 `QQBOT_APP_SECRET`）。
+**QQ 官方机器人**：在 QQ 开放平台创建机器人并取得 AppID 与 AppSecret，在「系统 → 连接 QQ」选择「QQ 官方机器人」填入并保存（或设置 `QQBOT_APP_ID` 与 `QQBOT_APP_SECRET`）。控制台的事件接收方式保持 WebSocket。连上之后如果 QQ 里没有回话，先看 [能力对照](docs/zh/qq-official-bot.md)，不要先改现有的 OneBot 接入。
 
 细节与差异见 [连接 QQ](docs/zh/connect.md)。
 
@@ -244,6 +244,9 @@ npm start
 | `LUCKYTRI_CHANNEL` | 可选；`onebot` 或 `qqbot`，设置后界面里不能更改连接方式 |
 | `ONEBOT_TOKEN` | 可选，仅兼容已有远程接入令牌；本机连接无需填写 |
 | `QQBOT_APP_ID` / `QQBOT_APP_SECRET` | QQ 官方机器人凭据，优先于界面里保存的 |
+| `QQBOT_TRANSPORT` | 可选；`websocket`（默认）或 `webhook`。开放平台二者互斥 |
+| `QQBOT_PROACTIVE` | 可选；`auto`（默认，窗口外尝试主动消息）或 `passive`（只做被动回复） |
+| `QQBOT_WEBHOOK_PATH` / `QQBOT_API_BASE` | 可选；Webhook 路径，以及 OpenAPI 根地址 |
 | `LLM_API_KEY` | 可选；设置后优先于界面里保存的模型密钥 |
 | `EMBEDDING_API_KEY` | 可选；独立的知识向量服务密钥 |
 | `BACKUP_INTERVAL_HOURS` / `BACKUP_KEEP` | 自动备份间隔（默认 24 小时，`0` 关闭）与保留份数（默认 7） |
@@ -257,6 +260,7 @@ npm start
 | --------------------------------------- | -------------------------------------------------- |
 | [上手教程](docs/zh/guide.md)            | 从启动到让她参与第一个会话                         |
 | [连接 QQ](docs/zh/connect.md)           | 两种连接方式的对比、步骤与差异                     |
+| [QQ 官方机器人](docs/zh/qq-official-bot.md) | 开放平台能力对照、静默原因、与 OneBot 的实验接法 |
 | [她的一生](docs/zh/her-life.md)         | 统一心智的设计：作息、独处、日记、回顾、分寸与底线 |
 | [架构与扩展点](docs/zh/architecture.md) | 代码分层，以及如何新增通道、心智模块、页面与翻译   |
 | [时间、行动与作品](docs/zh/time.md)     | 她自己的活动、待办、作品与分享                     |

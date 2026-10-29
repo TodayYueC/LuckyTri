@@ -2,7 +2,7 @@
 
 # LuckyTri · Getting Started
 
-LuckyTri runs on your own computer and meets people through QQ. QQ has two ways to connect, and you pick one: **OneBot 11** (you bring a connector, reverse WebSocket) or the **QQ official bot** (QQ Open Platform). With either, her memory, mood and behavior are exactly the same; only the way messages arrive differs. You configure the model API yourself.
+LuckyTri runs on your own computer and meets people through QQ. QQ has two ways to connect, and you pick one: **OneBot 11** (you bring a connector, reverse WebSocket) or the **QQ official bot** (QQ Open Platform). Both share one mind. The official bot does not replace the OneBot connector yet; the limits are in [QQ official bot](qq-official-bot.md). You configure the model API yourself.
 
 The top-right corner of the interface switches between "中文" and "English". Chinese is the default and your choice is remembered in this browser. What she says, writes in her diary and keeps as her own thoughts is never translated; that is her own content.
 
@@ -191,8 +191,9 @@ The server removes the export copy after download. Cancelled, expired and interr
 | Incorrect password                | Sign in with your management password; change it under System → Run switches                                                             |
 | OneBot not connected              | Check sign-in, enabled reverse client, address, port and path; local clients need no token                                               |
 | Official bot not connected        | Are the AppID and AppSecret right, are group and one-to-one messages enabled for the bot, can the network reach the QQ Open Platform     |
+| Official bot looks connected but QQ stays quiet | On Connect QQ, is the latest event still empty? No events: the console may be on Webhook, the bot may not be in a group or added as a friend, or this machine's IP may be missing from the allow list. @ only: turn on "receive all messages". Events arrive and she still does not speak: the group passive window is about five minutes, and proactive sends outside it often fail. See [QQ official bot](qq-official-bot.md) |
 | Official bot only gets @ messages | Enable "receive all messages" on the Open Platform; this is a platform permission, not a LuckyTri limit                                  |
-| Connected but no sessions         | Send one more new message in QQ; with OneBot also check the message format is array                                                      |
+| Connected but no sessions         | Send one more new message in QQ; with OneBot also check the message format is array                                                     
 | No reply in a group               | Global switch, session switch, simulation mode, key; under "Chat", was it "TA glanced over it" or did TA look closely and choose silence |
 | No reply even when @-ed           | Is TA asleep (see "Now", the interface is night), the per-minute limit, today's tokens used up, a model error, or TA's own reason        |
 | Model 401 / 403                   | Key and permissions; an environment-variable key may override the one saved in LuckyTri                                                  |

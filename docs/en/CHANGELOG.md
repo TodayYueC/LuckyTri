@@ -2,6 +2,11 @@
 
 # Changelog
 
+## offbot — not merged into BotRina
+
+- Record what the QQ official bot could and could not do in October 2026: auth, events, the passive-reply window, conflicting proactive-message docs, and why a connected bot stays silent. The official channel stays optional; OneBot remains the default.
+- The official channel now reports silence hints, can validate an optional webhook callback, and honors `QQBOT_PROACTIVE=passive`. Image, Markdown and card sends are still stubs.
+
 ## 1.3.4 — 2026-10-17
 
 - Improve multi-speaker grounding, question priority, stop signals and continuity with earlier messages, reducing misdirected @ mentions, attribution errors and replies to stale questions.

@@ -83,9 +83,14 @@ function connectionChecks({ channel, online, tokenConfigured, qqbot }) {
         name: "QQ 连接",
         done: online,
         detail: online
-          ? groups === "mentions"
-            ? "已连接 QQ 开放平台；群里目前只收到 @ 她的消息，在开放平台开启「接收所有消息」后她才能看到整个群"
-            : "已连接 QQ 开放平台"
+          ? qqbot?.dispatchCount === 0 &&
+            groups !== "mentions" &&
+            groups !== "all"
+            ? qqbot.hints?.[0] ||
+              "网关已就绪，但还没有收到任何事件。请确认开放平台用的是 WebSocket 而不是 Webhook、机器人已进群或被加为好友，且这台机器的 IP 在白名单里。"
+            : groups === "mentions"
+              ? "已连接 QQ 开放平台；群里目前只收到 @ 她的消息，在开放平台开启「接收所有消息」后她才能看到整个群"
+              : "已连接 QQ 开放平台"
           : qqbot?.error ||
             (configured ? "正在连接 QQ 开放平台" : "填写凭据后自动连接"),
         tab: "settings",

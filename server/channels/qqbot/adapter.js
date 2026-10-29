@@ -219,6 +219,30 @@ export function openidOf(type, d) {
   );
 }
 
+// Text is the only outbound shape this branch actually sends. Markdown,
+// keyboards, Ark and rich media exist on the platform; sending them needs
+// template permission or a prior upload for `file_info`, which is not wired.
+export function outboundEnvelope(text, options = {}) {
+  const msgType = Number(options.msgType ?? options.msg_type ?? 0);
+  if (options.media || msgType === 7)
+    return {
+      ok: false,
+      reason:
+        "官方通道还不能发送图片、语音或文件：要先上传拿到 file_info（msg_type=7），上传仍是实验桩。",
+    };
+  if (options.markdown || msgType === 2)
+    return {
+      ok: false,
+      reason: "官方通道的 Markdown 还是实验桩。文本回复走 msg_type=0。",
+    };
+  if (options.keyboard || options.ark || msgType === 3 || msgType === 4)
+    return {
+      ok: false,
+      reason: "官方通道的按钮和 Ark 卡片还是实验桩，当前只发送纯文本。",
+    };
+  return { ok: true, body: { msg_type: 0, content: String(text ?? "") } };
+}
+
 // The message `replyId` pointed to, rebuilt from the event that quoted it.
 export function quotedMessage(current, element, context = {}) {
   if (!element || typeof element !== "object") return null;
