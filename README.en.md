@@ -202,7 +202,7 @@ Open <http://127.0.0.1:3210>. On Windows you can also double-click `启动LuckyT
 
 ## Connect QQ: pick one
 
-With either way, her memory, mood and behavior are exactly the same; only how messages arrive differs. Only one is active at a time. Switch under System → Connect QQ, no restart needed.
+Both ways share one mind. Only one is active at a time. Switch under System → Connect QQ, no restart needed. The official bot is much more limited about speaking first and about which group messages it can hear, so it is not a replacement for the OneBot connector. See the [capability survey](docs/en/qq-official-bot.md).
 
 |                              | OneBot 11                                                              | QQ official bot                                                                                                                                     |
 | ---------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -215,7 +215,7 @@ With either way, her memory, mood and behavior are exactly the same; only how me
 
 **OneBot 11**: enable a reverse WebSocket client using `ws://127.0.0.1:3210/onebot/v11/ws` and array messages. Local clients need no separate token; existing addresses and sign-ins can stay. Remote clients can use the management password, and legacy remote tokens remain supported.
 
-**QQ official bot**: create a bot on the QQ open platform and get its AppID and AppSecret. Under System → Connect QQ choose "QQ official bot", enter them and save (or set `QQBOT_APP_ID` and `QQBOT_APP_SECRET`).
+**QQ official bot**: create a bot on the QQ open platform and get its AppID and AppSecret. Under System → Connect QQ choose "QQ official bot", enter them and save (or set `QQBOT_APP_ID` and `QQBOT_APP_SECRET`). Leave the console receive mode on WebSocket. If QQ stays quiet after the gateway is ready, read the [capability survey](docs/en/qq-official-bot.md) before changing the OneBot connector.
 
 Details and differences are in [Connect QQ](docs/en/connect.md).
 
@@ -244,6 +244,9 @@ To continue an existing source instance, stop it first, then use `luckytri --hom
 | `LUCKYTRI_CHANNEL` | Optional; `onebot` or `qqbot`. When set, the studio cannot change the connection |
 | `ONEBOT_TOKEN` | Optional compatibility for an existing remote token; local clients need none |
 | `QQBOT_APP_ID` / `QQBOT_APP_SECRET` | QQ official bot credentials; take precedence over those saved in the studio |
+| `QQBOT_TRANSPORT` | Optional; `websocket` (default) or `webhook`. The open platform treats them as mutually exclusive |
+| `QQBOT_PROACTIVE` | Optional; `auto` (default, try a proactive send outside the window) or `passive` (passive replies only) |
+| `QQBOT_WEBHOOK_PATH` / `QQBOT_API_BASE` | Optional; webhook path, and the OpenAPI origin |
 | `LLM_API_KEY` | Optional; when set, takes precedence over the model key saved in the studio |
 | `EMBEDDING_API_KEY` | Optional; a separate key for the knowledge embedding service |
 | `BACKUP_INTERVAL_HOURS` / `BACKUP_KEEP` | Automatic backup interval (24 hours by default, `0` turns it off) and how many to keep (7 by default) |
@@ -257,6 +260,7 @@ The database, chat records, model keys and backups live locally in the ignored `
 | ------------------------------------------------------------ | ----------------------------------------------------------------------------- |
 | [Getting started](docs/en/guide.md)                          | From launching to letting her join her first conversation                     |
 | [Connect QQ](docs/en/connect.md)                             | The two connection ways: comparison, steps and differences                    |
+| [QQ official bot](docs/en/qq-official-bot.md)                | Capability matrix, why a connected bot stays silent, and the experiment path |
 | [Her life](docs/en/her-life.md)                              | The unified mind: rhythm, solitude, diary, review, tact and boundaries        |
 | [Architecture and extension points](docs/en/architecture.md) | Code layers, and how to add a channel, a mind module, a page or a translation |
 | [Time, activities and works](docs/en/time.md)                | Her own activities, plans, works and sharing                                  |

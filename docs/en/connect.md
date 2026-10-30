@@ -20,7 +20,7 @@ Only one channel is active at a time. Switch under "System → Connect QQ"; swit
 | Reaching out                     | No extra limits                                                                             | Sent as proactive messages; when a person or group has turned the bot's proactive messages off, she waits for them to come to her                                                                    |
 | Images                           | Fetched through the connector                                                               | Attachment URLs go through the same vision path; only official media domains are allowed                                                                                                             |
 
-Neither is "more right". If you want every group message and don't mind running a connector, pick OneBot 11. If you would rather not log in to QQ or maintain a connector, pick the official bot and enable "receive all messages" on the Open Platform.
+If you want every group message and can keep a connector running, stay on OneBot 11. The official bot does not need a QQ login or a connector to maintain, but as of October 2026 the open-platform docs disagree about proactive messages, groups default to @-only, and Webhook and WebSocket are mutually exclusive. It does not replace the current OneBot path. The capability matrix, why a bot looks connected and stays silent, and the smallest experiment are in [QQ official bot](qq-official-bot.md).
 
 ## OneBot 11
 

@@ -23,6 +23,22 @@ export const LABELS = {
   "已连接 QQ 开放平台；群里目前只收到 @ 她的消息，在开放平台开启「接收所有消息」后她才能看到整个群":
     "Connected to the QQ Open Platform. Groups only deliver messages that @ her for now; turn on “Receive all messages” on the platform so she can see the whole group.",
   "已连接 QQ 开放平台": "Connected to the QQ Open Platform",
+  "网关已就绪，但还没有收到任何事件。请确认开放平台用的是 WebSocket 而不是 Webhook、机器人已进群或被加为好友，且这台机器的 IP 在白名单里。":
+    "The gateway is ready, but no event has arrived. Check that the open platform is using WebSocket rather than Webhook, that the bot has joined a group or been added as a friend, and that this machine's IP is on the allow list.",
+  "还没有 AppID 和 AppSecret，开放平台不会把消息送到这里。":
+    "There is no AppID and AppSecret yet, so the open platform will not deliver messages here.",
+  "网关已经 READY，但一条事件都没有。常见原因：开放平台选的是 Webhook（和 WebSocket 互斥，切换立刻生效）；机器人还没进群，也没被加为好友；这台机器的出口 IP 不在白名单里。":
+    "The gateway is READY, but not a single event has arrived. Common causes: the open platform is set to Webhook (mutually exclusive with WebSocket, and the switch is immediate); the bot is not in a group and has not been added as a friend; this machine's egress IP is not on the allow list.",
+  "还在等开放平台回调。地址必须是公网 HTTPS，端口只允许 80、443、8080、8443，控制台的接收方式要选 Webhook。":
+    "Still waiting for the open platform to call back. The address must be public HTTPS, the port may only be 80, 443, 8080 or 8443, and the console receive mode must be Webhook.",
+  "回调地址已经通过验证，但还没有用户消息。把机器人加进你当群主或管理员的群，或在 QQ 里给它发一条单聊。":
+    "The callback address is verified, but no user message has arrived. Add the bot to a group you own or administer, or send it a one-to-one message in QQ.",
+  "群里目前只有 @ 她的消息。没开「接收所有消息」时，她听不见群里的闲聊。":
+    "Groups are only delivering messages that @ her. Without “Receive all messages”, she cannot hear ordinary group chat.",
+  "有会话关掉了主动消息。被动回复窗口之外她发不出去，会等对方先开口。":
+    "A session has turned proactive messages off. Outside the passive-reply window she cannot send, and waits for the other person to speak first.",
+  "QQBOT_PROACTIVE=passive：只在被动回复窗口内按原消息回复，窗口外不调用主动发送。":
+    "QQBOT_PROACTIVE=passive: replies stay inside the passive window and are tied to the original message. Outside that window no proactive send is attempted.",
   "正在连接 QQ 开放平台": "Connecting to the QQ Open Platform",
   填写凭据后自动连接: "Connects automatically once credentials are entered",
   "本机接入无需单独令牌，请确认接入端已登录并启用反向 WebSocket 客户端":
@@ -606,6 +622,8 @@ export const LABELS = {
 // Wording that carries a value. `{0}`, `{1}` are filled with what the code put
 // in, and each value goes through the dictionaries again.
 export const LABEL_PATTERNS = [
+  ["连接没有就绪：{0}", "The connection is not ready: {0}"],
+  ["最近一次发送失败：{0}", "The latest send failed: {0}"],
   ["定时备份整理调度失败：{0}", "Scheduling backup cleanup failed: {0}"],
   ["定时备份整理完成：{0} 份", "Scheduled backup cleanup finished: {0} copies"],
   ["定时备份整理失败：{0}", "Scheduled backup cleanup failed: {0}"],

@@ -13,7 +13,7 @@ import {
   until,
 } from "./helpers/fake-qq-platform.js";
 
-async function setup({ secret, timeoutMs = 700 } = {}) {
+async function setup({ secret, timeoutMs = 700, env = {} } = {}) {
   const platform = await startFakePlatform();
   const store = createStore(":memory:");
   store.save({
@@ -28,7 +28,7 @@ async function setup({ secret, timeoutMs = 700 } = {}) {
     backoff: [20],
     timeoutMs,
     now: () => clock.t,
-    env: {},
+    env,
   });
   channel.attach(null, { receive: (m) => received.push(m) });
   channel.start();
@@ -868,4 +868,49 @@ test("adapter details: unified identity, mention tags, placeholder names, unusab
   );
   assert.equal(bare.text, "@我");
   assert.equal(bare.mentioned, true);
+});
+
+test("a ready gateway with no events says why she looks silent", async () => {
+  const t = await setup();
+  try {
+    await t.online();
+    const status = t.channel.status();
+    assert.equal(status.dispatchCount, 0);
+    assert.equal(status.transport, "websocket");
+    assert.equal(status.mediaSend, "stub");
+    assert.match(status.hints.join("\n"), /Webhook/);
+    assert.match(status.hints.join("\n"), /白名单/);
+    await t.arrive("GROUP_AT_MESSAGE_CREATE", groupAt({ id: "S1" }));
+    assert.equal(t.channel.status().dispatchCount, 1);
+    assert.equal(t.channel.status().lastEventType, "GROUP_AT_MESSAGE_CREATE");
+    assert.equal(
+      t.channel.status().hints.some((hint) => /一条事件都没有/.test(hint)),
+      false,
+    );
+  } finally {
+    await t.close();
+  }
+});
+
+test("passive-only mode does not fall through to a proactive send", async () => {
+  const t = await setup({ env: { QQBOT_PROACTIVE: "passive" } });
+  try {
+    await t.online();
+    const m = await t.arrive("GROUP_AT_MESSAGE_CREATE", groupAt({ id: "P1" }));
+    await t.channel.send(m, "窗内");
+    assert.equal(t.platform.sends[0].body.msg_id, "P1");
+    t.clock.t += 6 * 60000;
+    await assert.rejects(
+      () => t.channel.send(m, "窗外"),
+      /QQBOT_PROACTIVE=passive/,
+    );
+    assert.equal(t.platform.sends.length, 1);
+    assert.match(t.channel.status().lastSendError, /passive/);
+    await assert.rejects(
+      () => t.channel.send(m, "图", { media: { file_info: "x" } }),
+      /file_info/,
+    );
+  } finally {
+    await t.close();
+  }
 });

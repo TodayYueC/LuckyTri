@@ -297,9 +297,10 @@
           LuckyTri runs on your own computer and meets people through QQ. QQ has
           two ways to connect, and you pick one: <strong>OneBot 11</strong> (you
           bring a connector, reverse WebSocket) or the
-          <strong>QQ official bot</strong> (QQ Open Platform). With either, her
-          memory, mood and behavior are exactly the same; only the way messages
-          arrive differs. You configure the model API yourself.
+          <strong>QQ official bot</strong> (QQ Open Platform). Both share one
+          mind. The official bot does not replace the OneBot connector yet; the
+          limits are in <a href="qq-official-bot.md">QQ official bot</a>. You
+          configure the model API yourself.
         </p>
         <p>
           The top-right corner of the interface switches between
@@ -949,6 +950,19 @@ npm start
                 Are the AppID and AppSecret right, are group and one-to-one
                 messages enabled for the bot, can the network reach the QQ Open
                 Platform
+              </td>
+            </tr>
+            <tr>
+              <td>Official bot looks connected but QQ stays quiet</td>
+              <td>
+                On Connect QQ, is the latest event still empty? No events: the
+                console may be on Webhook, the bot may not be in a group or
+                added as a friend, or this machine&#39;s IP may be missing from
+                the allow list. @ only: turn on &quot;receive all
+                messages&quot;. Events arrive and she still does not speak: the
+                group passive window is about five minutes, and proactive sends
+                outside it often fail. See
+                <a href="qq-official-bot.md">QQ official bot</a>
               </td>
             </tr>
             <tr>

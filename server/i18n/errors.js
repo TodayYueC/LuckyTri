@@ -215,6 +215,18 @@ export const ERRORS = {
   "QQ 开放平台没有返回网关地址":
     "The QQ Open Platform returned no gateway address",
   "QQ 官方机器人尚未连接": "The QQ official bot is not connected yet",
+  "Webhook 模式需要挂到 LuckyTri 的 HTTP 服务上":
+    "Webhook mode needs to be attached to LuckyTri's HTTP server",
+  "AppSecret 为空，无法校验回调":
+    "AppSecret is empty, so the callback cannot be checked",
+  "被动回复窗口已过。QQBOT_PROACTIVE=passive，所以没有改发主动消息。":
+    "The passive-reply window has passed. QQBOT_PROACTIVE=passive, so no proactive message was sent.",
+  "官方通道还不能发送图片、语音或文件：要先上传拿到 file_info（msg_type=7），上传仍是实验桩。":
+    "The official channel cannot send images, voice or files yet. That needs an upload which returns file_info (msg_type=7), and the upload is still a stub.",
+  "官方通道的 Markdown 还是实验桩。文本回复走 msg_type=0。":
+    "Markdown on the official channel is still a stub. Text replies use msg_type=0.",
+  "官方通道的按钮和 Ark 卡片还是实验桩，当前只发送纯文本。":
+    "Buttons and Ark cards on the official channel are still stubs. Only plain text is sent.",
   "这个会话不属于当前连接的 QQ 官方机器人":
     "This session does not belong to the QQ official bot that is connected",
   会话身份不完整: "The session identity is incomplete",

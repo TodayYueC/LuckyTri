@@ -3,16 +3,19 @@ import { defineChannel } from "../contract.js";
 import { parseSessionKey } from "../session-key.js";
 import { channelState } from "../state.js";
 import { QQBotApi, QQBotError } from "./api.js";
-import { qqbotCredentials } from "./credentials.js";
+import { qqbotCredentials, qqbotRuntimeConfig } from "./credentials.js";
 import {
   isPlaceholderName,
   normalize,
   openidOf,
+  outboundEnvelope,
   qqbot,
   quotedElement,
   quotedMessage,
 } from "./adapter.js";
-import { QQBotGateway } from "./gateway.js";
+import { INTENTS, QQBotGateway } from "./gateway.js";
+import { silenceHints } from "./silence.js";
+import { handleCallback, mountWebhook } from "./webhook.js";
 
 // The platform's windows for answering a message without it counting as a
 // proactive one. A little margin is kept off both so a late reply is sent as a
@@ -23,6 +26,8 @@ const WAKEUP_EVERY = 30 * 86400000;
 const REMEMBER = 2000;
 
 // Answers that mean the message id cannot be used (any more) as a passive reply.
+const PASSIVE_ONLY =
+  "被动回复窗口已过。QQBOT_PROACTIVE=passive，所以没有改发主动消息。";
 const EXPIRED = new Set([304103, 40034005, 40034128, 40034024]);
 // The person or room has not allowed proactive messages.
 const NOT_ALLOWED = new Set([40034105]);
@@ -79,6 +84,12 @@ export function createQqBotChannel(
   let lastDisconnectAt = null;
   let sawAllGroupMessages = false;
   let sawAtOnlyGroupMessages = false;
+  let runtime = qqbotRuntimeConfig(env);
+  let httpServer = null;
+  let dispatchCount = 0;
+  let lastEventType = "";
+  let lastSendError = "";
+  let webhookVerified = false;
 
   const key = (kind, id) => `${kind}:${creds.appId}:${id}`;
 
@@ -162,6 +173,8 @@ export function createQqBotChannel(
 
   function onDispatch(type, d) {
     lastEventAt = now();
+    dispatchCount += 1;
+    lastEventType = String(type || "");
     switch (type) {
       case "GROUP_AT_MESSAGE_CREATE":
       case "GROUP_MESSAGE_CREATE":
@@ -241,9 +254,22 @@ export function createQqBotChannel(
     }
   }
 
-  async function send(message, text) {
+  async function send(message, text, options) {
     if (message.simulated) return { message_id: "sim" };
-    if (!gateway?.ready || !api) throw new Error("QQ 官方机器人尚未连接");
+    try {
+      return await deliver(message, text, options);
+    } catch (error) {
+      lastSendError = String(error?.message || "发送失败").slice(0, 200);
+      throw error;
+    }
+  }
+
+  async function deliver(message, text, options) {
+    const up =
+      runtime.transport === "webhook" ? !!api : !!gateway?.ready && !!api;
+    if (!up) throw new Error("QQ 官方机器人尚未连接");
+    const envelope = outboundEnvelope(text, options);
+    if (!envelope.ok) throw new QQBotError(envelope.reason);
     const route = parseSessionKey(message.sessionId);
     if (route.channel !== "qqbot" || route.accountId !== creds.appId)
       throw new Error("这个会话不属于当前连接的 QQ 官方机器人");
@@ -253,7 +279,7 @@ export function createQqBotChannel(
         : state.get(key("openid", route.nativeId)) || route.nativeId;
     const post = (body) =>
       route.kind === "group" ? api.sendGroup(to, body) : api.sendUser(to, body);
-    const body = { msg_type: 0, content: text };
+    const body = envelope.body;
     let result = null;
     const anchor = passiveFor(message, route.kind);
     if (anchor) {
@@ -271,6 +297,8 @@ export function createQqBotChannel(
         anchor.expired = true;
       }
     }
+    if (!result && qqbotRuntimeConfig(env).proactive !== "auto")
+      throw new QQBotError(PASSIVE_ONLY);
     result ||= await sendActive(post, route, body, message.sessionId);
     const ref = String(result?.ext_info?.ref_idx || "");
     if (ref) {
@@ -278,6 +306,7 @@ export function createQqBotChannel(
       while (botRefs.size > REMEMBER)
         botRefs.delete(botRefs.values().next().value);
     }
+    lastSendError = "";
     return { message_id: ref || String(result?.id || ""), id: result?.id };
   }
 
@@ -287,7 +316,8 @@ export function createQqBotChannel(
   }
 
   function canReach(sessionId) {
-    if (!gateway?.ready) return false;
+    const up = runtime.transport === "webhook" ? !!api : !!gateway?.ready;
+    if (!up) return false;
     let route;
     try {
       route = parseSessionKey(sessionId);
@@ -305,16 +335,81 @@ export function createQqBotChannel(
     gateway = null;
     api = null;
     signature = "";
+    webhookVerified = false;
+    dispatchCount = 0;
+    lastEventType = "";
+    lastSendError = "";
+    sawAllGroupMessages = false;
+    sawAtOnlyGroupMessages = false;
     connection = { state: "idle", error: "" };
+  }
+
+  function acceptWebhook(req, res, raw) {
+    const result = handleCallback(raw, req.headers, {
+      secret: creds.secret,
+      appId: creds.appId,
+    });
+    if (result.kind === "validation") {
+      webhookVerified = true;
+      connection = { state: "ready", error: "" };
+    } else if (result.kind === "dispatch") onDispatch(result.type, result.d);
+    const body = JSON.stringify(result.body);
+    res.writeHead(result.status, { "Content-Type": "application/json" });
+    res.end(body);
+  }
+
+  function ensureWebhook() {
+    if (!httpServer) return;
+    mountWebhook(httpServer, () => ({
+      enabled:
+        runtime.transport === "webhook" &&
+        !!creds.secret &&
+        connection.state !== "idle",
+      path: runtime.webhookPath,
+      onRequest: acceptWebhook,
+    }));
+  }
+
+  function startWebhook() {
+    gateway?.stop();
+    gateway = null;
+    const next = `webhook\n${creds.appId}\n${creds.secret}\n${runtime.webhookPath}`;
+    if (signature !== next) {
+      signature = next;
+      webhookVerified = false;
+      dispatchCount = 0;
+      lastEventType = "";
+      lastSendError = "";
+      api = new QQBotApi({
+        appId: creds.appId,
+        secret: creds.secret,
+        fetch,
+        apiBase: runtime.apiBase || apiBase,
+        tokenUrls,
+        now,
+        timeoutMs,
+      });
+    }
+    if (!httpServer) {
+      connection = {
+        state: "error",
+        error: "Webhook 模式需要挂到 LuckyTri 的 HTTP 服务上",
+      };
+      return;
+    }
+    if (!webhookVerified) connection = { state: "connecting", error: "" };
+    ensureWebhook();
   }
 
   function start() {
     creds = qqbotCredentials(store, env);
+    runtime = qqbotRuntimeConfig(env);
     if (!creds.appId || !creds.secret) {
       stopConnection();
       connection = { state: "unconfigured", error: "" };
       return;
     }
+    if (runtime.transport === "webhook") return startWebhook();
     const next = `${creds.appId}\n${creds.secret}`;
     if (gateway && next === signature) return gateway.start();
     stopConnection();
@@ -325,7 +420,7 @@ export function createQqBotChannel(
       appId: creds.appId,
       secret: creds.secret,
       fetch,
-      apiBase,
+      apiBase: runtime.apiBase || apiBase,
       tokenUrls,
       now,
       timeoutMs,
@@ -343,9 +438,13 @@ export function createQqBotChannel(
 
   function status() {
     const current = qqbotCredentials(store, env);
-    return {
+    const config = qqbotRuntimeConfig(env);
+    const snapshot = {
       type: "qqbot",
-      online: !!gateway?.ready,
+      online:
+        config.transport === "webhook"
+          ? webhookVerified || dispatchCount > 0
+          : !!gateway?.ready,
       configured: !!(current.appId && current.secret),
       appId: current.appId,
       secretConfigured: !!current.secret,
@@ -367,14 +466,27 @@ export function createQqBotChannel(
           : "unknown",
       closedRooms: state.list(`closed:${current.appId}:`).length,
       adminProtected: !!env.ADMIN_TOKEN,
+      transport: config.transport,
+      proactive: config.proactive,
+      intents: INTENTS,
+      dispatchCount,
+      lastEventType,
+      lastSendError,
+      webhookVerified,
+      webhookPath: config.transport === "webhook" ? config.webhookPath : "",
+      mediaSend: "stub",
     };
+    snapshot.hints = silenceHints(snapshot);
+    return snapshot;
   }
 
   return defineChannel({
     type: "qqbot",
     capabilities: qqbot.capabilities,
-    attach(_server, chatSystem) {
+    attach(server, chatSystem) {
+      httpServer = server;
       chat = chatSystem;
+      if (runtime.transport === "webhook") ensureWebhook();
     },
     start,
     stop: stopConnection,
