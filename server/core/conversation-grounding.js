@@ -2553,7 +2553,7 @@ export function unsupportedPeerStateIssues(bubbles, snapshot, decision = {}) {
 // activity-broadcast variants that escaped the note-dump phrase list. User: 主动
 // 10句有9句说自己、事还单一（焚化炉循环）.
 const SELF_NOTE_DUMP =
-  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补|刚冒头的念头|睡前想通|想通一件小事|顺手报个进度|收尾了一篇|补课笔记|笔记落下|补读收了尾|我早上收尾|跟你说个刚|跟你说个我自己|跟你说个下午|今晚三格|三格又连着|排焚化|推传送|刚写完焚化|想给你看看|界碑先立|哪天真跑起来|纯二手|押个宝|稿到哪读到哪|坐进来等|接着昨晚说的|今晚想做的两件|我读到《|今天又想到一层|约定其实有两半|到场这半|记下一条|开价之前先掂兜|台阶底下不能是空的|不算催稿|那格.{0,24}(?:起跑|又滑|滑了)|又滑了.{0,16}第三|跑完跟你说|跑完照旧跟你说|排到哪了|不硬撑了|定稿|回看完了?|刚回看|回看完了|摸鱼摸出|摸出个对仗/;
+  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补|刚冒头的念头|睡前想通|想通一件小事|顺手报个进度|收尾了一篇|补课笔记|笔记落下|补读收了尾|我早上收尾|跟你说个刚|跟你说个我自己|跟你说个下午|今晚三格|三格又连着|排焚化|推传送|刚写完焚化|想给你看看|界碑先立|哪天真跑起来|纯二手|押个宝|稿到哪读到哪|坐进来等|接着昨晚说的|今晚想做的两件|我读到《|今天又想到一层|约定其实有两半|到场这半|记下一条|开价之前先掂兜|台阶底下不能是空的|不算催稿|那格.{0,24}(?:起跑|又滑|滑了)|又滑了.{0,16}第三|跑完跟你说|跑完照旧跟你说|排到哪了|不硬撑了|定稿|回看完了?|刚回看|回看完了|摸鱼摸出|摸出个对仗|感受记录|歌单收尾|家务分配表|刚写完歌单|刚整理完.{0,20}草稿/;
 const SELF_ACTIVITY_MARK =
   /我(?:刚|早上|这边|自己|读|写|排|推|想|记|整理|翻|查|收尾|押|开价|许了)|今晚.{0,12}(?:三格|全是|排|读|写)|刚把.{0,16}(?:推到|写完|读完|收尾)|进度|节拍|补课|笔记|那格|又滑了|起跑|排到哪|第三回|总闸房/;
 const PEER_ANCHOR =
@@ -2858,7 +2858,7 @@ const INSIGHT_DUMP =
 const WORK_REVIEW_DUMP =
   /最满意的是|埋而不点|立住了|不咸不淡|默契全靠|通风管|配电室|GLaDOS|惠特利|卡罗琳|雪儿|老光圈|报修单|那句[「『"]|你看了就知道我指/;
 const UNFAMILIED_WORK_DUMP =
-  /(?:第\s*[\d一二三四五六七八九十百]+\s*[章节段篇]|那段|那节|那篇|这段)?(?:定稿|初稿|草稿|正文|稿子)?(?:我)?(?:刚)?(?:写完|改完|回看完|整理完)了?.{0,12}(?:想给你看看|发给你看看|给你看看)|(?:结尾停在|空档期就是这章的疑点).{0,28}(?:下一章|下一节|这章)|(?:这章|那章|下一章).{0,16}(?:疑点|伏笔|主线).{0,16}(?:打算从哪|就该去)/;
+  /(?:第\s*[\d一二三四五六七八九十百]+\s*[章节段篇]|那段|那节|那篇|这段)?(?:定稿|初稿|草稿|正文|稿子|歌单|感受记录|家务(?:分配)?表?)?(?:我)?(?:刚)?(?:写完|改完|回看完|整理完)了?.{0,48}(?:想给你看看|发给你看看|给你看看)|(?:结尾停在|空档期就是这章的疑点).{0,28}(?:下一章|下一节|这章)|(?:这章|那章|下一章).{0,16}(?:疑点|伏笔|主线).{0,16}(?:打算从哪|就该去)/;
 
 export function initiativeTopicHijackIssues(bubbles, snapshot, decision = {}) {
   const reply = (bubbles || [])
@@ -3385,7 +3385,6 @@ export function mediaAttributionIssues(bubbles, snapshot) {
       description: "",
     });
   }
-  if (!media.length) return [];
 
   const issues = [];
   const batchPeople = messages.filter(
@@ -3400,9 +3399,60 @@ export function mediaAttributionIssues(bubbles, snapshot) {
       .filter((id) => id && id !== "undefined"),
   );
 
+  const OWNED_MEDIA_CLAIM =
+    /你这(?:张)?图|你发的图|你这表情|你(?:这|那)?(?:两张|几张|一张)?(?:图|券|截图)|你发的(?:那|这)?(?:两张|几张)?(?:图|券|截图)|(?:券|图)都晒|晒出来了|把自己那(?:两张|几张)图|你那两张图交代|你券/;
+
+  // Live 2026-10-31 Singapore: 「券都晒出来了」「你先把自己那两张图交代清楚」—
+  // 雾言并未发任何图/券。旧闸只拦「别人的图栽到文字说话人头上」；对方零发图仍被栽则漏。
+  // 无图在场时也要拦「你发了图/券」的捏造。
+  if (OWNED_MEDIA_CLAIM.test(text)) {
+    const nowMs = conversationNowMs(snapshot);
+    const recentUsers = messages.filter((m) => {
+      if (m.role !== "user") return false;
+      if (!nowMs || !Number.isFinite(m.time)) return true;
+      return nowMs - m.time >= 0 && nowMs - m.time <= 20 * 60 * 1000;
+    });
+    const hasVisual = (speakerId) => {
+      const id = String(speakerId);
+      if (media.some((item) => String(item.speaker) === id)) return true;
+      return recentUsers.some(
+        (m) => String(m.speaker) === id && isVisualMessage(m),
+      );
+    };
+    const named = [...String(text).matchAll(/@([\w\u4e00-\u9fff·]{1,24})/g)].map(
+      (m) => m[1],
+    );
+    const namedSpeakers = new Set();
+    for (const name of named) {
+      for (const m of [...recentUsers, ...messages.filter((x) => x.role === "user")]) {
+        const nm = String(m.name || "");
+        if (nm === name || nm.includes(name) || name.includes(nm))
+          namedSpeakers.add(String(m.speaker));
+      }
+    }
+    if (namedSpeakers.size) {
+      for (const speakerId of namedSpeakers) {
+        if (!hasVisual(speakerId)) {
+          issues.push(
+            "被@的人近窗没有发过图/券/截图；不要把别人的图或根本不存在的券/图说成是对方发的，更不要在被纠正后继续逼对方『交代那两张图』。",
+          );
+          break;
+        }
+      }
+    } else if (batchPeople.length) {
+      if (batchPeople.every((person) => !hasVisual(person.speaker))) {
+        issues.push(
+          "对方近窗没有发过图/券/截图；不要把别人的图或根本不存在的券/图说成是对方发的，更不要在被纠正后继续逼对方『交代那两张图』。",
+        );
+      }
+    }
+  }
+
+  if (!media.length) return [...new Set(issues)];
+
   // "你这图" while every text speaker in the batch did not send the picture.
   if (
-    /你这(?:张)?图|你发的图|你这表情/.test(text) &&
+    OWNED_MEDIA_CLAIM.test(text) &&
     batchPeople.length &&
     imageOwners.size &&
     batchPeople.every((person) => !imageOwners.has(String(person.speaker)))

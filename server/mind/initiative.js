@@ -18,6 +18,27 @@ import { roomBusyUnrelated } from "./time/sharing.js";
 // A chance to start something is different from a request to answer someone.
 // Time changes what she can notice; it never increments a loneliness score or
 // obliges her to speak. The model receives the situation and makes the choice.
+
+// Live 2026-10-31: 「刚写完歌单收尾的感受记录，想给你看看」在对方刚诉苦降额度之后冷开。
+// 草稿分享口吻（不限 portal 族）+ 对方近窗在Distress且未邀看 → defer。
+export const DRAFT_SHARE_CUE =
+  /想给你看看|发给你看看|给你看看|刚写完|刚整理完|感受记录|回看完了|定稿|歌单收尾|家务分配表/;
+export const PEER_DISTRESS_CUE =
+  /恶心|烦死|讨厌|不想(?:干|做|上班|蹬)|累死|崩溃|麻了|降额度|蹬不完|太坑|气死|难受|郁闷|完蛋|寄了|服了|无语|折磨|惩罚机制/;
+export const SHARE_INVITE_CUE =
+  /分享|发给我|给我看|看看你写|写完了吗|交稿|想看|发来|看看你的|读完发/;
+
+export function isDraftShareText(value) {
+  return DRAFT_SHARE_CUE.test(String(value || ""));
+}
+
+export function peerTextsShowDistress(texts = []) {
+  const list = (texts || []).map((t) => String(t || "")).filter(Boolean);
+  if (!list.length) return false;
+  if (list.some((t) => SHARE_INVITE_CUE.test(t))) return false;
+  return list.some((t) => PEER_DISTRESS_CUE.test(t));
+}
+
 export const INITIATIVE_PROMPT = `【这一轮是你自己发起，不是补答历史消息】
 occasion 中的 initiative 是现在的实际情况，历史 messages 只是回忆。没有新消息、没人叫你、别人已经得到回答，都不是禁止你开新话题的理由。
 先看自己的兴趣、正在想做的事、留下的念头、对人的感觉，再决定此刻想不想和这里的人说话。可以只是想分享一个念头、闲聊、问一个自己好奇的问题，或者想找熟悉的人一起聊点什么；不需要重大事件或待处理的问题。安静了一阵也可能让你无聊、想念或想有人一起说说话，也可能正好想独处，按你此刻真正的倾向选择，不为完成主动指标发言。
@@ -402,6 +423,45 @@ export class Initiative {
       .map((r) => `${r.outreach || ""} ${r.content || ""}`);
     const saturated = new Set(saturatedWorkFamilies(recent, { minHits: 3 }));
     return families.some((f) => saturated.has(f));
+  }
+
+
+  // Live 2026-10-31: 对方近窗在诉苦/抱怨且未邀看时，草稿分享类 outreach 先 defer。
+  peerSessionDistressed(session, now = this.life.now(), windowMs = 30 * 60000) {
+    if (!session) return false;
+    const rows = this.db
+      .prepare(
+        "SELECT payload,time FROM core_events WHERE session_id=? AND role='user' AND time>? AND time<=? AND seq NOT IN (SELECT seq FROM mind_unlived) AND COALESCE(json_extract(payload,'$.simulated'),0)=0 ORDER BY seq DESC LIMIT 16",
+      )
+      .all(session, now - windowMs, now);
+    return peerTextsShowDistress(
+      rows.map((r) => String(parse(r.payload, {}).text || "")),
+    );
+  }
+
+  shouldDeferDraftShareOntoDistress(thought, session, now = this.life.now()) {
+    const candidate = `${thought?.content || ""} ${thought?.outreach || ""} ${(Array.isArray(thought?.outreach_draft) ? thought.outreach_draft : []).join(" ")}`;
+    if (!isDraftShareText(candidate)) return null;
+    if (!this.peerSessionDistressed(session, now)) return null;
+    return {
+      reason: "对方这阵子在说自己烦心的事，先别塞刚写完/想给你看看",
+      retryAt: now + 45 * 60000,
+    };
+  }
+
+  // 不限作品族：近窗已多次「想给你看看」类草稿分享 → 再开同类先 defer，逼开口换线。
+  draftShareSaturated(thought, now = this.life.now()) {
+    const candidate = `${thought?.content || ""} ${thought?.outreach || ""}`;
+    if (!isDraftShareText(candidate)) return false;
+    const recent = this.db
+      .prepare(
+        "SELECT outreach,content FROM mind_thoughts WHERE kind='expression' AND outreach_status IN ('sent','sending') AND created>=? AND created<? ORDER BY created DESC LIMIT 30",
+      )
+      .all(now - 8 * HOUR, now);
+    const hits = recent.filter((r) =>
+      isDraftShareText(`${r.outreach || ""} ${r.content || ""}`),
+    ).length;
+    return hits >= 2;
   }
 
   // 群内近窗助手互 @ 乒乓、中间没有人类实质新话头 → 主动开口先 defer。

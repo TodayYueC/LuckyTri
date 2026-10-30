@@ -149,6 +149,27 @@ export class LifePresence {
         );
         continue;
       }
+      const distressDefer = this.owner.initiative.shouldDeferDraftShareOntoDistress(
+        t,
+        session,
+        now,
+      );
+      if (distressDefer) {
+        this.owner.mind.thoughts.deferOutreach(
+          t.id,
+          distressDefer.reason,
+          distressDefer.retryAt,
+        );
+        continue;
+      }
+      if (this.owner.initiative.draftShareSaturated(t, now)) {
+        this.owner.mind.thoughts.deferOutreach(
+          t.id,
+          "这阵子想给你看看说得偏多，先换换别的开口",
+          now + 3 * 3600000,
+        );
+        continue;
+      }
       if (this.owner.initiative.pushedBackOnTopic(t, session, now)) {
         this.owner.mind.thoughts.setOutreach(
           t.id,
