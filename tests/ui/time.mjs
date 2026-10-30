@@ -417,7 +417,9 @@ try {
     ],
   };
   await w.life.activities.run();
-  await page.goto(server.base + "#time/tasks");
+  // A hash-only goto keeps the studio's short read cache, which can still
+  // show the previous main activity. A new query forces a fresh document.
+  await page.goto(server.base + "/?fresh=game#time/tasks");
   const gameCard = page.locator('[data-task="' + game + '"]');
   await gameCard.waitFor();
   assert.match(await gameCard.innerText(), /本段预计 8 分钟/);

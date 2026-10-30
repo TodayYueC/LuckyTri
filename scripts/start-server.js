@@ -28,14 +28,21 @@ else if (proxy.source === "windows-pac-unsupported")
 else console.log("未检测到系统代理，外部 API 请求将直连。");
 
 let currentPid;
+// A stop can arrive while the old server has exited and the replacement pid
+// is not adopted yet. Remember it and forward it as soon as a pid exists.
+let stopSignal;
+function forwardStop(pid = currentPid) {
+  if (!stopSignal || !pid) return;
+  try {
+    process.kill(pid, stopSignal);
+  } catch (error) {
+    if (error.code !== "ESRCH") throw error;
+  }
+}
 for (const signal of ["SIGINT", "SIGTERM"])
   process.on(signal, () => {
-    if (currentPid)
-      try {
-        process.kill(currentPid, signal);
-      } catch (error) {
-        if (error.code !== "ESRCH") throw error;
-      }
+    stopSignal = signal;
+    forwardStop();
   });
 
 async function start(root) {
@@ -52,6 +59,7 @@ async function start(root) {
     },
   );
   currentPid = child.pid;
+  forwardStop(currentPid);
   const exited = new Promise((resolve) =>
     child.once("exit", (code, signal) => resolve({ code, signal })),
   );
@@ -88,8 +96,11 @@ try {
       tracked = { pid: update.pid };
       currentPid = update.pid;
       direct = false;
+      forwardStop(currentPid);
       continue;
     }
+
+    if (stopSignal) break;
 
     // If the worker died after stopping the server, bring back the currently
     // selected release. The matching update record prevents normal `stop`
