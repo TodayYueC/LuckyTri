@@ -177,7 +177,10 @@ export class ReplyDelivery {
       return finish("stale", "生成期间语境已更新，旧稿未发送");
     };
     const outdated = () => !c.replay && !c.preview && !isCurrent();
-    const focus = replyFocus(snapshot, turn).kind;
+    const turnFocus = replyFocus(snapshot, turn);
+    const focus = turnFocus.kind;
+    const exchangeView = currentExchange(snapshot);
+    const groundingView = conversationGrounding(snapshot);
     const fallbackOptions = [
       ...(focus === "acknowledge" ? ["嗯。", "好。"] : []),
       ...(focus === "readability_repair"
@@ -311,7 +314,7 @@ export class ReplyDelivery {
           .filter((m) => m.role === "assistant")
           .slice(-3)
           .some((m) => /[?？]/.test(m.text || ""))) ||
-      currentExchange(snapshot).thirdPartyClaims.length > 0 ||
+      exchangeView.thirdPartyClaims.length > 0 ||
       response.bubbles.some((line) =>
         /你(?:的|在|给|付|掏).{0,12}(?:账单|费用|钱|token)|(?:烧|花|扣|付).{0,6}你.{0,6}(?:钱|token)|账单.{0,8}你/i.test(
           line,
@@ -344,7 +347,7 @@ export class ReplyDelivery {
       response.bubbles.some((line) =>
         /从.{1,16}(?:学来|听来|知道|学的)|(?:教|告诉)我的/.test(line),
       ) ||
-      (!ignoreBotTail && conversationGrounding(snapshot).botOnlyTail >= 6) ||
+      (!ignoreBotTail && groundingView.botOnlyTail >= 6) ||
       snapshot.batch.some((m) =>
         /看不懂|没看懂|听不懂|太抽象|人机|复读|说人话|好好说话|冷淡|冷漠|你觉得我|我的人格|性格怎么样/.test(
           m.text || "",
@@ -427,7 +430,7 @@ export class ReplyDelivery {
         return pending;
       };
       try {
-        const claims = currentExchange(snapshot).thirdPartyClaims;
+        const claims = exchangeView.thirdPartyClaims;
         const questions = readerQuestions(snapshot, turn);
         // An old expression can already contain a fictional action. Check
         // the actual words again against activity records, without giving
@@ -471,8 +474,8 @@ export class ReplyDelivery {
             response,
             experienceEvidence:
               "自己的旧回复与expression草稿都可能误报经历，不单独证明实际读过、做完或正在做。sourceMaterial里的earlier_thought只证明当时想过。声称具体活动须核对currentLife的真实作品、阅读与动作证据；待办和愿望不能证明执行。自己此刻的想法与感受不需要外部动作证明。普通问候不用补答已经换了话题的旧任务。",
-            replyFocus: replyFocus(snapshot, turn),
-            thirdPartyClaims: currentExchange(snapshot).thirdPartyClaims,
+            replyFocus: turnFocus,
+            thirdPartyClaims: claims,
             imageEvidence: c.generationImages.length
               ? "复审已附上回合模型看到的同一张画面；据图核对具体描述，不凭空判定为编造。"
               : snapshot.vision

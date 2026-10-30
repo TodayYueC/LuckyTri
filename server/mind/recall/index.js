@@ -6,6 +6,7 @@ import { agoLabel } from "../clock.js";
 import { isPrivateSession } from "../memory.js";
 import { recallIntent } from "../continuity.js";
 import { DAY, clamp, parse, similar } from "../util.js";
+import { sameRecentTheme } from "../novelty.js";
 import { RecallStore } from "./store.js";
 import { MEMORY_KINDS } from "./sources.js";
 import { fillRoots, mineFor } from "./roots.js";
@@ -517,9 +518,16 @@ export class Recall {
           : null;
         if (vector && otherVector && dot(vector, otherVector) >= NEAR_DUPLICATE)
           return true;
+        if (other.row.kind !== item.row.kind) return false;
+        if (similar(other.row.text, item.row.text, 0.85)) return true;
+        const samePeople =
+          other.who?.length &&
+          item.who?.length &&
+          other.who.join(",") === item.who.join(",");
         return (
-          other.row.kind === item.row.kind &&
-          similar(other.row.text, item.row.text, 0.85)
+          Boolean(samePeople) &&
+          (similar(other.row.text, item.row.text, 0.75) ||
+            sameRecentTheme(other.row.text, item.row.text))
         );
       });
       if (duplicate) continue;

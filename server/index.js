@@ -133,25 +133,32 @@ if (!["127.0.0.1", "localhost", "::1"].includes(host) && !auth.configured())
   throw new Error("绑定外网地址前请先在本机设置管理密码");
 
 let stopping = false;
-function shutdown() {
+async function shutdown() {
   if (stopping) return;
   stopping = true;
-  backups.stop();
-  plugins.close();
-  life.close();
-  chatSystem.close();
-  channel.close();
-  store.revision++;
-  clearInterval(maintenance);
   const finish = () => {
     try {
       store.db.close();
+    } catch {
+      /* ignore if already closed */
     } finally {
       process.exit(0);
     }
   };
+  const forceTimer = setTimeout(finish, 3000);
+  forceTimer.unref();
+  try {
+    backups.stop();
+    life.close();
+    chatSystem.close();
+    channel.close();
+    store.revision++;
+    clearInterval(maintenance);
+    await plugins.close();
+  } catch {
+    /* proceed to close server and exit */
+  }
   server.close(finish);
-  setTimeout(finish, 3000).unref();
 }
 
 // Off unless the owner turns it on; waits until she is not talking.

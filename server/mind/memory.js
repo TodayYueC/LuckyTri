@@ -16,6 +16,7 @@ import { agoLabel } from "./clock.js";
 import { hasCredential, secretRequest } from "./guard.js";
 import { MEMORY_IDLE_DAYS, grounded } from "./salience.js";
 import { DAY, clamp, parse, similar, text } from "./util.js";
+import { sameRecentTheme } from "./novelty.js";
 import { recallIntent } from "./continuity.js";
 import { consolidationDecision } from "./memory-policy.js";
 import { requestedName } from "../core/person-name.js";
@@ -76,10 +77,18 @@ function basisOf(sources) {
   const certainty = (Array.isArray(sources) ? sources : []).map(
     (s) => s?.certainty,
   );
+  if (certainty.includes("imagined") || certainty.includes("fiction"))
+    return "imagined";
   if (certainty.includes("inferred")) return "inferred";
   if (certainty.includes("hearsay")) return "hearsay";
   return "stated";
 }
+
+export const MEMORY_BASIS_LABEL = {
+  inferred: "推断，不是对方明说的",
+  hearsay: "转述，未经本人确认",
+  imagined: "设想或作品情节，不是既成事实",
+};
 
 export function isPrivateSession(session) {
   const value = String(session || "");
@@ -241,11 +250,18 @@ export class MemoryManager {
         kinds.add(item.m.type);
       }
     }
-    selected.push(
-      ...scored
-        .filter((item) => !selected.includes(item))
-        .slice(0, RECALL_LIMIT - selected.length),
-    );
+    for (const item of scored) {
+      if (selected.length >= RECALL_LIMIT) break;
+      if (selected.includes(item)) continue;
+      const duplicate = selected.some(
+        (existing) =>
+          String(existing.m.subject) === String(item.m.subject) &&
+          (similar(existing.m.content, item.m.content, 0.78) ||
+            sameRecentTheme(existing.m.content, item.m.content)),
+      );
+      if (duplicate) continue;
+      selected.push(item);
+    }
     if (touch) {
       const access = db.prepare(
         "UPDATE core_memories SET last_access=? WHERE id=?",
@@ -260,13 +276,18 @@ export class MemoryManager {
     const shown = forSpeech
       ? selected.filter(({ m }) => this.permission(m, session, cutoff).disclose)
       : selected;
+    const findReplaced = db.prepare(
+      "SELECT content,updated FROM core_memories WHERE superseded_by=? AND status='superseded' ORDER BY updated DESC LIMIT 1",
+    );
     return shown.map(({ m, local, why }) => {
       const age = cutoff - Number(m.created || cutoff);
+      const allowDisclose = this.permission(m, session, cutoff).disclose;
+      const replaced = findReplaced.get(m.id);
       return {
         id: m.id,
         subject: m.subject,
         content:
-          forSpeech && !this.permission(m, session, cutoff).disclose
+          forSpeech && !allowDisclose
             ? withheldMemory(m.content, [
                 ...new Set([...saidBy.values()].flatMap((t) => [...t])),
               ])
@@ -282,6 +303,17 @@ export class MemoryManager {
             : "别的群里",
         // Old news may no longer be true; she should know how old it is.
         ...(age >= 7 * DAY ? { when: `${agoLabel(age)}知道的` } : {}),
+        ...(MEMORY_BASIS_LABEL[m.basis]
+          ? { basis: MEMORY_BASIS_LABEL[m.basis] }
+          : {}),
+        ...(Number(m.evidence_count) > 1
+          ? { confirmed: `前后说过 ${m.evidence_count} 次` }
+          : {}),
+        ...(replaced && (!forSpeech || allowDisclose)
+          ? {
+              changedFrom: `之前记的是「${replaced.content.slice(0, 60)}」，后来更新了`,
+            }
+          : {}),
         ...(m.discretion === "private" && !local
           ? { discretion: PRIVATELY_KNOWN }
           : {}),
@@ -928,6 +960,7 @@ export class MemoryManager {
           const sources = block.filter((m) => f.sources.includes(m.seq));
           if (
             sources.length !== f.sources.length ||
+            sources.some((m) => m.artifact) ||
             !sources.every(
               (m) =>
                 m.role === "user" && String(m.userId) === String(f.subject),
@@ -1001,8 +1034,22 @@ export class MemoryManager {
           });
           for (const ref of Array.isArray(f.supersedes) ? f.supersedes : []) {
             const old = refs.get(String(ref));
-            if (old && String(old.subject) === String(f.subject))
+            if (!old || String(old.subject) !== String(f.subject)) continue;
+            // Unverified inferences cannot silently overwrite a directly stated
+            // fact; keep both and record a conflict instead.
+            const oldRow = db
+              .prepare("SELECT basis,confidence FROM core_memories WHERE id=?")
+              .get(old.id);
+            if (
+              f.certainty === "inferred" &&
+              oldRow &&
+              oldRow.basis === "stated" &&
+              Number(oldRow.confidence ?? 0.8) >= 0.75
+            ) {
+              this.conflict(id, old.id, f.sources, now);
+            } else {
               this.supersede(old.id, id);
+            }
           }
           for (const ref of Array.isArray(f.conflicts) ? f.conflicts : []) {
             const old = refs.get(String(ref));

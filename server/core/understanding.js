@@ -20,14 +20,21 @@ const CORRECTION = /不是|说错|理解错|记错|不对|纠正|搞错/;
 const GREETING = /^(?:你好|早|晚安|在吗|嗨|哈喽|hello)/i;
 const CLOSING = /^(?:嗯+|好(?:的|吧)?|行|对|晚安|拜拜|再见|hh+|哈+)$/i;
 const IMAGE_ONLY = /^(?:\[(?:图片|表情|媒体)\]\s*)+$/;
+const BARE_VENT_HUSH =
+  /^(?:傻逼|sb|滚(?:开|蛋|吧|啊)?|有病(?:吧|啊)?|神经病(?:吧|啊)?|脑残|弱智|白痴|智障|去死(?:吧你|吧)?|没有你的事(?:情)?|关你屁事|少管我)[.。!！~～\s]*$/i;
 
 export function messageCues(text) {
   const value = String(text || "");
+  const bare = value.replace(/\[提及成员\]|@\S+/g, "").trim();
   const tone = [];
   if (LAUGH.test(value)) tone.push("laughing");
   if (TEASE.test(value)) tone.push("teasing");
   if (IRONY.test(value)) tone.push("maybe_ironic");
-  if (COMPLAIN.test(value)) tone.push("complaining");
+  if (
+    COMPLAIN.test(value) ||
+    (!/[?？]/.test(value) && BARE_VENT_HUSH.test(bare))
+  )
+    tone.push("complaining");
   const stance = HEARSAY.test(value)
     ? "hearsay"
     : GUESS.test(value)
@@ -43,6 +50,7 @@ export function intentHint(text) {
   if (!value) return "other";
   if (IMAGE_ONLY.test(value)) return "media";
   const bare = value.replace(/\[提及成员\]|@\S+/g, "").trim();
+  if (!/[?？]/.test(value) && BARE_VENT_HUSH.test(bare)) return "correction";
   if (CORRECTION.test(value) && value.length < 80) return "correction";
   if (PROPOSAL.test(value)) return "proposal";
   if (FEELING.test(value)) return "feeling";
@@ -235,6 +243,14 @@ const GLOSS_RULES = [
   { re: /月畜/, glosses: ["月初", "月出", "YueC"] },
   { re: /p4|P4|鸣上悠/i, glosses: ["女神异闻录4", "Persona4", "鸣上悠"] },
   { re: /自拍/, glosses: ["自拍", "照片", "自拍照"] },
+  {
+    re: /还在焚化炉/,
+    glosses: ["还在讲焚化炉", "题材重复了", "别再播同一套进度"],
+  },
+  {
+    re: /还在(?:传送门|Portal)/i,
+    glosses: ["还在讲传送门", "题材重复了", "别再播同一套进度"],
+  },
 ];
 
 export function speechGlosses(text) {
@@ -292,24 +308,49 @@ export function priorityCues(messages = [], batchIds = [], addressedIds = []) {
       /别在群里(?:讨论|聊)|咱们别在群里|能不能不要在.{0,8}群.{0,8}聊|不要在.{0,8}群.{0,8}聊这些|别聊这些|别讨论这些|想让我喝茶|喝茶吗|这玩意儿私聊|私聊吧|私聊说|去tg那边|去tg.{0,8}讲|剩下的.{0,12}去tg|别发群里|别公开聊/.test(
         value,
       );
-    // Room hush toward AI/bots (not necessarily @her): 闭嘴/烧钱/傻子AI…
+    // Room hush toward AI/bots or bare vent/brush-off: 闭嘴/烧钱/傻子AI/谁问你了/傻逼/滚/没有你的事情…
     const isRoomHush =
-      /(?:快)?闭嘴(?:吧)?|别说了|不要再说了|别再说了|先别说话|闭麦|别复读|别吵了|(?:这)?傻子?AI|AI.{0,10}(?:开着|烧钱)|烧钱来的|别刷屏|不知所云|太没用了|只会哈(?:人|气)|有啥用啊|sto{2,}p+|stop{2,}|\bstop\b|shut\s*up/i.test(
+      /(?:快)?闭嘴(?:吧)?|别说了|不要再说了|别再说了|先别说话|闭麦|别复读|别吵了|(?:这)?傻子?AI|AI.{0,10}(?:开着|烧钱)|烧钱来的|别刷屏|不知所云|太没用了|只会哈(?:人|气)|有啥用啊|谁问你(?:了|啊)?|没人问你|没有你的事(?:情)?|关你屁事|sto{2,}p+|stop{2,}|\bstop\b|shut\s*up/i.test(
         value,
-      );
-    // Private/direct complaint: she keeps talking about herself.
+      ) ||
+      (!/[?？]/.test(value) && BARE_VENT_HUSH.test(bare));
+    // Private/direct complaint: she keeps talking about herself or things the listener doesn't know.
     const isCareRedirect =
       isDirect &&
-      /总是在说你自己|老顾着讲自己|多关心关心我|能不能关心一下我|你也多关心/.test(
+      /总是在说你自己|老顾着讲自己|多关心关心我|能不能关心一下我|你也多关心|怎么总是说些我不知道的|都是些你自己折腾的|少说点你自己的/.test(
         value,
       );
-    if (!isDirect && !isRoomStop && !isRoomHush && !isCareRedirect) continue;
+    // Readability / opacity complaint ("你在说什么" / "你说的是中文吗" / "怎么突然这么文艺" / "好人机"):
+    const isReadabilityPushback =
+      isDirect &&
+      /你在说什么|你在讲什么|你说的是中文吗|说人话|听不懂|没听懂|看不懂|没看懂|怎么突然这么文艺|这句话好人机|太人机了|好自恋/.test(
+        value,
+      );
+    // Live 2026-10-24/25/27: 「还在焚化炉」「还在焚化炉？」= fatigue pushback on mono topic, not invite.
+    const isTopicPushback =
+      isDirect &&
+      /还在.{0,16}(?:焚化炉|传送门|Portal|三格|补课|节拍)|怎么又(?:是|在).{0,12}(?:焚化|传送|Portal)|别(?:再)?(?:说|播).{0,8}(?:焚化|传送)|为什么一直写/.test(
+        value,
+      );
+    if (
+      !isDirect &&
+      !isRoomStop &&
+      !isRoomHush &&
+      !isCareRedirect &&
+      !isReadabilityPushback &&
+      !isTopicPushback
+    )
+      continue;
     const hint = intentHint(value);
     const isQuestion = hint === "question" || QUESTION.test(value);
     if (
       !isQuestion &&
       !["proposal", "correction"].includes(hint) &&
-      !/[?？]|怎么|为什么|什么|哪|有没有|能不能|是什么|啥意思|啥|扫不了|过不了|解释一下|说清楚|讲讲|告诉我|说说看|来点评|点评一下|点评|评价一下|评价下|评一下|对比一下|哪个好|还是|二选一|选哪个|你更喜欢|更喜欢哪个|喜欢哪个|怎么看|怎么想|你怎么看|觉得怎么样|怎么样啊|给点(?:参考)?意见|参考意见|给点建议|有没有推荐|推荐一下|求推荐|你是谁|你叫什么|叫什么名字|你是什么(?:人|啊|呀)?|介绍一下你(?:自己)?|记得|记不记得|帮我记|别在群里|别聊这些|别讨论这些|喝茶|私聊吧|私聊说|去tg|别发群|别公开聊|闭嘴|别说了|闭麦|烧钱|别复读|别刷屏|傻子AI|不知所云|太没用了|只会哈|有啥用|sto{2,}p+|stop{2,}|\bstop\b|shut\s*up|说你自己|多关心关心我/.test(
+      !isRoomHush &&
+      !isTopicPushback &&
+      !isReadabilityPushback &&
+      !isCareRedirect &&
+      !/[?？]|怎么|为什么|什么|哪|有没有|能不能|是什么|啥意思|啥|扫不了|过不了|解释一下|说清楚|讲讲|告诉我|说说看|来点评|点评一下|点评|评价一下|评价下|评一下|对比一下|哪个好|还是|二选一|选哪个|你更喜欢|更喜欢哪个|喜欢哪个|怎么看|怎么想|你怎么看|觉得怎么样|怎么样啊|给点(?:参考)?意见|参考意见|给点建议|有没有推荐|推荐一下|求推荐|你是谁|你叫什么|叫什么名字|你是什么(?:人|啊|呀)?|介绍一下你(?:自己)?|记得|记不记得|帮我记|别在群里|别聊这些|别讨论这些|喝茶|私聊吧|私聊说|去tg|别发群|别公开聊|闭嘴|别说了|闭麦|烧钱|别复读|别刷屏|傻子AI|不知所云|太没用了|只会哈|有啥用|谁问你|没人问你|没有你的事|关你屁事|sto{2,}p+|stop{2,}|\bstop\b|shut\s*up|说你自己|多关心关心我|还在焚化|还在传送/.test(
         value,
       )
     )
@@ -319,17 +360,26 @@ export function priorityCues(messages = [], batchIds = [], addressedIds = []) {
       speaker: m.speaker,
       name: m.name,
       text: value.slice(0, 120),
-      intentHint: isQuestion ? "question" : hint,
+      intentHint:
+        isTopicPushback || isReadabilityPushback || isCareRedirect
+          ? "correction"
+          : isQuestion
+            ? "question"
+            : hint,
       addressed: true,
-      why: isQuestion
-        ? "有人叫你并在提问"
-        : isRoomStop
-          ? "本轮有人叫停群聊话题或提示风险"
-          : isRoomHush
-            ? "本轮有人嘘停/嫌不知所云，先收住旧线或短收"
-            : isCareRedirect
-              ? "对方说你老顾着讲自己，想要你关心近况"
-              : "有人叫你提出请求或纠正",
+      why: isTopicPushback
+        ? "对方在推回你反复讲的同一题材，不要当邀请续播或再报排程"
+        : isCareRedirect
+          ? "对方指出你总讲自己折腾的事，想让你关心对方或聊对方知道的事"
+          : isReadabilityPushback
+            ? "对方指出你刚才的话太玄/听不懂/像人机，先用普通大白话简短说清或收住"
+            : isQuestion
+              ? "有人叫你并在提问"
+              : isRoomStop
+                ? "本轮有人叫停群聊话题或提示风险"
+                : isRoomHush
+                  ? "本轮有人嘘停/嫌自说自话，先收住旧线或短收"
+                  : "有人叫你提出请求或纠正",
     });
   }
   if (!cues.length) {

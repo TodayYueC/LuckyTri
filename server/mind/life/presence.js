@@ -8,6 +8,7 @@ const MINUTE = 60000;
 export class LifePresence {
   constructor(owner) {
     this.owner = owner;
+    this.groundedByThought = new Map();
   }
   async considerPresence(now = this.owner.now()) {
     const s = this.owner.settings();
@@ -55,6 +56,10 @@ export class LifePresence {
       reason: formed.note.reason,
       time: now,
     });
+    if (formed.note.groundedWords?.length) {
+      if (this.groundedByThought.size > 100) this.groundedByThought.clear();
+      this.groundedByThought.set(formed.note.id, formed.note.groundedWords);
+    }
     const result = await this.owner.reachOut(this.owner.now());
     return result
       ? {
@@ -128,10 +133,34 @@ export class LifePresence {
         this.owner.mind.thoughts.setOutreach(t.id, "declined");
         continue;
       }
+      if (this.owner.initiative.recentlyToldSameClaim(t, now)) {
+        this.owner.mind.thoughts.setOutreach(
+          t.id,
+          "declined",
+          "同一主张近期已经说过，先留给自己",
+        );
+        continue;
+      }
+      if (this.owner.initiative.outreachFamilySaturated(t, now)) {
+        this.owner.mind.thoughts.deferOutreach(
+          t.id,
+          "这阵子同一作品族说得偏多，先换换别的",
+          now + 3 * 3600000,
+        );
+        continue;
+      }
+      if (this.owner.initiative.pushedBackOnTopic(t, session, now)) {
+        this.owner.mind.thoughts.setOutreach(
+          t.id,
+          "declined",
+          "对方刚推回过这个话题，不再主动续播",
+        );
+        continue;
+      }
       const block = this.owner.outreachBlocked(session, now, s);
       if (block) {
         if (block.permanent)
-          this.owner.mind.thoughts.setOutreach(t.id, "skipped");
+          this.owner.mind.thoughts.setOutreach(t.id, "skipped", block.reason);
         else
           this.owner.mind.thoughts.deferOutreach(
             t.id,
@@ -140,10 +169,20 @@ export class LifePresence {
           );
         continue;
       }
+      if (this.owner.initiative.groupAtmosphereBusy(t, session, now)) {
+        this.owner.mind.thoughts.deferOutreach(
+          t.id,
+          "群里正在热聊别的事，等空隙再看",
+          now + 15 * MINUTE,
+        );
+        continue;
+      }
       this.owner.mind.thoughts.setOutreach(t.id, "sending");
       this.owner.busy = true;
       try {
         const returned = this.owner.returnedSince(t, now);
+        const groundedWords = this.groundedByThought.get(t.id) || null;
+        this.groundedByThought.delete(t.id);
         const trace = await this.owner.chat.initiate(session, {
           type: t.kind === "expression" ? "presence" : "outreach",
           data: {
@@ -157,6 +196,7 @@ export class LifePresence {
               formedAt: t.created,
               thought: t.content,
               words: t.outreach_draft?.length ? t.outreach_draft : [t.outreach],
+              ...(groundedWords ? { groundedWords } : {}),
               reason: t.outreach_reason,
               sources: t.sources,
               audience,

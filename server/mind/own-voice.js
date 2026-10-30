@@ -3,7 +3,13 @@ import { replyPrompt, prompts } from "../core/persona-manager.js";
 import { withFallback } from "../core/model-manager.js";
 import { HOUR, evidence, hasCredential, text } from "./util.js";
 import { isPrivateSession } from "./memory.js";
-import { sameRecentTheme, sameWorkFamily } from "./novelty.js";
+import {
+  classifyTopicRelation,
+  learnTopicAssociations,
+  sameInsightClaim,
+  sameRecentTheme,
+  sameWorkFamily,
+} from "./novelty.js";
 import { ownLife, sameSelf } from "./salience.js";
 import { conversationOrigin, originSummary } from "./conversation-origin.js";
 import {
@@ -25,12 +31,12 @@ export class OwnVoice {
     this.mind = life.mind;
   }
   // What has come into her life since `after` that this loop did not write
-  // itself: thoughts from solitude, night memory or a review, and threads
-  // those revised. Her own expression write-backs are not new.
+  // itself: thoughts from solitude, night memory or a review, threads those
+  // revised, external observations, and newly due episodes or anticipations.
   arrived(after, until) {
     const thoughts = this.mind.db
       .prepare(
-        "SELECT id FROM mind_thoughts WHERE created>? AND created<=? AND kind!='expression' AND hidden=0",
+        "SELECT id FROM mind_thoughts WHERE created>? AND created<=? AND kind!='expression' AND hidden=0 AND COALESCE(run_id,'') NOT IN (SELECT id FROM mind_runs WHERE kind='activity')",
       )
       .all(after, until)
       .map((row) => `t:${row.id}`);
@@ -40,7 +46,28 @@ export class OwnVoice {
       )
       .all(after, until)
       .map((row) => `s:${row.thread}`);
-    return new Set([...thoughts, ...threads]);
+    const observations = this.mind.db
+      .prepare(
+        "SELECT id FROM mind_observations WHERE created>? AND created<=? AND revoked=0",
+      )
+      .all(after, until)
+      .map((row) => `o:${row.id}`);
+    const dueEpisodes = this.mind.db
+      .prepare(
+        "SELECT id FROM mind_episodes WHERE status='open' AND follow_up_at>? AND follow_up_at<=?",
+      )
+      .all(after, until)
+      .map((row) => `e:${row.id}`);
+    const dueAhead = this.mind.anticipations?.newlyDue(after, until)
+      ? ["a:due"]
+      : [];
+    return new Set([
+      ...thoughts,
+      ...threads,
+      ...observations,
+      ...dueEpisodes,
+      ...dueAhead,
+    ]);
   }
   // How many of her newest notes only took up the one before. A note is
   // anchored when it cites something that arrived after the previous note.
@@ -63,11 +90,36 @@ export class OwnVoice {
   // written several notes that only continue her last one, and nothing she
   // could take up has come in since.
   resting(now) {
-    const { run } = this.circling(now);
-    if (run < STREAK) return null;
-    const { circling } = this.material(now);
-    if (circling?.fresh.length) return null;
-    return `连着 ${run} 条念头都只在接自己上一条，还没有新的东西可接`;
+    if (this.mind.affect.state(now).energy < 0.22)
+      return "有点困倦，先安静歇着";
+    const { run, latest } = this.circling(now);
+    if (run >= STREAK) {
+      const { circling } = this.material(now);
+      if (!circling?.fresh.length)
+        return `连着 ${run} 条念头都只在接自己上一条，还没有新的东西可接`;
+    }
+    const lastAttempt = this.life.repo.config("own-voice", {}).attemptedAt;
+    if (lastAttempt && (!latest || latest.created <= lastAttempt)) {
+      let silentStreak = 0;
+      for (const r of this.mind.db
+        .prepare(
+          "SELECT status FROM mind_runs WHERE kind='expression' AND started<=? ORDER BY started DESC LIMIT 8",
+        )
+        .all(now)) {
+        if (r.status !== "empty") break;
+        silentStreak++;
+      }
+      const hasNew =
+        this.arrived(lastAttempt, now).size > 0 ||
+        this.mind.db
+          .prepare(
+            "SELECT 1 FROM core_events WHERE role='user' AND time>? AND time<=? AND COALESCE(json_extract(payload,'$.simulated'),0)=0 AND seq NOT IN (SELECT seq FROM mind_unlived) LIMIT 1",
+          )
+          .get(lastAttempt, now);
+      if (!hasNew && silentStreak >= 2)
+        return "连着几次都没有想表达的新内容，先安静待着";
+    }
+    return null;
   }
   material(now) {
     const nature = this.mind.nature.current(now);
@@ -82,7 +134,11 @@ export class OwnVoice {
       // is living.
       .filter((s) => s.kind !== "intention" || ownLife(s.content))
       .slice(0, 12);
-    const notes = this.mind.thoughts
+    const recent = this.mind.thoughts
+      .list({ before: now + 1, limit: 80 })
+      .filter((t) => t.kind === "expression")
+      .slice(0, 12);
+    const openNotes = this.mind.thoughts
       .open({ now, limit: 40 })
       .filter((t) =>
         this.mind.meetings.stays(
@@ -96,12 +152,23 @@ export class OwnVoice {
           "",
         ),
       )
-      .sort((a, b) => b.created - a.created)
+      .sort((a, b) => b.created - a.created);
+    const notes = openNotes
+      .filter(
+        (t) =>
+          !recent.some(
+            (r) =>
+              r.id !== t.id &&
+              now - r.created < 24 * HOUR &&
+              t.created <= r.created &&
+              (sameRecentTheme(r.content, t.content) ||
+                sameInsightClaim(r.content, t.content) ||
+                (r.said && sameInsightClaim(r.said, t.content))),
+          ),
+      )
       .slice(0, 6);
-    const recent = this.mind.thoughts
-      .list({ before: now + 1, limit: 80 })
-      .filter((t) => t.kind === "expression")
-      .slice(0, 12);
+    learnTopicAssociations({ db: this.mind.db });
+    learnTopicAssociations(recent);
     const { mood, energyLabel, phaseLabel } = this.mind.affect.state(now, {
       nature,
     });
@@ -118,15 +185,63 @@ export class OwnVoice {
       ...threads.map((s) => `s:${s.thread}`),
       ...notes.map((t) => `t:${t.id}`),
     ].filter((ref) => arrived.has(ref));
-    return {
-      ...(run >= 2 ? { circling: { notes: run, fresh } } : {}),
-      clock: localClock(now, this.mind.timeZone()),
-      currentLife: this.mind.time.view({ session: "", now }),
-      actions: this.mind.time.lived({
+    const currentView = this.mind.time.view({ session: "", now });
+    const recentActions = this.mind.time
+      .lived({
         session: "",
         before: now,
         since: now - 86400000,
-      }),
+      })
+      .filter((a) => {
+        const label = `${a.title || ""} ${a.why || ""}`;
+        return !recent.some(
+          (t) =>
+            t.said &&
+            now - t.created < 24 * HOUR &&
+            (sameRecentTheme(t.said, label) ||
+              sameWorkFamily(t.said, label) ||
+              sameWorkFamily(t.content, label) ||
+              classifyTopicRelation(
+                {
+                  content: t.content,
+                  said: t.said,
+                  sources: t.sources,
+                  created: t.created,
+                },
+                {
+                  title: a.title,
+                  content: label,
+                  projectId: a.project,
+                  workId: a.work,
+                },
+                { db: this.mind.db, now },
+              ).suppress),
+        );
+      })
+      .map(({ ref, title, why, activity, state, share }) => ({
+        ref,
+        title,
+        why,
+        activity,
+        state,
+        share,
+      }));
+    return {
+      ...(run >= 2 ? { circling: { notes: run, fresh } } : {}),
+      clock: localClock(now, this.mind.timeZone()),
+      currentLife: {
+        current: currentView.current
+          ? {
+              id: currentView.current.id,
+              activity: currentView.current.activity,
+              label: currentView.current.label,
+              title: currentView.current.title,
+              state: currentView.current.state,
+            }
+          : null,
+        works: currentView.works || [],
+      },
+      actions: recentActions,
       mood: { feeling: mood, energy: energyLabel, phase: phaseLabel },
       interests: nature.interests || [],
       self: threads.map((s) => ({
@@ -157,8 +272,18 @@ export class OwnVoice {
         ref: `t:${t.id}`,
         created: t.created,
         content: t.content,
-        said: t.outreach_status === "sent" ? t.outreach : "",
-        where: t.outreach_status === "sent" ? t.outreach_session : "",
+        // Live 2026-10-29: 连发形成时前一条还在 planned/sending，若只认 sent
+        // 则 surfaceEcho 看不到在途主张，deletion/背叛 会连播。在途也算「已说」。
+        said: ["sent", "sending", "planned", "uncertain"].includes(
+          t.outreach_status,
+        )
+          ? t.outreach || ""
+          : "",
+        where: ["sent", "sending", "planned", "uncertain"].includes(
+          t.outreach_status,
+        )
+          ? t.outreach_session || ""
+          : "",
       })),
     };
   }
@@ -208,6 +333,7 @@ export class OwnVoice {
           sources.some((s) => !valid.has(s))
         )
           throw Error("自己的念头含有无效来源或敏感内容，未保存");
+        let groundedWords = null;
         if (
           claimsLivedAction([content, ...words].join("\n")) ||
           claimsSharedHistory([content, result.reason, ...words].join("\n"))
@@ -232,6 +358,7 @@ export class OwnVoice {
               "新行动经历没有得到实际记录支持，未保存";
             return { status, reason, note: null };
           }
+          groundedWords = [...words];
           if (life.closed || this.mind.nature.version() !== nature.version) {
             status = "cancelled";
             reason = "核对期间状态已变化";
@@ -243,13 +370,21 @@ export class OwnVoice {
         const drifting =
           (input.circling?.notes ?? 0) >= STREAK &&
           !sources.some((ref) => input.circling.fresh.includes(ref));
+        const spoken = words.join("\n");
         const repeated =
           drifting ||
-          input.recentExpressions.some((t) =>
-            sameRecentTheme(t.content, content),
+          input.recentExpressions.some(
+            (t) =>
+              sameRecentTheme(t.content, content) ||
+              sameInsightClaim(t.content, content) ||
+              (t.said && sameInsightClaim(t.said, content)) ||
+              (t.said && spoken && sameInsightClaim(t.said, spoken)),
           );
         const surfaceEcho = input.recentExpressions.some(
-          (t) => t.said && sameRecentTheme(t.said, words.join("\n")),
+          (t) =>
+            t.said &&
+            (sameRecentTheme(t.said, spoken) ||
+              sameInsightClaim(t.said, spoken)),
         );
         const recentlySaid = input.recentExpressions.filter(
           (t) => t.said && now - t.created < 12 * 3600000,
@@ -259,11 +394,18 @@ export class OwnVoice {
         if (
           !echoed &&
           result.share === true &&
-          recentlySaid.some(
-            (t) =>
+          recentlySaid.some((t) => {
+            const rel = classifyTopicRelation(
+              { content: t.content, said: t.said, created: t.created },
+              { content, words, sources, created: now },
+              { db: this.mind.db, now },
+            );
+            return (
+              rel.suppress ||
               sameWorkFamily(t.said, words.join("\n")) ||
-              sameWorkFamily(t.content, content),
-          )
+              sameWorkFamily(t.content, content)
+            );
+          })
         )
           echoed = true;
         if (
@@ -334,6 +476,7 @@ export class OwnVoice {
             // new encounter, its next paraphrase should not tour other rooms.
             share: result.share === true && words.length > 0 && !echoed,
             words,
+            ...(groundedWords ? { groundedWords } : {}),
             reason: text(result.reason, 300) || "想把这个念头说出来",
             audience: ["private", "group"].includes(result.audience)
               ? result.audience

@@ -76,12 +76,18 @@ export class DayPlanner {
       return false;
     const time = this.life.mind.time,
       slot = task.checkpoint.schedule;
+    // An own casual plan whose chosen slot already passed without starting
+    // should not trigger repeated rescheduling loops ("又滑了第N回").
+    const expired =
+      slot?.chosenAt && slot.endedAt <= now && !task.checkpoint.pendingStep;
+    const maxReschedules = task.kind === "promise" ? 2 : 1;
     return (
-      task.activity === "unknown" ||
-      (task.activity === "game" && !gameName(time, task)) ||
-      !slot?.chosenAt ||
-      (slot.endedAt <= now && !task.checkpoint.pendingStep) ||
-      task.checkpoint.reschedule
+      !task.checkpoint.awaitedText &&
+      (task.activity === "unknown" ||
+        (task.activity === "game" && !gameName(time, task)) ||
+        !slot?.chosenAt ||
+        (expired && (slot.rescheduledCount || 0) < maxReschedules) ||
+        task.checkpoint.reschedule)
     );
   }
   context(task, now) {
@@ -131,6 +137,27 @@ export class DayPlanner {
       return null;
     const state = this.state(),
       attempts = state.attempts || {};
+    for (const stale of time.tasks
+      .list({ limit: 100 })
+      .filter(
+        (t) =>
+          t.kind === "plan" &&
+          ["todo", "scheduled"].includes(t.state) &&
+          !t.lease &&
+          t.checkpoint.schedule?.chosenAt &&
+          t.checkpoint.schedule.endedAt <= now &&
+          !t.checkpoint.pendingStep &&
+          (t.checkpoint.schedule.rescheduledCount || 0) >= 1,
+      )) {
+      time.tasks.control(
+        stale.id,
+        {
+          action: "pause",
+          reason: "之前选的时间已经过去，先搁置保留，等有空再看",
+        },
+        now,
+      );
+    }
     const tasks = time.tasks
       .list({ limit: 100 })
       .filter(
