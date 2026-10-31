@@ -2553,9 +2553,13 @@ export function unsupportedPeerStateIssues(bubbles, snapshot, decision = {}) {
 // activity-broadcast variants that escaped the note-dump phrase list. User: 主动
 // 10句有9句说自己、事还单一（焚化炉循环）.
 const SELF_NOTE_DUMP =
-  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补|刚冒头的念头|睡前想通|想通一件小事|顺手报个进度|收尾了一篇|补课笔记|笔记落下|补读收了尾|我早上收尾|跟你说个刚|跟你说个我自己|跟你说个下午|今晚三格|三格又连着|排焚化|推传送|刚写完焚化|想给你看看|界碑先立|哪天真跑起来|纯二手|押个宝|稿到哪读到哪|坐进来等|接着昨晚说的|今晚想做的两件|我读到《|今天又想到一层|约定其实有两半|到场这半|记下一条|开价之前先掂兜|台阶底下不能是空的|不算催稿|那格.{0,24}(?:起跑|又滑|滑了)|又滑了.{0,16}第三|跑完跟你说|跑完照旧跟你说|排到哪了|不硬撑了|定稿|回看完了?|刚回看|回看完了|摸鱼摸出|摸出个对仗|感受记录|歌单收尾|家务分配表|刚写完歌单|刚整理完.{0,20}草稿/;
+  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补|刚冒头的念头|睡前想通|想通一件小事|顺手报个进度|收尾了一篇|补课笔记|笔记落下|补读收了尾|我早上收尾|跟你说个刚|跟你说个我自己|跟你说个下午|今晚三格|三格又连着|排焚化|推传送|刚写完焚化|想给你看看|界碑先立|哪天真跑起来|纯二手|押个宝|稿到哪读到哪|坐进来等|接着昨晚说的|今晚想做的两件|我读到《|今天又想到一层|约定其实有两半|到场这半|记下一条|开价之前先掂兜|台阶底下不能是空的|不算催稿|那格.{0,24}(?:起跑|又滑|滑了)|又滑了.{0,16}第三|跑完跟你说|跑完照旧跟你说|排到哪了|不硬撑了|定稿|回看完了?|刚回看|回看完了|摸鱼摸出|摸出个对仗|感受记录|歌单收尾|家务分配表|刚写完歌单|刚整理完.{0,20}草稿|手头那个|真定了|定死不再改|头一回见人/;
+// Live 2026-10-31 Tokyo DM post-r59: 四连泡「手头那个万圣节的小东西…定死不再改…头一回见人」
+// 无「想给你看看」字样，旧 dump 全放行。手作/物件揭幕散文 = 自说近况变体。
+export const CRAFT_REVEAL_DUMP =
+  /手头那个|真定了|定死不再改|头一回见人|拖到最后真定|打底.{0,16}藏一层|小东西.{0,20}(?:定死|藏青|打底)|我只负责把.{0,12}藏|这分工意外/;
 const SELF_ACTIVITY_MARK =
-  /我(?:刚|早上|这边|自己|读|写|排|推|想|记|整理|翻|查|收尾|押|开价|许了)|今晚.{0,12}(?:三格|全是|排|读|写)|刚把.{0,16}(?:推到|写完|读完|收尾)|进度|节拍|补课|笔记|那格|又滑了|起跑|排到哪|第三回|总闸房/;
+  /我(?:刚|早上|这边|自己|读|写|排|推|想|记|整理|翻|查|收尾|押|开价|许了|只负责)|今晚.{0,12}(?:三格|全是|排|读|写)|刚把.{0,16}(?:推到|写完|读完|收尾)|进度|节拍|补课|笔记|那格|又滑了|起跑|排到哪|第三回|总闸房|手头那个|真定了|定死|头一回见人/;
 const PEER_ANCHOR =
   /你(?:今天|最近|那边|还好吗|怎么了|过得|吃了|忙啥|在干嘛|看过|喜欢|觉得|记得|那边)|最近怎么样|还好吗|在干嘛|吃了没|忙完了吗|骑手|你们(?:聊|说)|群里刚才|上回你|上次你|你说的那/;
 const CARE_ASK =
@@ -2573,18 +2577,20 @@ export function selfCenteredOpenIssues(bubbles, snapshot, decision = {}) {
   const socialOnly = socialOnlyBatch(snapshot);
   if (!snapshot.initiative && !longGap && !socialOnly) return [];
 
-  const dump = SELF_NOTE_DUMP.test(reply);
+  const dump = SELF_NOTE_DUMP.test(reply) || CRAFT_REVEAL_DUMP.test(reply);
   const selfHits = (reply.match(SELF_ACTIVITY_MARK) || []).length;
   const peer = PEER_ANCHOR.test(reply);
+  const bubbleN = (bubbles || []).filter((line) => typeof line === "string" && line.trim()).length;
   // Structural: initiative reopen (or greeting/affection batch) that is mostly
   // first-person activity with no peer/shared hook — even when phrasing dodges
-  // the dump list.
+  // the dump list. Craft-object unveil essays often run 3+ bubbles with no peer ask.
   const structuralSelf =
-    (selfHits >= 2 || (socialOnly && selfHits >= 1)) &&
-    !peer &&
-    /读|写|排|笔记|进度|传送|焚化|三格|节拍|补课|Portal|稿|总闸房|推到/.test(
-      reply,
-    );
+    ((selfHits >= 2 || (socialOnly && selfHits >= 1)) &&
+      !peer &&
+      /读|写|排|笔记|进度|传送|焚化|三格|节拍|补课|Portal|稿|总闸房|推到|手头|定死|打底|藏一层/.test(
+        reply,
+      )) ||
+    (CRAFT_REVEAL_DUMP.test(reply) && !peer && bubbleN >= 3);
   if (!dump && !structuralSelf) return [];
 
   // Care-ask wrapper must not exempt a self-note dump (live: 「最近怎么样」+「顺手报个进度」).
@@ -2609,7 +2615,7 @@ export function selfCenteredOpenIssues(bubbles, snapshot, decision = {}) {
 // （三格排程→焚化炉节拍→补课笔记）。同作品族再播自进度听感=焚化炉循环。
 // 对方近期主动提过该作品时放行（共享线）；纯自说循环则拦。
 const SELF_PROGRESS =
-  /进度|节拍|三格|补课|笔记|刚写完|想给你看看|定稿|回看完了?|刚回看|我读到|排.{0,8}(?:读|写|焚化|传送)|今晚.{0,16}(?:全是|连着)|第\s*\d+\s*段|纯二手|界碑|那格.{0,24}(?:起跑|又滑|滑了|排)|(?:又滑了|起跑).{0,20}(?:那格|第三|不硬撑)|跑完(?:跟你说|照旧)|排到哪了|第三回.{0,12}不硬撑|挪到明早/;
+  /进度|节拍|三格|补课|笔记|刚写完|想给你看看|定稿|回看完了?|刚回看|我读到|排.{0,8}(?:读|写|焚化|传送)|今晚.{0,16}(?:全是|连着)|第\s*\d+\s*段|纯二手|界碑|那格.{0,24}(?:起跑|又滑|滑了|排)|(?:又滑了|起跑).{0,20}(?:那格|第三|不硬撑)|跑完(?:跟你说|照旧)|排到哪了|第三回.{0,12}不硬撑|挪到明早|手头那个|真定了|定死不再改|头一回见人/;
 
 export function initiativeMonoActivityIssues(bubbles, snapshot, decision = {}) {
   const reply = (bubbles || [])
@@ -2802,8 +2808,9 @@ export function initiativeSoloChainIssues(bubbles, snapshot, decision = {}) {
   const dump =
     SELF_NOTE_DUMP.test(reply) ||
     SELF_PROGRESS.test(reply) ||
+    CRAFT_REVEAL_DUMP.test(reply) ||
     ((reply.match(SELF_ACTIVITY_MARK) || []).length >= 2 &&
-      /读|写|排|笔记|进度|传送|焚化|三格|节拍|补课|Portal|稿|开价|漏检/.test(
+      /读|写|排|笔记|进度|传送|焚化|三格|节拍|补课|Portal|稿|开价|漏检|手头|定死/.test(
         reply,
       ));
   if (!dump) return [];
@@ -2811,7 +2818,8 @@ export function initiativeSoloChainIssues(bubbles, snapshot, decision = {}) {
   if (
     PEER_ANCHOR.test(reply) &&
     !SELF_NOTE_DUMP.test(reply) &&
-    !SELF_PROGRESS.test(reply)
+    !SELF_PROGRESS.test(reply) &&
+    !CRAFT_REVEAL_DUMP.test(reply)
   )
     return [];
 
@@ -2835,6 +2843,7 @@ export function initiativeSoloChainIssues(bubbles, snapshot, decision = {}) {
     if (
       SELF_NOTE_DUMP.test(t) ||
       SELF_PROGRESS.test(t) ||
+      CRAFT_REVEAL_DUMP.test(t) ||
       (t.match(SELF_ACTIVITY_MARK) || []).length >= 2
     ) {
       trailingSelf.push(t);

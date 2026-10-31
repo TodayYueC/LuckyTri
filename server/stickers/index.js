@@ -224,17 +224,24 @@ export class Stickers {
       bonds.set(`${b.sticker_id}|${b.user_id}`, b);
     const recentRows = this.db
       .prepare(
-        "SELECT sticker_id, MAX(time) time FROM sticker_uses WHERE session_id=? AND time>? GROUP BY sticker_id",
+        "SELECT sticker_id, MAX(time) time, COUNT(*) n FROM sticker_uses WHERE session_id=? AND time>? GROUP BY sticker_id",
       )
-      .all(session, now - 2 * 3600000);
-    // Just sent here: not again so soon. Soft penalty still covers 2h.
+      .all(session, now - 6 * 3600000);
+    // Just sent here: not again so soon. Soft penalty still covers hours.
     // Sticker-war: shorter hard cool; playful alone still 4m.
+    // Live 2026-10-31 Tokyo: 同日三次同一「得意坏笑」脸——非 sticker-war 时
+    // 6h 内同脸 ≥2 次直接移出候选，避免机械复用。
     const hardCoolMs = peerStickers ? 12 * 1000 : playful ? 3 * 60000 : 6 * 60000;
     const justUsed = new Set(
       recentRows
         .filter((r) => r.time > now - hardCoolMs)
         .map((r) => r.sticker_id),
     );
+    if (!peerStickers) {
+      for (const r of recentRows) {
+        if (r.n >= 2) justUsed.add(r.sticker_id);
+      }
+    }
     const recent = new Set(recentRows.map((r) => r.sticker_id));
     const grams = (s) => {
       const out = new Set();
