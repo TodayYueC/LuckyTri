@@ -595,6 +595,7 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   issues.push(...ungroundedVisionDetailIssues(bubbles, snapshot));
   issues.push(...ungroundedVisionWatchIssues(bubbles, snapshot));
   issues.push(...misattributedImageAtIssues(bubbles, snapshot));
+  issues.push(...imageSelfPriorBindIssues(bubbles, snapshot));
   issues.push(...documentPresenceIssues(bubbles, snapshot));
   issues.push(...claimedUnreadDocumentIssues(bubbles, snapshot));
   issues.push(...unreadDocumentReviewIssues(bubbles, snapshot));
@@ -2553,13 +2554,13 @@ export function unsupportedPeerStateIssues(bubbles, snapshot, decision = {}) {
 // activity-broadcast variants that escaped the note-dump phrase list. User: 主动
 // 10句有9句说自己、事还单一（焚化炉循环）.
 const SELF_NOTE_DUMP =
-  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补|刚冒头的念头|睡前想通|想通一件小事|顺手报个进度|收尾了一篇|补课笔记|笔记落下|补读收了尾|我早上收尾|跟你说个刚|跟你说个我自己|跟你说个下午|今晚三格|三格又连着|排焚化|推传送|刚写完焚化|想给你看看|界碑先立|哪天真跑起来|纯二手|押个宝|稿到哪读到哪|坐进来等|接着昨晚说的|今晚想做的两件|我读到《|今天又想到一层|约定其实有两半|到场这半|记下一条|开价之前先掂兜|台阶底下不能是空的|不算催稿|那格.{0,24}(?:起跑|又滑|滑了)|又滑了.{0,16}第三|跑完跟你说|跑完照旧跟你说|排到哪了|不硬撑了|定稿|回看完了?|刚回看|回看完了|摸鱼摸出|摸出个对仗|感受记录|歌单收尾|家务分配表|刚写完歌单|刚整理完.{0,20}草稿|手头那个|真定了|定死不再改|头一回见人/;
+  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补|刚冒头的念头|睡前想通|想通一件小事|顺手报个进度|收尾了一篇|补课笔记|笔记落下|补读收了尾|我早上收尾|跟你说个刚|跟你说个我自己|跟你说个下午|今晚三格|三格又连着|排焚化|推传送|刚写完焚化|想给你看看|界碑先立|哪天真跑起来|纯二手|押个宝|稿到哪读到哪|坐进来等|接着昨晚说的|今晚想做的两件|我读到《|今天又想到一层|约定其实有两半|到场这半|记下一条|开价之前先掂兜|台阶底下不能是空的|不算催稿|那格.{0,24}(?:起跑|又滑|滑了)|又滑了.{0,16}第三|跑完跟你说|跑完照旧跟你说|排到哪了|不硬撑了|定稿|回看完了?|刚回看|回看完了|摸鱼摸出|摸出个对仗|感受记录|歌单收尾|家务分配表|刚写完歌单|刚整理完.{0,20}草稿|手头那个|真定了|定死不再改|头一回见人|跟你说个事|停了几天|换个垫法|卡剧情|不打算直接写|小的东西先响|这种写法读着|对了，跟|那笔判完|判完了|今天之内得让/;
 // Live 2026-10-31 Tokyo DM post-r59: 四连泡「手头那个万圣节的小东西…定死不再改…头一回见人」
 // 无「想给你看看」字样，旧 dump 全放行。手作/物件揭幕散文 = 自说近况变体。
 export const CRAFT_REVEAL_DUMP =
   /手头那个|真定了|定死不再改|头一回见人|拖到最后真定|打底.{0,16}藏一层|小东西.{0,20}(?:定死|藏青|打底)|我只负责把.{0,12}藏|这分工意外/;
 const SELF_ACTIVITY_MARK =
-  /我(?:刚|早上|这边|自己|读|写|排|推|想|记|整理|翻|查|收尾|押|开价|许了|只负责)|今晚.{0,12}(?:三格|全是|排|读|写)|刚把.{0,16}(?:推到|写完|读完|收尾)|进度|节拍|补课|笔记|那格|又滑了|起跑|排到哪|第三回|总闸房|手头那个|真定了|定死|头一回见人/;
+  /我(?:刚|早上|这边|自己|读|写|排|推|想|记|整理|翻|查|收尾|押|开价|许了|只负责)|今晚.{0,12}(?:三格|全是|排|读|写)|刚把.{0,16}(?:推到|写完|读完|收尾)|进度|节拍|补课|笔记|那格|又滑了|起跑|排到哪|第三回|总闸房|手头那个|真定了|定死|头一回见人|垫法|卡剧情|写法|判完|停了几天/;
 const PEER_ANCHOR =
   /你(?:今天|最近|那边|还好吗|怎么了|过得|吃了|忙啥|在干嘛|看过|喜欢|觉得|记得|那边)|最近怎么样|还好吗|在干嘛|吃了没|忙完了吗|骑手|你们(?:聊|说)|群里刚才|上回你|上次你|你说的那/;
 const CARE_ASK =
@@ -2587,7 +2588,7 @@ export function selfCenteredOpenIssues(bubbles, snapshot, decision = {}) {
   const structuralSelf =
     ((selfHits >= 2 || (socialOnly && selfHits >= 1)) &&
       !peer &&
-      /读|写|排|笔记|进度|传送|焚化|三格|节拍|补课|Portal|稿|总闸房|推到|手头|定死|打底|藏一层/.test(
+      /读|写|排|笔记|进度|传送|焚化|三格|节拍|补课|Portal|稿|总闸房|推到|手头|定死|打底|藏一层|垫法|卡剧情|螺丝|写法|判完|日常停/.test(
         reply,
       )) ||
     (CRAFT_REVEAL_DUMP.test(reply) && !peer && bubbleN >= 3);
@@ -2615,7 +2616,7 @@ export function selfCenteredOpenIssues(bubbles, snapshot, decision = {}) {
 // （三格排程→焚化炉节拍→补课笔记）。同作品族再播自进度听感=焚化炉循环。
 // 对方近期主动提过该作品时放行（共享线）；纯自说循环则拦。
 const SELF_PROGRESS =
-  /进度|节拍|三格|补课|笔记|刚写完|想给你看看|定稿|回看完了?|刚回看|我读到|排.{0,8}(?:读|写|焚化|传送)|今晚.{0,16}(?:全是|连着)|第\s*\d+\s*段|纯二手|界碑|那格.{0,24}(?:起跑|又滑|滑了|排)|(?:又滑了|起跑).{0,20}(?:那格|第三|不硬撑)|跑完(?:跟你说|照旧)|排到哪了|第三回.{0,12}不硬撑|挪到明早|手头那个|真定了|定死不再改|头一回见人/;
+  /进度|节拍|三格|补课|笔记|刚写完|想给你看看|定稿|回看完了?|刚回看|我读到|排.{0,8}(?:读|写|焚化|传送)|今晚.{0,16}(?:全是|连着)|第\s*\d+\s*段|纯二手|界碑|那格.{0,24}(?:起跑|又滑|滑了|排)|(?:又滑了|起跑).{0,20}(?:那格|第三|不硬撑)|跑完(?:跟你说|照旧)|排到哪了|第三回.{0,12}不硬撑|挪到明早|手头那个|真定了|定死不再改|头一回见人|跟你说个事|换个垫法|停了几天|判完了/;
 
 export function initiativeMonoActivityIssues(bubbles, snapshot, decision = {}) {
   const reply = (bubbles || [])
@@ -3530,6 +3531,69 @@ export function mediaAttributionIssues(bubbles, snapshot) {
       );
   }
   return [...new Set(issues)];
+}
+
+
+// Live 2026-11-01 SG DM: 先冷开 ATRI 写作垫法三段，对方发图后回
+// 「这汗滴是冲我那颗螺丝来的吧」「跟我这几天垫的那些日常意外地搭」。
+// 媒体假归属只拦「你发了图」；这里拦把对方的图默认读成在回应自己上一句自说。
+const IMAGE_TO_MY_PRIOR =
+  /冲我那|冲我刚|冲着我|是在回我|跟我这几天|跟我这段|跟我垫的|呼应我刚才|我那颗|对着我那|冲我那颗/;
+
+export function imageSelfPriorBindIssues(bubbles, snapshot) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+  if (!IMAGE_TO_MY_PRIOR.test(reply)) return [];
+
+  const batch = new Set(snapshot.batchIds || []);
+  const messages = snapshot.messages || [];
+  const batchVisual = messages.filter(
+    (m) =>
+      (batch.has(m.id) || batch.has(Number(m.id))) &&
+      m.role === "user" &&
+      isVisualMessage(m),
+  );
+  const obsVisual = (snapshot.vision?.observations || []).filter((obs) => {
+    const mid = obs?.messageId;
+    return (
+      batch.has(mid) ||
+      batch.has(Number(mid)) ||
+      batch.has(String(mid)) ||
+      batchVisual.some((m) => m.id === mid || String(m.id) === String(mid))
+    );
+  });
+  if (!batchVisual.length && !obsVisual.length) return [];
+
+  const nowMs = conversationNowMs(snapshot);
+  const priorSelf = messages.filter((m) => {
+    if (m.role !== "assistant") return false;
+    if (batch.has(m.id) || batch.has(Number(m.id))) return false;
+    if (!nowMs || !Number.isFinite(m.time)) return true;
+    return nowMs - m.time >= 0 && nowMs - m.time <= 30 * 60 * 1000;
+  });
+  if (!priorSelf.length) return [];
+
+  const priorText = priorSelf.map((m) => String(m.text || "")).join("\n");
+  const selfTopic =
+    /螺丝|垫法|卡剧情|写法|日常停|不打算直接写|小的东西先响|跟你说个事|手头那个|真定了|定死|焚化|传送|三格|补课|笔记|判完/.test(
+      priorText,
+    );
+  if (!selfTopic) return [];
+
+  const desc = obsVisual.map((o) => String(o.description || "")).join("\n");
+  // Grounded only when vision text itself names the object she is binding to.
+  const bindObject =
+    (/螺丝/.test(reply) && /螺丝/.test(desc)) ||
+    (/垫/.test(reply) && /垫/.test(desc)) ||
+    (/窗台/.test(reply) && /窗台/.test(desc));
+  if (bindObject) return [];
+
+  return [
+    "对方发的图先按画面本身回应；不要默认把图读成在回应你上一句自说的话题（螺丝/垫法/进度之类），除非画面观察里真有那东西。",
+  ];
 }
 
 export function fixedReplyHabit(content) {
