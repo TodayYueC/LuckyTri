@@ -22,13 +22,15 @@ const CLOSING = /^(?:嗯+|好(?:的|吧)?|行|对|晚安|拜拜|再见|hh+|哈+)
 const IMAGE_ONLY = /^(?:\[(?:图片|表情|媒体)\]\s*)+$/;
 const BARE_VENT_HUSH =
   /^(?:傻逼|sb|滚(?:开|蛋|吧|啊)?|有病(?:吧|啊)?|神经病(?:吧|啊)?|脑残|弱智|白痴|智障|去死(?:吧你|吧)?|没有你的事(?:情)?|关你屁事|少管我)[.。!！~～\s]*$/i;
+const KINSHIP_MEME_BANTER =
+  /^(?:妈妈|老妈|妈|爸爸|义父|爹|儿子|好大儿)(?:早饭|晚饭|午饭|饿饿|饭饭|快上|快去|救命|带带|抱抱|贴贴)?[~～!！。.\s]*$/u;
 
 export function messageCues(text) {
   const value = String(text || "");
   const bare = value.replace(/\[提及成员\]|@\S+/g, "").trim();
   const tone = [];
   if (LAUGH.test(value)) tone.push("laughing");
-  if (TEASE.test(value)) tone.push("teasing");
+  if (TEASE.test(value) || KINSHIP_MEME_BANTER.test(bare)) tone.push("teasing");
   if (IRONY.test(value)) tone.push("maybe_ironic");
   if (
     COMPLAIN.test(value) ||
@@ -41,7 +43,9 @@ export function messageCues(text) {
       ? "guess"
       : OPINION.test(value)
         ? "opinion"
-        : null;
+        : KINSHIP_MEME_BANTER.test(bare)
+          ? "joke"
+          : null;
   return { tone, stance };
 }
 
@@ -250,6 +254,10 @@ const GLOSS_RULES = [
   {
     re: /还在(?:传送门|Portal)/i,
     glosses: ["还在讲传送门", "题材重复了", "别再播同一套进度"],
+  },
+  {
+    re: /\bksm\b|卡丝米/i,
+    glosses: ["户山香澄", "卡丝米", "BanG Dream", "邦邦角色"],
   },
 ];
 

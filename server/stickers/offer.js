@@ -155,6 +155,35 @@ export function expressionInput(snapshot) {
 export function typedAt(bubbles, at, snapshot) {
   const offered = snapshot.canAt || [];
   const fromTurn = new Map((at || []).map((p) => [String(p.userId), p]));
+  const aliasesByUser = new Map();
+  const addAlias = (uid, name) => {
+    const id = String(uid ?? "").trim();
+    const nm = String(name ?? "").trim();
+    if (!id || !nm || nm === id) return;
+    let set = aliasesByUser.get(id);
+    if (!set) {
+      set = new Set();
+      aliasesByUser.set(id, set);
+    }
+    set.add(nm);
+  };
+  for (const p of offered) {
+    addAlias(p.userId, p.name);
+    for (const a of p.aliases || []) addAlias(p.userId, a);
+  }
+  for (const r of snapshot?.inner?.relationships?.known || []) {
+    addAlias(r.subjectId, r.name);
+    for (const a of r.knownAs || []) addAlias(r.subjectId, a);
+  }
+  for (const person of snapshot?.inner?.people || []) {
+    const uid = person.id ?? person.userId;
+    addAlias(uid, person.name);
+    for (const a of person.knownAs || []) addAlias(uid, a);
+    if (person.relationship) {
+      addAlias(uid, person.relationship.name);
+      for (const a of person.relationship.knownAs || []) addAlias(uid, a);
+    }
+  }
   const out = [];
   const atByBubble = [];
   const typedIds = new Set();
@@ -162,16 +191,23 @@ export function typedAt(bubbles, at, snapshot) {
     let text = String(line || "");
     const onThis = new Map();
     for (const p of offered) {
-      if (!p.name) continue;
-      const mark = `@${p.name}`;
-      if (!text.includes(mark)) continue;
       const id = String(p.userId);
+      const names = [...(aliasesByUser.get(id) || [p.name])]
+        .filter(Boolean)
+        .sort((a, b) => b.length - a.length);
+      let hit = false;
+      for (const nm of names) {
+        const mark = `@${nm}`;
+        if (!text.includes(mark)) continue;
+        hit = true;
+        text = text
+          .split(mark)
+          .join("")
+          .replace(/^[\s，,]+/, "");
+      }
+      if (!hit) continue;
       typedIds.add(id);
       onThis.set(id, fromTurn.get(id) || p);
-      text = text
-        .split(mark)
-        .join("")
-        .replace(/^[\s，,]+/, "");
     }
     text = text.trim();
     if (!text) continue;

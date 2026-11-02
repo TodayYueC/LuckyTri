@@ -85,6 +85,88 @@ export function relationshipClaimIssues(bubbles, knowledge) {
           break;
         }
       }
+      if (
+        /以前|之前|当时|过去|曾经|从前|一开始|原来|小说|台词|[“「"『]/.test(
+          String(line),
+        )
+      )
+        continue;
+      const addressedToR = names.some((name) => {
+        const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return new RegExp(`@${escaped}(?=$|[\\s，,。！？!?])`, "i").test(
+          String(line),
+        );
+      });
+      if (r.peerRole === "妹妹") {
+        const namedInvert = names.some((name) => {
+          const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          return new RegExp(
+            `${escaped}(?:是|算)我(?:的)?姐姐?(?:$|[\\s，,。！？!?])|我(?:是|算)${escaped}的?妹妹|${escaped}姐(?:$|[\\s，,。！？!?])`,
+            "i",
+          ).test(String(line));
+        });
+        const vocativeSisterToYounger =
+          (addressedToR ||
+            names.some((name) => String(line).includes(name))) &&
+          !known.some(
+            (other) =>
+              other.subjectId !== r.subjectId &&
+              other.peerRole === "姐姐" &&
+              [other.name, ...(other.knownAs || [])]
+                .filter(Boolean)
+                .some((nm) => String(line).includes(nm)),
+          ) &&
+          /(?:^|[，,。！？!?\s])姐(?:也是|真|还|可|别|先|你|这|[，,。！？!?])|(?:了|吧|啊|呀|呢|睡|点)姐[。！!？?～~\s]*$/u.test(
+            String(line),
+          ) &&
+          !/我是.{0,6}姐|我姐/.test(String(line));
+        if (namedInvert || vocativeSisterToYounger) {
+          issues.push(
+            `当前已知 ${r.name || r.subjectId} 是你的${r.peerRole}（你是${r.selfRole || "姐姐"}），不能颠倒辈分把${r.peerRole}喊成“姐/姐姐”`,
+          );
+          break;
+        }
+      }
+      if (r.peerRole === "姐姐") {
+        const namedInvert = names.some((name) => {
+          const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          return new RegExp(
+            `${escaped}(?:是|算)我(?:的)?妹妹|我(?:是|算)${escaped}的?姐姐?`,
+            "i",
+          ).test(String(line));
+        });
+        if (namedInvert) {
+          issues.push(
+            `当前已知 ${r.name || r.subjectId} 是你的${r.peerRole}（你是${r.selfRole || "妹妹"}），不能颠倒辈分把${r.peerRole}说成“妹妹”`,
+          );
+          break;
+        }
+      }
+      if (
+        r.peerRole === "妈妈" ||
+        r.peerRole === "Maker" ||
+        r.selfRole === "女儿"
+      ) {
+        const wrongKinship = names.some((name) => {
+          const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          return new RegExp(
+            `${escaped}(?:是|算)我(?:的)?(?:姐姐?|妹妹)|${escaped}姐(?:$|[\\s，,。！？!?])`,
+            "i",
+          ).test(String(line));
+        });
+        if (
+          wrongKinship ||
+          (addressedToR &&
+            /(?:^|[，,。！？!?\s])姐[，,。！？!?]|论辈分你也轮不上/.test(
+              String(line),
+            ))
+        ) {
+          issues.push(
+            `当前已知 ${r.name || r.subjectId} 与自己的关系是 ${r.peerRole}（自己是${r.selfRole || "女儿"}），不能把对方喊成“姐”或颠倒辈分`,
+          );
+          break;
+        }
+      }
     }
   }
   return [...new Set(issues)];
