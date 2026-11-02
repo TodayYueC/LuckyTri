@@ -531,6 +531,14 @@ test("A3.1: ksm / 卡丝米 口语扩展与 ATRI 娃错认/挽尊拦截", () => 
   assert.ok(
     ungroundedVisionDetailIssues(["等下，这不是ATRI的娃吗"], dmSnapshot).length > 0,
   );
+  // 若只提观察里已有的泛词「玩偶 / 趴着的玩偶」而不瞎安角色名，则放行（对齐 round38 V1b）
+  assert.deepEqual(
+    ungroundedVisionDetailIssues(
+      ["你手里那只玩偶表情挺嫌弃的（", "这只趴着的毛绒玩偶还挺乖"],
+      dmSnapshot,
+    ),
+    [],
+  );
   assert.ok(
     imageSelfPriorBindIssues(["等下，这不是ATRI的娃吗"], dmSnapshot).length > 0,
   );

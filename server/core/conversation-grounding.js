@@ -1482,23 +1482,37 @@ export function ungroundedVisionDetailIssues(bubbles, snapshot) {
     .map((m) => String(m.text || ""))
     .join("\n")
     .toLowerCase();
+  const merchHeadRe =
+    /(?:的)?(?:玩偶|手办|公仔|毛绒|娃|趴娃|谷子|立牌|周边|景品|粘土人)$/u;
+  const merchPrefixNoise =
+    /^(?:等下|哎|诶|啊|咦|哦|那|这|哪|你|我|他|她|它|别人|大家|手|手里|手上|手头|怀里|桌上|床头|旁边|里|上|边|头|图里|画面里|照片里|截图里|不是|是|有|没|没有|真|挺|好|很|倒|也|还|又|都|就|才|只|个|位|尊|件|款|套|张|幅|双|对|的|之|着|了|过|那个|这个|那只|这只|那位|这位|一只|一个|一位|那套|这套|同款|昨天|之前|刚才|刚刚|上回|上次|趴着|坐着|站着|躺着|睡着|抱着|拿着|拎着|举着|挂着|摆着|戴着|趴|坐|站|躺|毛绒|绒毛|小|大|新|旧)+/u;
   const unsupported = claims.filter((claim) => {
-    const entityStem = String(claim || "")
-      .replace(/^(?:那个|这只|那只|一只|一个)?(?:趴着的|坐着的|站着的)?/u, "")
-      .replace(/(?:的)?(?:玩偶|手办|公仔|毛绒|娃|趴娃|谷子|立牌|周边|景品|粘土人)$/u, "")
-      .trim();
-    if ([...entityStem].length >= 2) {
-      const stemLower = entityStem.toLowerCase();
-      const stemTerms = interestTerms([entityStem]);
-      const stemSupported =
-        descLower.includes(stemLower) ||
-        userBatchText.includes(stemLower) ||
-        [...stemTerms].some(
-          (term) =>
-            term.length >= 2 &&
-            (descLower.includes(term.toLowerCase()) || descTerms.has(term)),
-        );
-      if (!stemSupported) return true;
+    const isMerchClaim = merchHeadRe.test(String(claim || ""));
+    if (isMerchClaim) {
+      const entityStem = String(claim || "")
+        .replace(merchHeadRe, "")
+        .replace(merchPrefixNoise, "")
+        .replace(/(?:的|之)$/u, "")
+        .trim();
+      if ([...entityStem].length >= 2) {
+        const stemLower = entityStem.toLowerCase();
+        const stemTerms = interestTerms([entityStem]);
+        const stemSupported =
+          descLower.includes(stemLower) ||
+          userBatchText.includes(stemLower) ||
+          [...stemTerms].some(
+            (term) =>
+              term.length >= 2 &&
+              (descLower.includes(term.toLowerCase()) || descTerms.has(term)),
+          );
+        if (!stemSupported) return true;
+      } else if (
+        /(?:玩偶|手办|公仔|毛绒|娃|趴娃|谷子|立牌|周边|景品|粘土人)/u.test(
+          desc,
+        )
+      ) {
+        return false;
+      }
     }
     const terms = interestTerms([claim]);
     return ![...terms].some(
