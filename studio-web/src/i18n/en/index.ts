@@ -10,6 +10,7 @@ import people from "./people.ts";
 import plugins from "./plugins.ts";
 import system from "./system.ts";
 import time from "./time.ts";
+import studio from "./studio.ts";
 
 // One table, keyed by the Chinese text. It is split by section only to keep
 // each file readable; the tests make sure no wording is missing or left over.
@@ -26,6 +27,7 @@ const english: Record<string, string> = {
   ...plugins,
   ...system,
   ...time,
+  ...studio,
 };
 
 export default english;

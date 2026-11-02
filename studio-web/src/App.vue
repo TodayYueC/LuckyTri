@@ -7,7 +7,7 @@ import { subscribe } from "./sse";
 import { clearReads, expireReads, toast } from "./api";
 import { applyTheme, liveMood } from "./mood/useMood";
 import { loadWallpapers } from "./wallpaper";
-import MoodSky from "./components/sky/MoodBackdrop.vue";
+import MoodBackdrop from "./components/sky/MoodBackdrop.vue";
 import TaOrb from "./components/ta/TaOrb.vue";
 import Confirm from "./components/ui/Confirm.vue";
 import { preloadPage } from "./pages";
@@ -117,15 +117,46 @@ onUnmounted(() => {
 </script>
 <template>
   <AccessGate>
-    <MoodSky />
-    <div v-if="studio.error" class="startup" role="alert"><TaOrb mood="blue" :size="100" /><h1>{{ t('暂未连接') }}</h1><p>{{ studio.error }}</p><button class="primary" @click="reloadPage">{{ t('重新连接') }}</button></div>
-    <StudioShell v-else-if="studio.core && studio.health" :refreshing="refreshing" @refresh="refresh" />
-    <div v-else class="startup" role="status"><TaOrb :mood="liveMood" activity="idle" :size="100" /><h1>{{ t('正在载入') }}</h1><p>{{ t('连接会话与记忆…') }}</p></div>
+    <MoodBackdrop />
+    <div v-if="studio.error" class="startup" role="alert">
+      <TaOrb mood="blue" :size="100" />
+      <h1>{{ t("暂未连接") }}</h1>
+      <p>{{ studio.error }}</p>
+      <button class="primary" @click="reloadPage">{{ t("重新连接") }}</button>
+    </div>
+    <StudioShell
+      v-else-if="studio.core && studio.health"
+      :refreshing="refreshing"
+      @refresh="refresh"
+    />
+    <div v-else class="startup" role="status">
+      <TaOrb :mood="liveMood" activity="idle" :size="100" />
+      <h1>{{ t("正在载入") }}</h1>
+      <p>{{ t("连接会话与记忆…") }}</p>
+    </div>
     <Confirm />
   </AccessGate>
 </template>
 <style scoped>
-.startup{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:28px;text-align:center;}
-.startup h1{font-size:25px;font-weight:500;}
-.startup p{max-width:520px;color:var(--ink-soft);overflow-wrap:anywhere;}
+@layer components {
+  .startup {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 28px;
+    text-align: center;
+  }
+  .startup h1 {
+    font-size: 25px;
+    font-weight: 500;
+  }
+  .startup p {
+    max-width: 520px;
+    color: var(--ink-soft);
+    overflow-wrap: anywhere;
+  }
+}
 </style>

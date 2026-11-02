@@ -306,44 +306,46 @@ async function install() {
 </template>
 
 <style scoped>
-.update-settings {
-  display: grid;
-  gap: 14px;
-}
-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-}
-h2 {
-  margin-top: 5px;
-}
-.version-state {
-  font-weight: 700;
-}
-.version-state.available {
-  color: var(--accent);
-}
-.small-text {
-  font-size: 12px;
-}
-.update-how {
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: var(--surface);
-}
-code {
-  display: block;
-  margin-top: 9px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.update-links {
-  display: flex;
-  gap: 18px;
-  font-size: 13px;
+@layer components {
+  .update-settings {
+    display: grid;
+    gap: 14px;
+  }
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+  }
+  h2 {
+    margin-top: 5px;
+  }
+  .version-state {
+    font-weight: 700;
+  }
+  .version-state.available {
+    color: var(--accent);
+  }
+  .small-text {
+    font-size: 12px;
+  }
+  .update-how {
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--surface);
+  }
+  code {
+    display: block;
+    margin-top: 9px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .update-links {
+    display: flex;
+    gap: 18px;
+    font-size: 13px;
+  }
 }
 </style>

@@ -123,19 +123,21 @@ async function save() {
 </template>
 
 <style scoped>
-.media {
-  display: grid;
-  gap: 16px;
-}
-.fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
-}
-.fields label {
-  display: grid;
-  gap: 6px;
-  align-content: start;
-  font-size: 13px;
+@layer components {
+  .media {
+    display: grid;
+    gap: 16px;
+  }
+  .fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+  }
+  .fields label {
+    display: grid;
+    gap: 6px;
+    align-content: start;
+    font-size: 13px;
+  }
 }
 </style>

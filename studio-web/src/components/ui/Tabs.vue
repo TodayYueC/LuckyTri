@@ -44,10 +44,12 @@ function move(event: KeyboardEvent, items: { key: string }[]) {
 </template>
 
 <style scoped>
-.count {
-  margin-left: 6px;
-  font-size: 11px;
-  opacity: 0.75;
-  font-variant-numeric: tabular-nums;
+@layer components {
+  .count {
+    margin-left: 6px;
+    font-size: 11px;
+    opacity: 0.75;
+    font-variant-numeric: tabular-nums;
+  }
 }
 </style>

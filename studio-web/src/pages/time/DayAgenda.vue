@@ -287,267 +287,269 @@ const investment = (b: any) =>
   </section>
 </template>
 <style scoped>
-.day-agenda {
-  display: grid;
-  gap: 18px;
-  min-width: 0;
-}
-.agenda-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 14px;
-}
-h2 {
-  font-size: 24px;
-  margin: 6px 0 0;
-}
-h3 {
-  font-size: 16px;
-}
-p {
-  line-height: 1.7;
-  overflow-wrap: anywhere;
-}
-.agenda-range {
-  display: flex;
-  gap: 6px;
-}
-.agenda-range button {
-  padding: 8px 12px;
-  font-size: 12px;
-}
-.agenda-range button[aria-pressed="true"] {
-  background: var(--accent);
-  color: white;
-}
-.agenda-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  font-size: 12px;
-  color: var(--muted);
-}
-.agenda-legend span::before {
-  content: "";
-  display: inline-block;
-  width: 16px;
-  height: 8px;
-  margin-right: 6px;
-  border-radius: 3px;
-}
-.legend-actual::before {
-  background: var(--accent);
-}
-.legend-plan::before {
-  border: 1px dashed var(--accent);
-  background: var(--glow-b);
-}
-.legend-free::before {
-  background: rgba(125, 120, 149, 0.15);
-}
-.legend-point {
-  color: var(--accent);
-}
-.legend-point::before {
-  display: none !important;
-}
-.agenda-chart {
-  padding: 18px 0 0;
-  min-width: 0;
-}
-.agenda-axis {
-  height: 28px;
-  margin-left: 60px;
-  position: relative;
-  margin-right: 12px;
-  font-size: 11px;
-  color: var(--muted);
-}
-.agenda-axis time {
-  position: absolute;
-  transform: translateX(-50%);
-  white-space: nowrap;
-}
-.agenda-axis time:first-child {
-  transform: none;
-}
-.agenda-axis time:last-child {
-  transform: translateX(-100%);
-}
-.agenda-lane {
-  display: grid;
-  grid-template-columns: 60px minmax(0, 1fr);
-  align-items: center;
-  gap: 0;
-  margin-bottom: 14px;
-  margin-right: 12px;
-}
-.lane-label {
-  font-size: 11px;
-  color: var(--muted);
-}
-.lane-track {
-  height: 40px;
-  position: relative;
-  background: rgba(133, 128, 149, 0.06);
-  border-radius: 8px;
-}
-.gridline {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  border-left: 1px solid rgba(125, 120, 149, 0.15);
-  pointer-events: none;
-}
-.agenda-block {
-  position: absolute;
-  top: 7px;
-  height: 26px;
-  min-width: 1px;
-  border-radius: 5px;
-  padding: 0;
-  box-shadow: none;
-}
-.actual {
-  background: linear-gradient(100deg, var(--accent), var(--orb-b));
-  border: none;
-}
-.ongoing {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-.plan {
-  border: 1px dashed var(--accent);
-  background: var(--glow-b);
-}
-.rest,
-.free {
-  background: rgba(125, 120, 149, 0.12);
-}
-.free {
-  background: repeating-linear-gradient(
-    135deg,
-    transparent,
-    transparent 5px,
-    rgba(125, 120, 149, 0.08) 5px,
-    rgba(125, 120, 149, 0.08) 8px
-  );
-}
-.sleep {
-  background: rgba(114, 116, 161, 0.25);
-}
-.agenda-now {
-  position: absolute;
-  top: -4px;
-  bottom: -4px;
-  width: 1px;
-  background: var(--accent);
-  pointer-events: none;
-}
-.agenda-now small {
-  position: absolute;
-  top: -18px;
-  font-size: 10px;
-  color: var(--accent);
-  white-space: nowrap;
-  transform: translateX(-50%);
-}
-.agenda-interaction {
-  position: absolute;
-  bottom: 0;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--accent);
-  transform: translateX(-50%);
-}
-.agenda-itinerary {
-  list-style: none;
-  padding: 0;
-  display: grid;
-  gap: 0;
-  margin: 0;
-}
-.agenda-itinerary li {
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
-  gap: 18px;
-  padding: 14px 0;
-  border-bottom: 1px solid rgba(125, 120, 149, 0.12);
-}
-.agenda-itinerary time {
-  font-size: 12px;
-  line-height: 1.9;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-.agenda-itinerary li > div {
-  display: grid;
-  gap: 5px;
-  align-content: start;
-  min-width: 0;
-}
-.agenda-itinerary button {
-  text-align: left;
-  justify-self: start;
-  overflow-wrap: anywhere;
-  line-height: 1.6;
-  white-space: normal;
-}
-.agenda-itinerary small {
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.8;
-}
-.agenda-itinerary b {
-  font-size: 14px;
-}
-.agenda-itinerary p {
-  font-size: 13px;
-}
-.agenda-itinerary [data-kind="free"],
-.agenda-itinerary [data-kind="rest"] {
-  color: var(--muted);
-}
-summary {
-  font-size: 13px;
-  color: var(--muted);
-  cursor: pointer;
-}
-.agenda-history ol,
-.agenda-waiting ul {
-  margin-top: 15px;
-}
-.agenda-waiting ul {
-  list-style: none;
-  padding: 0;
-  display: grid;
-  gap: 16px;
-}
-@media (max-width: 440px) {
-  .agenda-axis time:nth-child(even) {
-    display: none;
+@layer components {
+  .day-agenda {
+    display: grid;
+    gap: 18px;
+    min-width: 0;
   }
-  .agenda-axis {
-    margin-left: 46px;
+  .agenda-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 14px;
   }
-  .agenda-lane {
-    grid-template-columns: 46px minmax(0, 1fr);
+  h2 {
+    font-size: 24px;
+    margin: 6px 0 0;
   }
-  .agenda-axis time {
-    font-size: 9px;
+  h3 {
+    font-size: 16px;
   }
-  .agenda-itinerary li {
-    grid-template-columns: 54px minmax(0, 1fr);
-    gap: 12px;
+  p {
+    line-height: 1.7;
+    overflow-wrap: anywhere;
   }
-  .agenda-heading h2 {
-    font-size: 21px;
+  .agenda-range {
+    display: flex;
+    gap: 6px;
+  }
+  .agenda-range button {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  .agenda-range button[aria-pressed="true"] {
+    background: var(--accent);
+    color: white;
   }
   .agenda-legend {
-    gap: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .agenda-legend span::before {
+    content: "";
+    display: inline-block;
+    width: 16px;
+    height: 8px;
+    margin-right: 6px;
+    border-radius: 3px;
+  }
+  .legend-actual::before {
+    background: var(--accent);
+  }
+  .legend-plan::before {
+    border: 1px dashed var(--accent);
+    background: var(--glow-b);
+  }
+  .legend-free::before {
+    background: rgba(125, 120, 149, 0.15);
+  }
+  .legend-point {
+    color: var(--accent);
+  }
+  .legend-point::before {
+    display: none !important;
+  }
+  .agenda-chart {
+    padding: 18px 0 0;
+    min-width: 0;
+  }
+  .agenda-axis {
+    height: 28px;
+    margin-left: 60px;
+    position: relative;
+    margin-right: 12px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .agenda-axis time {
+    position: absolute;
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
+  .agenda-axis time:first-child {
+    transform: none;
+  }
+  .agenda-axis time:last-child {
+    transform: translateX(-100%);
+  }
+  .agenda-lane {
+    display: grid;
+    grid-template-columns: 60px minmax(0, 1fr);
+    align-items: center;
+    gap: 0;
+    margin-bottom: 14px;
+    margin-right: 12px;
+  }
+  .lane-label {
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .lane-track {
+    height: 40px;
+    position: relative;
+    background: rgba(133, 128, 149, 0.06);
+    border-radius: 8px;
+  }
+  .gridline {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-left: 1px solid rgba(125, 120, 149, 0.15);
+    pointer-events: none;
+  }
+  .agenda-block {
+    position: absolute;
+    top: 7px;
+    height: 26px;
+    min-width: 1px;
+    border-radius: 5px;
+    padding: 0;
+    box-shadow: none;
+  }
+  .actual {
+    background: linear-gradient(100deg, var(--accent), var(--orb-b));
+    border: none;
+  }
+  .ongoing {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .plan {
+    border: 1px dashed var(--accent);
+    background: var(--glow-b);
+  }
+  .rest,
+  .free {
+    background: rgba(125, 120, 149, 0.12);
+  }
+  .free {
+    background: repeating-linear-gradient(
+      135deg,
+      transparent,
+      transparent 5px,
+      rgba(125, 120, 149, 0.08) 5px,
+      rgba(125, 120, 149, 0.08) 8px
+    );
+  }
+  .sleep {
+    background: rgba(114, 116, 161, 0.25);
+  }
+  .agenda-now {
+    position: absolute;
+    top: -4px;
+    bottom: -4px;
+    width: 1px;
+    background: var(--accent);
+    pointer-events: none;
+  }
+  .agenda-now small {
+    position: absolute;
+    top: -18px;
+    font-size: 10px;
+    color: var(--accent);
+    white-space: nowrap;
+    transform: translateX(-50%);
+  }
+  .agenda-interaction {
+    position: absolute;
+    bottom: 0;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+    transform: translateX(-50%);
+  }
+  .agenda-itinerary {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 0;
+    margin: 0;
+  }
+  .agenda-itinerary li {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 18px;
+    padding: 14px 0;
+    border-bottom: 1px solid rgba(125, 120, 149, 0.12);
+  }
+  .agenda-itinerary time {
+    font-size: 12px;
+    line-height: 1.9;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .agenda-itinerary li > div {
+    display: grid;
+    gap: 5px;
+    align-content: start;
+    min-width: 0;
+  }
+  .agenda-itinerary button {
+    text-align: left;
+    justify-self: start;
+    overflow-wrap: anywhere;
+    line-height: 1.6;
+    white-space: normal;
+  }
+  .agenda-itinerary small {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.8;
+  }
+  .agenda-itinerary b {
+    font-size: 14px;
+  }
+  .agenda-itinerary p {
+    font-size: 13px;
+  }
+  .agenda-itinerary [data-kind="free"],
+  .agenda-itinerary [data-kind="rest"] {
+    color: var(--muted);
+  }
+  summary {
+    font-size: 13px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .agenda-history ol,
+  .agenda-waiting ul {
+    margin-top: 15px;
+  }
+  .agenda-waiting ul {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 16px;
+  }
+  @media (max-width: 440px) {
+    .agenda-axis time:nth-child(even) {
+      display: none;
+    }
+    .agenda-axis {
+      margin-left: 46px;
+    }
+    .agenda-lane {
+      grid-template-columns: 46px minmax(0, 1fr);
+    }
+    .agenda-axis time {
+      font-size: 9px;
+    }
+    .agenda-itinerary li {
+      grid-template-columns: 54px minmax(0, 1fr);
+      gap: 12px;
+    }
+    .agenda-heading h2 {
+      font-size: 21px;
+    }
+    .agenda-legend {
+      gap: 10px;
+    }
   }
 }
 </style>

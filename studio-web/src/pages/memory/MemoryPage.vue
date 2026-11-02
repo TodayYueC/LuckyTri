@@ -2,7 +2,6 @@
 import { t } from "../../i18n";
 import { computed, ref, watch } from "vue";
 import { setSub, studio } from "../../stores/studio";
-import Tabs from "../../components/ui/Tabs.vue";
 import MemoryArchive from "./MemoryArchive.vue";
 import KnowledgeShelf from "./KnowledgeShelf.vue";
 

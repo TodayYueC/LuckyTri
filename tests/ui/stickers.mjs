@@ -103,7 +103,7 @@ try {
     path: join(shots, "sticker-editor.png"),
     fullPage: true,
   });
-  await page.goto(server.base + "#system/settings");
+  await page.goto(server.base + "#system/media");
   await page.locator('[data-testid="media-settings"]').waitFor();
   await page.screenshot({ path: join(shots, "settings.png"), fullPage: true });
   await page.goto(server.base + "#system/models");

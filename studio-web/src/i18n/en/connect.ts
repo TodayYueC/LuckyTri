@@ -102,7 +102,8 @@ export default {
   "分享歌曲时优先发卡片。部分接入端需在 WebUI 配置音乐签名；此处可填镜像提示并选择降级策略。":
     "Prefer cards when sharing songs. Some clients need a music sign service in their WebUI; you can mirror the URL here and choose fallback policy.",
   "musicSignUrl 提示（可选）": "musicSignUrl hint (optional)",
-  "接入端 WebUI 中的音乐签名服务地址": "Music sign service URL from the client WebUI",
+  "接入端 WebUI 中的音乐签名服务地址":
+    "Music sign service URL from the client WebUI",
   优先发卡片: "Prefer card",
   卡片失败时降级为链接: "Fall back to a link if the card fails",
   "失败则不发（failClosed）": "Fail closed (no link fallback)",

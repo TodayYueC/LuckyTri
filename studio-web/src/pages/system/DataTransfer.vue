@@ -275,69 +275,71 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.data-transfer {
-  min-width: 0;
-}
-.data-transfer h2 {
-  font-size: clamp(23px, 3vw, 32px);
-  margin: 8px 0 14px;
-}
-.transfer-note {
-  color: var(--ink-soft);
-  font-size: 13px;
-  line-height: 1.7;
-  overflow-wrap: anywhere;
-}
-.transfer-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin: 18px 0;
-}
-.transfer-actions button {
-  padding: 11px 17px;
-  border-radius: 16px;
-}
-.transfer-actions button:not(.primary) {
-  background: rgb(255 255 255 / 0.72);
-}
-.transfer-file {
-  display: none;
-}
-.transfer-preview {
-  margin-top: 20px;
-  padding: 20px;
-  border: 1px solid rgb(255 255 255 / 0.85);
-  border-radius: 22px;
-  background: rgb(255 255 255 / 0.4);
-  overflow-wrap: anywhere;
-}
-.transfer-preview h3 {
-  margin: 8px 0;
-}
-.transfer-counts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.transfer-counts > div {
-  display: grid;
-  gap: 4px;
-  padding: 12px;
-  min-width: 70px;
-  border-radius: 14px;
-  background: rgb(255 255 255 / 0.65);
-}
-.transfer-counts b,
-.transfer-progress {
-  color: var(--accent);
-}
-.transfer-counts span {
-  font-size: 12px;
-  color: var(--ink-soft);
-}
-.transfer-error {
-  color: var(--danger);
-  overflow-wrap: anywhere;
+@layer components {
+  .data-transfer {
+    min-width: 0;
+  }
+  .data-transfer h2 {
+    font-size: clamp(23px, 3vw, 32px);
+    margin: 8px 0 14px;
+  }
+  .transfer-note {
+    color: var(--ink-soft);
+    font-size: 13px;
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+  }
+  .transfer-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 18px 0;
+  }
+  .transfer-actions button {
+    padding: 11px 17px;
+    border-radius: 16px;
+  }
+  .transfer-actions button:not(.primary) {
+    background: rgb(255 255 255 / 0.72);
+  }
+  .transfer-file {
+    display: none;
+  }
+  .transfer-preview {
+    margin-top: 20px;
+    padding: 20px;
+    border: 1px solid rgb(255 255 255 / 0.85);
+    border-radius: 22px;
+    background: rgb(255 255 255 / 0.4);
+    overflow-wrap: anywhere;
+  }
+  .transfer-preview h3 {
+    margin: 8px 0;
+  }
+  .transfer-counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .transfer-counts > div {
+    display: grid;
+    gap: 4px;
+    padding: 12px;
+    min-width: 70px;
+    border-radius: 14px;
+    background: rgb(255 255 255 / 0.65);
+  }
+  .transfer-counts b,
+  .transfer-progress {
+    color: var(--accent);
+  }
+  .transfer-counts span {
+    font-size: 12px;
+    color: var(--ink-soft);
+  }
+  .transfer-error {
+    color: var(--danger);
+    overflow-wrap: anywhere;
+  }
 }
 </style>

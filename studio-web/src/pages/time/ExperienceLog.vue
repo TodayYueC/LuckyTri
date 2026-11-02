@@ -143,185 +143,187 @@ function clock(time: number) {
 </template>
 
 <style scoped>
-.experience-log {
-  display: grid;
-  gap: 28px;
-  min-width: 0;
-}
-.experience-intro {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 4px 4px 0;
-}
-.experience-intro h1 {
-  margin-top: 8px;
-  font-size: clamp(25px, 2.4vw, 32px);
-  letter-spacing: -0.03em;
-}
-.experience-intro p {
-  max-width: 330px;
-  color: var(--muted);
-  line-height: 1.7;
-  font-size: 14px;
-}
-.experience-day {
-  display: grid;
-  gap: 14px;
-  min-width: 0;
-}
-.experience-date {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--muted);
-  padding-left: 4px;
-}
-.experience-timeline {
-  display: grid;
-  gap: 18px;
-  min-width: 0;
-}
-.experience-entry {
-  display: grid;
-  grid-template-columns: 58px minmax(0, 1fr);
-  gap: 18px;
-  position: relative;
-}
-.experience-entry::before {
-  content: "";
-  position: absolute;
-  top: 48px;
-  bottom: -18px;
-  left: 29px;
-  width: 1px;
-  background: var(--line);
-}
-.experience-entry:last-child::before {
-  bottom: 0;
-}
-.experience-clock {
-  padding-top: 25px;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  text-align: center;
-  color: var(--muted);
-}
-.experience-card.card {
-  min-width: 0;
-  display: grid;
-  gap: 12px;
-  padding: 24px 28px;
-  border-radius: 24px;
-}
-.experience-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 14px;
-  font-size: 12px;
-}
-.experience-kind {
-  color: var(--accent);
-  font-weight: 600;
-}
-.experience-card h3 {
-  font-size: 21px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-.experience-summary {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
-  overflow: hidden;
-  font-size: 14px;
-  line-height: 1.85;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.experience-project,
-.experience-missing {
-  font-size: 12px;
-  line-height: 1.7;
-  overflow-wrap: anywhere;
-}
-.experience-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px 20px;
-}
-.experience-actions button {
-  font-size: 13px;
-}
-.experience-materials {
-  border-top: 1px solid var(--line);
-  padding-top: 12px;
-  min-width: 0;
-}
-.experience-materials summary {
-  color: var(--muted);
-  font-size: 12px;
-  cursor: pointer;
-}
-.experience-materials ul {
-  display: grid;
-  gap: 6px;
-  margin: 10px 0 0;
-  padding-left: 18px;
-}
-.experience-materials button {
-  text-align: left;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  font-size: 13px;
-  line-height: 1.7;
-}
-.experience-capability {
-  margin-left: 76px;
-  padding: 16px 20px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  font-size: 12px;
-}
-.experience-capability summary {
-  cursor: pointer;
-}
-.experience-capability summary span {
-  margin-left: 12px;
-}
-.experience-capability p {
-  margin-top: 12px;
-  line-height: 1.75;
-}
-@media (max-width: 760px) {
-  .experience-intro {
+@layer components {
+  .experience-log {
     display: grid;
-    gap: 10px;
+    gap: 28px;
+    min-width: 0;
+  }
+  .experience-intro {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 4px 4px 0;
+  }
+  .experience-intro h1 {
+    margin-top: 8px;
+    font-size: clamp(25px, 2.4vw, 32px);
+    letter-spacing: -0.03em;
   }
   .experience-intro p {
-    max-width: none;
+    max-width: 330px;
+    color: var(--muted);
+    line-height: 1.7;
+    font-size: 14px;
+  }
+  .experience-day {
+    display: grid;
+    gap: 14px;
+    min-width: 0;
+  }
+  .experience-date {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    padding-left: 4px;
+  }
+  .experience-timeline {
+    display: grid;
+    gap: 18px;
+    min-width: 0;
   }
   .experience-entry {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 8px;
+    display: grid;
+    grid-template-columns: 58px minmax(0, 1fr);
+    gap: 18px;
+    position: relative;
   }
   .experience-entry::before {
-    display: none;
+    content: "";
+    position: absolute;
+    top: 48px;
+    bottom: -18px;
+    left: 29px;
+    width: 1px;
+    background: var(--line);
+  }
+  .experience-entry:last-child::before {
+    bottom: 0;
   }
   .experience-clock {
-    padding: 0 4px;
-    text-align: left;
+    padding-top: 25px;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    color: var(--muted);
   }
   .experience-card.card {
-    padding: 20px;
+    min-width: 0;
+    display: grid;
+    gap: 12px;
+    padding: 24px 28px;
+    border-radius: 24px;
+  }
+  .experience-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    font-size: 12px;
+  }
+  .experience-kind {
+    color: var(--accent);
+    font-weight: 600;
   }
   .experience-card h3 {
-    font-size: 19px;
+    font-size: 21px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+  .experience-summary {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+    overflow: hidden;
+    font-size: 14px;
+    line-height: 1.85;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .experience-project,
+  .experience-missing {
+    font-size: 12px;
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+  }
+  .experience-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 20px;
+  }
+  .experience-actions button {
+    font-size: 13px;
+  }
+  .experience-materials {
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+    min-width: 0;
+  }
+  .experience-materials summary {
+    color: var(--muted);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .experience-materials ul {
+    display: grid;
+    gap: 6px;
+    margin: 10px 0 0;
+    padding-left: 18px;
+  }
+  .experience-materials button {
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    font-size: 13px;
+    line-height: 1.7;
   }
   .experience-capability {
-    margin-left: 0;
+    margin-left: 76px;
+    padding: 16px 20px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    font-size: 12px;
+  }
+  .experience-capability summary {
+    cursor: pointer;
+  }
+  .experience-capability summary span {
+    margin-left: 12px;
+  }
+  .experience-capability p {
+    margin-top: 12px;
+    line-height: 1.75;
+  }
+  @media (max-width: 760px) {
+    .experience-intro {
+      display: grid;
+      gap: 10px;
+    }
+    .experience-intro p {
+      max-width: none;
+    }
+    .experience-entry {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 8px;
+    }
+    .experience-entry::before {
+      display: none;
+    }
+    .experience-clock {
+      padding: 0 4px;
+      text-align: left;
+    }
+    .experience-card.card {
+      padding: 20px;
+    }
+    .experience-card h3 {
+      font-size: 19px;
+    }
+    .experience-capability {
+      margin-left: 0;
+    }
   }
 }
 </style>

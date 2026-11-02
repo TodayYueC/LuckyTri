@@ -1,6 +1,4 @@
-// English for the Lifetime section (diary, reflections, autobiography, promises).
 export default {
-  // AheadCalendar.vue
   "AHEAD · 向前看": "AHEAD",
   "让未来有值得期待的事。":
     "Let the future hold things worth looking forward to.",
@@ -20,8 +18,6 @@ export default {
   "还没有 TA 在等的事": "Nothing TA is waiting for yet",
   "有人说起之后的安排、TA 答应了别人什么，整理记忆时会记下来。":
     "When someone mentions plans, or TA promises something, it is noted while she sorts her memory.",
-
-  // DiaryBook.vue
   日记的日子: "Diary days",
   那天的心情: "Mood that day",
   "和昨天的自己比：{compare}": "Compared with yesterday's self: {compare}",
@@ -42,14 +38,6 @@ export default {
   还没有日记: "No diary yet",
   "每天睡前（或凌晨），如果这一天真的有过经历，TA 会写下来，并和昨天的自己对照。":
     "Each day before sleep (or in the small hours), if the day held real experience, TA writes it down and compares it with yesterday's self.",
-
-  // LifePage.vue
-  "LIFE · 一生": "LIFE",
-  "日子经过，": "Days pass by,",
-  "留下自己的形状。": "and leave their own shape.",
-  "写下今天，回望从前，也给明天留一点期待。":
-    "Write today, look back on the past, and leave a little anticipation for tomorrow.",
-  "时间、任务与作品 →": "Time, tasks and works →",
   一生的分区: "Lifetime sections",
   日记本: "Diary",
   回顾: "Reflections",
@@ -93,4 +81,4 @@ export default {
   "连续 {count} 次": "{count} times in a row",
   "安静本身不会留下记录；TA 真正独处、写日记或在夜里整理时才会记下。":
     "Quiet itself leaves no record; it is noted only when TA actually spends time alone, writes a diary, or sorts things at night.",
-} as Record<string, string>;
+};

@@ -24,6 +24,25 @@ export const studio = reactive({
 
 let pending: Promise<void> | null = null;
 let pendingVersion = -1;
+let leaving: Promise<boolean> | null = null;
+function discardsDraft(page: Page, sub: string) {
+  return (
+    studio.dirty &&
+    (studio.page !== page ||
+      ((page === "system" || page === "chats") && studio.sub !== sub))
+  );
+}
+function confirmLeave() {
+  if (!leaving)
+    leaving = ask(t("有尚未保存的修改，离开这一页吗？"), {
+      title: t("草稿还没保存"),
+      confirmText: t("离开"),
+      cancelText: t("留下"),
+    }).finally(() => {
+      leaving = null;
+    });
+  return leaving;
+}
 export function reload() {
   const version = readVersion();
   if (pending && pendingVersion === version) return pending;
@@ -48,17 +67,10 @@ export async function go(page: Page | string, sub = "") {
   };
   studio.moreOpen = false;
   if (studio.page === route.page && studio.sub === route.sub) return true;
-  if (
-    studio.page !== route.page &&
-    studio.dirty &&
-    !(await ask(t("有尚未保存的修改，离开这一页吗？"), {
-      title: t("草稿还没保存"),
-      confirmText: t("离开"),
-      cancelText: t("留下"),
-    }))
-  )
-    return false;
-  if (studio.page !== route.page) studio.dirty = false;
+  if (discardsDraft(route.page, route.sub)) {
+    if (!(await confirmLeave())) return false;
+    studio.dirty = false;
+  }
   studio.page = route.page;
   studio.sub = route.sub;
   const hash = routeHash(route.page, route.sub);
@@ -74,13 +86,24 @@ export function setSub(sub: string) {
 }
 
 // Follows back/forward and typed addresses.
-export function followHash() {
+let following = false;
+export async function followHash() {
+  if (following) return;
   const route = parseRoute();
   if (!route) {
     history.replaceState(null, "", routeHash(studio.page, studio.sub));
     return;
   }
-  if (route.page !== studio.page) studio.dirty = false;
+  if (discardsDraft(route.page, route.sub)) {
+    following = true;
+    const accepted = await confirmLeave();
+    following = false;
+    if (!accepted) {
+      history.replaceState(null, "", routeHash(studio.page, studio.sub));
+      return;
+    }
+    studio.dirty = false;
+  }
   studio.page = route.page;
   studio.sub = route.sub;
   if (route.moved)

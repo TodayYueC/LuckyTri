@@ -1,9 +1,4 @@
 export default {
-  "THE WORLD SHE CAN TOUCH · 插件": "THE WORLD SHE CAN TOUCH · Plugins",
-  "核心是她。": "The core is her.",
-  "插件是世界。": "Plugins are the world.",
-  "插件只能经她同意接触世界。它们读不到她的数据库，也不能替她开口。":
-    "A plugin touches the world only with her leave. It cannot read her database, and it cannot speak for her.",
   插件的分区: "Plugin sections",
   插件列表: "Plugin list",
   "内置，未启用": "Built in, not enabled",

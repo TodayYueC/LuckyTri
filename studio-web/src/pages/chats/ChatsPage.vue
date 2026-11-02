@@ -30,7 +30,7 @@ import Transcript from "./Transcript.vue";
 import SessionPanel from "./SessionPanel.vue";
 import ReplaySheet from "./ReplaySheet.vue";
 
-const compact = useMedia("(max-width: 1100px)");
+const compact = useMedia("(max-width: 900px)");
 const sessions = computed(() => studio.core?.sessions || []);
 const active = computed(() => sessions.value.filter((s: any) => !s.archived));
 const initial = sessionStorage.activeSession;
@@ -52,6 +52,7 @@ const sending = ref(false);
 const adding = ref(false);
 const listOpen = ref(false);
 const settingsOpen = ref(studio.sub === "settings");
+const detailsOpen = ref(studio.sub === "settings");
 const replayOpen = ref(studio.sub === "replay");
 const panelTab = ref("here");
 const decisions = computed(() => studio.health?.decisions || []);
@@ -189,16 +190,35 @@ watch(panelTab, async (tab) => {
   }
 });
 
-watch(replayOpen, (open) =>
-  setSub(open ? "replay" : settingsOpen.value ? "settings" : ""),
-);
+watch(replayOpen, (open) => {
+  if (open) setSub("replay");
+  else if (studio.sub === "replay") setSub("");
+});
+watch(detailsOpen, (open) => {
+  if (open) setSub("settings");
+  else if (studio.sub === "settings") setSub("");
+});
 watch(
   () => studio.sub,
   (sub) => {
-    if (sub === "replay") replayOpen.value = true;
+    replayOpen.value = sub === "replay";
+    detailsOpen.value = sub === "settings";
     if (sub === "settings") settingsOpen.value = true;
   },
 );
+async function closeDetails() {
+  if (
+    studio.dirty &&
+    !(await ask(t("当前设置还没保存，离开这个分区吗？"), {
+      title: t("未保存的修改"),
+      confirmText: t("放弃修改"),
+      cancelText: t("继续编辑"),
+    }))
+  )
+    return;
+  studio.dirty = false;
+  detailsOpen.value = false;
+}
 watch(() => studio.pulse, loadMind);
 
 onMounted(() => {
@@ -219,6 +239,8 @@ async function add(data: Record<string, string>) {
     settingsOpen.value = true;
     panelTab.value = "here";
     adding.value = false;
+    listOpen.value = false;
+    detailsOpen.value = true;
     toast(t("会话已添加"));
   } catch (error) {
     toast((error as Error).message, true);
@@ -345,23 +367,31 @@ async function feedback(id: number, tag: string) {
         @feedback="feedback"
         @open-list="listOpen = true"
         @open-replay="replayOpen = true"
+        @open-details="detailsOpen = true"
       />
     </div>
-    <aside class="card col panel-col">
-      <SessionPanel
-        v-model:settings-open="settingsOpen"
-        v-model:tab="panelTab"
-        :session="session"
-        :group="group"
-        :summaries="summaries"
-        :decisions="decisions"
-        @toggle="toggle"
-        @archive="archive"
-        @clear="clear"
-        @save="save"
-        @feedback="feedback"
-      />
-    </aside>
+    <Sheet
+      :open="detailsOpen"
+      :title="t('会话详情与反馈')"
+      width="480px"
+      @close="closeDetails"
+    >
+      <div class="panel-col">
+        <SessionPanel
+          v-model:settings-open="settingsOpen"
+          v-model:tab="panelTab"
+          :session="session"
+          :group="group"
+          :summaries="summaries"
+          :decisions="decisions"
+          @toggle="toggle"
+          @archive="archive"
+          @clear="clear"
+          @save="save"
+          @feedback="feedback"
+        />
+      </div>
+    </Sheet>
 
     <Sheet
       v-if="compact"
@@ -404,74 +434,83 @@ async function feedback(id: number, tag: string) {
 </template>
 
 <style scoped>
-.chats {
-  position: relative;
-  display: grid;
-  grid-template-columns: 254px minmax(0, 1fr) 320px;
-  gap: 18px;
-  width: min(1520px, 100%);
-  height: 100%;
-  min-height: 0;
-  padding-bottom: 0;
+.conversation-tools {
+  display: flex;
+  justify-content: flex-end;
+  flex: none;
+  padding-bottom: 10px;
 }
-.chats.compact {
-  grid-template-columns: minmax(0, 1fr) 320px;
+.conversation-tools button {
+  font-size: 12px;
+  padding: 7px 11px;
 }
-.col {
-  position: relative;
-  min-height: 0;
-  height: 100%;
-  padding: 18px;
-  overflow: hidden;
-  border-radius: 30px;
-  background:
-    linear-gradient(145deg, rgb(255 255 255 / 0.72), transparent 46%),
-    color-mix(in srgb, var(--surface) 85%, transparent);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.94),
-    0 24px 55px -35px color-mix(in srgb, var(--accent) 30%, transparent);
-}
-.talk-col {
-  padding: 18px 20px 16px;
-  background:
-    radial-gradient(
-      ellipse at 80% 0,
-      color-mix(in srgb, var(--glow-b) 25%, transparent),
-      transparent 55%
-    ),
-    linear-gradient(
-      145deg,
-      rgb(255 255 255 / 0.78),
-      rgb(255 255 255 / 0.4) 64%
-    ),
-    var(--surface);
-}
-.list-col,
 .panel-col {
-  background:
-    radial-gradient(
-      circle at 0 0,
-      color-mix(in srgb, var(--glow-a) 18%, transparent),
-      transparent 42%
-    ),
-    linear-gradient(165deg, rgb(255 255 255 / 0.75), rgb(255 255 255 / 0.28)),
-    var(--surface);
+  min-height: 0;
 }
-.sheet-list {
-  height: calc(100dvh - 120px);
-}
-@media (max-width: 980px) {
-  .chats,
-  .chats.compact {
+
+@layer components {
+  .chats {
+    position: relative;
     display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    gap: 18px;
+    width: min(1520px, 100%);
+    height: 100%;
+    min-height: 0;
+    padding-bottom: 0;
+  }
+  .chats.compact {
     grid-template-columns: minmax(0, 1fr);
-    height: auto;
+  }
+  .col {
+    position: relative;
+    min-height: 0;
+    height: 100%;
+    padding: 18px;
+    overflow: hidden;
+    border-radius: 30px;
+    background: var(--surface);
+    box-shadow: none;
   }
   .talk-col {
-    height: clamp(420px, 68dvh, 620px);
+    padding: 18px 20px 16px;
+    background:
+      radial-gradient(
+        ellipse at 80% 0,
+        color-mix(in srgb, var(--glow-b) 25%, transparent),
+        transparent 55%
+      ),
+      linear-gradient(
+        145deg,
+        rgb(255 255 255 / 0.78),
+        rgb(255 255 255 / 0.4) 64%
+      ),
+      var(--surface);
   }
+  .list-col,
   .panel-col {
-    height: 520px;
+    background:
+      radial-gradient(
+        circle at 0 0,
+        color-mix(in srgb, var(--glow-a) 18%, transparent),
+        transparent 42%
+      ),
+      linear-gradient(165deg, rgb(255 255 255 / 0.75), rgb(255 255 255 / 0.28)),
+      var(--surface);
+  }
+  .sheet-list {
+    height: calc(100dvh - 120px);
+  }
+  @media (max-width: 900px) {
+    .chats,
+    .chats.compact {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      height: auto;
+    }
+    .talk-col {
+      height: clamp(420px, 68dvh, 620px);
+    }
   }
 }
 </style>

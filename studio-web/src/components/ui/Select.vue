@@ -274,99 +274,101 @@ onBeforeUnmount(stopListening);
 </template>
 
 <style scoped>
-.menu-select {
-  position: relative;
-  min-width: 0;
-}
-.menu-face {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-  min-height: 42px;
-  padding: 8px 12px;
-  border-radius: 14px;
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 0.72), rgb(255 255 255 / 0.4)),
-    var(--surface-strong);
-  border: 1px solid var(--glass-edge);
-  box-shadow: var(--glass-sheen);
-  text-align: left;
-}
-.menu-face span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.menu-face i {
-  width: 8px;
-  height: 8px;
-  border-right: 1.5px solid var(--ink-soft);
-  border-bottom: 1.5px solid var(--ink-soft);
-  transform: translateY(-2px) rotate(45deg);
-}
-.menu-list {
-  position: fixed;
-  z-index: 200;
-  display: grid;
-  max-height: 280px;
-  margin: 0;
-  padding: 6px;
-  overflow: auto;
-  list-style: none;
-  border-radius: 16px;
-  background: var(--surface-strong);
-  border: 1px solid var(--glass-edge);
-  box-shadow: var(--glass-sheen), var(--shadow);
-  transform-origin: top center;
-  animation: menu-pop 460ms var(--jelly) both;
-}
-.menu-list.up {
-  transform-origin: bottom center;
-}
-@keyframes menu-pop {
-  0% {
-    opacity: 0;
-    transform: translateY(10px) scale(0.92, 0.82);
+@layer components {
+  .menu-select {
+    position: relative;
+    min-width: 0;
   }
-  70% {
-    opacity: 1;
-    transform: translateY(-2px) scale(1.02, 1.04);
+  .menu-face {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    min-height: 42px;
+    padding: 8px 12px;
+    border-radius: 14px;
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.72), rgb(255 255 255 / 0.4)),
+      var(--surface-strong);
+    border: 1px solid var(--glass-edge);
+    box-shadow: var(--glass-sheen);
+    text-align: left;
   }
-  100% {
+  .menu-face span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .menu-face i {
+    width: 8px;
+    height: 8px;
+    border-right: 1.5px solid var(--ink-soft);
+    border-bottom: 1.5px solid var(--ink-soft);
+    transform: translateY(-2px) rotate(45deg);
+  }
+  .menu-list {
+    position: fixed;
+    z-index: 200;
+    display: grid;
+    max-height: 280px;
+    margin: 0;
+    padding: 6px;
+    overflow: auto;
+    list-style: none;
+    border-radius: 16px;
+    background: var(--surface-strong);
+    border: 1px solid var(--glass-edge);
+    box-shadow: var(--glass-sheen), var(--shadow);
+    transform-origin: top center;
+    animation: menu-pop 460ms var(--jelly) both;
+  }
+  .menu-list.up {
+    transform-origin: bottom center;
+  }
+  @keyframes menu-pop {
+    0% {
+      opacity: 0;
+      transform: translateY(10px) scale(0.92, 0.82);
+    }
+    70% {
+      opacity: 1;
+      transform: translateY(-2px) scale(1.02, 1.04);
+    }
+    100% {
+      transform: none;
+    }
+  }
+  .menu-list button {
+    width: 100%;
+    padding: 8px 10px;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    text-align: left;
+    font-weight: 550;
+    white-space: nowrap;
+  }
+  .menu-list button[aria-selected="true"] {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    color: var(--ink);
+  }
+  .empty {
+    padding: 8px 10px;
+    color: var(--ink-soft);
+    font-size: 13px;
+  }
+  .menu-list button:hover:not(:disabled) {
     transform: none;
+    box-shadow: none;
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
   }
-}
-.menu-list button {
-  width: 100%;
-  padding: 8px 10px;
-  border: none;
-  border-radius: 10px;
-  background: transparent;
-  text-align: left;
-  font-weight: 550;
-  white-space: nowrap;
-}
-.menu-list button[aria-selected="true"] {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--ink);
-}
-.empty {
-  padding: 8px 10px;
-  color: var(--ink-soft);
-  font-size: 13px;
-}
-.menu-list button:hover:not(:disabled) {
-  transform: none;
-  box-shadow: none;
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-.native {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-  pointer-events: none;
+  .native {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 </style>

@@ -40,5 +40,9 @@ export const MEMORY_SECTIONS = localized([
   { key: "reading", label: N_("阅读足迹"), page: "life", sub: "shelf" },
 ] as const);
 export function memorySection(page: Page, sub: string) {
-  return page === "life" ? "reading" : sub === "shelf" ? "knowledge" : "archive";
+  return page === "life"
+    ? "reading"
+    : sub === "shelf"
+      ? "knowledge"
+      : "archive";
 }

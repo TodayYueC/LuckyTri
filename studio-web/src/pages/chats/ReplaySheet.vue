@@ -238,127 +238,129 @@ watch(() => props.events.length, range);
 </template>
 
 <style scoped>
-.replay {
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.8fr) minmax(0, 1.1fr);
-  gap: 16px;
-  height: calc(100dvh - 130px);
-  min-height: 460px;
-}
-.col {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 0;
-  padding: 14px;
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--ink) 3%, transparent);
-  border: 1px solid var(--line);
-}
-.col-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.col-head h3 {
-  font-size: 14px;
-}
-.col > .scroll-pane {
-  flex: 1;
-  min-height: 0;
-}
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12.5px;
-}
-th,
-td {
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--line);
-  text-align: left;
-  vertical-align: top;
-}
-th {
-  position: sticky;
-  top: 0;
-  background: var(--surface-strong);
-  color: var(--ink-soft);
-  font-weight: 600;
-}
-td:first-child {
-  color: var(--ink-soft);
-  font-variant-numeric: tabular-nums;
-}
-.range {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  align-items: end;
-}
-.range button,
-.range p {
-  grid-column: 1 / -1;
-}
-.trace-row {
-  display: grid;
-  gap: 4px;
-  width: 100%;
-  margin-bottom: 6px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  text-align: left;
-  font-weight: 500;
-}
-.trace-row span {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  font-size: 12px;
-}
-.trace-row p {
-  font-size: 12.5px;
-}
-.trace-row.selected {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-.metrics {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 10px;
-}
-.metrics span {
-  display: grid;
-  padding: 8px 10px;
-  border-radius: 12px;
-  background: var(--surface-strong);
-  color: var(--ink-soft);
-  font-size: 11.5px;
-}
-.metrics b {
-  color: var(--ink);
-  font-size: 12.5px;
-}
-.notice {
-  margin-bottom: 10px;
-}
-#traceDetail {
-  padding: 12px;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--ink) 5%, transparent);
-  font-size: 11.5px;
-  line-height: 1.55;
-}
-@media (max-width: 1000px) {
+@layer components {
   .replay {
-    grid-template-columns: minmax(0, 1fr);
-    height: auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.8fr) minmax(0, 1.1fr);
+    gap: 16px;
+    height: calc(100dvh - 130px);
+    min-height: 460px;
+  }
+  .col {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    padding: 14px;
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--ink) 3%, transparent);
+    border: 1px solid var(--line);
+  }
+  .col-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .col-head h3 {
+    font-size: 14px;
   }
   .col > .scroll-pane {
-    max-height: 420px;
+    flex: 1;
+    min-height: 0;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  th,
+  td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    position: sticky;
+    top: 0;
+    background: var(--surface-strong);
+    color: var(--ink-soft);
+    font-weight: 600;
+  }
+  td:first-child {
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+  }
+  .range {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    align-items: end;
+  }
+  .range button,
+  .range p {
+    grid-column: 1 / -1;
+  }
+  .trace-row {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    margin-bottom: 6px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    text-align: left;
+    font-weight: 500;
+  }
+  .trace-row span {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    font-size: 12px;
+  }
+  .trace-row p {
+    font-size: 12.5px;
+  }
+  .trace-row.selected {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .metrics span {
+    display: grid;
+    padding: 8px 10px;
+    border-radius: 12px;
+    background: var(--surface-strong);
+    color: var(--ink-soft);
+    font-size: 11.5px;
+  }
+  .metrics b {
+    color: var(--ink);
+    font-size: 12.5px;
+  }
+  .notice {
+    margin-bottom: 10px;
+  }
+  #traceDetail {
+    padding: 12px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--ink) 5%, transparent);
+    font-size: 11.5px;
+    line-height: 1.55;
+  }
+  @media (max-width: 1000px) {
+    .replay {
+      grid-template-columns: minmax(0, 1fr);
+      height: auto;
+    }
+    .col > .scroll-pane {
+      max-height: 420px;
+    }
   }
 }
 </style>

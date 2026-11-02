@@ -1,3 +1,8 @@
+import {
+  navigate as studioNavigate,
+  control,
+  timeTab,
+} from "./studio-navigation.mjs";
 import { chromium } from "@playwright/test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -27,7 +32,7 @@ try {
   await page.evaluate(() => {
     window.__retainedPeople = document.querySelector(".people");
   });
-  await page.locator('.dock-link[data-page="life"]').click();
+  await studioNavigate(page, "life");
   await page.locator(".life .book").waitFor();
   const before = requests.filter((p) => p === "/api/mind/bonds").length;
   w.store.revision++;
@@ -65,8 +70,14 @@ try {
     ["now", ".now"],
   ];
   for (const [key, selector] of routes) {
-    await page.locator(`.dock-link[data-page="${key}"]`).click();
+    await studioNavigate(page, key);
     await page.locator(selector).waitFor();
+    // Restoring the retained People page also restores its detail sheet.
+    // Dismiss it through the keyboard before timing navigation behind it.
+    if (await page.getByRole("dialog").count()) {
+      await page.keyboard.press("Escape");
+      await page.getByRole("dialog").waitFor({ state: "detached" });
+    }
     await page.waitForTimeout(150);
   }
   const times = [];
@@ -75,7 +86,19 @@ try {
       const result = await page.evaluate(
         ({ key, selector }) => {
           const t = performance.now();
-          document.querySelector(`.dock-link[data-page="${key}"]`).click();
+          if (key === "life" || key === "time") {
+            document.querySelector('.dock-link[data-page="life"]').click();
+            const tab = key === "life" ? "diary" : "schedule";
+            // Warm routes share a primary destination; follow its real section.
+            queueMicrotask(() =>
+              document
+                .querySelector('.workspace-tabs [data-tab="' + tab + '"]')
+                ?.click(),
+            );
+          } else
+            document
+              .querySelector('.dock-link[data-page="' + key + '"]')
+              .click();
           return new Promise((resolve) =>
             requestAnimationFrame(() =>
               requestAnimationFrame(() =>
@@ -94,7 +117,7 @@ try {
       times.push(result.ms);
       await page.waitForTimeout(180);
     }
-  await page.locator('.dock-link[data-page="time"]').click();
+  await studioNavigate(page, "time");
   await page.locator(".time-page").waitFor();
   const motion = await page.locator(".route-page").evaluate((el) => ({
     name: getComputedStyle(el).animationName,
