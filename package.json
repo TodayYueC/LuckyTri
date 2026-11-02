@@ -38,6 +38,7 @@
     "public/app/assets/*.js",
     "public/app/assets/*.css",
     "public/app/assets/*.png",
+    "public/app/assets/*.webp",
     "public/plugin-kit/v1/bridge.js",
     "public/plugin-kit/v1/kit.css",
     "public/guide.html",

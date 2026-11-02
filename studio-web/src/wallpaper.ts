@@ -1,6 +1,6 @@
 import { t } from "./i18n";
 import { reactive } from "vue";
-import homeWallpaper from "./assets/luckytri-home.png";
+import homeWallpaper from "./assets/character.webp";
 
 const DB_NAME = "luckytri-wallpapers";
 const STORE = "files";
@@ -18,7 +18,9 @@ let loading: Promise<void> | null = null;
 
 function readOpacity() {
   try {
-    const saved = Number(localStorage.getItem(OPACITY_KEY));
+    const raw = localStorage.getItem(OPACITY_KEY);
+    if (raw === null) return DEFAULT_OPACITY;
+    const saved = Number(raw);
     if (!Number.isFinite(saved)) return DEFAULT_OPACITY;
     return clampOpacity(saved);
   } catch {

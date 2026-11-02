@@ -245,11 +245,7 @@ onUnmounted(() => {
   <div v-if="draft" class="page nature">
     <section class="nature-intro" :aria-label="t('天性预览')">
       <div class="nature-intro-copy">
-        <span class="eyebrow">{{ t("THE WAY SHE GROWS · 天性") }}</span>
-        <h1>
-          {{ t("她的底色，") }}<br /><em>{{ t("慢慢长成她自己。") }}</em>
-        </h1>
-        <p>{{ t("一些与生俱来的倾向，会在每一次相遇里长出新的模样。") }}</p>
+        <h1>{{ t("天性预览") }}</h1>
         <span class="nature-preview-note"
           ><i></i> {{ t("调节刻度，看看此刻的她") }}</span
         >
