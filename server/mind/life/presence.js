@@ -129,6 +129,16 @@ export class LifePresence {
         this.owner.mind.thoughts.setOutreach(t.id, "skipped", audience.reason);
         continue;
       }
+      const thirdPartyMismatch =
+        this.owner.initiative.thirdPartyTargetMismatch?.(t, session, now);
+      if (thirdPartyMismatch) {
+        this.owner.mind.thoughts.setOutreach(
+          t.id,
+          "skipped",
+          thirdPartyMismatch.reason,
+        );
+        continue;
+      }
       if (this.owner.initiative.recentlyToldAnotherGroup(t, now)) {
         this.owner.mind.thoughts.setOutreach(t.id, "declined");
         continue;
@@ -145,6 +155,27 @@ export class LifePresence {
         this.owner.mind.thoughts.deferOutreach(
           t.id,
           "这阵子同一作品族说得偏多，先换换别的",
+          now + 3 * 3600000,
+        );
+        continue;
+      }
+      const distressDefer = this.owner.initiative.shouldDeferDraftShareOntoDistress(
+        t,
+        session,
+        now,
+      );
+      if (distressDefer) {
+        this.owner.mind.thoughts.deferOutreach(
+          t.id,
+          distressDefer.reason,
+          distressDefer.retryAt,
+        );
+        continue;
+      }
+      if (this.owner.initiative.draftShareSaturated(t, now)) {
+        this.owner.mind.thoughts.deferOutreach(
+          t.id,
+          "这阵子想给你看看说得偏多，先换换别的开口",
           now + 3 * 3600000,
         );
         continue;

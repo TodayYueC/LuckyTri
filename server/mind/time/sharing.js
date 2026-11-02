@@ -8,6 +8,7 @@ import { leaks } from "../guard.js";
 import { displayNames } from "../../studio/display-names.js";
 import { interestTerms } from "../attention.js";
 import { saturatedWorkFamilies, workFamilies } from "../novelty.js";
+import { relationshipRoleMismatchIssues } from "../../core/conversation-grounding.js";
 
 // Recent human chatter that is not about this work: stickers, open questions,
 // or a busy thread. A share can wait; it should not barge in mid-fight.
@@ -64,7 +65,13 @@ export function roomBusyUnrelated(
   const openQ = texts.some((t) =>
     /[?？]|什么|怎么|为什么|哪|有没有|能不能/.test(t),
   );
-  return imageHeavy || chatty || openQ;
+    // Live 2026-10-31: 对方刚在诉苦/抱怨额度等，未邀看作品时，硬塞分享等同 barge-in。
+  const peerDistress = texts.some((t) =>
+    /恶心|烦死|讨厌|不想(?:干|做|上班|蹬)|累死|崩溃|麻了|降额度|蹬不完|太坑|气死|难受|郁闷|完蛋|寄了|服了|无语|折磨|惩罚机制/.test(
+      t,
+    ),
+  );
+  return imageHeavy || chatty || openQ || peerDistress;
 }
 
 // A share report must frame itself as sharing — first-person handoff, not a
@@ -541,6 +548,30 @@ export class Sharing {
                 displayNames(this.db, life.now()).get(
                   String(this.time.tasks.get(work.task_id)?.subject),
                 ) || null,
+              ...(() => {
+                let recipientId = String(
+                  this.time.tasks.get(work.task_id)?.subject || "",
+                );
+                try {
+                  const r = parseSessionKey(share.session_id);
+                  if (r.kind === "private") recipientId = String(r.nativeId);
+                } catch {}
+                const rel = recipientId
+                  ? this.time.mind.relationships?.current?.(recipientId, {
+                      now: life.now(),
+                      room: share.session_id,
+                    })
+                  : null;
+                return rel
+                  ? {
+                      recipientRelationship: {
+                        name: rel.name,
+                        peerRole: rel.peer_role,
+                        selfRole: rel.self_role,
+                      },
+                    }
+                  : {};
+              })(),
               currentLife: this.time.view({ session: share.session_id }),
             },
         trace,
@@ -584,6 +615,16 @@ export class Sharing {
       const bubbles = naturalReport(result.bubbles, work.content);
       if (!hasShareFrame(bubbles))
         throw Error("汇报缺少分享开场，需标明这是在分享自己的作品");
+      const roleIssues = relationshipRoleMismatchIssues(bubbles, {
+        sessionId: share.session_id,
+        inner: {
+          relationships: this.time.mind.relationships?.context?.({
+            room: share.session_id,
+            now: life.now(),
+          }),
+        },
+      });
+      if (roleIssues.length) throw Error(roleIssues[0]);
       if (
         leaks(bubbles, this.time.mind.meetings.privateSayings(share.session_id))
           .length

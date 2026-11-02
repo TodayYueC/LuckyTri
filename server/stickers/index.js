@@ -222,12 +222,15 @@ export class Stickers {
       )
       .all(String(addressee || "")))
       bonds.set(`${b.sticker_id}|${b.user_id}`, b);
+    // Live 2026-11-01 Tokyo post-r60: 「得意坏笑」仍按 ~6h 节拍复用（10:40/16:41/23:16）。
+    // r60 的 6h+n≥2 在「每窗只发 1 次」下永远放行；改为 12h 窗内先验 ≥1 即 hard exclude。
+    const satietyWindowMs = 12 * 3600000;
     const recentRows = this.db
       .prepare(
-        "SELECT sticker_id, MAX(time) time FROM sticker_uses WHERE session_id=? AND time>? GROUP BY sticker_id",
+        "SELECT sticker_id, MAX(time) time, COUNT(*) n FROM sticker_uses WHERE session_id=? AND time>? GROUP BY sticker_id",
       )
-      .all(session, now - 2 * 3600000);
-    // Just sent here: not again so soon. Soft penalty still covers 2h.
+      .all(session, now - satietyWindowMs);
+    // Just sent here: not again so soon. Soft penalty still covers hours.
     // Sticker-war: shorter hard cool; playful alone still 4m.
     const hardCoolMs = peerStickers ? 12 * 1000 : playful ? 3 * 60000 : 6 * 60000;
     const justUsed = new Set(
@@ -235,6 +238,11 @@ export class Stickers {
         .filter((r) => r.time > now - hardCoolMs)
         .map((r) => r.sticker_id),
     );
+    if (!peerStickers) {
+      for (const r of recentRows) {
+        if (r.n >= 1) justUsed.add(r.sticker_id);
+      }
+    }
     const recent = new Set(recentRows.map((r) => r.sticker_id));
     const grams = (s) => {
       const out = new Set();
