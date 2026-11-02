@@ -8,7 +8,11 @@ import { leaks } from "../guard.js";
 import { displayNames } from "../../studio/display-names.js";
 import { interestTerms } from "../attention.js";
 import { saturatedWorkFamilies, workFamilies } from "../novelty.js";
-import { relationshipRoleMismatchIssues } from "../../core/conversation-grounding.js";
+import {
+  relationshipRoleMismatchIssues,
+  selfCenteredOpenIssues,
+  initiativeSoloChainIssues,
+} from "../../core/conversation-grounding.js";
 
 // Recent human chatter that is not about this work: stickers, open questions,
 // or a busy thread. A share can wait; it should not barge in mid-fight.
@@ -91,6 +95,124 @@ export function hasShareFrame(bubbles = []) {
       opener,
     );
   return ownWorkAction && namesWorkOrHandoff;
+}
+
+
+// Live 2026-11-02 Tokyo DM post-PR#9: 分享投递走 deliver() 旁路，不经 groundingIssues，
+// 导致「爸，焚化炉段写完…想给你看看」六连泡冷开仍出手。peer 明确邀看时放行；
+// 否则多泡草稿倾泻若撞上冷开/自说链门闩或同作品族连播，则 defer。
+export const SHARE_INVITE =
+  /分享|发给我|给我看|看看你写|写完了吗|交稿|交付|想看|发来|看看你的|读完发|写完后|和我聊|发我看/;
+
+const DRAFT_SHARE_ECHO =
+  /想给你看看|发给你看看|给你看看|刚写完|写完一整节|攒着想给你看|跟你报备|顺便拉个见证|今晚就递|刚收口|换个轨道缓缓|跟你说个事|长廊那段|判完了|对答案|姐那摊/;
+
+export function peerInvitedShare(
+  events = [],
+  now = Date.now(),
+  windowMs = 12 * 3600000,
+) {
+  return (events || []).some(
+    (e) =>
+      e &&
+      e.role === "user" &&
+      !e.simulated &&
+      Number.isFinite(e.time) &&
+      now - e.time <= windowMs &&
+      SHARE_INVITE.test(String(e.text || "")),
+  );
+}
+
+export function recentDraftShareEchoes(
+  events = [],
+  now = Date.now(),
+  windowMs = 48 * 3600000,
+) {
+  return (events || []).filter(
+    (e) =>
+      e &&
+      e.role === "assistant" &&
+      !e.simulated &&
+      Number.isFinite(e.time) &&
+      now - e.time <= windowMs &&
+      DRAFT_SHARE_ECHO.test(String(e.text || "")),
+  );
+}
+
+function softPeerAckLine(text) {
+  const t = String(text || "").trim();
+  if (!t) return true;
+  if (t.length <= 2) return true;
+  return /^(?:嗯+|好+|哦+|噢+|啊+|行|ok|OK|好的|对的对的|对对|晚安|哈哈哈*|是吗|收到|嗯嗯)+[.。!！?？~～]*$/.test(
+    t,
+  );
+}
+
+// Returns a human reason string when the report should wait, else null.
+export function unsolicitedShareColdOpenReason({
+  bubbles,
+  sessionId,
+  events = [],
+  work = {},
+  now = Date.now(),
+  invited = false,
+} = {}) {
+  if (invited) return null;
+  const report = (bubbles || []).filter(
+    (line) => typeof line === "string" && line.trim(),
+  );
+  if (report.length < 2) return null;
+
+  const isPriv = /(?:^|:)private:/.test(String(sessionId || ""));
+  const echoWindow = isPriv ? 48 * 3600000 : 12 * 3600000;
+  const echoes = recentDraftShareEchoes(events, now, echoWindow);
+  const users = (events || []).filter(
+    (e) => e && e.role === "user" && !e.simulated,
+  );
+  const lastUser = [...users]
+    .reverse()
+    .find((m) => Number.isFinite(m.time) && !softPeerAckLine(m.text));
+  const gapMinutes = lastUser
+    ? (now - lastUser.time) / 60000
+    : isPriv
+      ? 90
+      : 120;
+  const snapshot = {
+    sessionId,
+    initiative: true,
+    batchIds: [],
+    messages: events,
+    conversation: { gapMinutes },
+    now,
+  };
+  const solo = initiativeSoloChainIssues(report, snapshot);
+  if (solo.length) return solo[0];
+
+  const cold = selfCenteredOpenIssues(report, snapshot);
+  const quietGap = isPriv ? 20 : 45;
+  if (cold.length && echoes.length >= 1 && gapMinutes >= quietGap) {
+    return cold[0];
+  }
+
+  const fams = workFamilies(
+    `${work.title || ""} ${work.summary || ""} ${work.project_title || ""} ${report.join("\n")}`,
+  );
+  if (fams.length && cold.length) {
+    const prior = (events || []).filter(
+      (e) =>
+        e &&
+        e.role === "assistant" &&
+        !e.simulated &&
+        Number.isFinite(e.time) &&
+        now - e.time <= 24 * 3600000 &&
+        fams.some((f) => workFamilies(String(e.text || "")).includes(f)),
+    );
+    const minHits = isPriv ? 2 : 3;
+    if (prior.length >= minHits) {
+      return "这阵子同一作品族已经分享偏多，先换换别的再说";
+    }
+  }
+  return null;
 }
 
 export class Sharing {
@@ -294,8 +416,13 @@ export class Sharing {
           )
           .all(life.now() - 24 * 3600000)
           .map((r) => `${r.outreach || ""} ${r.content || ""}`);
+        const isPrivSession = /(?:^|:)private:/.test(
+          String(share.session_id || ""),
+        );
         const saturated = new Set(
-          saturatedWorkFamilies(recentSaid, { minHits: 3 }),
+          saturatedWorkFamilies(recentSaid, {
+            minHits: isPrivSession ? 2 : 3,
+          }),
         );
         if (fams.some((f) => saturated.has(f))) {
           const reason = "这阵子同一作品族已经分享偏多，先换换别的再说";
@@ -341,6 +468,53 @@ export class Sharing {
           life.now(),
         );
         return { status: "waiting", reason };
+      }
+    }
+    // Live 2026-11-02: 预生成 report 气泡在真正 deliver 前再过一遍冷开/自说链门闩。
+    // peer 已邀看则放行；否则多泡草稿倾泻 defer，避免分享旁路绕开 grounding。
+    if (share.delivery_kind === "report") {
+      const reportPreview = parse(share.report, []);
+      const pendingBubbles = reportPreview.slice(
+        share.send_index,
+        share.send_index + 3,
+      );
+      if (pendingBubbles.length) {
+        const recentAll = life.repo.recentEvents(share.session_id, 80, {
+          simulated: false,
+        });
+        const invited = peerInvitedShare(recentAll, life.now());
+        const deferReason = unsolicitedShareColdOpenReason({
+          bubbles: pendingBubbles,
+          sessionId: share.session_id,
+          events: recentAll,
+          work,
+          now: life.now(),
+          invited,
+        });
+        if (deferReason) {
+          const waitMs = /作品族/.test(deferReason)
+            ? 4 * 3600000
+            : 90 * 60000;
+          this.db
+            .prepare(
+              "UPDATE mind_time_shares SET reason=?,next_step=? WHERE id=? AND state='pending'",
+            )
+            .run(deferReason, life.now() + waitMs, share.id);
+          if (work.task_id)
+            this.db
+              .prepare(
+                "UPDATE mind_time_tasks SET share_reason=?,next_step=?,share_state='deferred' WHERE id=?",
+              )
+              .run(deferReason, life.now() + waitMs, work.task_id);
+          this.time.event(
+            work.task_id,
+            "share-defer",
+            deferReason,
+            { workId: work.id, session: share.session_id, gate: "cold-open" },
+            life.now(),
+          );
+          return { status: "waiting", reason: deferReason };
+        }
       }
     }
     const task = this.time.tasks.get(work.task_id),
