@@ -214,6 +214,7 @@ export function innerView(
     persons.push({
       id,
       name: bond.name,
+      ...(bond.knownAs?.length ? { knownAs: bond.knownAs } : {}),
       feel: bond.feel,
       ...(shared.length ? { goingOn: shared } : {}),
       ...(bond.relationship ? { relationship: bond.relationship } : {}),

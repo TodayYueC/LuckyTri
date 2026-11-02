@@ -468,9 +468,20 @@ export class Bonds {
     const binding = this.mind.relationships.current(userId, { now, room });
     const relationship = this.mind.relationships.view(binding, room);
     delete described.unspokenDays;
+    const primaryName = relationship?.name || known?.name || String(userId);
+    const knownAs =
+      relationship?.name &&
+      known?.name &&
+      known.name !== relationship.name &&
+      known.name !== String(userId)
+        ? [known.name]
+        : undefined;
+    if (relationship && knownAs && !relationship.knownAs)
+      relationship.knownAs = knownAs;
     return {
       userId: String(userId),
-      name: relationship?.name || known?.name || String(userId),
+      name: primaryName,
+      ...(knownAs ? { knownAs } : {}),
       relationship,
       relationalWeight: this.mind.relationships.weight(binding),
       sessions: parse(known?.sessions, []),

@@ -22,7 +22,7 @@ import { roomBusyUnrelated } from "./time/sharing.js";
 // Live 2026-10-31: 「刚写完歌单收尾的感受记录，想给你看看」在对方刚诉苦降额度之后冷开。
 // 草稿分享口吻（不限 portal 族）+ 对方近窗在Distress且未邀看 → defer。
 export const DRAFT_SHARE_CUE =
-  /想给你看看|发给你看看|给你看看|刚写完|刚整理完|感受记录|回看完了|定稿|歌单收尾|家务分配表|手头那个|真定了|定死不再改|头一回见人|拖到最后真定|跟你说个事|停了几天|换个垫法|卡剧情|不打算直接写|这种写法/;
+  /想给你看看|发给你看看|给你看看|刚写完|刚整理完|感受记录|回看完了|定稿|歌单收尾|家务分配表|手头那个|真定了|定死不再改|头一回见人|拖到最后真定|跟你说个事|停了几天|换个垫法|卡剧情|不打算直接写|这种写法|跟你报备个事|顺便拉个见证|长廊那段|刚想通了|今晚就递|注那行我扣住|让她自己猜|对答案那事|跟姐对答案|姐那摊又续上|刚收口|攒着想给你看|照单子自己翻|单子还没记全/;
 export const PEER_DISTRESS_CUE =
   /恶心|烦死|讨厌|不想(?:干|做|上班|蹬)|累死|崩溃|麻了|降额度|蹬不完|太坑|气死|难受|郁闷|完蛋|寄了|服了|无语|折磨|惩罚机制/;
 export const SHARE_INVITE_CUE =
@@ -285,7 +285,13 @@ export class Initiative {
     const candidates = contacts.filter(
       (contact) =>
         (kind === "either" || contact.kind === kind) &&
-        this.audience(thought, contact.session, now).allowed,
+        this.audience(thought, contact.session, now).allowed &&
+        !this.thirdPartyTargetMismatch(
+          thought,
+          contact.session,
+          now,
+          note?.words,
+        ),
     );
     if (!candidates.length) return null;
     const roots = new Set(
@@ -310,8 +316,10 @@ export class Initiative {
       const tension = Number(bond?.tension || 0);
       const talked = Number(bond?.interactions || 0);
       const rooted = roots.has(contact.session) ? 2.5 : 0;
-      const fit = (contact.recent || []).some((line) =>
-        sameRecentTheme(line.text, note.words?.join("\n")),
+      const fit = (contact.recent || []).some(
+        (line) =>
+          line.role === "user" &&
+          sameRecentTheme(line.text, note.words?.join("\n")),
       )
         ? 0.5
         : 0;
@@ -368,6 +376,54 @@ export class Initiative {
   audience(thought, session, now = this.life.now()) {
     const result = initiativeAudience(this.life.mind, thought, session, now);
     return { ...result, origin: originSummary(result.origin) };
+  }
+  thirdPartyTargetMismatch(
+    thought,
+    session,
+    now = this.life.now(),
+    extraWords = null,
+  ) {
+    if (!isPrivateSession(session)) return null;
+    let peerId = "";
+    try {
+      peerId = String(parseSessionKey(session).nativeId || "");
+    } catch {
+      return null;
+    }
+    if (!peerId) return null;
+    const candidate = [
+      thought?.content || "",
+      thought?.outreach || "",
+      ...(Array.isArray(thought?.outreach_draft) ? thought.outreach_draft : []),
+      ...(Array.isArray(extraWords) ? extraWords : []),
+    ]
+      .filter(Boolean)
+      .join("\n");
+    if (!candidate.trim()) return null;
+
+    const relations = this.life.mind.relationships?.list?.(now) || [];
+    const peerRel = relations.find((r) => String(r.subject_id) === peerId);
+    const peerIsSister =
+      peerRel?.peer_role === "姐姐" || peerRel?.peer_role === "妹妹";
+
+    const recentUser = this.recentUserWords(session, 8).join("\n");
+    if (/姐|妹妹|Rina|Lucky|对答案|赌局|正主/i.test(recentUser)) return null;
+
+    const sisterProjection =
+      !peerIsSister &&
+      (/^(?:誒|诶|哎|啊|喂|对了|那)?[，,\s]*姐(?:姐)?[，,：:\s]/mu.test(
+        candidate,
+      ) ||
+        /跟姐对答案|对答案那事.{0,20}姐|姐挑中的?那句|跟姐.{0,12}判完|正主还没说.{0,12}想喝|今天之内得让她报上来|姐那摊又续上|注那行我扣住不解释[，,]?让她自己猜|说个早上的事[，,]?Rina之前分过|她说的俩不能混着算/.test(
+          candidate,
+        ));
+    if (sisterProjection) {
+      return {
+        reason:
+          "这条主动念头指向另一位关系对象（姐/正主/她），不投射给无关的私聊对象",
+      };
+    }
+    return null;
   }
   recentlyToldAnotherGroup(thought, now = this.life.now()) {
     if (!isGroupSession(thought?.outreach_session)) return false;
@@ -686,7 +742,8 @@ export class Initiative {
         "SELECT time,payload FROM core_events WHERE session_id=? AND role='user' AND time<=? AND seq NOT IN (SELECT seq FROM mind_unlived) AND COALESCE(json_extract(payload,'$.simulated'),0)=0 ORDER BY seq DESC LIMIT 8",
       )
       .all(session, now);
-    let sinceTime = now - 12 * HOUR;
+    const windowMs = isPrivateSession(session) ? 72 * HOUR : 12 * HOUR;
+    let sinceTime = now - windowMs;
     for (const row of userRows) {
       const words = String(parse(row.payload, {}).text || "").trim();
       if (

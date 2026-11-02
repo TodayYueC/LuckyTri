@@ -129,6 +129,16 @@ export class LifePresence {
         this.owner.mind.thoughts.setOutreach(t.id, "skipped", audience.reason);
         continue;
       }
+      const thirdPartyMismatch =
+        this.owner.initiative.thirdPartyTargetMismatch?.(t, session, now);
+      if (thirdPartyMismatch) {
+        this.owner.mind.thoughts.setOutreach(
+          t.id,
+          "skipped",
+          thirdPartyMismatch.reason,
+        );
+        continue;
+      }
       if (this.owner.initiative.recentlyToldAnotherGroup(t, now)) {
         this.owner.mind.thoughts.setOutreach(t.id, "declined");
         continue;

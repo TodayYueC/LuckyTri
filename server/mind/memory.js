@@ -993,6 +993,23 @@ export class MemoryManager {
             f.discretion === "secret" ||
             askedSecret(block, f.subject, Math.max(...f.sources));
           const content = applySpeakerNames(f.content.trim(), names);
+          // Group kinship memes ("妈妈"/"儿子"/"义父") must not solidify into
+          // transferable family facts unless backed by mind_relationships.
+          if (
+            /(?:是|算|认|当|白捡).{0,12}的?(?:妈妈|老妈|母亲|爸爸|父亲|义父|儿子|好大儿|闺女)|管.{0,12}叫(?:妈|妈妈|爸|爸爸|义父|儿子)|见人就(?:喊妈|叫妈|发证)/u.test(
+              content,
+            )
+          ) {
+            const rel = this.mind?.relationships?.current?.(f.subject, {
+              now,
+              room: session,
+            });
+            if (
+              !rel ||
+              !content.includes(String(rel.peer_role || ""))
+            )
+              continue;
+          }
           const citations = sources.map((m) => ({
             id: m.seq,
             text: m.text,
