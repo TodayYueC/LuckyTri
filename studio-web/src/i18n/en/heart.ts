@@ -1,6 +1,4 @@
-// English for the Inner life section (heart / star map / notes wall).
 export default {
-  // HeartPage.vue
   "TA 最核心的部分": "The core of TA",
   "在远方：很久没被触及": "Far away: untouched for a long time",
   慢慢淡出: "Slowly fading",
@@ -36,10 +34,6 @@ export default {
   "撤销后 TA 不会再这样认为；这只是拿走一段理解，不会改写发生过的事。":
     "After undoing, TA will no longer think this. It only takes away one understanding and does not rewrite what happened.",
   收起线索: "Collapse strands",
-
-  // MoodRibbon.vue
-  "MOOD / 此刻的天气": "MOOD / the weather right now",
-  "心情有自己的潮汐。": "Mood has tides of its own.",
   "最近 {length} 次被经历牵动；有起伏，也会慢慢平静。":
     "Moved by experience {length} times lately; it rises and falls, then settles.",
   刚刚留下的心情: "The mood just left behind",
@@ -48,8 +42,6 @@ export default {
   "心情还没有被什么事牵动过。每一次经历都可能推动 TA 的心情，随后又会慢慢回到平常。":
     "Nothing has moved her mood yet. Every experience can nudge TA's mood, and it slowly returns to normal afterwards.",
   最近的心情: "Recent moods",
-
-  // NotesWall.vue
   "删除这张便签？有后续修正的便签只能隐藏。":
     "Delete this note? A note that has later corrections can only be hidden.",
   删除便签: "Delete note",
@@ -72,22 +64,12 @@ export default {
   这面墙还空着: "This wall is still empty",
   "独处时有了新的理解、放不下的事或久别想起的人，TA 会写一张便签贴在这里。":
     "When she has a new understanding while alone, something she cannot let go of, or someone she remembers after a long time, TA writes a note and sticks it here.",
-
-  // StarMap.vue
   暂时放远: "Set aside for now",
   慢慢笃定: "Growing certain",
   还在生长: "Still growing",
   "心灵星图：TA 关于自己的线索": "Star map: TA's strands about herself",
-  "SELF / 正在形成的自己": "SELF / still taking shape",
-  "不是一张固定的画像，": "Not a fixed portrait,",
-  "而是一直在生长。": "but something that keeps growing.",
-  "一件经历可能留下一点痕迹。点开一枚光片，可以看到它从哪里来、后来又怎么改变。":
-    "An experience can leave a small trace. Open a shard of light to see where it came from and how it changed afterwards.",
   枚线索: "strands",
   枚此刻贴近: "close right now",
-  她留下的光片: "The shards she keeps",
-  "越亮的线索，越贴近此刻。淡去的仍然保留在这里。":
-    "The brighter a strand, the closer it is to now. Faded ones are still kept here.",
   "{length} 枚正在留存": "{length} kept",
   "再看 {v} 枚光片": "See {v} more shards",
-} as Record<string, string>;
+};

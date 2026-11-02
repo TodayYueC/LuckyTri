@@ -50,6 +50,15 @@ defineProps<{ name: string }>();
       <path d="M12 14.5c0-3-2-5.1-5.3-5.2.1 3.1 2.2 5.2 5.3 5.2Z" />
     </template>
     <template v-else-if="name === 'system'">
+      <path d="M5 4v16M12 4v16M19 4v16" />
+      <path d="M3 8h4M10 16h4M17 9h4" stroke-width="4" />
+    </template>
+    <template v-else-if="name === 'layout'">
+      <rect x="4" y="4" width="6" height="16" rx="2" />
+      <rect x="14" y="4" width="6" height="6" rx="2" />
+      <rect x="14" y="14" width="6" height="6" rx="2" />
+    </template>
+    <template v-else-if="name === 'sun'">
       <circle cx="12" cy="12" r="3" />
       <path
         d="M12 3.5v2.3M12 18.2v2.3M20.5 12h-2.3M5.8 12H3.5M18 6l-1.6 1.6M7.6 16.4 6 18M18 18l-1.6-1.6M7.6 7.6 6 6"
@@ -105,14 +114,16 @@ defineProps<{ name: string }>();
 </template>
 
 <style scoped>
-.icon {
-  width: 20px;
-  height: 20px;
-  flex: none;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+@layer components {
+  .icon {
+    width: 20px;
+    height: 20px;
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
 }
 </style>

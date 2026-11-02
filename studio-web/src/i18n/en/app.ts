@@ -1,8 +1,5 @@
-// English for the app shell, shared wording, and the small components.
-// Keys are the Chinese text exactly as it appears in the source.
 export default {
   "请稍候…": "Please wait…",
-  // api.ts
   为这个小世界设置密码: "Set a password for this little world",
   欢迎回来: "Welcome back",
   "正在连接小世界…": "Connecting to your little world…",
@@ -26,40 +23,26 @@ export default {
   修改密码: "Change password",
   退出登录: "Sign out",
   请求失败: "Request failed",
-
-  // App.vue
   请先保存草稿: "Save the draft first",
   暂未连接: "Not connected",
-  "TA 在等你回来": "TA is waiting for you to come back",
   重新连接: "Reconnect",
   跳到主要内容: "Skip to main content",
   主要功能: "Main sections",
-  "{name}：回到此刻": "{name}: back to Now",
-  开启灵动效果: "Turn on lively effects",
   减少动画: "Reduce motion",
-  使用教程: "Guide",
   "使用教程 ↗": "Guide ↗",
-  "去连接 QQ": "Connect QQ",
   "QQ 未连接": "QQ not connected",
   刷新当前数据: "Refresh the current data",
-  刷新: "Refresh",
   "草稿还没保存，保存后才会生效":
     "The draft is not saved yet; it takes effect once saved",
-  更多: "More",
-  "正在进入 TA 的小世界": "Entering TA's little world",
   "连接会话与记忆…": "Connecting sessions and memory…",
   闲着: "Idle",
   界面主题: "Theme",
   语言: "Language",
   "LuckyTri · TA 的小世界": "LuckyTri · TA's little world",
-
-  // dialog.ts
   想确认一下: "Just checking",
   请填写: "Please fill in",
   确定: "OK",
   取消: "Cancel",
-
-  // format.ts
   "{month} 月 {date} 日": "{month}/{date}",
   刚刚: "just now",
   "{minutes} 分钟前": "{minutes} min ago",
@@ -69,11 +52,7 @@ export default {
   "{v} 年前": "{v} y ago",
   未命名的人: "Unnamed person",
   未命名的群: "Unnamed group",
-
-  // main.ts
   "操作失败，请重试": "That did not work. Please try again.",
-
-  // mood/presence.ts
   刚说完话: "just finished talking",
   在想怎么回: "thinking how to reply",
   在独处: "spending time alone",
@@ -85,8 +64,6 @@ export default {
   "睡着了，呼吸很轻": "asleep, breathing softly",
   睡着了: "asleep",
   "{line}，因为{cause}": "{line}, because {cause}",
-
-  // mood/themes.ts
   平静: "Calm",
   像一杯温水: "like a cup of warm water",
   甜甜: "Sweet",
@@ -100,8 +77,6 @@ export default {
   困倦: "Drowsy",
   眼皮在打架: "eyelids drooping",
   夜晚: "Night",
-
-  // plates/mind.ts
   想做的事: "Things she wants to do",
   别人的安排: "Others' plans",
   每年的日子: "Yearly days",
@@ -159,8 +134,6 @@ export default {
   简短反应: "Brief reaction",
   说不想聊: "Said she did not want to talk",
   放在心上: "Keeping it in mind",
-
-  // router.ts
   此刻: "Now",
   "TA 此刻的样子。": "How TA is right now.",
   内心: "Inner life",
@@ -184,19 +157,13 @@ export default {
   "连接、模型和运行开关。": "Connection, models, and run switches.",
   日常: "Daily life",
   设置: "Settings",
-
-  // stores/studio.ts
   "有尚未保存的修改，离开这一页吗？":
     "You have unsaved changes. Leave this page?",
   离开: "Leave",
-
-  // wallpaper.ts
   请选择一张图片: "Please choose an image",
   "图片太大了，请换一张 20MB 以内的":
     "That image is too large. Please pick one under 20 MB.",
   无法处理这张图片: "This image could not be processed",
-
-  // shared small wording
   "和 TA 聊聊": "Talk with TA",
   没出声: "Said nothing",
   "没有留下理由。": "No reason was left.",
@@ -246,8 +213,6 @@ export default {
   草稿还没保存: "Draft not saved",
   留下: "Keep",
   答应的事: "Promises",
-
-  // components/shell/NowStatusDock.vue
   完成了: "Finished",
   "TA 的此刻状态": "TA's state right now",
   "第 {v} 天": "Day {v}",
@@ -264,16 +229,12 @@ export default {
     "When things quiet down, TA spends time alone.",
   最近说: "Recently said",
   在等: "Waiting",
-
-  // components/shell/ThemePicker.vue
   "主题固定为「{v}」": "Theme fixed to “{v}”",
   "主题跟随 TA 的心情": "Theme follows TA's mood",
   "固定：{v}": "Fixed: {v}",
   "跟随 TA · {v}": "Following TA · {v}",
   "跟随 TA 的心情": "Follow TA's mood",
   "现在是「{v}」": "Now “{v}”",
-
-  // components/ta/reactions.ts
   "嗯？": "Hm?",
   "我在这儿。": "I'm here.",
   "有什么事吗？": "Is something up?",
@@ -335,8 +296,6 @@ export default {
   原来那时候我是这样想的: "So that's what I was thinking back then",
   "在整理今天的事……": "Sorting through today...",
   "嘘，快整理完了": "Shh, almost done sorting",
-
-  // components/ta/TaChat.vue
   "（TA 没有出声）": "(TA said nothing)",
   "{v} · 心情{v2} · {latency} ms": "{v} · mood {v2} · {latency} ms",
   真实模型: "Real model",
@@ -353,19 +312,13 @@ export default {
   一段新的私聊: "A new private chat",
   "说一句试试…": "Say something…",
   说: "Say",
-
-  // components/ta/TaCompanion.vue
   收起聊天: "Collapse chat",
   "和 {name} 聊聊（试聊）": "Chat with {name} (trial)",
   "和 {name} 聊聊": "Chat with {name}",
   "试聊 · 什么都不写入": "Trial chat · nothing is written",
   聊聊: "Chat",
-
-  // components/ta/TaOrb.vue
   "TA：轻触互动，按住摸摸头，双击和 TA 聊聊":
     "TA: tap to interact, press and hold to pet her head, double-click to chat",
-
-  // components/ui/Select.vue
   请选择: "Select",
   没有可选项: "No options",
-} as Record<string, string>;
+};

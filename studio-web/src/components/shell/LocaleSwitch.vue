@@ -27,22 +27,24 @@ import { LOCALES, locale, setLocale, t } from "../../i18n";
 </template>
 
 <style scoped>
-.locale-switch {
-  flex-wrap: nowrap;
-  gap: 2px;
-  padding: 3px;
-}
-.locale-switch button {
-  min-width: 36px;
-  padding: 5px 10px;
-  font-size: 12.5px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-@media (max-width: 760px) {
+@layer components {
+  .locale-switch {
+    flex-wrap: nowrap;
+    gap: 2px;
+    padding: 3px;
+  }
   .locale-switch button {
-    min-width: 30px;
-    padding: 5px 8px;
+    min-width: 36px;
+    padding: 5px 10px;
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  @media (max-width: 760px) {
+    .locale-switch button {
+      min-width: 30px;
+      padding: 5px 8px;
+    }
   }
 }
 </style>

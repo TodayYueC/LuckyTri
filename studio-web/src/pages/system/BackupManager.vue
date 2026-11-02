@@ -381,176 +381,172 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.storage-page {
-  display: grid;
-  gap: var(--gap);
-}
-.storage-page > .card,
-.storage-grid > .card {
-  background:
-    radial-gradient(
-      ellipse at 100% 0,
-      color-mix(in srgb, var(--glow-a) 20%, transparent),
-      transparent 60%
-    ),
-    var(--surface);
-}
-.storage-overview h2 {
-  font-size: clamp(24px, 3vw, 36px);
-  margin: 8px 0;
-}
-.storage-overview p,
-.storage-note {
-  color: var(--ink-soft);
-  font-size: 13px;
-  line-height: 1.65;
-}
-.storage-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 22px;
-}
-.storage-metrics > div {
-  display: grid;
-  min-width: 150px;
-  gap: 3px;
-  padding: 15px 20px;
-  border: 1px solid rgb(255 255 255 / 0.8);
-  border-radius: 18px;
-  background: rgb(255 255 255 / 0.42);
-}
-.storage-metrics b {
-  color: var(--accent);
-  font-size: 23px;
-}
-.storage-metrics span {
-  color: var(--ink-soft);
-  font-size: 12px;
-}
-.storage-grid {
-  display: grid;
-  grid-template-columns: minmax(270px, 0.8fr) minmax(0, 1.5fr);
-  gap: var(--gap);
-  align-items: start;
-}
-.storage-grid .card-head h2 {
-  font-size: 23px;
-  margin: 4px 0 16px;
-}
-.storage-check {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin-bottom: 16px;
-}
-.storage-fields {
-  display: grid;
-  gap: 13px;
-}
-.storage-fields label {
-  display: grid;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--ink-soft);
-  font-weight: 700;
-}
-.storage-fields input {
-  width: 100%;
-  min-width: 0;
-  padding: 11px 13px;
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, white);
-  border-radius: 15px;
-  background: rgb(255 255 255 / 0.7);
-  color: var(--ink);
-}
-.storage-policy .primary {
-  margin-top: 14px;
-}
-.storage-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 16px 0;
-}
-.storage-actions button {
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: rgb(255 255 255 / 0.65);
-}
-.storage-scroll {
-  max-height: 520px;
-  overflow: auto;
-  display: grid;
-  gap: 7px;
-  padding: 2px;
-}
-.storage-row {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid rgb(255 255 255 / 0.75);
-  border-radius: 16px;
-  background: rgb(255 255 255 / 0.48);
-  cursor: pointer;
-}
-.storage-row.protected {
-  opacity: 0.7;
-  cursor: default;
-}
-.storage-item {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-  flex: 1;
-}
-.storage-item strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-}
-.storage-item small {
-  font-size: 11px;
-  color: var(--ink-soft);
-}
-.storage-row > b {
-  white-space: nowrap;
-  font-size: 12px;
-  color: var(--accent);
-}
-.storage-footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding-top: 18px;
-  color: var(--ink-soft);
-  font-size: 12px;
-}
-.storage-error {
-  color: var(--danger);
-  overflow-wrap: anywhere;
-}
-@media (max-width: 900px) {
-  .storage-grid {
-    grid-template-columns: minmax(0, 1fr);
+@layer components {
+  .storage-page {
+    display: grid;
+    gap: var(--gap);
   }
-}
-@media (max-width: 560px) {
-  .storage-row {
-    align-items: flex-start;
+  .storage-page > .card,
+  .storage-grid > .card {
+    background: var(--surface);
+  }
+  .storage-overview h2 {
+    font-size: clamp(24px, 3vw, 36px);
+    margin: 8px 0;
+  }
+  .storage-overview p,
+  .storage-note {
+    color: var(--ink-soft);
+    font-size: 13px;
+    line-height: 1.65;
+  }
+  .storage-metrics {
+    display: flex;
     flex-wrap: wrap;
-  }
-  .storage-row > b {
-    margin-left: 26px;
+    gap: 12px;
+    margin-top: 22px;
   }
   .storage-metrics > div {
+    display: grid;
+    min-width: 150px;
+    gap: 3px;
+    padding: 15px 20px;
+    border: 1px solid rgb(255 255 255 / 0.8);
+    border-radius: 18px;
+    background: rgb(255 255 255 / 0.42);
+  }
+  .storage-metrics b {
+    color: var(--accent);
+    font-size: 23px;
+  }
+  .storage-metrics span {
+    color: var(--ink-soft);
+    font-size: 12px;
+  }
+  .storage-grid {
+    display: grid;
+    grid-template-columns: minmax(270px, 0.8fr) minmax(0, 1.5fr);
+    gap: var(--gap);
+    align-items: start;
+  }
+  .storage-grid .card-head h2 {
+    font-size: 23px;
+    margin: 4px 0 16px;
+  }
+  .storage-check {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 16px;
+  }
+  .storage-fields {
+    display: grid;
+    gap: 13px;
+  }
+  .storage-fields label {
+    display: grid;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--ink-soft);
+    font-weight: 700;
+  }
+  .storage-fields input {
+    width: 100%;
+    min-width: 0;
+    padding: 11px 13px;
+    border: 1px solid color-mix(in srgb, var(--accent) 25%, white);
+    border-radius: 15px;
+    background: rgb(255 255 255 / 0.7);
+    color: var(--ink);
+  }
+  .storage-policy .primary {
+    margin-top: 14px;
+  }
+  .storage-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 16px 0;
+  }
+  .storage-actions button {
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.65);
+  }
+  .storage-scroll {
+    max-height: 520px;
+    overflow: auto;
+    display: grid;
+    gap: 7px;
+    padding: 2px;
+  }
+  .storage-row {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid rgb(255 255 255 / 0.75);
+    border-radius: 16px;
+    background: rgb(255 255 255 / 0.48);
+    cursor: pointer;
+  }
+  .storage-row.protected {
+    opacity: 0.7;
+    cursor: default;
+  }
+  .storage-item {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
     flex: 1;
-    min-width: 130px;
+  }
+  .storage-item strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+  .storage-item small {
+    font-size: 11px;
+    color: var(--ink-soft);
+  }
+  .storage-row > b {
+    white-space: nowrap;
+    font-size: 12px;
+    color: var(--accent);
+  }
+  .storage-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding-top: 18px;
+    color: var(--ink-soft);
+    font-size: 12px;
+  }
+  .storage-error {
+    color: var(--danger);
+    overflow-wrap: anywhere;
+  }
+  @media (max-width: 900px) {
+    .storage-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  @media (max-width: 560px) {
+    .storage-row {
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .storage-row > b {
+      margin-left: 26px;
+    }
+    .storage-metrics > div {
+      flex: 1;
+      min-width: 130px;
+    }
   }
 }
 </style>

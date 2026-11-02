@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t, N_, localized } from "../../i18n";
-import { computed, ref, shallowRef, watch } from "vue";
+import { computed, ref, shallowRef } from "vue";
 import { usePageActivity } from "../../page-activity";
 import { readSnapshot } from "../../api";
 import { go, studio } from "../../stores/studio";
@@ -22,6 +22,9 @@ import Meter from "../../components/ui/Meter.vue";
 import Tabs from "../../components/ui/Tabs.vue";
 import Timeline from "../../components/ui/Timeline.vue";
 import WallpaperPicker from "./WallpaperPicker.vue";
+import HomeGrid from "./HomeGrid.vue";
+import Popover from "../../components/ui/Popover.vue";
+import Icon from "../../components/ui/Icon.vue";
 import Sheet from "../../components/ui/Sheet.vue";
 import TaOrb from "../../components/ta/TaOrb.vue";
 import { liveMood } from "../../mood/useMood";
@@ -32,6 +35,7 @@ const overview = shallowRef<any>(readSnapshot("/mind") || null);
 const today = shallowRef<any>(readSnapshot("/mind/today") || null);
 const filter = ref("all");
 const wallpaperPicking = ref(false);
+const pictureMenu = ref(false);
 const {
   adjusting,
   heroRef,
@@ -145,227 +149,247 @@ usePageActivity("now", load);
 
 <template>
   <div class="page now">
-    <div class="now-presentation">
-      <section class="now-hero">
-        <div class="hero-copy">
-          <span class="eyebrow">{{ activityLine(p) }}</span>
-          <h2>{{ p?.name || studio.core?.nature?.name || 'TA' }}</h2>
-          <div class="row">
-            <TaOrb :mood="liveMood" :activity="p?.activity?.kind || 'idle'" :size="42" interactive @open-chat="studio.chatOpen = true" />
-            <span class="chip">{{ p?.affect?.mood || t('平静') }}</span>
+    <HomeGrid>
+      <template #profile
+        ><section class="now-profile">
+          <div class="profile-heading">
+            <h2>{{ t("角色状态") }}</h2>
+            <Popover v-model="pictureMenu" :title="t('角色图片')" :width="260"
+              ><template #trigger><Icon name="palette" /></template
+              ><button
+                class="control-menu-item"
+                @click="
+                  pictureMenu = false;
+                  wallpaperPicking = true;
+                "
+              >
+                {{ t("换壁纸") }}</button
+              ><button
+                class="control-menu-item"
+                @click="
+                  pictureMenu = false;
+                  adjusting = true;
+                "
+              >
+                {{ t("调整构图") }}
+              </button></Popover
+            >
           </div>
-          <p v-if="p?.lastWords?.text || p?.thought?.content" class="hero-thought" data-own>{{ p?.lastWords?.text || p?.thought?.content }}</p>
-          <div class="hero-actions"><button class="primary" @click="studio.chatOpen = true">{{ t('和 TA 聊聊') }}</button><button class="ghost" @click="go('time')">{{ t('今天的日程') }}</button></div>
-        </div>
-      <div
-        ref="heroRef"
-        class="hero-picture"
-        :class="{ 'wallpaper-adjusting': adjusting }"
-      >
-        <div class="wallpaper-layer" aria-hidden="true">
-          <img
-            ref="imageRef"
-            :src="wallpapers.hero"
-            :style="pictureStyle"
-            alt=""
-            draggable="false"
-          />
-        </div>
-        <div
-          v-if="adjusting"
-          class="wallpaper-drag-layer"
-          role="application"
-          :aria-label="t('拖动调整首页壁纸构图')"
-          @pointerdown.prevent="beginPictureDrag"
-          @pointermove.prevent="movePicture"
-          @pointerup="endPictureDrag"
-          @pointercancel="endPictureDrag"
-          @lostpointercapture="endPictureDrag"
-        >
-          <span class="wallpaper-tip">{{
-            t("按住并拖动图片，调整人物位置")
-          }}</span>
-        </div>
-        <div class="wallpaper-controls">
-          <template v-if="adjusting">
-            <span class="wallpaper-tip-inline">{{
-              t("拖动背景调整构图")
-            }}</span>
-            <button type="button" @click="resetPicture">
-              {{ t("恢复默认") }}
-            </button>
-            <button type="button" class="primary" @click="finishPicture">
+          <div class="profile-identity">
+            <div
+              ref="heroRef"
+              class="profile-picture"
+              :class="{ 'wallpaper-adjusting': adjusting }"
+            >
+              <div class="wallpaper-layer">
+                <img
+                  ref="imageRef"
+                  :src="wallpapers.hero"
+                  :style="pictureStyle"
+                  alt=""
+                  draggable="false"
+                />
+              </div>
+              <div
+                v-if="adjusting"
+                class="wallpaper-drag-layer"
+                role="application"
+                :aria-label="t('拖动调整首页壁纸构图')"
+                @pointerdown.prevent="beginPictureDrag"
+                @pointermove.prevent="movePicture"
+                @pointerup="endPictureDrag"
+                @pointercancel="endPictureDrag"
+                @lostpointercapture="endPictureDrag"
+              ></div>
+            </div>
+            <div class="profile-details">
+              <h3>{{ p?.name || studio.core?.nature?.name || "TA" }}</h3>
+              <p>{{ activityLine(p) }}</p>
+              <div class="row">
+                <TaOrb
+                  :mood="liveMood"
+                  :activity="p?.activity?.kind || 'idle'"
+                  :size="34"
+                  interactive
+                  @open-chat="studio.chatOpen = true"
+                /><span class="chip">{{ p?.affect?.mood || t("平静") }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-if="adjusting" class="profile-adjust">
+            <span class="muted">{{ t("拖动背景调整构图") }}</span
+            ><button @click="resetPicture">{{ t("恢复默认") }}</button
+            ><button class="primary" @click="finishPicture">
               {{ t("完成") }}
             </button>
-          </template>
-          <button v-else type="button" @click="adjusting = true">
-            {{ t("调整构图") }}
-          </button>
-          <button
-            v-if="!adjusting"
-            type="button"
-            @click="wallpaperPicking = !wallpaperPicking"
-          >
-            {{ t("换壁纸") }}
-          </button>
-        </div>
-      </div>
-      </section>
-      <Sheet :open="wallpaperPicking && !adjusting" :title="t('壁纸与构图')" width="540px" @close="wallpaperPicking = false"><WallpaperPicker open @close="wallpaperPicking = false" /></Sheet>
-    </div>
-
-    <section class="notes">
-      <article class="note words">
-        <span class="eyebrow">{{ t("TA 最近说") }}</span>
-        <ul v-if="recentWords.length" class="recent-list">
-          <li v-for="(word, i) in recentWords" :key="`${word.time}-${i}`">
-            <p class="quote">“{{ word.text }}”</p>
-            <small
-              >{{ placeName({ name: word.sessionName, id: word.session }) }} ·
-              {{ ago(word.time, p?.now) }}</small
-            >
-          </li>
-        </ul>
-        <p v-else class="muted">{{ t("TA 还没在哪里开过口。") }}</p>
-      </article>
-      <article class="note thought">
-        <span class="eyebrow">{{ t("放在心上") }}</span>
-        <template v-if="p?.thought">
-          <p>{{ p.thought.content }}</p>
-          <small>{{ p.thought.when }}</small>
-        </template>
-        <p v-else class="muted">{{ t("心里暂时没有挂着的事。") }}</p>
-        <p v-if="p?.will" class="will-line">
-          {{ t("正在为自己而活：{content}", { content: p.will.content }) }}
-        </p>
-        <small v-if="p?.will?.touched">
-          {{
-            t("被别人的话碰到过 {touched} 次，上次{v}", {
-              touched: p.will.touched,
-              v: p.will.lastSpoke ? t("出了声") : t("没出声"),
-            })
-          }}
-        </small>
-        <p v-if="p?.meaning" class="muted">
-          {{ t("上次相遇：{text}", { text: p.meaning.text })
-          }}<template v-if="!p.meaning.spoke">{{ t("（没出声）") }}</template>
-        </p>
-        <small v-if="p?.meaning?.when && !p.meaning.recent">{{
-          p.meaning.when
-        }}</small>
-        <button class="text-button" @click="go('heart', 'notes')">
-          {{ t("看看 TA 的便签") }}
-        </button>
-      </article>
-      <article class="note ahead">
-        <span class="eyebrow">{{ t("在等的事") }}</span>
-        <ul v-if="expecting.length" class="list">
-          <li v-for="a in expecting" :key="a.id">
-            <b>{{ a.when }}</b>
-            <span>{{ a.name ? `${a.name}：` : "" }}{{ a.content }}</span>
-            <small>{{ ANTICIPATION_LABELS[a.kind] || a.kind }}</small>
-          </li>
-        </ul>
-        <p v-else class="muted">{{ t("这几天没有 TA 特别在等的事。") }}</p>
-        <button class="text-button" @click="go('life', 'ahead')">
-          {{ t("约定与期待") }}
-        </button>
-      </article>
-    </section>
-
-    <section class="now-grid">
-      <Card
-        class="today"
-        :title="t('今天的 TA')"
-        :sub="today ? t('{v}，按时间排在一起', { v: dayLabel(today.day) }) : ''"
+          </div>
+          <div class="profile-actions">
+            <button class="primary" @click="studio.chatOpen = true">
+              {{ t("和 TA 聊聊") }}</button
+            ><button class="ghost" @click="go('time')">
+              {{ t("今天的日程") }}
+            </button>
+          </div>
+        </section></template
       >
-        <template #actions>
-          <Tabs
-            v-model="filter"
-            :label="t('筛选今天的事')"
-            :items="[
-              { key: 'all', label: t('全部'), count: counts.all },
-              { key: 'talk', label: t('开口与沉默'), count: counts.talk },
-              { key: 'feel', label: t('心情'), count: counts.feel },
-              { key: 'inner', label: t('独处与日记'), count: counts.inner },
-            ]"
-          />
-        </template>
-        <div class="today-scroll scroll-pane">
-          <Timeline v-if="rows.length" :items="rows" :label="t('今天的 TA')">
-            <template #default="{ item }">
-              <div class="entry-head">
-                <time>{{ clockTime(item.time, zone) }}</time>
-                <b v-if="item.type === 'choice'">{{
-                  CHOICE_LABELS[item.choice] || item.choice
-                }}</b>
-                <b v-else-if="item.type === 'glance'">{{
-                  item.count > 1
-                    ? t("扫了 {count} 眼", { count: item.count })
-                    : t("扫了一眼")
-                }}</b>
-                <b v-else-if="item.type === 'feeling'">{{
-                  t("心情 · {feeling}", { feeling: item.feeling })
-                }}</b>
-                <b v-else-if="item.type === 'run'"
-                  >{{ RUN_LABELS[item.kind] || item.kind }} ·
-                  {{ RUN_STATES[item.status] || item.status }}</b
-                >
-                <b v-else>{{
-                  t("约定 · {v}", {
-                    v: ANTICIPATION_STATES[item.status] || item.status,
-                  })
-                }}</b>
-                <span
-                  v-if="item.type === 'choice'"
-                  class="chip"
-                  data-tone="quiet"
-                  >{{ placeName({ name: item.sessionName }) }}</span
-                >
-                <span
-                  v-else-if="item.type === 'glance'"
-                  class="chip"
-                  data-tone="quiet"
-                  >{{ item.places.join("、") }}</span
-                >
-              </div>
-              <p v-if="item.type === 'choice'">
-                {{ item.reason
-                }}<small v-if="item.appraisal"> · {{ item.appraisal }}</small
-                ><small v-if="item.aftermath" class="faint">
-                  · {{ item.aftermath }}</small
-                >
-              </p>
-              <p v-else-if="item.type === 'glance'" class="muted">
-                {{ item.reason || t("没什么需要 TA 细看的") }}
-              </p>
-              <p v-else-if="item.type === 'feeling'">
-                {{ item.cause || t("说不清为什么") }}
-                <small>· {{ ORIGIN_LABELS[item.origin] || item.origin }}</small>
-              </p>
-              <p v-else-if="item.type === 'run'" class="muted">
-                {{ item.reason }}
-              </p>
-              <p v-else>
-                {{ item.content
-                }}<small v-if="item.note"> · {{ item.note }}</small>
-              </p>
-            </template>
-          </Timeline>
-          <Empty
-            v-else
-            :title="t('今天还很安静')"
-            :text="
-              t(
-                'TA 扫一眼、开口、没出声、心情变化、独处、写日记，都会按时间排在这里。',
-              )
-            "
-          />
-        </div>
-      </Card>
-
-      <div class="stack side">
-        <Card :title="t('今天的注意力')" :eyebrow="t('这一天')">
+      <template #words
+        ><article class="note words">
+          <span class="eyebrow">{{ t("TA 最近说") }}</span>
+          <ul v-if="recentWords.length" class="recent-list">
+            <li v-for="(word, i) in recentWords" :key="`${word.time}-${i}`">
+              <p class="quote">“{{ word.text }}”</p>
+              <small
+                >{{ placeName({ name: word.sessionName, id: word.session }) }} ·
+                {{ ago(word.time, p?.now) }}</small
+              >
+            </li>
+          </ul>
+          <p v-else class="muted">{{ t("TA 还没在哪里开过口。") }}</p>
+        </article></template
+      >
+      <template #thought
+        ><article class="note thought">
+          <span class="eyebrow">{{ t("放在心上") }}</span>
+          <template v-if="p?.thought">
+            <p>{{ p.thought.content }}</p>
+            <small>{{ p.thought.when }}</small>
+          </template>
+          <p v-else class="muted">{{ t("心里暂时没有挂着的事。") }}</p>
+          <p v-if="p?.will" class="will-line">
+            {{ t("正在为自己而活：{content}", { content: p.will.content }) }}
+          </p>
+          <small v-if="p?.will?.touched">
+            {{
+              t("被别人的话碰到过 {touched} 次，上次{v}", {
+                touched: p.will.touched,
+                v: p.will.lastSpoke ? t("出了声") : t("没出声"),
+              })
+            }}
+          </small>
+          <p v-if="p?.meaning" class="muted">
+            {{ t("上次相遇：{text}", { text: p.meaning.text })
+            }}<template v-if="!p.meaning.spoke">{{ t("（没出声）") }}</template>
+          </p>
+          <small v-if="p?.meaning?.when && !p.meaning.recent">{{
+            p.meaning.when
+          }}</small>
+          <button class="text-button" @click="go('heart', 'notes')">
+            {{ t("看看 TA 的便签") }}
+          </button>
+        </article></template
+      >
+      <template #ahead
+        ><article class="note ahead">
+          <span class="eyebrow">{{ t("在等的事") }}</span>
+          <ul v-if="expecting.length" class="list">
+            <li v-for="a in expecting" :key="a.id">
+              <b>{{ a.when }}</b>
+              <span>{{ a.name ? `${a.name}：` : "" }}{{ a.content }}</span>
+              <small>{{ ANTICIPATION_LABELS[a.kind] || a.kind }}</small>
+            </li>
+          </ul>
+          <p v-else class="muted">{{ t("这几天没有 TA 特别在等的事。") }}</p>
+          <button class="text-button" @click="go('life', 'ahead')">
+            {{ t("约定与期待") }}
+          </button>
+        </article></template
+      >
+      <template #today
+        ><Card
+          class="today"
+          :title="t('今天的 TA')"
+          :sub="
+            today ? t('{v}，按时间排在一起', { v: dayLabel(today.day) }) : ''
+          "
+        >
+          <template #actions>
+            <Tabs
+              v-model="filter"
+              :label="t('筛选今天的事')"
+              :items="[
+                { key: 'all', label: t('全部'), count: counts.all },
+                { key: 'talk', label: t('开口与沉默'), count: counts.talk },
+                { key: 'feel', label: t('心情'), count: counts.feel },
+                { key: 'inner', label: t('独处与日记'), count: counts.inner },
+              ]"
+            />
+          </template>
+          <div class="today-scroll scroll-pane">
+            <Timeline v-if="rows.length" :items="rows" :label="t('今天的 TA')">
+              <template #default="{ item }">
+                <div class="entry-head">
+                  <time>{{ clockTime(item.time, zone) }}</time>
+                  <b v-if="item.type === 'choice'">{{
+                    CHOICE_LABELS[item.choice] || item.choice
+                  }}</b>
+                  <b v-else-if="item.type === 'glance'">{{
+                    item.count > 1
+                      ? t("扫了 {count} 眼", { count: item.count })
+                      : t("扫了一眼")
+                  }}</b>
+                  <b v-else-if="item.type === 'feeling'">{{
+                    t("心情 · {feeling}", { feeling: item.feeling })
+                  }}</b>
+                  <b v-else-if="item.type === 'run'"
+                    >{{ RUN_LABELS[item.kind] || item.kind }} ·
+                    {{ RUN_STATES[item.status] || item.status }}</b
+                  >
+                  <b v-else>{{
+                    t("约定 · {v}", {
+                      v: ANTICIPATION_STATES[item.status] || item.status,
+                    })
+                  }}</b>
+                  <span
+                    v-if="item.type === 'choice'"
+                    class="chip"
+                    data-tone="quiet"
+                    >{{ placeName({ name: item.sessionName }) }}</span
+                  >
+                  <span
+                    v-else-if="item.type === 'glance'"
+                    class="chip"
+                    data-tone="quiet"
+                    >{{ item.places.join("、") }}</span
+                  >
+                </div>
+                <p v-if="item.type === 'choice'">
+                  {{ item.reason
+                  }}<small v-if="item.appraisal"> · {{ item.appraisal }}</small
+                  ><small v-if="item.aftermath" class="faint">
+                    · {{ item.aftermath }}</small
+                  >
+                </p>
+                <p v-else-if="item.type === 'glance'" class="muted">
+                  {{ item.reason || t("没什么需要 TA 细看的") }}
+                </p>
+                <p v-else-if="item.type === 'feeling'">
+                  {{ item.cause || t("说不清为什么") }}
+                  <small
+                    >· {{ ORIGIN_LABELS[item.origin] || item.origin }}</small
+                  >
+                </p>
+                <p v-else-if="item.type === 'run'" class="muted">
+                  {{ item.reason }}
+                </p>
+                <p v-else>
+                  {{ item.content
+                  }}<small v-if="item.note"> · {{ item.note }}</small>
+                </p>
+              </template>
+            </Timeline>
+            <Empty
+              v-else
+              :title="t('今天还很安静')"
+              :text="
+                t(
+                  'TA 扫一眼、开口、没出声、心情变化、独处、写日记，都会按时间排在这里。',
+                )
+              "
+            />
+          </div> </Card
+      ></template>
+      <template #budget
+        ><Card :title="t('今天的注意力')" :eyebrow="t('这一天')">
           <div class="stack tight">
             <Meter
               v-for="c in LEDGER"
@@ -388,8 +412,10 @@ usePageActivity("now", load);
               })
             }}
           </p>
-        </Card>
-        <Card :title="t('还没细看的消息')" :eyebrow="t('留意')">
+        </Card></template
+      >
+      <template #attention
+        ><Card :title="t('还没细看的消息')" :eyebrow="t('留意')">
           <ul v-if="overview?.attention?.length" class="list">
             <li
               v-for="a in overview.attention"
@@ -409,8 +435,10 @@ usePageActivity("now", load);
               )
             }}
           </p>
-        </Card>
-        <Card :title="t('TA 的这一生')" :eyebrow="t('到现在')">
+        </Card></template
+      >
+      <template #counts
+        ><Card :title="t('TA 的这一生')" :eyebrow="t('到现在')">
           <div class="counts">
             <button @click="go('heart')">
               <b>{{ overview?.counts?.self ?? 0 }}</b
@@ -429,10 +457,16 @@ usePageActivity("now", load);
               ><span>{{ t("件在等的事") }}</span>
             </button>
           </div>
-        </Card>
-      </div>
-    </section>
+        </Card></template
+      >
+    </HomeGrid>
+    <Sheet
+      :open="wallpaperPicking"
+      :title="t('壁纸与构图')"
+      width="540px"
+      @close="wallpaperPicking = false"
+      ><WallpaperPicker open @close="wallpaperPicking = false"
+    /></Sheet>
   </div>
 </template>
-
 <style scoped src="./NowPage.css"></style>

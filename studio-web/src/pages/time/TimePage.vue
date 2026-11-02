@@ -362,13 +362,19 @@ onUnmounted(() => {
     <Tabs
       v-model="view"
       :label="t('时间的分区')"
-      :items="[
-        { key: 'today', label: t('今日') },
-        { key: 'tasks', label: t('待办') },
-        { key: 'works', label: t('作品库') },
-        { key: 'projects', label: t('持续项目') },
-        { key: 'experiences', label: t('体验记录') },
-      ].filter(item => ['works', 'projects'].includes(view) === ['works', 'projects'].includes(item.key))"
+      :items="
+        [
+          { key: 'today', label: t('今日') },
+          { key: 'tasks', label: t('待办') },
+          { key: 'works', label: t('作品库') },
+          { key: 'projects', label: t('持续项目') },
+          { key: 'experiences', label: t('体验记录') },
+        ].filter(
+          (item) =>
+            ['works', 'projects'].includes(view) ===
+            ['works', 'projects'].includes(item.key),
+        )
+      "
     />
     <p v-if="error" class="card" role="alert">
       {{ error }} <button @click="load">{{ t("重试") }}</button>

@@ -65,41 +65,40 @@ usePageActivity("life", load);
 <template>
   <div class="page life">
     <div class="life-bar">
-      <button class="text-button" @click="go('time')">
-        {{ t("时间、任务与作品 →") }}
-      </button>
       <Tabs
         v-model="view"
         :label="t('一生的分区')"
-        :items="[
-          {
-            key: 'diary',
-            label: t('日记本'),
-            count: life?.diaries.length ?? '',
-          },
-          {
-            key: 'reviews',
-            label: t('回顾'),
-            count: life?.reviews.length ?? '',
-          },
-          {
-            key: 'story',
-            label: t('我的来路'),
-            count: life ? life.chapters.length : '',
-          },
-          {
-            key: 'ahead',
-            label: t('约定与期待'),
-            count:
-              life?.anticipations.filter((a: any) => a.state === 'pending')
-                .length ?? '',
-          },
-          {
-            key: 'shelf',
-            label: t('书架'),
-            count: life?.readings.length ?? '',
-          },
-        ]"
+        :items="
+          [
+            {
+              key: 'diary',
+              label: t('日记本'),
+              count: life?.diaries.length ?? '',
+            },
+            {
+              key: 'reviews',
+              label: t('回顾'),
+              count: life?.reviews.length ?? '',
+            },
+            {
+              key: 'story',
+              label: t('我的来路'),
+              count: life ? life.chapters.length : '',
+            },
+            {
+              key: 'ahead',
+              label: t('约定与期待'),
+              count:
+                life?.anticipations.filter((a: any) => a.state === 'pending')
+                  .length ?? '',
+            },
+            {
+              key: 'shelf',
+              label: t('书架'),
+              count: life?.readings.length ?? '',
+            },
+          ].filter((item) => ['reviews', 'story'].includes(item.key))
+        "
       />
       <span v-if="life" class="chip" data-tone="quiet">{{
         t("来到这里的第 {dayOfLife} 天", { dayOfLife: life.dayOfLife })

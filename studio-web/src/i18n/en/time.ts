@@ -1,6 +1,4 @@
-// English for the Time section (today's agenda, tasks, works, experiences).
 export default {
-  // DayAgenda.vue
   休息建议: "Rest suggestion",
   自由安排: "Free time",
   作息安排: "Daily rhythm",
@@ -42,8 +40,6 @@ export default {
   "需要条件或调整约定 · {length} 件":
     "Needs a condition or a changed agreement · {length}",
   外部建议: "Outside suggestion",
-
-  // ExperienceLog.vue
   体验记录: "Experience log",
   "EXPERIENCES · 留下的经历": "EXPERIENCES",
   最近做过的事: "What she did lately",
@@ -68,8 +64,6 @@ export default {
   开发中: "In development",
   "客户端控制尚未接入。已有的游玩记录可以在上方阅读。":
     "Client control is not connected yet. Existing play records can be read above.",
-
-  // TimePage.vue: states
   "ToDo · 待办": "To do",
   "Scheduled · 已安排": "Scheduled",
   "Doing · 正在做": "Doing",
@@ -94,8 +88,6 @@ export default {
   "Scheduled · 已选时间": "Scheduled · time chosen",
   "Paused · 进度保留": "Paused · progress kept",
   "{v} 分钟": "{v} min",
-
-  // TimePage.vue: actions and dialogs
   "最早开始时间（YYYY-MM-DD HH:mm）。截止时间保留原安排。":
     "Earliest start time (YYYY-MM-DD HH:mm). The deadline keeps its original plan.",
   安排时间: "Schedule time",
@@ -118,14 +110,6 @@ export default {
     "Noted; she will look back at what was said when free",
   "已记下，让她重新想具体时间与投入时长":
     "Noted; she will rethink the exact time and duration",
-
-  // TimePage.vue: header
-  "TIME · 时间": "TIME",
-  "日子在走，": "Days keep moving,",
-  "我也有自己的事。": "and I have things of my own.",
-  "想做的事，正在留下的作品，与世界相遇的每一段。":
-    "The things she wants to do, the works she is leaving behind, and every stretch spent meeting the world.",
-  留一点时间给自己: "Leave some time for herself",
   时间的分区: "Time sections",
   今日: "Today",
   待办: "To do",
@@ -133,8 +117,6 @@ export default {
   持续项目: "Ongoing projects",
   重试: "Retry",
   "正在取回这段生活…": "Fetching this stretch of life…",
-
-  // TimePage.vue: now
   此刻的主活动: "Main activity right now",
   正在准备: "Preparing",
   刚开始这一段: "Just started this span",
@@ -264,4 +246,4 @@ export default {
   打开来源: "Open source",
   "基于模型已有知识，具体剧情与章节仍需核验。":
     "Based on what the model already knows; specific plot and chapters still need verification.",
-} as Record<string, string>;
+};

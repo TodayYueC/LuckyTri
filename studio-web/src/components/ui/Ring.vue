@@ -53,39 +53,41 @@ const negative = computed(() => clamped.value < 0);
 </template>
 
 <style scoped>
-.ring {
-  display: grid;
-  justify-items: center;
-  gap: 6px;
-  margin: 0;
-  text-align: center;
-}
-.track {
-  fill: none;
-  stroke: color-mix(in srgb, var(--ink) 10%, transparent);
-  stroke-width: 4.5;
-}
-.arc {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 4.5;
-  stroke-linecap: round;
-  transition: stroke-dasharray 0.8s var(--ease);
-}
-.arc.negative {
-  stroke: var(--danger);
-}
-text {
-  font: 700 10px var(--font-display);
-  fill: var(--ink);
-}
-figcaption {
-  display: grid;
-  font-size: 12px;
-  line-height: 1.35;
-}
-figcaption small {
-  color: var(--ink-soft);
-  font-size: 11px;
+@layer components {
+  .ring {
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+    margin: 0;
+    text-align: center;
+  }
+  .track {
+    fill: none;
+    stroke: color-mix(in srgb, var(--ink) 10%, transparent);
+    stroke-width: 4.5;
+  }
+  .arc {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 4.5;
+    stroke-linecap: round;
+    transition: stroke-dasharray 0.8s var(--ease);
+  }
+  .arc.negative {
+    stroke: var(--danger);
+  }
+  text {
+    font: 700 10px var(--font-display);
+    fill: var(--ink);
+  }
+  figcaption {
+    display: grid;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  figcaption small {
+    color: var(--ink-soft);
+    font-size: 11px;
+  }
 }
 </style>

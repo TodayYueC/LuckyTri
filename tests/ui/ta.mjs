@@ -1,3 +1,8 @@
+import {
+  navigate as studioNavigate,
+  control,
+  timeTab,
+} from "./studio-navigation.mjs";
 import { chromium } from "@playwright/test";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
@@ -129,6 +134,7 @@ async function run() {
     }
 
     await page.goto(`${base}/app/#now`);
+    await control(page, "status");
     await page.locator(".presence-dock .mood-word").waitFor();
     assert.equal(
       await page.locator(".page-now .ready").count(),
@@ -155,7 +161,9 @@ async function run() {
       cause: "阿明面试过了",
       time: w.now(),
     });
+    await control(page, "connection");
     await page.locator("#refresh").click();
+    await control(page, "status");
     await page.waitForFunction(
       () => document.documentElement.dataset.mood === "bright",
     );
@@ -164,19 +172,19 @@ async function run() {
       /超开心/,
     );
 
-    await page.locator(".theme-toggle").click();
+    await control(page, "appearance");
     await page.locator("[data-theme-choice=sweet]").click();
     assert.equal(await mood(), "sweet");
     await page.reload();
     await page.locator(".shell").waitFor();
     assert.equal(await mood(), "sweet", "固定的主题刷新后仍然保留");
-    await page.locator(".theme-toggle").click();
+    await control(page, "appearance");
     await page.locator("[data-theme-choice=auto]").click();
     await page.waitForFunction(
       () => document.documentElement.dataset.mood === "bright",
     );
 
-    await page.getByRole("button", { name: "减少动画" }).first().click();
+    await page.getByLabel("减少动画", { exact: true }).check();
     assert.equal(
       await page.locator(".sky").getAttribute("data-particles"),
       "off",
@@ -186,10 +194,10 @@ async function run() {
       await page.evaluate(() => document.documentElement.dataset.motion),
       "quiet",
     );
-    await page.getByRole("button", { name: "开启灵动效果" }).first().click();
+    await page.getByLabel("减少动画", { exact: true }).uncheck();
     assert.equal(
       await page.locator(".sky").getAttribute("data-particles"),
-      "sparkle",
+      "still",
     );
 
     // Poking TA is only an animation with a canned line. The home hides
@@ -314,7 +322,7 @@ async function run() {
         assert.equal(overlap, false, `${a.id} 和 ${b.id} 叠在一起`);
       }
     }
-    assert.match(await page.locator(".galaxy").innerText(), /越熟悉离 TA 越近/);
+    assert.match(await page.locator(".galaxy").innerText(), /42 个相遇过的人/);
     await page.locator(".person-node[data-person='10001']").click();
     await page
       .locator(".person-sheet")
@@ -382,7 +390,7 @@ async function run() {
       await page.getByText("这是 TA 留下快照的第一天").isVisible(),
       "后台刷新保留已经展开的当天详情",
     );
-    await page.getByRole("tab", { name: /约定与期待/ }).click();
+    await page.locator('.workspace-tabs [data-tab="ahead"]').click();
     const selectedDay = await page
       .locator(".calendar .cell.picked")
       .boundingBox();
@@ -438,12 +446,14 @@ async function run() {
     assert.equal(w.mind.nature.version(), version + 1);
     assert.equal(w.mind.nature.current().sarcasm, 60);
     assert.equal(w.mind.nature.current().warmth, 100);
+    await page.getByRole("tab", { name: "作息与预算" }).click();
     await page.getByLabel(/允许 TA 主动说话/).check();
     await page.getByRole("button", { name: "保存 TA 的日子" }).click();
     await page.waitForFunction(() =>
       document.querySelector("#toast")?.textContent?.includes("新设置"),
     );
     assert.equal(w.life.settings().proactive, true);
+    await page.getByRole("tab", { name: "角色设定" }).click();
     const quiet = choices();
     await page.locator("#previewForm [name=text]").fill("今天好累啊");
     await page.locator("#previewForm button.primary").click();
@@ -509,7 +519,9 @@ async function run() {
       .run(JSON.stringify(value), row.version);
     w.at("2026-09-23T03:00:00+08:00");
     await open("#now");
+    await control(page, "connection");
     await page.locator("#refresh").click();
+    await control(page, "status");
     await page.waitForFunction(
       () => document.documentElement.dataset.mood === "night",
     );

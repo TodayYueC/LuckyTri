@@ -1,3 +1,8 @@
+import {
+  navigate as studioNavigate,
+  control,
+  timeTab,
+} from "./studio-navigation.mjs";
 import { chromium } from "@playwright/test";
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync } from "node:fs";
@@ -147,17 +152,22 @@ try {
     const [area, sub] = AREA[name] || [name];
     if (await p.locator(".sheet-layer").count()) {
       await p.keyboard.press("Escape");
-      await p.locator(".sheet-layer").waitFor({ state: "detached" });
+      await p.waitForFunction(() => !document.querySelector(".sheet-layer"));
     }
-    if (p.viewportSize().width > 760)
-      await p.locator(`.dock .dock-link[data-page=${area}]`).click();
-    else if (["now", "chats", "heart", "life"].includes(area))
-      await p.locator(`.tabbar [data-page=${area}]`).click();
-    else {
-      await p.locator(".tabbar-more").click();
-      await p.locator(`.more-grid [data-page=${area}]`).click();
-    }
+    await studioNavigate(p, area, sub);
     await p.locator(`.page-${area}`).waitFor();
+    if (name === "spaces") {
+      const details = p.getByRole("button", {
+        name: "会话详情与反馈",
+        exact: true,
+      });
+      if (await details.isEnabled()) {
+        await details.click();
+        const settings = p.locator(".session-settings");
+        if (!(await settings.evaluate((el) => el.open)))
+          await settings.locator(":scope > summary").click();
+      }
+    }
     if (area === "system" && sub)
       await p.locator(`.page-system [data-tab=${sub}]`).click();
     if (sub === "replay")
@@ -201,18 +211,14 @@ try {
   }
   await p.setViewportSize({ width: 1440, height: 1000 });
   await navigate("now");
-  await p
-    .getByRole("button", { name: /减少动画/ })
-    .first()
-    .click();
+  await control(p, "appearance");
+  await p.getByLabel("减少动画", { exact: true }).check();
   assert.equal(
     await p.evaluate(() => document.documentElement.dataset.motion),
     "quiet",
   );
-  await p
-    .getByRole("button", { name: /开启灵动效果/ })
-    .first()
-    .click();
+  await p.getByLabel("减少动画", { exact: true }).uncheck();
+  await p.keyboard.press("Escape");
   await navigate("spaces");
   await p.getByRole("button", { name: "＋ 添加会话", exact: true }).click();
   await p.locator("#addSession [name=id]").fill("12345");
@@ -245,10 +251,10 @@ try {
   await p.locator("[data-session='group:12345'] button.primary").click();
   await p.waitForTimeout(400);
   await navigate("knowledge");
-  await p.getByRole("tab", { name: "资料书架", exact: true }).click();
+  await p.locator(".workspace-tabs [data-tab=knowledge]").click();
   await p.locator(".shelf-head h2").waitFor();
   assert.equal(await p.locator("#memoryList").isVisible(), false);
-  await p.getByRole("tab", { name: "TA 记得的事", exact: true }).click();
+  await p.locator(".workspace-tabs [data-tab=archive]").click();
   await p.getByRole("button", { name: "＋ 手动记忆", exact: true }).click();
   await p.locator("#addMemory [name=subject]").fill("10001");
   await p.locator("#addMemory [name=content]").fill("喜欢拿铁");
@@ -297,7 +303,7 @@ try {
     .click();
   assert.equal(await p.locator("#previewMessages .preview-bubble").count(), 0);
   // Leaving with an unsaved draft asks first.
-  await p.locator(".dock .dock-link[data-page=system]").click();
+  await studioNavigate(p, "system");
   await confirmDialog();
   await p.locator(".page-system").waitFor();
   await navigate("models");
@@ -676,12 +682,15 @@ try {
   await p.getByRole("button", { name: "＋ 手动记忆", exact: true }).click();
   assert.equal(await p.locator("#memorySession").inputValue(), "group:54321");
   await p.getByRole("button", { name: "关闭", exact: true }).click();
-  await p.goto(base + "/#spaces");
+  await p.goto(base + "/#chats");
   await p.getByRole("button", { name: "＋ 添加会话", exact: true }).click();
   await p.locator("#addSession [name=id]").fill("65432");
   await p.locator("#addSession [name=name]").fill("手动添加群");
   await p.locator("#addSession button.primary").click();
   await p.locator("[data-session='group:65432']").waitFor();
+  const sessionSettings = p.locator(".session-settings");
+  if (!(await sessionSettings.evaluate((el) => el.open)))
+    await sessionSettings.locator(":scope > summary").click();
   await p
     .locator("[data-session='group:65432'] details.advanced-policy summary")
     .click();
@@ -711,6 +720,7 @@ try {
   assert.equal(savedPolicy.persona, undefined);
   await p.locator("[data-archive='group:65432']").click();
   await p.waitForTimeout(300);
+  await p.keyboard.press("Escape");
   await p.locator(".archive-list summary").click();
   await p.locator("[data-restore-session='group:65432']").click();
   await p
@@ -718,9 +728,13 @@ try {
     .filter({ hasText: "手动添加群" })
     .click();
   await p.waitForTimeout(300);
+  await p.getByRole("button", { name: "会话详情与反馈", exact: true }).click();
+  if (!(await p.locator(".session-settings").evaluate((el) => el.open)))
+    await p.locator(".session-settings > summary").click();
   await p.locator("[data-session='group:65432']").waitFor();
   await p.goto(base + "/#live");
   await p.locator("[data-pick='group:65432']").click();
+  await p.getByRole("button", { name: "会话详情与反馈", exact: true }).click();
   await p.locator("#clearLiveContext").click();
   await confirmDialog();
   await p
@@ -762,6 +776,7 @@ try {
   await p.goto(base + "/#live");
   await p.locator("[data-pick='group:12345']").click();
   // Opening the feedback tab fetches the (routed) state again.
+  await p.getByRole("button", { name: "会话详情与反馈", exact: true }).click();
   await p.getByRole("tab", { name: "反馈", exact: true }).click();
   await p.locator(".feedback-item").first().waitFor();
   for (const width of [1440, 820, 390]) {

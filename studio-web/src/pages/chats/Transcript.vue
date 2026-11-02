@@ -24,6 +24,7 @@ const emit = defineEmits<{
   feedback: [id: number, tag: string];
   openList: [];
   openReplay: [];
+  openDetails: [];
 }>();
 
 const DIVIDERS: Record<string, string> = localized({
@@ -182,6 +183,9 @@ defineExpose({ focusComposer });
         <span id="liveStatus" class="faint">{{ status }}</span>
       </div>
       <div class="t-tools">
+        <button class="small" :disabled="!session" @click="emit('openDetails')">
+          {{ t("会话详情与反馈") }}
+        </button>
         <button
           class="small sim-button"
           :disabled="!sessionId"
@@ -372,277 +376,279 @@ defineExpose({ focusComposer });
 </template>
 
 <style scoped>
-.transcript {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  height: 100%;
-  isolation: isolate;
-}
-.t-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid var(--line);
-}
-.badge {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 40px;
-  height: 40px;
-  border-radius: 14px;
-  background: hsl(var(--hue) 70% 88%);
-  color: hsl(var(--hue) 45% 25%);
-  font-weight: 700;
-}
-.t-title {
-  flex: 1;
-  display: grid;
-  min-width: 120px;
-}
-.t-title h2 {
-  overflow: hidden;
-  font-size: 20px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.t-tools {
-  display: flex;
-  gap: 6px;
-}
-.sim-button {
-  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
-  color: var(--warn);
-}
-.chat-messages {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 0;
-  padding: 20px 14px;
-  border: 1px solid rgb(255 255 255 / 0.65);
-  border-radius: 24px;
-  background:
-    radial-gradient(
-      circle at 12% 12%,
-      color-mix(in srgb, var(--glow-a) 22%, transparent),
-      transparent 34%
-    ),
-    radial-gradient(
-      circle at 90% 68%,
-      color-mix(in srgb, var(--glow-b) 19%, transparent),
-      transparent 42%
-    ),
-    rgb(255 255 255 / 0.24);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.86);
-}
-.day-label {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 6px 0;
-  color: var(--ink-soft);
-  font-size: 12px;
-  font-weight: 700;
-}
-.day-label::before,
-.day-label::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--line);
-}
-.divider {
-  display: grid;
-  justify-items: center;
-  gap: 2px;
-  margin: 2px 0;
-  text-align: center;
-}
-.divider span {
-  padding: 3px 12px;
-  border-radius: 999px;
-  background: rgb(255 255 255 / 0.52);
-  border: 1px solid rgb(255 255 255 / 0.8);
-  box-shadow: inset 0 1px 0 white;
-  color: var(--ink-soft);
-  font-size: 11.5px;
-  font-weight: 600;
-}
-.divider small {
-  max-width: 80%;
-  color: var(--ink-faint);
-  font-size: 11px;
-}
-.message {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  max-width: 82%;
-  animation: msg-in 0.5s var(--jelly);
-}
-.message.bot {
-  align-self: flex-end;
-  flex-direction: row-reverse;
-}
-.avatar {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, white, hsl(var(--hue) 75% 86%));
-  color: hsl(var(--hue) 45% 25%);
-  font-size: 11px;
-  font-weight: 700;
-  box-shadow:
-    inset 0 1px 0 white,
-    0 6px 12px -10px hsl(var(--hue) 48% 35%);
-}
-.body {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-.bot .body {
-  justify-items: end;
-}
-.message-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11.5px;
-  color: var(--ink-soft);
-}
-.message-meta time {
-  font-variant-numeric: tabular-nums;
-}
-.text {
-  padding: 9px 14px;
-  border-radius: 18px 18px 18px 6px;
-  background: rgb(255 255 255 / 0.75);
-  border: 1px solid rgb(255 255 255 / 0.85);
-  box-shadow:
-    inset 0 1px 0 white,
-    0 10px 26px -24px var(--ink);
-  backdrop-filter: blur(16px) saturate(1.5);
-  font-size: 14px;
-  line-height: 1.6;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-.bot .text {
-  border-radius: 18px 18px 6px 18px;
-  border-color: rgb(255 255 255 / 0.72);
-  background: linear-gradient(
-    135deg,
-    rgb(255 255 255 / 0.91),
-    color-mix(in srgb, var(--orb-a) 48%, rgb(255 255 255 / 0.8)) 52%,
-    color-mix(in srgb, var(--orb-b) 26%, rgb(255 255 255 / 0.8))
-  );
-  box-shadow:
-    inset 0 1px 0 white,
-    0 12px 26px -18px color-mix(in srgb, var(--orb-c) 48%, transparent);
-}
-[data-mood="night"] .bot .text {
-  background: color-mix(in srgb, var(--orb-b) 42%, var(--surface-strong));
-}
-.simulated .text {
-  border: 1.5px dashed color-mix(in srgb, var(--warn) 55%, transparent);
-}
-.why-toggle {
-  font-size: 12px;
-}
-.why {
-  display: grid;
-  gap: 6px;
-  max-width: 420px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgb(255 255 255 / 0.63);
-  border: 1px solid rgb(255 255 255 / 0.83);
-  box-shadow: inset 0 1px 0 white;
-  backdrop-filter: blur(18px);
-  font-size: 12.5px;
-  text-align: left;
-}
-.fb {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-}
-.fb select {
-  width: auto;
-  padding: 4px 8px;
-  font-size: 12px;
-}
-.composer {
-  display: grid;
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-}
-.composer-note {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-}
-.composer-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-.uid input {
-  width: 96px;
-  padding: 8px 10px;
-  border-radius: 999px;
-  font-size: 13px;
-}
-.composer textarea {
-  flex: 1 1 220px;
-  min-height: 40px;
-  max-height: 140px;
-  padding: 9px 14px;
-  border-radius: 20px;
-  border-color: color-mix(in srgb, var(--warn) 30%, var(--line));
-  resize: none;
-}
-.mention {
-  font-size: 12.5px;
-}
-.composer.off {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 12.5px;
-}
-@keyframes msg-in {
-  0% {
-    opacity: 0;
-    transform: translateY(14px) scale(0.9, 0.82);
+@layer components {
+  .transcript {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    isolation: isolate;
   }
-  62% {
-    opacity: 1;
-    transform: translateY(-4px) scale(1.03, 0.98);
+  .t-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--line);
   }
-  100% {
-    transform: none;
+  .badge {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 14px;
+    background: hsl(var(--hue) 70% 88%);
+    color: hsl(var(--hue) 45% 25%);
+    font-weight: 700;
   }
-}
-@media (max-width: 760px) {
+  .t-title {
+    flex: 1;
+    display: grid;
+    min-width: 120px;
+  }
+  .t-title h2 {
+    overflow: hidden;
+    font-size: 20px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .t-tools {
+    display: flex;
+    gap: 6px;
+  }
+  .sim-button {
+    border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+    color: var(--warn);
+  }
+  .chat-messages {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    padding: 20px 14px;
+    border: 1px solid rgb(255 255 255 / 0.65);
+    border-radius: 24px;
+    background:
+      radial-gradient(
+        circle at 12% 12%,
+        color-mix(in srgb, var(--glow-a) 22%, transparent),
+        transparent 34%
+      ),
+      radial-gradient(
+        circle at 90% 68%,
+        color-mix(in srgb, var(--glow-b) 19%, transparent),
+        transparent 42%
+      ),
+      rgb(255 255 255 / 0.24);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.86);
+  }
+  .day-label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 6px 0;
+    color: var(--ink-soft);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .day-label::before,
+  .day-label::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+  .divider {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    margin: 2px 0;
+    text-align: center;
+  }
+  .divider span {
+    padding: 3px 12px;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.52);
+    border: 1px solid rgb(255 255 255 / 0.8);
+    box-shadow: inset 0 1px 0 white;
+    color: var(--ink-soft);
+    font-size: 11.5px;
+    font-weight: 600;
+  }
+  .divider small {
+    max-width: 80%;
+    color: var(--ink-faint);
+    font-size: 11px;
+  }
   .message {
-    max-width: 94%;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    max-width: 82%;
+    animation: msg-in 0.5s var(--jelly);
+  }
+  .message.bot {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+  }
+  .avatar {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, white, hsl(var(--hue) 75% 86%));
+    color: hsl(var(--hue) 45% 25%);
+    font-size: 11px;
+    font-weight: 700;
+    box-shadow:
+      inset 0 1px 0 white,
+      0 6px 12px -10px hsl(var(--hue) 48% 35%);
+  }
+  .body {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+  .bot .body {
+    justify-items: end;
+  }
+  .message-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11.5px;
+    color: var(--ink-soft);
+  }
+  .message-meta time {
+    font-variant-numeric: tabular-nums;
+  }
+  .text {
+    padding: 9px 14px;
+    border-radius: 18px 18px 18px 6px;
+    background: rgb(255 255 255 / 0.75);
+    border: 1px solid rgb(255 255 255 / 0.85);
+    box-shadow:
+      inset 0 1px 0 white,
+      0 10px 26px -24px var(--ink);
+    backdrop-filter: blur(16px) saturate(1.5);
+    font-size: 14px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+  .bot .text {
+    border-radius: 18px 18px 6px 18px;
+    border-color: rgb(255 255 255 / 0.72);
+    background: linear-gradient(
+      135deg,
+      rgb(255 255 255 / 0.91),
+      color-mix(in srgb, var(--orb-a) 48%, rgb(255 255 255 / 0.8)) 52%,
+      color-mix(in srgb, var(--orb-b) 26%, rgb(255 255 255 / 0.8))
+    );
+    box-shadow:
+      inset 0 1px 0 white,
+      0 12px 26px -18px color-mix(in srgb, var(--orb-c) 48%, transparent);
+  }
+  [data-mood="night"] .bot .text {
+    background: color-mix(in srgb, var(--orb-b) 42%, var(--surface-strong));
+  }
+  .simulated .text {
+    border: 1.5px dashed color-mix(in srgb, var(--warn) 55%, transparent);
+  }
+  .why-toggle {
+    font-size: 12px;
+  }
+  .why {
+    display: grid;
+    gap: 6px;
+    max-width: 420px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: rgb(255 255 255 / 0.63);
+    border: 1px solid rgb(255 255 255 / 0.83);
+    box-shadow: inset 0 1px 0 white;
+    backdrop-filter: blur(18px);
+    font-size: 12.5px;
+    text-align: left;
+  }
+  .fb {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .fb select {
+    width: auto;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  .composer {
+    display: grid;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+  .composer-note {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .composer-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .uid input {
+    width: 96px;
+    padding: 8px 10px;
+    border-radius: 999px;
+    font-size: 13px;
+  }
+  .composer textarea {
+    flex: 1 1 220px;
+    min-height: 40px;
+    max-height: 140px;
+    padding: 9px 14px;
+    border-radius: 20px;
+    border-color: color-mix(in srgb, var(--warn) 30%, var(--line));
+    resize: none;
+  }
+  .mention {
+    font-size: 12.5px;
+  }
+  .composer.off {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12.5px;
+  }
+  @keyframes msg-in {
+    0% {
+      opacity: 0;
+      transform: translateY(14px) scale(0.9, 0.82);
+    }
+    62% {
+      opacity: 1;
+      transform: translateY(-4px) scale(1.03, 0.98);
+    }
+    100% {
+      transform: none;
+    }
+  }
+  @media (max-width: 760px) {
+    .message {
+      max-width: 94%;
+    }
   }
 }
 </style>
