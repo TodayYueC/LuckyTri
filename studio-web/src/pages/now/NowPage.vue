@@ -22,6 +22,10 @@ import Meter from "../../components/ui/Meter.vue";
 import Tabs from "../../components/ui/Tabs.vue";
 import Timeline from "../../components/ui/Timeline.vue";
 import WallpaperPicker from "./WallpaperPicker.vue";
+import Sheet from "../../components/ui/Sheet.vue";
+import TaOrb from "../../components/ta/TaOrb.vue";
+import { liveMood } from "../../mood/useMood";
+import { activityLine } from "../../mood/presence";
 import { useHeroStage } from "./useHeroStage";
 
 const overview = shallowRef<any>(readSnapshot("/mind") || null);
@@ -142,9 +146,20 @@ usePageActivity("now", load);
 <template>
   <div class="page now">
     <div class="now-presentation">
-      <section
+      <section class="now-hero">
+        <div class="hero-copy">
+          <span class="eyebrow">{{ activityLine(p) }}</span>
+          <h2>{{ p?.name || studio.core?.nature?.name || 'TA' }}</h2>
+          <div class="row">
+            <TaOrb :mood="liveMood" :activity="p?.activity?.kind || 'idle'" :size="42" interactive @open-chat="studio.chatOpen = true" />
+            <span class="chip">{{ p?.affect?.mood || t('平静') }}</span>
+          </div>
+          <p v-if="p?.lastWords?.text || p?.thought?.content" class="hero-thought" data-own>{{ p?.lastWords?.text || p?.thought?.content }}</p>
+          <div class="hero-actions"><button class="primary" @click="studio.chatOpen = true">{{ t('和 TA 聊聊') }}</button><button class="ghost" @click="go('time')">{{ t('今天的日程') }}</button></div>
+        </div>
+      <div
         ref="heroRef"
-        class="now-hero"
+        class="hero-picture"
         :class="{ 'wallpaper-adjusting': adjusting }"
       >
         <div class="wallpaper-layer" aria-hidden="true">
@@ -194,11 +209,9 @@ usePageActivity("now", load);
             {{ t("换壁纸") }}
           </button>
         </div>
-        <WallpaperPicker
-          :open="wallpaperPicking && !adjusting"
-          @close="wallpaperPicking = false"
-        />
+      </div>
       </section>
+      <Sheet :open="wallpaperPicking && !adjusting" :title="t('壁纸与构图')" width="540px" @close="wallpaperPicking = false"><WallpaperPicker open @close="wallpaperPicking = false" /></Sheet>
     </div>
 
     <section class="notes">

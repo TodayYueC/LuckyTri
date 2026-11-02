@@ -64,16 +64,6 @@ usePageActivity("life", load);
 
 <template>
   <div class="page life">
-    <header class="life-intro">
-      <div>
-        <span class="eyebrow">{{ t("LIFE · 一生") }}</span>
-        <h1>
-          {{ t("日子经过，") }}<em>{{ t("留下自己的形状。") }}</em>
-        </h1>
-        <p>{{ t("写下今天，回望从前，也给明天留一点期待。") }}</p>
-      </div>
-      <div class="life-mark" aria-hidden="true"><span></span></div>
-    </header>
     <div class="life-bar">
       <button class="text-button" @click="go('time')">
         {{ t("时间、任务与作品 →") }}

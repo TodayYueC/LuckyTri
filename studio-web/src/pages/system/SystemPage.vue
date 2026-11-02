@@ -48,25 +48,6 @@ watch(
 
 <template>
   <div class="page system">
-    <header class="system-intro">
-      <div>
-        <span class="eyebrow">{{ t("THE WORLD AROUND HER · 系统") }}</span>
-        <h1>
-          {{ t("让她与世界，") }}<em>{{ t("温柔相连。") }}</em>
-        </h1>
-        <p>
-          {{ t("连接、模型与运行方式都在这里。每一处改变，都可以看见结果。") }}
-        </p>
-      </div>
-      <span class="system-status">
-        <i :class="{ off: !studio.health.connection?.online }"></i>
-        {{
-          studio.health.connection?.online
-            ? t("正在与 QQ 相连")
-            : t("等待 QQ 连接")
-        }}
-      </span>
-    </header>
     <Tabs
       :model-value="view"
       @update:model-value="switchView"

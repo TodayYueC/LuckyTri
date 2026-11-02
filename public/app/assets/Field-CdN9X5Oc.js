@@ -1,0 +1,1 @@
+import{$ as e,Ct as t,G as n,J as r,lt as i,q as a,st as o,xt as s}from"./Empty-DoH_1ELa.js";var c={key:0},l=e({__name:`Field`,props:{label:{},hint:{},wide:{type:Boolean}},setup(e){return(l,u)=>(o(),r(`label`,{class:s({wide:e.wide})},[n(`span`,null,t(e.label),1),i(l.$slots,`default`),e.hint?(o(),r(`small`,c,t(e.hint),1)):a(``,!0)],2))}});export{l as t};

@@ -179,17 +179,6 @@ function stateLabel(plugin: any) {
 
 <template>
   <div class="page plugins">
-    <header class="plugins-intro">
-      <span class="eyebrow">{{ t("THE WORLD SHE CAN TOUCH · 插件") }}</span>
-      <h1>
-        {{ t("核心是她。") }}<em>{{ t("插件是世界。") }}</em>
-      </h1>
-      <p>
-        {{
-          t("插件只能经她同意接触世界。它们读不到她的数据库，也不能替她开口。")
-        }}
-      </p>
-    </header>
     <p v-if="error" class="warn-text" role="alert">{{ error }}</p>
     <Tabs
       :model-value="view"
