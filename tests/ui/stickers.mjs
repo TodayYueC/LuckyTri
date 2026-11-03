@@ -112,7 +112,7 @@ try {
     path: join(shots, "models-with-search.png"),
     fullPage: true,
   });
-  // An old link to the search tab still lands on the models view.
+  // The old search link opens the dedicated search section inside models.
   await page.goto(server.base + "#system/search");
   await page.waitForTimeout(500);
   assert.match(
@@ -120,7 +120,7 @@ try {
       .locator(".tabs [aria-selected=true], .tabs .active")
       .first()
       .innerText(),
-    /模型库/,
+    /联网搜索/,
   );
   assert.deepEqual(errors, []);
   console.log("stickers UI ok", shots);

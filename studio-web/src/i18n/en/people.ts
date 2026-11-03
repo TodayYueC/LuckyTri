@@ -47,10 +47,6 @@ export default {
   设置关系: "Set relationship",
   新增: "Added",
   在这里的想法: "Thoughts about this place",
-  "同一个她，在不同的地方留下自己的想法。":
-    "The same person, with her own thoughts about different places.",
-  "她根据相处留下印象、愿望或疑问，选择什么时候新增、修改或放下。每次更新保留理由和来源。":
-    "She leaves impressions, wishes or questions from her encounters, choosing when to add, revise or let them go. Each update retains its reasons and sources.",
   "还没有特别想留在这里的想法，之后由她自己选择。":
     "No particular thoughts to keep here yet. She will choose in her own time.",
   "查看想法与变化 ↗": "See thoughts and changes ↗",
@@ -78,8 +74,6 @@ export default {
   相遇之间: "Between encounters",
   列表: "List",
   找一个人: "Find a person",
-  "她记得相遇，也记得关系会随着时间改变。":
-    "She remembers encounters, and remembers that relationships change over time.",
   "在 {length} 个地方见过 · 上次说上话 {v}":
     "Met in {length} places · last spoke {v}",
   "TA 还没有认识谁": "TA has not met anyone yet",

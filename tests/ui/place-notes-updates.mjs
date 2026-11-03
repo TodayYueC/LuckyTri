@@ -90,7 +90,7 @@ try {
   });
   for (const width of [1440, 800, 390, 320]) {
     await page.setViewportSize({ width, height: 960 });
-    await page.goto(server.base + "/#people");
+    await page.goto(server.base + "/#people/groups");
     const card = page.locator(".face-card").first();
     await card.waitFor();
     assert.match(await card.innerText(), /我想和大家一起聊星星/);

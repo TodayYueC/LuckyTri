@@ -16,7 +16,7 @@ import {
   when,
 } from "../../plates/mind";
 import { useMedia } from "../../media";
-import Tabs from "../../components/ui/Tabs.vue";
+import Tabs from "../../components/ui/SectionNav.vue";
 import Sheet from "../../components/ui/Sheet.vue";
 import Meter from "../../components/ui/Meter.vue";
 import Empty from "../../components/ui/Empty.vue";
@@ -30,8 +30,8 @@ const overview = shallowRef<any>(readSnapshot("/mind/mood") || null);
 const thoughts = shallowRef<any[]>(readSnapshot("/mind/thoughts?q=") || []);
 const query = ref("");
 const view = ref(
-  studio.sub === "notes"
-    ? "notes"
+  ["notes", "mood"].includes(studio.sub)
+    ? studio.sub
     : studio.sub === "list" || narrow.value
       ? "list"
       : "stars",
@@ -144,8 +144,8 @@ watch(
   () => [studio.page, studio.sub],
   ([page, sub]) => {
     if (page !== "heart") return;
-    if (sub === "notes" || sub === "list") view.value = sub;
-    else if (!sub && view.value === "notes") view.value = "stars";
+    if (["notes", "list", "mood"].includes(sub)) view.value = sub;
+    else if (!sub) view.value = "stars";
   },
 );
 usePageActivity("heart", load);
@@ -153,13 +153,6 @@ usePageActivity("heart", load);
 
 <template>
   <div class="page heart">
-    <MoodRibbon
-      v-if="overview"
-      :moods="overview.moods"
-      :baseline="overview.affect.baseline"
-      :time-zone="overview.clock.timeZone"
-    />
-
     <div class="heart-bar">
       <Tabs
         v-model="view"
@@ -168,6 +161,7 @@ usePageActivity("heart", load);
           { key: 'stars', label: t('心灵星图'), count: threads.length },
           { key: 'list', label: t('线索清单') },
           { key: 'notes', label: t('放在心上'), count: thoughts.length },
+          { key: 'mood', label: t('心情记录') },
         ]"
       />
       <p v-if="view !== 'notes'" class="muted">
@@ -177,7 +171,14 @@ usePageActivity("heart", load);
       </p>
     </div>
 
-    <template v-if="self">
+    <MoodRibbon
+      v-if="view === 'mood' && overview"
+      :moods="overview.moods"
+      :baseline="overview.affect.baseline"
+      :time-zone="overview.clock.timeZone"
+    />
+
+    <template v-if="self && view !== 'mood'">
       <template v-if="view === 'stars'">
         <StarMap
           v-if="threads.length"

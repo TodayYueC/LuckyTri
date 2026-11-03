@@ -1,0 +1,855 @@
+/* Content cards own their geometry. Scrolling data never sizes the workspace. */
+:root {
+  --gap: 18px;
+  --r-l: 20px;
+  --shadow-soft: 0 3px 14px -8px rgb(40 43 70 / 0.12);
+}
+.studio-shell .view {
+  overflow-anchor: none;
+}
+.studio-shell .route-page {
+  align-content: start;
+}
+.studio-shell .system {
+  display: grid;
+}
+.studio-shell
+  :is(
+    .card,
+    .note,
+    .chapter,
+    .now-profile,
+    .lived-persona,
+    .person-card,
+    .note-card,
+    .current,
+    .calendar,
+    .picked,
+    .group-face,
+    .relation
+  ) {
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: none;
+}
+.studio-shell :is(.card, .note, .now-profile) {
+  padding: 22px;
+}
+.studio-shell :is(.card, .note, .chapter)::before,
+.studio-shell :is(.card, .note, .chapter)::after {
+  content: none;
+}
+.studio-shell .card :is(h2, h3),
+.sheet h2 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+.studio-shell .card-head {
+  min-height: 24px;
+  margin: 0 0 18px;
+  padding: 0;
+  align-items: flex-start;
+}
+.studio-shell .card-head p {
+  margin-top: 6px;
+  max-width: 66ch;
+}
+.studio-shell
+  :is(
+    .heart,
+    .people,
+    .nature,
+    .system,
+    .life,
+    .plugins,
+    .memory-page,
+    .time-page
+  ) {
+  gap: 18px;
+}
+.studio-shell :is(.heart-bar, .people-bar) {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 0;
+}
+.studio-shell :is(.heart-bar, .people-bar) > .section-nav {
+  flex: 1 1 100%;
+}
+.studio-shell .heart-bar > p {
+  display: none;
+}
+.studio-shell .people-search {
+  width: min(340px, 100%);
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+.studio-shell .workspace-tabs {
+  align-self: stretch;
+  margin-bottom: 14px;
+}
+.studio-shell .section-nav {
+  align-self: stretch;
+}
+.studio-shell .section-nav button:hover {
+  transform: none;
+}
+.studio-shell .seg.tabs {
+  width: fit-content;
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  padding: 0;
+}
+.studio-shell .seg.tabs button {
+  min-height: 36px;
+}
+.studio-shell .seg.tabs button[aria-selected="true"] {
+  background: var(--surface);
+  box-shadow: 0 1px 4px #24284012;
+}
+.studio-shell .section-nav button[aria-selected="true"] {
+  box-shadow: 0 2px 8px #24284008;
+}
+.studio-shell .save-bar {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: 14px 16px;
+  border-radius: 14px;
+  box-shadow: 0 -4px 18px -12px #24284024;
+  gap: 10px;
+  z-index: 3;
+}
+.studio-shell fieldset {
+  border-radius: 14px;
+  border-color: var(--line);
+}
+.studio-shell .chip {
+  border-radius: 7px;
+  padding: 4px 8px;
+}
+.studio-shell button.primary,
+.sheet button.primary {
+  border-radius: 10px;
+}
+.studio-shell
+  :is(.note, .person-card, .entity-row, .fleck, .person-node):hover {
+  transform: none;
+}
+.studio-shell .home-cell > :is(.card, .note, .now-profile) {
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  flex: 1;
+  height: 100%;
+}
+.studio-shell .home-cell .card.today {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.studio-shell .home-cell .today-scroll {
+  max-height: none;
+  min-height: 0;
+  flex: 1;
+}
+.studio-shell .home-cell .today .card-head {
+  flex: none;
+}
+.studio-shell .home-cell .now-profile {
+  gap: 18px;
+}
+.studio-shell .profile-picture {
+  width: 86px;
+  height: 98px;
+  border-radius: 14px;
+}
+.studio-shell .profile-details h3 {
+  font-size: 22px;
+}
+.studio-shell .home-cell .empty {
+  padding: 12px;
+  min-height: 0;
+}
+.studio-shell .profile-actions {
+  padding: 0;
+}
+.studio-shell .profile-actions button {
+  padding: 9px 11px;
+}
+.studio-shell .home-cell .recent-list .quote {
+  font-size: 13px;
+}
+.studio-shell .home-cell .ledger-note {
+  margin-top: 12px;
+}
+.studio-shell .counts {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.studio-shell .counts button {
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent-soft) 24%, var(--surface));
+  border: 0;
+}
+.refresh-status {
+  position: fixed;
+  bottom: 18px;
+  right: 26px;
+  z-index: 25;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--ink-soft);
+  pointer-events: none;
+}
+.studio-shell .time-today {
+  grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
+  align-items: stretch;
+}
+.studio-shell .time-today > .card {
+  height: 300px;
+  overflow: auto;
+  align-content: start;
+}
+.studio-shell .time-task {
+  min-height: 220px;
+}
+.studio-shell .time-cards {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+.studio-shell .time-settings {
+  margin: 0;
+}
+.studio-shell .main-activity h2 {
+  font-size: 22px;
+}
+.studio-shell .day-balance h2 {
+  font-size: 38px;
+  font-weight: 500;
+}
+.studio-shell .model-tools {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+.studio-shell .library {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+}
+.studio-shell .model-workspace {
+  display: block;
+  min-height: 0;
+}
+.studio-shell .model-workspace > .shelf {
+  min-height: 230px;
+}
+.model-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+.model-card {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 14px 12px;
+  align-content: start;
+  text-align: left;
+  min-height: 145px;
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--accent-soft) 14%, var(--surface));
+}
+.model-card:hover {
+  border-color: var(--accent);
+  transform: none;
+}
+.model-card-title {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.model-card-title b {
+  font-size: 14px;
+}
+.model-card small {
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+.model-card > .chip {
+  grid-column: 1/-1;
+  justify-self: start;
+}
+.model-card > small {
+  grid-column: 1/-1;
+}
+.model-card-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.sheet .detail {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.sheet .detail .card-head {
+  display: none;
+}
+.sheet .detail .save-bar {
+  position: sticky;
+  bottom: 0;
+  background: var(--surface);
+  border-radius: 12px;
+}
+.studio-shell .settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+.studio-shell .settings-grid > .runtime-grid {
+  grid-column: 1/-1;
+}
+.studio-shell .settings-grid > * {
+  min-width: 0;
+}
+.studio-shell .usage-panel {
+  min-height: 260px;
+}
+.studio-shell .life .book {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 18px;
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+  background: transparent;
+  height: clamp(500px, calc(100dvh - 240px), 660px);
+  align-items: stretch;
+}
+.studio-shell .life .book .days {
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+  align-content: start;
+  padding: 12px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  gap: 6px;
+}
+.studio-shell .diary-day {
+  border-radius: 12px;
+  padding: 13px;
+  box-shadow: none;
+  backdrop-filter: none;
+  background: transparent;
+  border: 0;
+}
+.studio-shell .diary-day.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: none;
+}
+.studio-shell .diary-day::before {
+  content: none;
+}
+.studio-shell .diary-day:hover {
+  transform: none;
+  background: var(--accent-soft);
+}
+.diary-reader {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+.studio-shell .diary-page {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  height: 100%;
+  min-height: 0;
+  padding: 28px;
+  overflow: auto;
+  border-radius: 20px;
+  scrollbar-gutter: stable;
+}
+.studio-shell .diary-page .ink {
+  flex: 1;
+  min-height: 0;
+  max-width: 72ch;
+  font-size: 15px;
+}
+.studio-shell .diary-page footer {
+  flex: none;
+  position: sticky;
+  bottom: -28px;
+  background: var(--surface);
+  padding: 16px 0;
+  margin-top: auto;
+}
+.studio-shell .diary-page h2 {
+  font-size: 23px;
+}
+.studio-shell .stamp {
+  width: auto;
+  aspect-ratio: auto;
+  padding: 7px 11px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  box-shadow: none;
+  transform: none;
+}
+.day-diff {
+  display: grid;
+  gap: 18px;
+  line-height: 1.8;
+}
+.studio-shell .archive-workspace {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.studio-shell .summary-card {
+  position: sticky;
+  top: 0;
+  min-width: 0;
+  padding: 22px;
+}
+.studio-shell .summary-card .card-head {
+  display: grid;
+  gap: 14px;
+}
+.studio-shell .summary-card h2 {
+  font-size: 18px;
+}
+.studio-shell .summary-card p[data-memory-summary] {
+  font-size: 13px;
+  line-height: 1.8;
+  height: 210px;
+  max-height: 210px;
+  overflow: auto;
+}
+.studio-shell .summary-card p[data-memory-summary].clamp {
+  height: 210px;
+  max-height: 210px;
+}
+.studio-shell .summary-card p[data-memory-summary]:not(.clamp) {
+  height: 420px;
+  max-height: 420px;
+}
+.studio-shell .list-card {
+  min-width: 0;
+  padding: 0;
+  align-content: start;
+  background: none;
+  border: 0;
+  box-shadow: none;
+}
+.studio-shell .memory-results > .tools {
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 14px;
+}
+.studio-shell #memoryList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.studio-shell .memory-row {
+  min-height: 144px;
+  height: 160px;
+  padding: 14px;
+  gap: 8px;
+  background: color-mix(in srgb, var(--accent-soft) 12%, var(--surface));
+  border-radius: 14px;
+}
+.memory-open {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+.memory-open:hover {
+  transform: none;
+  background: none;
+}
+.memory-open .content {
+  flex: 1;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-height: 1.7;
+  font-size: 13px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.memory-open .tags {
+  margin-top: auto;
+}
+.memory-editor .meta {
+  font-size: 12px;
+}
+.memory-editor textarea {
+  resize: vertical;
+}
+.studio-shell #memoryList > :is(.empty, .more) {
+  grid-column: 1/-1;
+}
+.studio-shell .nature .greenhouse {
+  grid-template-columns: minmax(0, 1fr) 290px;
+  gap: 18px;
+  align-items: start;
+}
+.studio-shell .nature .editor {
+  background: none;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  min-width: 0;
+}
+.studio-shell #natureForm {
+  display: grid;
+  gap: 18px;
+}
+.studio-shell .nature-fields {
+  display: grid;
+  gap: 18px;
+  border: 0;
+  padding: 0;
+  min-width: 0;
+  margin: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.studio-shell .plugins .grid > .empty {
+  grid-column: 1 / -1;
+  padding: 36px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+}
+.studio-shell .nature-fields > :is(fieldset, .identity-card) {
+  padding: 22px;
+  margin: 0;
+}
+.studio-shell .nature-fields > fieldset {
+  display: grid;
+  gap: 18px;
+}
+.studio-shell .nature-fields legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 0;
+}
+.studio-shell .nature .side {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+  align-content: start;
+}
+.studio-shell .nature .orb-card {
+  height: auto;
+  min-height: 0;
+  padding: 20px;
+}
+.studio-shell .nature .preview {
+  padding: 0;
+}
+.studio-shell .nature .preview .ta-orb {
+  width: 72px;
+  height: 72px;
+}
+.studio-shell .nature .preview h2 {
+  font-size: 16px;
+}
+.studio-shell .nature .preview .eyebrow {
+  display: none;
+}
+.studio-shell .nature .rhythm-row {
+  gap: 18px;
+}
+.studio-shell .lived-persona {
+  padding: 22px;
+}
+.studio-shell .current-grid,
+.studio-shell .encounter-grid,
+.studio-shell .people-list {
+  gap: 16px;
+  align-items: start;
+}
+.studio-shell .current {
+  height: 340px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 20px;
+}
+.studio-shell .current .flecks {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  align-content: start;
+}
+.studio-shell .fleck {
+  border: 0;
+  background: color-mix(in srgb, var(--accent-soft) 20%, var(--surface));
+  border-radius: 10px;
+}
+.studio-shell .person-node {
+  height: 154px;
+  background: var(--surface);
+  border-radius: 18px;
+}
+.studio-shell .person-copy {
+  max-height: 94px;
+  overflow: hidden;
+}
+.studio-shell .person-card {
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+}
+.studio-shell .mood-ribbon {
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  padding: 22px;
+}
+.studio-shell .calendar-wrap {
+  align-items: stretch;
+}
+.studio-shell .calendar-wrap > .picked {
+  min-height: 220px;
+  max-height: 520px;
+  overflow: auto;
+}
+.studio-shell .plugins .grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: 18px;
+  align-items: stretch;
+}
+.studio-shell .plugins .grid > .card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 210px;
+}
+.studio-shell .plugins .grid > .card > .row:last-child {
+  margin-top: auto;
+}
+.studio-shell .plugins .lead {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.sheet-layer .sheet {
+  background: color-mix(in srgb, var(--accent-soft) 12%, var(--surface));
+  border: 1px solid var(--line);
+  backdrop-filter: none;
+  border-radius: 24px;
+}
+.sheet-layer {
+  backdrop-filter: blur(5px);
+}
+.studio-shell .connect > .music-card {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  border-top: 1px solid var(--line);
+}
+.studio-shell .connect > .music-card .music-toggles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.studio-shell .shelf > .shelf-head {
+  align-items: center;
+}
+.studio-shell .shelf > .shelf-head .collection {
+  margin-left: auto;
+}
+.studio-shell .shelf .books {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  min-height: 160px;
+}
+.studio-shell .shelf .books > .empty {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 30px;
+}
+.studio-shell .document-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 180px;
+  overflow: auto;
+  align-items: flex-start;
+}
+.studio-shell .document-card > b {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.studio-shell .knowledge-search {
+  min-width: 0;
+}
+.sheet .add-doc {
+  border: 0;
+  background: transparent;
+}
+.model-card-grid > .empty {
+  grid-column: 1 / -1;
+  width: 100%;
+  padding: 24px;
+}
+.sheet-body :is(fieldset, .source, .reason-card) {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+@media (min-width: 1500px) {
+  .studio-shell .nature-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .studio-shell .nature-fields > .identity-card {
+    grid-column: 1/-1;
+  }
+}
+@media (max-width: 1150px) {
+  .studio-shell .archive-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .studio-shell .summary-card {
+    position: static;
+  }
+  .studio-shell .summary-card p[data-memory-summary].clamp {
+    height: 84px;
+    max-height: 84px;
+  }
+  .studio-shell .nature .greenhouse {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .studio-shell .nature .side {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 900px) {
+  .studio-shell .settings-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .studio-shell .time-today {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .studio-shell .life .book {
+    grid-template-columns: 160px minmax(0, 1fr);
+  }
+  .studio-shell .time-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 680px) {
+  .studio-shell .connect > .music-card .music-toggles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .studio-shell .shelf > .shelf-head .collection {
+    margin-left: 0;
+    width: 100%;
+  }
+  .studio-shell :is(.card, .note, .now-profile) {
+    padding: 18px;
+    border-radius: 17px;
+  }
+  .studio-shell .counts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .studio-shell .life .book {
+    display: flex;
+    flex-direction: column;
+    height: 670px;
+    gap: 12px;
+  }
+  .studio-shell .life .book .days {
+    display: flex;
+    flex: none;
+    height: 85px;
+    padding: 8px;
+    overflow: auto;
+  }
+  .studio-shell .life .book .diary-day {
+    min-width: 128px;
+  }
+  .studio-shell .diary-reader {
+    flex: 1;
+    height: auto;
+  }
+  .studio-shell .diary-page {
+    padding: 18px;
+    gap: 16px;
+  }
+  .studio-shell .diary-page footer {
+    bottom: -18px;
+  }
+  .studio-shell .time-today,
+  .studio-shell .nature .side {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .studio-shell .time-today > .card {
+    height: 280px;
+  }
+  .studio-shell #memoryList {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .studio-shell .archive-bar {
+    align-items: stretch;
+  }
+  .studio-shell .archive-bar .scope {
+    flex: 1 1 100%;
+  }
+  .studio-shell .archive-workspace {
+    gap: 14px;
+  }
+  .refresh-status {
+    bottom: 88px;
+    right: 16px;
+  }
+}

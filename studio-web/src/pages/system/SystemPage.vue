@@ -2,11 +2,14 @@
 import { t } from "../../i18n";
 import { ref, watch } from "vue";
 import { setSub, studio } from "../../stores/studio";
-import Tabs from "../../components/ui/Tabs.vue";
+import Tabs from "../../components/ui/SectionNav.vue";
 import ConnectQQ from "./ConnectQQ.vue";
 import ModelLibrary from "./ModelLibrary.vue";
 import Runtime from "./Runtime.vue";
 import SearchProfile from "./SearchProfile.vue";
+import EmbeddingProfile from "./EmbeddingProfile.vue";
+import RecallPanel from "./RecallPanel.vue";
+import Segments from "../../components/ui/Tabs.vue";
 import BackupManager from "./BackupManager.vue";
 import { ask } from "../../dialog";
 import PasswordSettings from "../../components/PasswordSettings.vue";
@@ -15,10 +18,37 @@ import StickerLibrary from "./StickerLibrary.vue";
 import MediaSettings from "./MediaSettings.vue";
 import VoiceSettings from "./VoiceSettings.vue";
 
+const modelSections = ["library", "embedding", "recall", "search"];
+const readModelView = (sub: string) =>
+  sub === "search"
+    ? "search"
+    : modelSections.includes(sub.split("/")[1])
+      ? sub.split("/")[1]
+      : "library";
+const modelView = ref(readModelView(studio.sub));
+async function switchModelView(next: string) {
+  if (next === modelView.value) return;
+  if (
+    studio.dirty &&
+    !(await ask(t("当前设置还没保存，离开这个分区吗？"), {
+      title: t("未保存的修改"),
+      confirmText: t("放弃修改"),
+      cancelText: t("继续编辑"),
+    }))
+  )
+    return;
+  studio.dirty = false;
+  modelView.value = next;
+  setSub(next === "library" ? "models" : "models/" + next);
+}
 const VIEWS = ["connect", "models", "stickers", "media", "settings", "storage"];
 // Older links named the settings page "runtime" and search "search".
 const alias = (sub: string) =>
-  sub === "runtime" ? "settings" : sub === "search" ? "models" : sub;
+  sub === "runtime"
+    ? "settings"
+    : sub === "search"
+      ? "models"
+      : sub.split("/")[0];
 const view = ref(
   VIEWS.includes(alias(studio.sub)) ? alias(studio.sub) : "connect",
 );
@@ -37,11 +67,18 @@ async function switchView(next: string) {
   view.value = next;
 }
 
-watch(view, (next) => setSub(next));
+watch(view, (next) =>
+  setSub(
+    next === "models" && modelView.value !== "library"
+      ? "models/" + modelView.value
+      : next,
+  ),
+);
 watch(
   () => studio.sub,
   (sub) => {
     if (VIEWS.includes(alias(sub))) view.value = alias(sub);
+    if (alias(sub) === "models") modelView.value = readModelView(sub);
   },
 );
 </script>
@@ -62,86 +99,30 @@ watch(
       ]"
     />
     <ConnectQQ v-if="view === 'connect'" @open="switchView" />
-    <template v-else-if="view === 'models'"
-      ><ModelLibrary /><SearchProfile
-    /></template>
+    <section v-else-if="view === 'models'" class="model-tools">
+      <Segments
+        :model-value="modelView"
+        @update:model-value="switchModelView"
+        :label="t('模型库')"
+        :items="[
+          { key: 'library', label: t('模型库') },
+          { key: 'embedding', label: t('知识向量模型') },
+          { key: 'recall', label: t('记忆召回') },
+          { key: 'search', label: t('联网搜索') },
+        ]"
+      />
+      <ModelLibrary v-if="modelView === 'library'" />
+      <EmbeddingProfile v-else-if="modelView === 'embedding'" />
+      <RecallPanel v-else-if="modelView === 'recall'" />
+      <SearchProfile v-else />
+    </section>
     <StickerLibrary v-else-if="view === 'stickers'" />
-    <template v-else-if="view === 'media'"
-      ><MediaSettings /><VoiceSettings
-    /></template>
-    <template v-else-if="view === 'settings'"
-      ><Runtime /><UpdateSettings /><PasswordSettings
-    /></template>
+    <div v-else-if="view === 'media'" class="settings-grid">
+      <MediaSettings /><VoiceSettings />
+    </div>
+    <div v-else-if="view === 'settings'" class="settings-grid">
+      <Runtime /><UpdateSettings /><PasswordSettings />
+    </div>
     <BackupManager v-else />
   </div>
 </template>
-
-<style scoped>
-@layer components {
-  .system {
-    display: grid;
-    gap: var(--gap);
-  }
-  .system > .tabs {
-    justify-self: start;
-    padding: 5px;
-    border: 1px solid rgb(255 255 255 / 0.8);
-    box-shadow:
-      inset 0 1px 0 white,
-      0 10px 30px -24px var(--accent);
-    backdrop-filter: blur(22px) saturate(1.7);
-  }
-  .system > :deep(.tabs button) {
-    padding: 9px 18px;
-    border-radius: 999px;
-    transition:
-      transform 0.35s var(--spring),
-      background-color 0.2s,
-      box-shadow 0.2s;
-  }
-  .system > :deep(.tabs button:hover) {
-    transform: translateY(-2px) scale(1.03);
-  }
-  .system :deep(.connect .step),
-  .system :deep(.connect .checks li) {
-    border: 1px solid rgb(255 255 255 / 0.85);
-    border-radius: 22px;
-    background:
-      linear-gradient(145deg, rgb(255 255 255 / 0.68), rgb(255 255 255 / 0.28)),
-      var(--surface);
-    box-shadow:
-      inset 0 1px 0 white,
-      0 12px 24px -24px var(--accent);
-    backdrop-filter: blur(18px) saturate(1.55);
-    transition:
-      transform 0.35s var(--spring),
-      box-shadow 0.25s;
-  }
-  .system :deep(.connect .step:hover),
-  .system :deep(.connect .checks li:hover) {
-    transform: translateY(-3px);
-    box-shadow:
-      inset 0 1px 0 white,
-      0 16px 28px -21px var(--accent);
-  }
-  .system :deep(.connect .num) {
-    background: linear-gradient(
-      145deg,
-      white,
-      color-mix(in srgb, var(--glow-a) 75%, white)
-    );
-    border: 1px solid white;
-    box-shadow:
-      inset 0 1px 0 white,
-      0 5px 14px -9px var(--accent);
-    color: var(--accent);
-  }
-  @keyframes system-bob {
-    to {
-      transform: translateY(22px) scale(1.08);
-    }
-  }
-  @media (max-width: 760px) {
-  }
-}
-</style>

@@ -12,7 +12,7 @@ import Card from "../../components/ui/Card.vue";
 import RhythmClock from "./RhythmClock.vue";
 import Select from "../../components/ui/Select.vue";
 
-import Tabs from "../../components/ui/Tabs.vue";
+import Tabs from "../../components/ui/SectionNav.vue";
 const sections = ["profile", "growth", "days", "prompts"];
 const section = ref(sections.includes(studio.sub) ? studio.sub : "profile");
 watch(section, (value) => setSub(value === "profile" ? "" : value));
@@ -348,35 +348,22 @@ onUnmounted(() => {
         }}
       </p>
     </section>
+    <p v-show="section === 'profile'" class="faint" role="status">
+      {{
+        natureEdits.locked
+          ? t(
+              "可用更改次数已用完。之后的性格、兴趣和想法，由 TA 自己从经历里生长。",
+            )
+          : t("天性还可以改 {left} 次，包括性格刻度。用完后由她自己生长。", {
+              left: natureEdits.left,
+            })
+      }}
+    </p>
     <div v-show="section === 'profile'" class="greenhouse">
-      <section class="card editor">
+      <section class="editor">
         <form id="natureForm" @submit.prevent="saveNature" @input="dirty()">
-          <p class="faint" role="status">
-            {{
-              natureEdits.locked
-                ? t(
-                    "可用更改次数已用完。之后的性格、兴趣和想法，由 TA 自己从经历里生长。",
-                  )
-                : t(
-                    "天性还可以改 {left} 次，包括性格刻度。用完后由她自己生长。",
-                    { left: natureEdits.left },
-                  )
-            }}
-          </p>
-          <header class="editor-head">
-            <span class="eyebrow">{{ t("塑造 TA") }}</span>
-            <h2>{{ t("TA 生来是什么样的？") }}</h2>
-            <p class="muted">
-              {{
-                t(
-                  "天性是种子：性格、兴趣和底线。TA 的自我、在各群的样子、对每个人的感觉都会从经历里长出来——你能看到、能撤销，但不在这里改写。",
-                )
-              }}
-            </p>
-          </header>
-
           <fieldset class="nature-fields" :disabled="natureEdits.locked">
-            <div class="form-grid">
+            <div class="form-grid identity-card card">
               <label
                 >{{ t("名字")
                 }}<input
@@ -423,7 +410,7 @@ onUnmounted(() => {
               </label>
             </div>
 
-            <fieldset class="traits">
+            <fieldset class="traits card">
               <legend>{{ t("性格刻度") }}</legend>
               <div v-for="facet in TRAITS" :key="facet.key" class="trait">
                 <div class="trait-head">
@@ -464,7 +451,7 @@ onUnmounted(() => {
               </label>
             </fieldset>
 
-            <fieldset class="rhythm-set">
+            <fieldset class="rhythm-set card">
               <legend>{{ t("作息") }}</legend>
               <label class="switch">
                 <input
@@ -510,7 +497,7 @@ onUnmounted(() => {
               </div>
             </fieldset>
 
-            <fieldset>
+            <fieldset class="card boundaries-card">
               <legend>{{ t("兴趣、边界与底线") }}</legend>
               <div class="stack tight">
                 <label
@@ -595,7 +582,7 @@ onUnmounted(() => {
             interactive
           />
           <span class="eyebrow">{{ t("调色盘 · 即时反馈") }}</span>
-          <h3>{{ t("微小的倾向，也会改变表达") }}</h3>
+          <h3>{{ t("性格预览") }}</h3>
           <ul class="effects">
             <li v-for="facet in TRAITS" :key="facet.key">
               <b>{{ facet.label }} {{ draft[facet.key] }}</b>
@@ -689,8 +676,7 @@ onUnmounted(() => {
                 t(
                   "安静的时候，也能从自己的兴趣、念头和对人的感觉决定要不要先开口。不必等人提问，不催同一句话；对方没回应，也不等于以后不能分享新的事。关掉后停止主动联系。",
                 )
-              }}</small>
-              ></span
+              }}</small></span
             ></label
           >
         </div>

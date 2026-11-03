@@ -88,6 +88,7 @@ try {
   w.store.revision++;
   await page.waitForTimeout(1800);
   await page.locator('.dock-link[data-page="people"]').click();
+  await page.locator(".people [data-tab=groups]").click();
   await page
     .locator(".faces h3")
     .filter({ hasText: "春日聊天室的新名字" })

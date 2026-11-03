@@ -6,16 +6,11 @@ const cards = computed(() =>
 );
 </script>
 <template>
-  <TransitionGroup
-    name="home-card"
-    tag="div"
-    class="home-grid"
-    :class="homeLayout.density"
-  >
+  <div class="home-grid" :class="homeLayout.density">
     <div v-for="id in cards" :key="id" class="home-cell" :data-card="id">
       <slot :name="id" />
     </div>
-  </TransitionGroup>
+  </div>
 </template>
 <style scoped>
 @layer components {
@@ -24,33 +19,22 @@ const cards = computed(() =>
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 20px;
     align-items: stretch;
+    grid-auto-rows: 280px;
   }
   .home-grid.compact {
     gap: 12px;
+    grid-auto-rows: 260px;
   }
   .home-cell {
     min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    border-radius: var(--r-l);
     display: flex;
     flex-direction: column;
   }
   .home-cell:last-child:nth-child(3n + 2) {
     grid-column: span 2;
-  }
-  .home-card-move,
-  .home-card-enter-active,
-  .home-card-leave-active {
-    transition:
-      transform 0.35s var(--ease),
-      opacity 0.2s;
-  }
-  .home-card-enter-from,
-  .home-card-leave-to {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  .home-card-leave-active {
-    position: absolute;
-    pointer-events: none;
   }
   .home-grid:has(.home-cell:only-child) {
     grid-template-columns: minmax(0, 1fr);

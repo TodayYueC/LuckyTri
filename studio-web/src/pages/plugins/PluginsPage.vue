@@ -7,7 +7,7 @@ import Card from "../../components/ui/Card.vue";
 import Empty from "../../components/ui/Empty.vue";
 import Field from "../../components/ui/Field.vue";
 import Sheet from "../../components/ui/Sheet.vue";
-import Tabs from "../../components/ui/Tabs.vue";
+import Tabs from "../../components/ui/SectionNav.vue";
 
 const VIEWS = ["installed", "market", "actions", "import"];
 const view = ref(VIEWS.includes(studio.sub) ? studio.sub : "installed");

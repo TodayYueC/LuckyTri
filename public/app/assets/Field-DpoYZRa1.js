@@ -1,1 +1,0 @@
-import{Ct as e,Tt as t,X as n,Y as r,dt as i,lt as a,q as o,tt as s}from"./Empty-Bfe9zkCe.js";var c={key:0},l=s({__name:`Field`,props:{label:{},hint:{},wide:{type:Boolean}},setup(s){return(l,u)=>(a(),n(`label`,{class:e({wide:s.wide})},[o(`span`,null,t(s.label),1),i(l.$slots,`default`),s.hint?(a(),n(`small`,c,t(s.hint),1)):r(``,!0)],2))}});export{l as t};

@@ -47,6 +47,10 @@ On desktop the studio is a fixed-viewport workbench: sidebar, header, content st
 
 ## Implementation boundaries
 
+SectionNav provides card navigation. Models are browsed as cards and edited in a guarded sheet; embeddings, recall and web search have their own sections. People, group identities and relationships are separate destinations. Memory editing, document creation and diary day comparisons open in sheets without expanding the underlying page.
+
+styles/cards.css defines shared card geometry and scroll boundaries. Home rows have stable heights, background refresh status stays out of document flow, and diary changes retain the reader container. Diary styles are scoped to .life .book so document cards cannot inherit reader dimensions. The card-workflows test samples geometry during delayed refreshes and exercises drafts, saving, document creation and 175 route/viewport combinations.
+
 StudioShell.vue owns navigation, header popovers and scroll restoration. navigation.ts maps the six destinations onto existing routes. useModal.ts owns the modal stack, focus cycling and Escape. Home preferences live in pages/now/home-layout.ts. CSS layers are declared before any styles load: base, components, then the unlayered studio design rules. Pages load on demand; five common pages may remain cached.
 
 Vue 3 + Vite + TypeScript, with no design-system dependency.

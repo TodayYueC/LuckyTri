@@ -69,17 +69,6 @@ async function revoke(session: string, id: string) {
 
 <template>
   <section class="faces">
-    <div class="faces-head">
-      <span class="eyebrow">{{ t("在这里的想法") }}</span>
-      <h2>{{ t("同一个她，在不同的地方留下自己的想法。") }}</h2>
-      <p class="muted">
-        {{
-          t(
-            "她根据相处留下印象、愿望或疑问，选择什么时候新增、修改或放下。每次更新保留理由和来源。",
-          )
-        }}
-      </p>
-    </div>
     <div class="face-grid">
       <article
         v-for="g in groups"

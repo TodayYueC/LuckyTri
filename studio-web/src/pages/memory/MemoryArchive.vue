@@ -24,6 +24,27 @@ const emit = defineEmits<{ "update:sessionId": [id: string] }>();
 const search = ref("");
 const person = ref("");
 const adding = ref(false);
+const editingMemory = ref<any>(null);
+const editingBusy = ref(false);
+const memoryDraft = ref("");
+function editMemory(memory: any) {
+  editingMemory.value = memory;
+  memoryDraft.value = memory.content;
+}
+async function closeMemory() {
+  if (editingBusy.value) return;
+  if (
+    studio.dirty &&
+    !(await ask(t("有尚未保存的修改，离开这一页吗？"), {
+      title: t("草稿还没保存"),
+      confirmText: t("离开"),
+      cancelText: t("留下"),
+    }))
+  )
+    return;
+  editingMemory.value = null;
+  studio.dirty = false;
+}
 const expanded = ref(false);
 const visible = ref(20);
 const memories = ref<any[]>([]);
@@ -93,7 +114,13 @@ watch(search, () => (visible.value = 20));
 onMounted(() => {
   load();
   timer = window.setInterval(() => {
-    if (!document.hidden && !studio.dirty && !adding.value) load();
+    if (
+      !document.hidden &&
+      !studio.dirty &&
+      !adding.value &&
+      !editingMemory.value
+    )
+      load();
   }, 4000);
 });
 onUnmounted(() => clearInterval(timer));
@@ -117,40 +144,53 @@ async function add(event: Event) {
 }
 
 async function change(m: any, action: string) {
-  if (action === "revoke") {
-    const reason = await askText(
-      t(
-        "撤销「{content}」？TA 之后不会再这样认为，整理记忆时也不会把它写回来。可以写下原因（可不填）：",
-        { content: m.content },
-      ),
-      {
-        title: t("撤销这条记忆"),
-        confirmText: t("撤销"),
-        danger: true,
-        placeholder: t("原因"),
-      },
-    );
-    if (reason === null) return;
-    try {
-      await mind.revoke("memory", m.id, reason);
-    } catch (error) {
-      toast((error as Error).message, true);
+  if (editingBusy.value) return;
+  editingBusy.value = true;
+  try {
+    if (action === "revoke") {
+      const reason = await askText(
+        t(
+          "撤销「{content}」？TA 之后不会再这样认为，整理记忆时也不会把它写回来。可以写下原因（可不填）：",
+          { content: m.content },
+        ),
+        {
+          title: t("撤销这条记忆"),
+          confirmText: t("撤销"),
+          danger: true,
+          placeholder: t("原因"),
+        },
+      );
+      if (reason === null) return;
+      try {
+        await mind.revoke("memory", m.id, reason);
+      } catch (error) {
+        toast((error as Error).message, true);
+      }
+      await load();
+      editingMemory.value = null;
+      studio.dirty = false;
+      return;
     }
+    const content = memoryDraft.value;
+    await patchMemory(
+      m.id,
+      action === "lock"
+        ? { locked: !m.locked }
+        : action.startsWith("discretion:")
+          ? { discretion: action.slice(11) }
+          : { status: "confirmed", content },
+    );
+    if (action === "confirmed") studio.dirty = false;
     await load();
-    return;
+    if (editingMemory.value?.id === m.id)
+      editingMemory.value =
+        memories.value.find((item) => item.id === m.id) || null;
+    if (action === "confirmed") toast(t("记忆已写入"));
+  } catch (error) {
+    toast((error as Error).message, true);
+  } finally {
+    editingBusy.value = false;
   }
-  const content = (
-    document.querySelector(`[data-content="${m.id}"]`) as HTMLTextAreaElement
-  )?.value;
-  await patchMemory(
-    m.id,
-    action === "lock"
-      ? { locked: !m.locked }
-      : action.startsWith("discretion:")
-        ? { discretion: action.slice(11) }
-        : { status: "confirmed", content },
-  );
-  await load();
 }
 
 function toggle(id: string, event: Event) {
@@ -275,103 +315,103 @@ async function consolidate() {
       </button>
     </div>
 
-    <section id="memorySummary" class="card summary-card">
-      <div class="card-head">
-        <div>
-          <span class="eyebrow">{{ t("最近发生了什么") }}</span>
-          <h2>
-            {{
-              sessions.find((s: any) => s.id === sessionId)
-                ? placeName(sessions.find((s: any) => s.id === sessionId))
-                : t("记忆档案")
-            }}
-          </h2>
+    <div class="archive-workspace">
+      <section id="memorySummary" class="card summary-card">
+        <div class="card-head">
+          <div>
+            <span class="eyebrow">{{ t("最近发生了什么") }}</span>
+            <h2>
+              {{
+                sessions.find((s: any) => s.id === sessionId)
+                  ? placeName(sessions.find((s: any) => s.id === sessionId))
+                  : t("记忆档案")
+              }}
+            </h2>
+          </div>
+          <div class="row">
+            <button
+              id="refreshMemorySummary"
+              class="icon-button"
+              :disabled="summaryLoading || !sessionId"
+              :aria-label="t('刷新总结')"
+              @click="refreshSummary"
+            >
+              ↻
+            </button>
+            <button
+              id="consolidateMemory"
+              :disabled="consolidating || !sessionId"
+              @click="consolidate"
+            >
+              {{ consolidating ? t("整理中…") : t("立即整理") }}
+            </button>
+          </div>
         </div>
-        <div class="row">
-          <button
-            id="refreshMemorySummary"
-            class="icon-button"
-            :disabled="summaryLoading || !sessionId"
-            :aria-label="t('刷新总结')"
-            @click="refreshSummary"
-          >
-            ↻
-          </button>
-          <button
-            id="consolidateMemory"
-            :disabled="consolidating || !sessionId"
-            @click="consolidate"
-          >
-            {{ consolidating ? t("整理中…") : t("立即整理") }}
+        <p data-memory-summary :class="{ clamp: !expanded }">
+          {{ summary.summary || t("请选择会话以查看最近的记忆总结。") }}
+        </p>
+        <div class="row between faint">
+          <span>{{
+            summary.updated
+              ? new Date(summary.updated).toLocaleString(intlLocale())
+              : t("尚未整理")
+          }}</span>
+          <button class="text-button" @click="expanded = !expanded">
+            {{ expanded ? t("收起") : t("展开") }}
           </button>
         </div>
-      </div>
-      <p data-memory-summary :class="{ clamp: !expanded }">
-        {{ summary.summary || t("请选择会话以查看最近的记忆总结。") }}
-      </p>
-      <div class="row between faint">
-        <span>{{
-          summary.updated
-            ? new Date(summary.updated).toLocaleString(intlLocale())
-            : t("尚未整理")
-        }}</span>
-        <button class="text-button" @click="expanded = !expanded">
-          {{ expanded ? t("收起") : t("展开") }}
-        </button>
-      </div>
-    </section>
+      </section>
 
-    <section class="card list-card">
-      <div class="tools row">
-        <button
-          id="selectAllMemories"
-          class="small"
-          @click="selected = selectable.map((m) => m.id)"
-        >
-          {{ t("全选") }}
-        </button>
-        <button
-          id="clearMemorySelection"
-          class="small"
-          :disabled="!selected.length"
-          @click="selected = []"
-        >
-          {{ t("取消选择") }}
-        </button>
-        <button
-          id="deleteSelectedMemories"
-          class="small danger"
-          :disabled="!selected.length"
-          @click="deleteSelected"
-        >
-          {{ t("删除已选 {v}", { v: selected.length || "" }) }}
-        </button>
-        <button
-          id="deleteAllSessionMemories"
-          class="small danger push"
-          :disabled="!selectable.length"
-          @click="deleteAll"
-        >
-          {{ t("清空本会话") }}
-        </button>
-      </div>
-      <div id="memoryList" class="scroll-pane">
-        <article
-          v-for="m in filtered.slice(0, visible)"
-          :key="m.id"
-          class="memory-row"
-          :class="{ superseded: m.status === 'superseded' }"
-        >
-          <input
-            type="checkbox"
-            :aria-label="t('选择记忆：') + m.content"
-            :data-memory-select="m.id"
-            :checked="selected.includes(m.id)"
-            :disabled="!isSelectable(m)"
-            @change="toggle(m.id, $event)"
-          />
-          <details class="memory">
-            <summary>
+      <section class="list-card memory-results">
+        <div class="tools row">
+          <button
+            id="selectAllMemories"
+            class="small"
+            @click="selected = selectable.map((m) => m.id)"
+          >
+            {{ t("全选") }}
+          </button>
+          <button
+            id="clearMemorySelection"
+            class="small"
+            :disabled="!selected.length"
+            @click="selected = []"
+          >
+            {{ t("取消选择") }}
+          </button>
+          <button
+            id="deleteSelectedMemories"
+            class="small danger"
+            :disabled="!selected.length"
+            @click="deleteSelected"
+          >
+            {{ t("删除已选 {v}", { v: selected.length || "" }) }}
+          </button>
+          <button
+            id="deleteAllSessionMemories"
+            class="small danger push"
+            :disabled="!selectable.length"
+            @click="deleteAll"
+          >
+            {{ t("清空本会话") }}
+          </button>
+        </div>
+        <div id="memoryList" class="scroll-pane">
+          <article
+            v-for="m in filtered.slice(0, visible)"
+            :key="m.id"
+            class="memory-row"
+            :class="{ superseded: m.status === 'superseded' }"
+          >
+            <input
+              type="checkbox"
+              :aria-label="t('选择记忆：') + m.content"
+              :data-memory-select="m.id"
+              :checked="selected.includes(m.id)"
+              :disabled="!isSelectable(m)"
+              @change="toggle(m.id, $event)"
+            />
+            <button class="memory memory-open" @click="editMemory(m)">
               <span class="content">{{ m.content }}</span>
               <span class="tags">
                 <span
@@ -386,71 +426,103 @@ async function consolidate() {
                   t("已锁定")
                 }}</span>
               </span>
-            </summary>
-            <p class="faint meta">
-              {{
-                t("关于 {v} · {v2} · 把握 {v3}%", {
-                  v: m.subjectName || m.subject,
-                  v2:
-                    m.session_id === sessionId
-                      ? t("在这里知道的")
-                      : t("别处知道的"),
-                  v3: Math.round((m.confidence ?? 1) * 100),
-                })
-              }}
-            </p>
-            <textarea
-              :data-content="m.id"
-              :aria-label="t('编辑记忆：') + (m.subjectName || m.subject)"
-              >{{ m.content }}</textarea>
-            <div class="row">
-              <button class="small" @click="change(m, 'confirmed')">
-                {{ t("保存修改") }}
-              </button>
-              <small class="faint">{{ t("编辑后要点保存") }}</small>
-              <Select
-                :aria-label="t('分寸：') + m.content"
-                :model-value="m.discretion || 'open'"
-                :options="
-                  Object.entries(DISCRETION).map(([key, label]) => ({
-                    value: key,
-                    label,
-                  }))
-                "
-                @update:model-value="change(m, 'discretion:' + $event)"
-              />
-              <button class="small" @click="change(m, 'lock')">
-                {{ m.locked ? t("解锁") : t("锁定") }}
-              </button>
-              <button class="small danger" @click="change(m, 'revoke')">
-                {{ t("撤销") }}
-              </button>
-            </div>
-          </details>
-        </article>
-        <button
-          v-if="filtered.length > visible"
-          class="small more"
-          @click="visible += 20"
-        >
-          {{ t("再显示 20 条") }}
-        </button>
-        <Empty
-          v-if="!filtered.length"
-          :title="t('这里还有空白')"
-          :text="
-            t(
-              '别人说「记住……」、聊天积累后的自动整理，或你手动添加的事会出现在这里。TA 对所有会话只有一份记忆：别处知道的事只在相关时想起，私下知道的不当众说，要 TA 保密的不离开原处。',
-            )
+            </button>
+          </article>
+          <button
+            v-if="filtered.length > visible"
+            class="small more"
+            @click="visible += 20"
+          >
+            {{ t("再显示 20 条") }}
+          </button>
+          <Empty
+            v-if="!filtered.length"
+            :title="t('这里还有空白')"
+            :text="
+              t(
+                '别人说「记住……」、聊天积累后的自动整理，或你手动添加的事会出现在这里。TA 对所有会话只有一份记忆：别处知道的事只在相关时想起，私下知道的不当众说，要 TA 保密的不离开原处。',
+              )
+            "
+          />
+        </div>
+        <div class="row between faint foot">
+          <span>{{
+            t("共 {length} 条记忆", { length: filtered.length })
+          }}</span>
+          <span>{{ t("共享与锁定的记忆不会被批量选中") }}</span>
+        </div>
+      </section>
+    </div>
+    <Sheet
+      :open="Boolean(editingMemory)"
+      :title="t('编辑记忆')"
+      width="600px"
+      @close="closeMemory"
+    >
+      <div
+        v-if="editingMemory"
+        class="memory-editor stack"
+        :aria-busy="editingBusy"
+      >
+        <p class="faint meta">
+          {{
+            t("关于 {v} · {v2} · 把握 {v3}%", {
+              v: editingMemory.subjectName || editingMemory.subject,
+              v2:
+                editingMemory.session_id === sessionId
+                  ? t("在这里知道的")
+                  : t("别处知道的"),
+              v3: Math.round((editingMemory.confidence ?? 1) * 100),
+            })
+          }}
+        </p>
+        <textarea
+          v-model="memoryDraft"
+          :data-content="editingMemory.id"
+          :aria-label="
+            t('编辑记忆：') +
+            (editingMemory.subjectName || editingMemory.subject)
           "
-        />
+          rows="7"
+          @input="studio.dirty = true"
+        ></textarea>
+        <div class="row">
+          <button
+            class="small"
+            :disabled="editingBusy"
+            @click="change(editingMemory, 'confirmed')"
+          >
+            {{ t("保存修改") }}
+          </button>
+          <small class="faint">{{ t("编辑后要点保存") }}</small>
+          <Select
+            :aria-label="t('分寸：') + editingMemory.content"
+            :model-value="editingMemory.discretion || 'open'"
+            :options="
+              Object.entries(DISCRETION).map(([key, label]) => ({
+                value: key,
+                label,
+              }))
+            "
+            @update:model-value="change(editingMemory, 'discretion:' + $event)"
+          />
+          <button
+            class="small"
+            :disabled="editingBusy"
+            @click="change(editingMemory, 'lock')"
+          >
+            {{ editingMemory.locked ? t("解锁") : t("锁定") }}
+          </button>
+          <button
+            class="small danger"
+            :disabled="editingBusy"
+            @click="change(editingMemory, 'revoke')"
+          >
+            {{ t("撤销") }}
+          </button>
+        </div>
       </div>
-      <div class="row between faint foot">
-        <span>{{ t("共 {length} 条记忆", { length: filtered.length }) }}</span>
-        <span>{{ t("共享与锁定的记忆不会被批量选中") }}</span>
-      </div>
-    </section>
-
+    </Sheet>
     <Sheet
       :open="adding"
       :title="t('手动记住一件事')"

@@ -9,8 +9,6 @@ import { hueOf } from "../../format";
 import Sheet from "../../components/ui/Sheet.vue";
 import Empty from "../../components/ui/Empty.vue";
 import Select from "../../components/ui/Select.vue";
-import EmbeddingProfile from "./EmbeddingProfile.vue";
-import RecallPanel from "./RecallPanel.vue";
 
 const catalog = computed(() => studio.health?.modelCatalog || []);
 const effortLabels = computed(
@@ -33,6 +31,16 @@ const expandedSavedVendor = ref(
 const busy = ref(false);
 const testing = ref(false);
 const picker = ref(false);
+const editorOpen = ref(false);
+async function closeEditor() {
+  if (!(await discardDraft())) return;
+  modelList.value = studio.core.models.map((model: any) => ({ ...model }));
+  index.value = modelList.value.findIndex(
+    (model: any) => model.id === draft.id,
+  );
+  Object.assign(draft, blank(), modelList.value[index.value], { apiKey: "" });
+  editorOpen.value = false;
+}
 const catalogSearch = ref("");
 const testResult = ref("");
 const tokenUsage = ref<any>(null);
@@ -310,7 +318,8 @@ async function discardDraft() {
 
 async function select(i: number) {
   const next = modelList.value[i];
-  if (!next || next.id === draft.id) return;
+  if (!next) return;
+  if (next.id === draft.id && editorOpen.value) return;
   if (!(await discardDraft())) return;
   modelList.value = modelList.value.filter(
     (m: any) =>
@@ -318,6 +327,7 @@ async function select(i: number) {
       studio.core.models.some((saved: any) => saved.id === m.id),
   );
   index.value = modelList.value.findIndex((m: any) => m.id === next.id);
+  editorOpen.value = true;
   expandedSavedVendor.value = modelVendor(next);
   Object.assign(draft, blank(), next, { apiKey: "" });
   testResult.value = "";
@@ -355,6 +365,7 @@ function choosePreset(preset: any) {
   Object.assign(draft, row);
   testResult.value = "";
   picker.value = false;
+  editorOpen.value = true;
   studio.dirty = true;
 }
 
@@ -429,6 +440,7 @@ async function remove() {
   await reload();
   modelList.value = studio.core.models.map((m: any) => ({ ...m }));
   testResult.value = "";
+  editorOpen.value = false;
   if (!modelList.value.length) {
     index.value = -1;
     expandedSavedVendor.value = "";
@@ -478,60 +490,52 @@ async function testModel() {
             )
           }}
         </p>
-        <div class="rows">
-          <p v-if="!modelList.length" class="muted">{{ t("还没有模型。") }}</p>
-          <details
-            v-for="group in savedGroups"
-            :key="group.vendor"
-            class="saved-vendor"
-            :open="expandedSavedVendor === group.vendor"
-            :data-saved-vendor="group.vendor"
-            @toggle="toggleSavedVendor(group.vendor, $event)"
+        <div class="model-card-grid">
+          <button
+            v-for="(model, i) in modelList"
+            :key="model.id"
+            class="model-card"
+            @click="select(i)"
           >
-            <summary>
-              <span>{{ group.vendor }}</span>
-              <small>{{
-                t("{length} 个模型", { length: group.models.length })
-              }}</small>
-            </summary>
-            <div class="vendor-models">
-              <button
-                v-for="entry in group.models"
-                :key="entry.model.id"
-                class="entity-row"
-                :class="{ selected: index === entry.index }"
-                @click="select(entry.index)"
-              >
-                <span
-                  class="badge"
-                  :style="{
-                    '--hue': hueOf(
-                      entry.model.label || entry.model.model || entry.model.id,
-                    ),
-                  }"
-                  >{{
-                    String(entry.model.label || entry.model.model || "?")
-                      .slice(0, 1)
-                      .toUpperCase()
-                  }}</span
-                >
-                <span class="who">
-                  <b>{{ entry.model.label || entry.model.model }}</b>
-                  <small>{{
-                    entry.model.enabled === false
-                      ? t("已关闭")
-                      : entry.model.isDefault
-                        ? t("默认模型")
-                        : t("备用模型")
-                  }}</small>
-                </span>
-              </button>
-            </div>
-          </details>
+            <span class="model-card-icon">{{
+              String(model.label || model.model || "?")
+                .slice(0, 1)
+                .toUpperCase()
+            }}</span>
+            <span class="model-card-title"
+              ><b>{{ model.label || model.model }}</b
+              ><small>{{ modelVendor(model) }}</small></span
+            >
+            <span class="chip">{{
+              model.enabled === false
+                ? t("已关闭")
+                : model.isDefault
+                  ? t("默认模型")
+                  : t("备用模型")
+            }}</span>
+            <small>{{
+              model.hasApiKey ? t("密钥已保存") : t("待填写密钥")
+            }}</small>
+          </button>
+          <Empty
+            v-if="!modelList.length"
+            :title="t('还没有模型')"
+            :text="
+              t(
+                '常见厂商会预填模型参数；OpenRouter 可选 GPT-6 预设，也可用自选模型手动填写模型 ID 和参数。',
+              )
+            "
+          />
         </div>
       </aside>
-
-      <section v-if="editing" class="card detail">
+    </div>
+    <Sheet
+      :open="editorOpen"
+      :title="draft.label || t('模型档案')"
+      width="820px"
+      @close="closeEditor"
+    >
+      <section v-if="editing && editorOpen" class="card detail">
         <div class="card-head">
           <div>
             <span class="eyebrow">{{ t("模型档案") }}</span>
@@ -785,29 +789,11 @@ async function testModel() {
           </div>
         </form>
       </section>
-      <section v-else class="card detail">
-        <Empty
-          :title="t('还没有模型')"
-          :text="
-            t(
-              '常见厂商会预填模型参数；OpenRouter 可选 GPT-6 预设，也可用自选模型手动填写模型 ID 和参数。',
-            )
-          "
-        >
-          <button class="primary" @click="openPicker">
-            {{ t("＋ 新增模型") }}
-          </button>
-        </Empty>
-      </section>
-    </div>
-
-    <EmbeddingProfile />
-    <RecallPanel />
+    </Sheet>
     <section class="card usage-panel" aria-labelledby="token-usage-title">
       <div class="usage-intro">
         <div>
-          <span class="eyebrow">{{ t("TOKEN LEDGER · 累计用量") }}</span>
-          <h2 id="token-usage-title">{{ t("一路聊到现在") }}</h2>
+          <h2 id="token-usage-title">{{ t("累计用量") }}</h2>
           <p>
             {{ t("统计本机账本记录的模型调用；缓存 Token 已包含在输入量里。") }}
           </p>

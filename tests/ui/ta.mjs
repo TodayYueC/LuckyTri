@@ -351,6 +351,7 @@ async function run() {
       changes - 1,
     );
     await page.locator(".sheet-close").click();
+    await page.locator(".people [data-tab=groups]").click();
     assert.match(
       await page.locator(".face-card").first().innerText(),
       /偶尔接话的那个/,
@@ -390,6 +391,8 @@ async function run() {
       await page.getByText("这是 TA 留下快照的第一天").isVisible(),
       "后台刷新保留已经展开的当天详情",
     );
+    await page.keyboard.press("Escape");
+    await page.locator(".sheet").waitFor({ state: "detached" });
     await page.locator('.workspace-tabs [data-tab="ahead"]').click();
     const selectedDay = await page
       .locator(".calendar .cell.picked")

@@ -5,7 +5,7 @@ import { mood, motionOn } from "../../mood/useMood";
 import sky from "../../assets/sky-daylight.webp";
 const picture = computed(() => ({
   backgroundImage: `url("${wallpapers.sky || sky}")`,
-  opacity: wallpapers.sky ? wallpapers.skyOpacity : 0.42,
+  opacity: wallpapers.sky ? wallpapers.skyOpacity : 0.16,
 }));
 </script>
 <template>

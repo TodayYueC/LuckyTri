@@ -283,8 +283,6 @@ export default {
   "＋ 新增模型": "+ Add model",
   "群聊、私聊和独处都使用默认模型。其余已启用的模型按这里的顺序作为备用。关掉的模型不会被调用。":
     "Group chats, private chats and time alone all use the default model. Other enabled models serve as backups in this order. Models that are switched off are never called.",
-  "还没有模型。": "No models yet.",
-  "{length} 个模型": "{length} models",
   默认模型: "Default model",
   备用模型: "Backup model",
   模型档案: "Model profile",
@@ -326,8 +324,7 @@ export default {
   还没有模型: "No models yet",
   "常见厂商会预填模型参数；OpenRouter 可选 GPT-6 预设，也可用自选模型手动填写模型 ID 和参数。":
     "Common vendors come with parameters prefilled. On OpenRouter you can pick a GPT-6 preset, or choose your own model and enter its ID and parameters by hand.",
-  "TOKEN LEDGER · 累计用量": "TOKEN LEDGER",
-  一路聊到现在: "All the way up to now",
+  累计用量: "Total usage",
   "统计本机账本记录的模型调用；缓存 Token 已包含在输入量里。":
     "Counts the model calls recorded in this machine's ledger; cached tokens are already included in the input.",
   "累计 Token": "Total tokens",
