@@ -6,6 +6,7 @@ import "./styles/tokens.css";
 import "./styles/themes.css";
 import "./styles/base.css";
 import "./styles/studio.css";
+import "./styles/cards.css";
 
 const app = createApp(App);
 app.config.errorHandler = (error) => {

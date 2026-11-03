@@ -8,8 +8,8 @@
   --gap: 22px;
   --r-s: 12px;
   --r-m: 18px;
-  --r-l: 26px;
-  --r-xl: 32px;
+  --r-l: 20px;
+  --r-xl: 24px;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --spring: cubic-bezier(0.2, 0.85, 0.25, 1.12);
   --shadow-soft: 0 8px 28px -18px rgb(66 59 105 / 0.18);
@@ -377,7 +377,7 @@ button:active:not(:disabled) {
   backdrop-filter: none;
 }
 .studio-shell .card {
-  padding: 24px;
+  padding: 22px;
 }
 .studio-shell .card-head {
   align-items: center;
@@ -776,7 +776,9 @@ button:active:not(:disabled) {
   gap: 10px;
 }
 .studio-shell .home-cell .today-scroll {
-  max-height: 185px;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
 }
 .companion-dock {
   position: fixed !important;

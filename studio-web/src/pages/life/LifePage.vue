@@ -64,7 +64,7 @@ usePageActivity("life", load);
 
 <template>
   <div class="page life">
-    <div class="life-bar">
+    <div v-if="['reviews', 'story'].includes(view)" class="life-bar">
       <Tabs
         v-model="view"
         :label="t('一生的分区')"

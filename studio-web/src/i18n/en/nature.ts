@@ -43,10 +43,6 @@ export default {
     "She has not changed these scales through experience yet. Once a new choice with a source forms during time alone or in the diary, it will be kept here.",
   "天性还可以改 {left} 次，包括性格刻度。用完后由她自己生长。":
     "Nature can still be changed {left} more times, character scales included. After that she grows by herself.",
-  "塑造 TA": "Shape TA",
-  "TA 生来是什么样的？": "What is TA like by birth?",
-  "天性是种子：性格、兴趣和底线。TA 的自我、在各群的样子、对每个人的感觉都会从经历里长出来——你能看到、能撤销，但不在这里改写。":
-    "Nature is a seed: character, interests and boundaries. TA's self, how she is in each group, and how she feels about each person all grow from experience. You can see them and undo them, but not rewrite them here.",
   名字: "Name",
   性别: "Gender",
   女: "Female",
@@ -90,8 +86,7 @@ export default {
   天性有未保存的修改: "Nature has unsaved changes",
   "还可以改 {left} 次": "{left} changes left",
   "调色盘 · 即时反馈": "Palette · instant feedback",
-  "微小的倾向，也会改变表达":
-    "Even small tendencies change how she expresses herself",
+  性格预览: "Personality preview",
   用草稿天性试聊: "Trial chat with the draft nature",
   今天真的好累啊: "I'm so tired today",
   用左边还没保存的天性: "Uses the unsaved nature on the left",

@@ -1,4 +1,12 @@
 export default {
+  "添加资料后，TA 可以在聊天和独处时阅读。":
+    "Add a document for TA to read in conversation and alone time.",
+  群聊身份: "Group identities",
+  关系管理: "Relationships",
+  编辑记忆: "Edit memory",
+  知识向量模型: "Knowledge embeddings",
+  记忆召回: "Memory recall",
+  联网搜索: "Web search",
   正在载入: "Loading",
   外观与语言: "Appearance & language",
   壁纸与构图: "Wallpaper & framing",

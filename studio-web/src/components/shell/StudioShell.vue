@@ -26,7 +26,7 @@ import { liveMood, setQuiet, theme } from "../../mood/useMood";
 import { ACTIVITY_LABELS } from "../../mood/presence";
 import { views, preloadPage } from "../../pages";
 import Icon from "../ui/Icon.vue";
-import Tabs from "../ui/Tabs.vue";
+import Tabs from "../ui/SectionNav.vue";
 import Popover from "../ui/Popover.vue";
 import Sheet from "../ui/Sheet.vue";
 import TaOrb from "../ta/TaOrb.vue";

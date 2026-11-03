@@ -295,62 +295,6 @@ function fix(id: string) {
             {{ t("改用这种方式") }}
           </button>
         </div>
-
-        <div class="music-card" data-testid="onebot-music">
-          <h3>{{ t("网易云音乐卡片") }}</h3>
-          <p class="muted">
-            {{
-              t(
-                "分享歌曲时优先发卡片。部分接入端需在 WebUI 配置音乐签名；此处可填镜像提示并选择降级策略。",
-              )
-            }}
-          </p>
-          <p v-if="music.label" class="muted note">{{ music.label }}</p>
-          <p v-if="music.hint" class="muted note">{{ music.hint }}</p>
-          <label>
-            {{ t("musicSignUrl 提示（可选）") }}
-            <input
-              v-model="music.musicSignUrl"
-              type="url"
-              autocomplete="off"
-              :placeholder="t('接入端 WebUI 中的音乐签名服务地址')"
-              @change="studio.dirty = true"
-            />
-          </label>
-          <div class="music-toggles">
-            <Toggle
-              v-model="music.preferCard"
-              name="preferCard"
-              @change="studio.dirty = true"
-            >
-              <b>{{ t("优先发卡片") }}</b>
-            </Toggle>
-            <Toggle
-              v-model="music.allowLinkFallback"
-              name="allowLinkFallback"
-              @change="studio.dirty = true"
-            >
-              <b>{{ t("卡片失败时降级为链接") }}</b>
-            </Toggle>
-            <Toggle
-              v-model="music.failClosed"
-              name="failClosed"
-              @change="studio.dirty = true"
-            >
-              <b>{{ t("失败则不发（failClosed）") }}</b>
-            </Toggle>
-          </div>
-          <div class="row">
-            <button
-              class="primary"
-              type="button"
-              :disabled="musicBusy"
-              @click="saveMusic"
-            >
-              {{ t("保存音乐卡片设置") }}
-            </button>
-          </div>
-        </div>
       </template>
 
       <template v-else>
@@ -518,6 +462,65 @@ function fix(id: string) {
         </li>
       </ol>
     </section>
+    <div
+      v-if="viewing === 'onebot'"
+      class="card music-card"
+      data-testid="onebot-music"
+    >
+      <h3>{{ t("网易云音乐卡片") }}</h3>
+      <p class="muted">
+        {{
+          t(
+            "分享歌曲时优先发卡片。部分接入端需在 WebUI 配置音乐签名；此处可填镜像提示并选择降级策略。",
+          )
+        }}
+      </p>
+      <p v-if="music.label" class="muted note">{{ music.label }}</p>
+      <p v-if="music.hint" class="muted note">{{ music.hint }}</p>
+      <label>
+        {{ t("musicSignUrl 提示（可选）") }}
+        <input
+          v-model="music.musicSignUrl"
+          type="url"
+          autocomplete="off"
+          :placeholder="t('接入端 WebUI 中的音乐签名服务地址')"
+          @change="studio.dirty = true"
+        />
+      </label>
+      <div class="music-toggles">
+        <Toggle
+          v-model="music.preferCard"
+          name="preferCard"
+          @change="studio.dirty = true"
+        >
+          <b>{{ t("优先发卡片") }}</b>
+        </Toggle>
+        <Toggle
+          v-model="music.allowLinkFallback"
+          name="allowLinkFallback"
+          @change="studio.dirty = true"
+        >
+          <b>{{ t("卡片失败时降级为链接") }}</b>
+        </Toggle>
+        <Toggle
+          v-model="music.failClosed"
+          name="failClosed"
+          @change="studio.dirty = true"
+        >
+          <b>{{ t("失败则不发（failClosed）") }}</b>
+        </Toggle>
+      </div>
+      <div class="row">
+        <button
+          class="primary"
+          type="button"
+          :disabled="musicBusy"
+          @click="saveMusic"
+        >
+          {{ t("保存音乐卡片设置") }}
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 

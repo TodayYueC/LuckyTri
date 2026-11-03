@@ -119,7 +119,8 @@ async function load() {
     if (view.value === "today") overview.value = cached;
     else rows.value = cached;
   }
-  loading.value = !cached;
+  loading.value =
+    !cached && (view.value === "today" ? !overview.value : !rows.value.length);
   error.value = "";
   try {
     const data = await api(endpoint);
@@ -379,7 +380,7 @@ onUnmounted(() => {
     <p v-if="error" class="card" role="alert">
       {{ error }} <button @click="load">{{ t("重试") }}</button>
     </p>
-    <p v-if="loading" class="muted" role="status">
+    <p v-if="loading" class="refresh-status" role="status">
       {{ t("正在取回这段生活…") }}
     </p>
     <template v-if="view === 'today' && overview"
