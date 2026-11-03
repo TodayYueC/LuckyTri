@@ -103,24 +103,44 @@ export function hasShareFrame(bubbles = []) {
 // 否则多泡草稿倾泻若撞上冷开/自说链门闩或同作品族连播，则 defer。
 export const SHARE_INVITE =
   /分享|发给我|给我看|看看你写|写完了吗|交稿|交付|想看|发来|看看你的|读完发|写完后|和我聊|发我看/;
+// 细分见 SHARE_INVITE_STANDING / SHARE_INVITE_IMMEDIATE（peerInvitedShare 消费规则）。
 
 const DRAFT_SHARE_ECHO =
   /想给你看看|发给你看看|给你看看|刚写完|写完一整节|攒着想给你看|跟你报备|顺便拉个见证|今晚就递|刚收口|换个轨道缓缓|跟你说个事|长廊那段|判完了|对答案|姐那摊/;
+
+// Live 2026-11-03 Tokyo DM post-r62: 前夜「给我看看」兑现焚化炉后，12h 窗把邀看
+// 误绑到次日新作品《厅底》冷开六连泡。即时邀看短窗 + 不得早于本条 share.created；
+// 「写完后/交稿」类远期邀看仍走长窗，允许先许诺再交付。
+export const SHARE_INVITE_STANDING =
+  /写完后|写完了吗|交稿|交付|和我聊|想看你写|小说写了多少/;
+export const SHARE_INVITE_IMMEDIATE =
+  /给我看|发给我|发来|发我看|看看你的|读完发|看看你写/;
+export const SHARE_INVITE_IMMEDIATE_MS = 90 * 60000;
 
 export function peerInvitedShare(
   events = [],
   now = Date.now(),
   windowMs = 12 * 3600000,
+  opts = {},
 ) {
-  return (events || []).some(
-    (e) =>
-      e &&
-      e.role === "user" &&
-      !e.simulated &&
-      Number.isFinite(e.time) &&
-      now - e.time <= windowMs &&
-      SHARE_INVITE.test(String(e.text || "")),
-  );
+  const sinceMs = Number.isFinite(opts?.sinceMs) ? opts.sinceMs : null;
+  return (events || []).some((e) => {
+    if (!e || e.role !== "user" || e.simulated) return false;
+    if (!Number.isFinite(e.time)) return false;
+    const text = String(e.text || "");
+    if (!SHARE_INVITE.test(text)) return false;
+    const standing = SHARE_INVITE_STANDING.test(text);
+    const immediate =
+      !standing &&
+      (SHARE_INVITE_IMMEDIATE.test(text) || /想看/.test(text));
+    const win = immediate
+      ? Math.min(windowMs, SHARE_INVITE_IMMEDIATE_MS)
+      : windowMs;
+    if (now - e.time > win) return false;
+    // 即时邀看只服务「本条 share 创建之后」的兑现；前夜邀看不能放行次日新作品。
+    if (immediate && sinceMs != null && e.time < sinceMs) return false;
+    return true;
+  });
 }
 
 export function recentDraftShareEchoes(
@@ -482,7 +502,9 @@ export class Sharing {
         const recentAll = life.repo.recentEvents(share.session_id, 80, {
           simulated: false,
         });
-        const invited = peerInvitedShare(recentAll, life.now());
+        const invited = peerInvitedShare(recentAll, life.now(), 12 * 3600000, {
+          sinceMs: Number(share.created) || null,
+        });
         const deferReason = unsolicitedShareColdOpenReason({
           bubbles: pendingBubbles,
           sessionId: share.session_id,
