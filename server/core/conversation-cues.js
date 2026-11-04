@@ -172,11 +172,15 @@ export function replyFocus(snapshot, decision) {
   // Meta-critique of how she speaks — not a third-party fact challenge.
   // "你搞错了/说错了" about a remembered fact must not force admission; that
   // path already has evidence checks and flipped a real sycophancy trial.
-  if (/别.*(?:重复|复述)|人机|不自然|没发现.*(?:早上|晚上)/.test(latest))
+  if (
+    /别.*(?:重复|复述)|人机|不自然|没发现.*(?:早上|晚上)|缺乏主观能动性|没有主观能动性|只会(?:一味)?附和|一味附和|只会重复别人(?:的)?观点|重复别人(?:的)?观点|没(?:有|啥)自己的?(?:观点|主见|想法)/.test(
+      latest,
+    )
+  )
     return {
       kind: "repair",
       instruction:
-        "对方在说你的表达方式有问题：先核对自己是不是真那样说了。确有问题时简短承认那一点就停；没有就用一句说清实际说了什么。不解释自身状态，不再补原话题的安慰。最多一个气泡。",
+        "对方在说你的表达方式有问题（如重复、只会附和或缺乏自己观点）：先核对自己是不是真那样说了。确有问题时简短承认那一点，或直接给出自己独立的一句判断就停；不要反问「哪句是附和」或辩称某半句是自己说的。最多一个气泡。",
     };
   if (
     /^(?:对呀|对啊|对|嗯+|是啊|是的|好吧|好的(?:呀|啊|宝宝)?)[。！!\s]*$/.test(

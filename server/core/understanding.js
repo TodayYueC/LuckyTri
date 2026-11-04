@@ -259,6 +259,14 @@ const GLOSS_RULES = [
     re: /\bksm\b|卡丝米/i,
     glosses: ["户山香澄", "卡丝米", "BanG Dream", "邦邦角色"],
   },
+  {
+    re: /\bwszdxmys\b/i,
+    glosses: ["我是真的羡慕要死", "真的羡慕死了", "羡慕"],
+  },
+  {
+    re: /(?<![\w])xm(?![\w])/i,
+    glosses: ["羡慕"],
+  },
 ];
 
 export function speechGlosses(text) {
@@ -340,13 +348,19 @@ export function priorityCues(messages = [], batchIds = [], addressedIds = []) {
       /还在.{0,16}(?:焚化炉|传送门|Portal|三格|补课|节拍)|怎么又(?:是|在).{0,12}(?:焚化|传送|Portal)|别(?:再)?(?:说|播).{0,8}(?:焚化|传送)|为什么一直写/.test(
         value,
       );
+    // Live 2026-11-04 group:1098056894: 阳「有点缺乏主观能动性 / 只会一味附和 / 只会重复别人观点 / 没啥自己的观点」
+    const isAgencyCritique =
+      /缺乏主观能动性|没有主观能动性|没(?:有|啥)?主观|只会(?:一味)?附和|一味附和|老是附和|光会附和|只会重复别人(?:的)?观点|重复别人(?:的)?观点|没(?:有|啥)自己的?(?:观点|主见|想法)|你这个机器人不行/.test(
+        value,
+      );
     if (
       !isDirect &&
       !isRoomStop &&
       !isRoomHush &&
       !isCareRedirect &&
       !isReadabilityPushback &&
-      !isTopicPushback
+      !isTopicPushback &&
+      !isAgencyCritique
     )
       continue;
     const hint = intentHint(value);
@@ -358,6 +372,7 @@ export function priorityCues(messages = [], batchIds = [], addressedIds = []) {
       !isTopicPushback &&
       !isReadabilityPushback &&
       !isCareRedirect &&
+      !isAgencyCritique &&
       !/[?？]|怎么|为什么|什么|哪|有没有|能不能|是什么|啥意思|啥|扫不了|过不了|解释一下|说清楚|讲讲|告诉我|说说看|来点评|点评一下|点评|评价一下|评价下|评一下|对比一下|哪个好|还是|二选一|选哪个|你更喜欢|更喜欢哪个|喜欢哪个|怎么看|怎么想|你怎么看|觉得怎么样|怎么样啊|给点(?:参考)?意见|参考意见|给点建议|有没有推荐|推荐一下|求推荐|你是谁|你叫什么|叫什么名字|你是什么(?:人|啊|呀)?|介绍一下你(?:自己)?|记得|记不记得|帮我记|别在群里|别聊这些|别讨论这些|喝茶|私聊吧|私聊说|去tg|别发群|别公开聊|闭嘴|别说了|闭麦|烧钱|别复读|别刷屏|傻子AI|不知所云|太没用了|只会哈|有啥用|谁问你|没人问你|没有你的事|关你屁事|sto{2,}p+|stop{2,}|\bstop\b|shut\s*up|说你自己|多关心关心我|还在焚化|还在传送/.test(
         value,
       )
@@ -369,25 +384,30 @@ export function priorityCues(messages = [], batchIds = [], addressedIds = []) {
       name: m.name,
       text: value.slice(0, 120),
       intentHint:
-        isTopicPushback || isReadabilityPushback || isCareRedirect
+        isTopicPushback ||
+        isReadabilityPushback ||
+        isCareRedirect ||
+        isAgencyCritique
           ? "correction"
           : isQuestion
             ? "question"
             : hint,
       addressed: true,
-      why: isTopicPushback
-        ? "对方在推回你反复讲的同一题材，不要当邀请续播或再报排程"
-        : isCareRedirect
-          ? "对方指出你总讲自己折腾的事，想让你关心对方或聊对方知道的事"
-          : isReadabilityPushback
-            ? "对方指出你刚才的话太玄/听不懂/像人机，先用普通大白话简短说清或收住"
-            : isQuestion
-              ? "有人叫你并在提问"
-              : isRoomStop
-                ? "本轮有人叫停群聊话题或提示风险"
-                : isRoomHush
-                  ? "本轮有人嘘停/嫌自说自话，先收住旧线或短收"
-                  : "有人叫你提出请求或纠正",
+      why: isAgencyCritique
+        ? "有人指出你只会附和、缺乏主观能动性或重复别人观点；不要反问「哪句是附和」辩解，简短认下并直接给出自己独立的具体看法"
+        : isTopicPushback
+          ? "对方在推回你反复讲的同一题材，不要当邀请续播或再报排程"
+          : isCareRedirect
+            ? "对方指出你总讲自己折腾的事，想让你关心对方或聊对方知道的事"
+            : isReadabilityPushback
+              ? "对方指出你刚才的话太玄/听不懂/像人机，先用普通大白话简短说清或收住"
+              : isQuestion
+                ? "有人叫你并在提问"
+                : isRoomStop
+                  ? "本轮有人叫停群聊话题或提示风险"
+                  : isRoomHush
+                    ? "本轮有人嘘停/嫌自说自话，先收住旧线或短收"
+                    : "有人叫你提出请求或纠正",
     });
   }
   if (!cues.length) {
