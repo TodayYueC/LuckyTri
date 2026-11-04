@@ -379,128 +379,130 @@ const statusLabel = (s: Sticker) =>
 </template>
 
 <style scoped>
-.folder-cat {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  white-space: nowrap;
-}
-.stickers {
-  display: grid;
-  gap: 16px;
-}
-.drop {
-  display: grid;
-  place-items: center;
-  gap: 4px;
-  padding: 26px;
-  border: 1.5px dashed var(--line);
-  border-radius: 20px;
-  cursor: pointer;
-  text-align: center;
-}
-.drop:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-.toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-}
-@media (max-width: 760px) {
-  .toolbar {
-    grid-template-columns: 1fr;
+@layer components {
+  .folder-cat {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    white-space: nowrap;
   }
-}
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
-  gap: 12px;
-}
-.tile {
-  position: relative;
-  display: grid;
-  gap: 6px;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: rgb(255 255 255 / 0.6);
-  text-align: left;
-}
-.tile.off {
-  opacity: 0.45;
-}
-.tile img {
-  width: 100%;
-  aspect-ratio: 1;
-  object-fit: contain;
-}
-.caption {
-  overflow: hidden;
-  color: var(--ink-soft);
-  font-size: 12px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.badge {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  padding: 1px 6px;
-  border-radius: 8px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 11px;
-}
-.badge.gif {
-  right: 8px;
-  left: auto;
-}
-.editor {
-  display: grid;
-  gap: 14px;
-}
-.editor-head {
-  display: flex;
-  gap: 14px;
-  align-items: center;
-}
-.editor-head img {
-  width: 88px;
-  height: 88px;
-  object-fit: contain;
-}
-.fields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-.fields label {
-  display: grid;
-  gap: 6px;
-  font-size: 13px;
-}
-.fields .wide {
-  grid-column: 1 / -1;
-}
-.fields .check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.save-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.danger {
-  color: #b3261e;
-}
-@media (max-width: 640px) {
+  .stickers {
+    display: grid;
+    gap: 16px;
+  }
+  .drop {
+    display: grid;
+    place-items: center;
+    gap: 4px;
+    padding: 26px;
+    border: 1.5px dashed var(--line);
+    border-radius: 20px;
+    cursor: pointer;
+    text-align: center;
+  }
+  .drop:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+  }
+  @media (max-width: 760px) {
+    .toolbar {
+      grid-template-columns: 1fr;
+    }
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+    gap: 12px;
+  }
+  .tile {
+    position: relative;
+    display: grid;
+    gap: 6px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: rgb(255 255 255 / 0.6);
+    text-align: left;
+  }
+  .tile.off {
+    opacity: 0.45;
+  }
+  .tile img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: contain;
+  }
+  .caption {
+    overflow: hidden;
+    color: var(--ink-soft);
+    font-size: 12px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 11px;
+  }
+  .badge.gif {
+    right: 8px;
+    left: auto;
+  }
+  .editor {
+    display: grid;
+    gap: 14px;
+  }
+  .editor-head {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+  }
+  .editor-head img {
+    width: 88px;
+    height: 88px;
+    object-fit: contain;
+  }
   .fields {
-    grid-template-columns: 1fr;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .fields label {
+    display: grid;
+    gap: 6px;
+    font-size: 13px;
+  }
+  .fields .wide {
+    grid-column: 1 / -1;
+  }
+  .fields .check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .save-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .danger {
+    color: #b3261e;
+  }
+  @media (max-width: 640px) {
+    .fields {
+      grid-template-columns: 1fr;
+    }
   }
 }
 </style>

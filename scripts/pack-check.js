@@ -13,7 +13,7 @@ const allowed = [
   /^server\/plugins\/runner\/(?:worker|guard)\.mjs$/,
   /^scripts\/(?:launch|start-server|service-supervisor|stop|reset-password|setup|runtime|service|browser|proxy-config|backup|recover|import-data|migrate-instance|update-instance|plugin)\.js$/,
   /^public\/app\/index\.html$/,
-  /^public\/app\/assets\/[\w-]+\.(?:js|css|png)$/,
+  /^public\/app\/assets\/[\w-]+\.(?:js|css|png|webp)$/,
   /^public\/plugin-kit\/v1\/(?:bridge\.js|kit\.css)$/,
   /^public\/(?:guide(?:\.en)?\.html|tutorial(?:\.en)?\.md)$/,
   /^plugins\/weather\/(?:index\.js|luckytri-plugin\.json)$/,
@@ -125,7 +125,7 @@ export function checkPackage() {
     }
     if (file.endsWith(".js") && file.startsWith("public/app/assets/")) {
       for (const [, asset] of source.matchAll(
-        /["'](?:\.\/|\/app\/assets\/)([^"']+\.(?:js|css|png))["']/g,
+        /["'](?:\.\/|\/app\/assets\/)([^"']+\.(?:js|css|png|webp))["']/g,
       ))
         if (!known.has(`public/app/assets/${asset}`))
           throw Error(`缺少动态 WebUI 资源: ${asset}`);

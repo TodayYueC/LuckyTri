@@ -1,11 +1,7 @@
-// English for the Now page.
 export default {
-  // NowPage.vue
   独处与日记: "Alone & diary",
   整理记忆: "Sorting memory",
   拖动调整首页壁纸构图: "Drag to adjust the wallpaper framing",
-  "按住并拖动图片，调整人物位置":
-    "Press and drag the image to adjust where she stands",
   拖动背景调整构图: "Drag the background to adjust the framing",
   调整构图: "Adjust framing",
   "TA 最近说": "What TA said lately",
@@ -51,12 +47,8 @@ export default {
   件在等的事: "things waiting",
   恢复默认: "Restore default",
   换壁纸: "Change wallpaper",
-
-  // useHeroStage.ts
   浏览器没有保存这次构图: "The browser did not save this framing",
   首页壁纸构图已记住: "Wallpaper framing remembered",
-
-  // WallpaperPicker.vue
   中间这张已换上: "The middle one is now set",
   后面的壁纸已换上: "The background wallpaper is now set",
   已恢复原来的壁纸: "Original wallpaper restored",
@@ -67,4 +59,4 @@ export default {
   后面壁纸的透明度: "Background wallpaper opacity",
   "越透明，心情的颜色越清楚。":
     "The more transparent it is, the clearer the mood colour shows.",
-} as Record<string, string>;
+};

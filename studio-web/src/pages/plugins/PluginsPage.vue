@@ -7,7 +7,7 @@ import Card from "../../components/ui/Card.vue";
 import Empty from "../../components/ui/Empty.vue";
 import Field from "../../components/ui/Field.vue";
 import Sheet from "../../components/ui/Sheet.vue";
-import Tabs from "../../components/ui/Tabs.vue";
+import Tabs from "../../components/ui/SectionNav.vue";
 
 const VIEWS = ["installed", "market", "actions", "import"];
 const view = ref(VIEWS.includes(studio.sub) ? studio.sub : "installed");
@@ -179,17 +179,6 @@ function stateLabel(plugin: any) {
 
 <template>
   <div class="page plugins">
-    <header class="plugins-intro">
-      <span class="eyebrow">{{ t("THE WORLD SHE CAN TOUCH · 插件") }}</span>
-      <h1>
-        {{ t("核心是她。") }}<em>{{ t("插件是世界。") }}</em>
-      </h1>
-      <p>
-        {{
-          t("插件只能经她同意接触世界。它们读不到她的数据库，也不能替她开口。")
-        }}
-      </p>
-    </header>
     <p v-if="error" class="warn-text" role="alert">{{ error }}</p>
     <Tabs
       :model-value="view"
@@ -462,128 +451,69 @@ function stateLabel(plugin: any) {
 </template>
 
 <style scoped>
-.plugins {
-  display: grid;
-  gap: var(--gap);
-}
-.plugins-intro {
-  position: relative;
-  min-height: 190px;
-  padding: 32px clamp(26px, 5vw, 60px);
-  overflow: hidden;
-  border: 1px solid rgb(255 255 255 / 0.85);
-  border-radius: 36px;
-  background:
-    radial-gradient(
-      ellipse at 90% 7%,
-      color-mix(in srgb, var(--glow-a) 48%, transparent),
-      transparent 51%
-    ),
-    radial-gradient(
-      ellipse at 62% 115%,
-      color-mix(in srgb, var(--glow-b) 38%, transparent),
-      transparent 55%
-    ),
-    linear-gradient(115deg, rgb(255 255 255 / 0.8), rgb(255 255 255 / 0.3));
-  box-shadow:
-    inset 0 2px 0 white,
-    0 25px 54px -35px color-mix(in srgb, var(--accent) 43%, transparent);
-  backdrop-filter: blur(28px) saturate(1.8);
-}
-.plugins-intro::before {
-  content: "";
-  position: absolute;
-  right: 13%;
-  top: -85%;
-  width: 350px;
-  height: 350px;
-  border: 1px solid rgb(255 255 255 / 0.72);
-  border-radius: 50%;
-  box-shadow:
-    0 0 0 29px rgb(255 255 255 / 0.13),
-    0 0 0 58px color-mix(in srgb, var(--glow-b) 12%, transparent);
-  pointer-events: none;
-}
-.plugins-intro h1,
-.plugins-intro p,
-.plugins-intro .eyebrow {
-  position: relative;
-}
-.plugins-intro h1 {
-  margin: 10px 0 7px;
-  font-size: clamp(28px, 3.25vw, 42px);
-  letter-spacing: -0.055em;
-}
-.plugins-intro h1 em {
-  font-style: normal;
-  color: var(--accent);
-}
-.plugins-intro p {
-  max-width: 560px;
-  color: var(--ink-soft);
-  font-size: 13.5px;
-}
-.stack {
-  display: grid;
-  gap: 14px;
-}
-.lead {
-  margin: 0;
-  color: var(--ink-soft);
-  font-size: 13.5px;
-}
-@media (max-width: 760px) {
-  .plugins-intro {
-    min-height: 0;
-    padding: 27px 23px;
+@layer components {
+  .plugins {
+    display: grid;
+    gap: var(--gap);
   }
-}
-.grid {
-  display: grid;
-  gap: var(--gap);
-  grid-template-columns: repeat(auto-fill, minmax(280px, 420px));
-  justify-content: start;
-}
-.muted {
-  color: var(--ink-soft);
-  font-size: 13px;
-}
-.warn-text {
-  color: var(--warn);
-}
-.settings {
-  display: grid;
-  gap: 14px;
-  margin-top: 16px;
-}
-.settings .switch {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid rgb(255 255 255 / 0.78);
-  border-radius: 18px;
-  background: rgb(255 255 255 / 0.42);
-  box-shadow: inset 0 1px 0 white;
-  font-size: 13.5px;
-  font-weight: 650;
-  color: var(--ink);
-}
-.settings .switch input {
-  padding: 0;
-  border: none;
-  box-shadow: none;
-}
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.plugin-frame {
-  width: 100%;
-  min-height: 280px;
-  border: 0;
-  border-radius: 16px;
+  .stack {
+    display: grid;
+    gap: 14px;
+  }
+  .lead {
+    margin: 0;
+    color: var(--ink-soft);
+    font-size: 13.5px;
+  }
+  @media (max-width: 760px) {
+  }
+  .grid {
+    display: grid;
+    gap: var(--gap);
+    grid-template-columns: repeat(auto-fill, minmax(280px, 420px));
+    justify-content: start;
+  }
+  .muted {
+    color: var(--ink-soft);
+    font-size: 13px;
+  }
+  .warn-text {
+    color: var(--warn);
+  }
+  .settings {
+    display: grid;
+    gap: 14px;
+    margin-top: 16px;
+  }
+  .settings .switch {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid rgb(255 255 255 / 0.78);
+    border-radius: 18px;
+    background: rgb(255 255 255 / 0.42);
+    box-shadow: inset 0 1px 0 white;
+    font-size: 13.5px;
+    font-weight: 650;
+    color: var(--ink);
+  }
+  .settings .switch input {
+    padding: 0;
+    border: none;
+    box-shadow: none;
+  }
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .plugin-frame {
+    width: 100%;
+    min-height: 280px;
+    border: 0;
+    border-radius: 16px;
+  }
 }
 </style>

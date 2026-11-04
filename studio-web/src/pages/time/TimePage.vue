@@ -119,7 +119,8 @@ async function load() {
     if (view.value === "today") overview.value = cached;
     else rows.value = cached;
   }
-  loading.value = !cached;
+  loading.value =
+    !cached && (view.value === "today" ? !overview.value : !rows.value.length);
   error.value = "";
   try {
     const data = await api(endpoint);
@@ -359,33 +360,27 @@ onUnmounted(() => {
 </script>
 <template>
   <div class="page time-page">
-    <header class="time-intro">
-      <div>
-        <span class="eyebrow">{{ t("TIME · 时间") }}</span>
-        <h1>
-          {{ t("日子在走，") }}<em>{{ t("我也有自己的事。") }}</em>
-        </h1>
-        <p>{{ t("想做的事，正在留下的作品，与世界相遇的每一段。") }}</p>
-      </div>
-      <div class="time-clock" aria-hidden="true">
-        <span>25</span><small>{{ t("留一点时间给自己") }}</small>
-      </div>
-    </header>
     <Tabs
       v-model="view"
       :label="t('时间的分区')"
-      :items="[
-        { key: 'today', label: t('今日') },
-        { key: 'tasks', label: t('待办') },
-        { key: 'works', label: t('作品库') },
-        { key: 'projects', label: t('持续项目') },
-        { key: 'experiences', label: t('体验记录') },
-      ]"
+      :items="
+        [
+          { key: 'today', label: t('今日') },
+          { key: 'tasks', label: t('待办') },
+          { key: 'works', label: t('作品库') },
+          { key: 'projects', label: t('持续项目') },
+          { key: 'experiences', label: t('体验记录') },
+        ].filter(
+          (item) =>
+            ['works', 'projects'].includes(view) ===
+            ['works', 'projects'].includes(item.key),
+        )
+      "
     />
     <p v-if="error" class="card" role="alert">
       {{ error }} <button @click="load">{{ t("重试") }}</button>
     </p>
-    <p v-if="loading" class="muted" role="status">
+    <p v-if="loading" class="refresh-status" role="status">
       {{ t("正在取回这段生活…") }}
     </p>
     <template v-if="view === 'today' && overview"

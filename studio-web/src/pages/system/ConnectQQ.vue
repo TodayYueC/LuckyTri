@@ -147,7 +147,6 @@ async function saveQqbot() {
   }
 }
 
-
 const music = reactive({
   musicSignUrl: "",
   preferCard: true,
@@ -295,54 +294,6 @@ function fix(id: string) {
           >
             {{ t("改用这种方式") }}
           </button>
-        </div>
-
-        <div class="music-card" data-testid="onebot-music">
-          <h3>{{ t("网易云音乐卡片") }}</h3>
-          <p class="muted">
-            {{
-              t(
-                "分享歌曲时优先发卡片。部分接入端需在 WebUI 配置音乐签名；此处可填镜像提示并选择降级策略。",
-              )
-            }}
-          </p>
-          <p v-if="music.label" class="muted note">{{ music.label }}</p>
-          <p v-if="music.hint" class="muted note">{{ music.hint }}</p>
-          <label>
-            {{ t("musicSignUrl 提示（可选）") }}
-            <input
-              v-model="music.musicSignUrl"
-              type="url"
-              autocomplete="off"
-              :placeholder="t('接入端 WebUI 中的音乐签名服务地址')"
-              @change="studio.dirty = true"
-            />
-          </label>
-          <div class="music-toggles">
-            <Toggle v-model="music.preferCard" name="preferCard" @change="studio.dirty = true">
-              <b>{{ t("优先发卡片") }}</b>
-            </Toggle>
-            <Toggle
-              v-model="music.allowLinkFallback"
-              name="allowLinkFallback"
-              @change="studio.dirty = true"
-            >
-              <b>{{ t("卡片失败时降级为链接") }}</b>
-            </Toggle>
-            <Toggle v-model="music.failClosed" name="failClosed" @change="studio.dirty = true">
-              <b>{{ t("失败则不发（failClosed）") }}</b>
-            </Toggle>
-          </div>
-          <div class="row">
-            <button
-              class="primary"
-              type="button"
-              :disabled="musicBusy"
-              @click="saveMusic"
-            >
-              {{ t("保存音乐卡片设置") }}
-            </button>
-          </div>
         </div>
       </template>
 
@@ -511,127 +462,188 @@ function fix(id: string) {
         </li>
       </ol>
     </section>
+    <div
+      v-if="viewing === 'onebot'"
+      class="card music-card"
+      data-testid="onebot-music"
+    >
+      <h3>{{ t("网易云音乐卡片") }}</h3>
+      <p class="muted">
+        {{
+          t(
+            "分享歌曲时优先发卡片。部分接入端需在 WebUI 配置音乐签名；此处可填镜像提示并选择降级策略。",
+          )
+        }}
+      </p>
+      <p v-if="music.label" class="muted note">{{ music.label }}</p>
+      <p v-if="music.hint" class="muted note">{{ music.hint }}</p>
+      <label>
+        {{ t("musicSignUrl 提示（可选）") }}
+        <input
+          v-model="music.musicSignUrl"
+          type="url"
+          autocomplete="off"
+          :placeholder="t('接入端 WebUI 中的音乐签名服务地址')"
+          @change="studio.dirty = true"
+        />
+      </label>
+      <div class="music-toggles">
+        <Toggle
+          v-model="music.preferCard"
+          name="preferCard"
+          @change="studio.dirty = true"
+        >
+          <b>{{ t("优先发卡片") }}</b>
+        </Toggle>
+        <Toggle
+          v-model="music.allowLinkFallback"
+          name="allowLinkFallback"
+          @change="studio.dirty = true"
+        >
+          <b>{{ t("卡片失败时降级为链接") }}</b>
+        </Toggle>
+        <Toggle
+          v-model="music.failClosed"
+          name="failClosed"
+          @change="studio.dirty = true"
+        >
+          <b>{{ t("失败则不发（failClosed）") }}</b>
+        </Toggle>
+      </div>
+      <div class="row">
+        <button
+          class="primary"
+          type="button"
+          :disabled="musicBusy"
+          @click="saveMusic"
+        >
+          {{ t("保存音乐卡片设置") }}
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.connect {
-  display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(290px, 0.9fr);
-  gap: var(--gap);
-  align-items: start;
-}
-.connection {
-  display: grid;
-  gap: 20px;
-}
-.connection-details {
-  display: grid;
-  gap: 10px;
-}
-.detail {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  padding: 13px 16px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--surface-strong) 70%, transparent);
-}
-.detail code {
-  overflow-wrap: anywhere;
-}
-.warn-text {
-  color: var(--warn);
-  overflow-wrap: anywhere;
-}
-.instructions {
-  display: grid;
-  gap: 11px;
-  padding-left: 22px;
-  margin: 0;
-  line-height: 1.65;
-}
-.notes {
-  display: grid;
-  gap: 8px;
-  padding-left: 20px;
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.6;
-}
-.note {
-  margin: -8px 0 0;
-  font-size: 12px;
-}
-.checks {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.checks li {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--surface-strong) 70%, transparent);
-  border: 1px solid var(--line);
-}
-.checks li > div {
-  flex: 1;
-  display: grid;
-  min-width: 0;
-}
-.checks small {
-  font-size: 12px;
-}
-.mark {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 2px solid var(--line);
-  font-size: 11px;
-  font-weight: 700;
-}
-.done .mark {
-  border-color: var(--ok);
-  background: var(--ok);
-  color: var(--accent-ink);
-}
-@media (max-width: 1000px) {
+@layer components {
   .connect {
-    grid-template-columns: minmax(0, 1fr);
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(290px, 0.9fr);
+    gap: var(--gap);
+    align-items: start;
   }
-}
+  .connection {
+    display: grid;
+    gap: 20px;
+  }
+  .connection-details {
+    display: grid;
+    gap: 10px;
+  }
+  .detail {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    padding: 13px 16px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--surface-strong) 70%, transparent);
+  }
+  .detail code {
+    overflow-wrap: anywhere;
+  }
+  .warn-text {
+    color: var(--warn);
+    overflow-wrap: anywhere;
+  }
+  .instructions {
+    display: grid;
+    gap: 11px;
+    padding-left: 22px;
+    margin: 0;
+    line-height: 1.65;
+  }
+  .notes {
+    display: grid;
+    gap: 8px;
+    padding-left: 20px;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .note {
+    margin: -8px 0 0;
+    font-size: 12px;
+  }
+  .checks {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .checks li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--surface-strong) 70%, transparent);
+    border: 1px solid var(--line);
+  }
+  .checks li > div {
+    flex: 1;
+    display: grid;
+    min-width: 0;
+  }
+  .checks small {
+    font-size: 12px;
+  }
+  .mark {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid var(--line);
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .done .mark {
+    border-color: var(--ok);
+    background: var(--ok);
+    color: var(--accent-ink);
+  }
+  @media (max-width: 1000px) {
+    .connect {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
 
-.music-card {
-  margin-top: 1.25rem;
-  padding-top: 1rem;
-  border-top: 1px solid color-mix(in oklab, CanvasText 12%, transparent);
-}
-.music-card h3 {
-  margin: 0 0 0.4rem;
-  font-size: 1rem;
-}
-.music-card label {
-  display: block;
-  margin: 0.75rem 0;
-}
-.music-card input[type="url"] {
-  width: 100%;
-  margin-top: 0.35rem;
-}
-.music-toggles {
-  display: grid;
-  gap: 0.5rem;
-  margin: 0.75rem 0 1rem;
+  .music-card {
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid color-mix(in oklab, CanvasText 12%, transparent);
+  }
+  .music-card h3 {
+    margin: 0 0 0.4rem;
+    font-size: 1rem;
+  }
+  .music-card label {
+    display: block;
+    margin: 0.75rem 0;
+  }
+  .music-card input[type="url"] {
+    width: 100%;
+    margin-top: 0.35rem;
+  }
+  .music-toggles {
+    display: grid;
+    gap: 0.5rem;
+    margin: 0.75rem 0 1rem;
+  }
 }
 </style>

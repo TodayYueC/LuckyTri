@@ -133,88 +133,84 @@ async function save() {
 </template>
 
 <style scoped>
-.runtime-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(260px, 0.8fr);
-  gap: var(--gap);
-  align-items: start;
-}
-.runtime-grid > .card {
-  background:
-    radial-gradient(
-      ellipse at 90% 0,
-      color-mix(in srgb, var(--glow-a) 20%, transparent),
-      transparent 55%
-    ),
-    var(--surface);
-}
-.runtime-grid .card-head h2 {
-  margin-top: 5px;
-  font-size: 23px;
-  letter-spacing: -0.035em;
-}
-
-.switches :deep(.switch > span) {
-  display: grid;
-  gap: 2px;
-}
-.switches small {
-  color: var(--ink-soft);
-  font-size: 12.5px;
-  font-weight: 400;
-}
-.numbers {
-  display: grid;
-  gap: 12px;
-}
-.numbers button,
-.numbers .stat {
-  display: grid;
-  justify-items: start;
-  gap: 2px;
-  padding: 20px 21px;
-  border: 1px solid rgb(255 255 255 / 0.83);
-  border-radius: 22px;
-  background:
-    radial-gradient(
-      ellipse at 100% 0,
-      color-mix(in srgb, var(--glow-b) 24%, transparent),
-      transparent 63%
-    ),
-    rgb(255 255 255 / 0.44);
-  box-shadow:
-    inset 0 1px 0 white,
-    0 12px 26px -24px var(--accent);
-  text-align: left;
-  backdrop-filter: blur(18px) saturate(1.55);
-  transition:
-    transform 0.38s var(--spring),
-    box-shadow 0.23s;
-}
-.numbers button:hover:not(:disabled) {
-  transform: translateX(5px) scale(1.018);
-  box-shadow:
-    inset 0 1px 0 white,
-    0 18px 28px -22px var(--accent);
-}
-.numbers b {
-  font: 750 29px var(--font-display);
-  color: var(--accent);
-}
-.numbers .stat.warn b {
-  color: var(--warn);
-}
-.numbers .stat.danger b {
-  color: var(--danger);
-}
-.numbers span {
-  color: var(--ink-soft);
-  font-size: 12.5px;
-  font-weight: 500;
-}
-@media (max-width: 900px) {
+@layer components {
   .runtime-grid {
-    grid-template-columns: minmax(0, 1fr);
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(260px, 0.8fr);
+    gap: var(--gap);
+    align-items: start;
+  }
+  .runtime-grid > .card {
+    background: var(--surface);
+  }
+  .runtime-grid .card-head h2 {
+    margin-top: 5px;
+    font-size: 23px;
+    letter-spacing: -0.035em;
+  }
+
+  .switches :deep(.switch > span) {
+    display: grid;
+    gap: 2px;
+  }
+  .switches small {
+    color: var(--ink-soft);
+    font-size: 12.5px;
+    font-weight: 400;
+  }
+  .numbers {
+    display: grid;
+    gap: 12px;
+  }
+  .numbers button,
+  .numbers .stat {
+    display: grid;
+    justify-items: start;
+    gap: 2px;
+    padding: 20px 21px;
+    border: 1px solid rgb(255 255 255 / 0.83);
+    border-radius: 22px;
+    background:
+      radial-gradient(
+        ellipse at 100% 0,
+        color-mix(in srgb, var(--glow-b) 24%, transparent),
+        transparent 63%
+      ),
+      rgb(255 255 255 / 0.44);
+    box-shadow:
+      inset 0 1px 0 white,
+      0 12px 26px -24px var(--accent);
+    text-align: left;
+    backdrop-filter: blur(18px) saturate(1.55);
+    transition:
+      transform 0.38s var(--spring),
+      box-shadow 0.23s;
+  }
+  .numbers button:hover:not(:disabled) {
+    transform: translateX(5px) scale(1.018);
+    box-shadow:
+      inset 0 1px 0 white,
+      0 18px 28px -22px var(--accent);
+  }
+  .numbers b {
+    font: 750 29px var(--font-display);
+    color: var(--accent);
+  }
+  .numbers .stat.warn b {
+    color: var(--warn);
+  }
+  .numbers .stat.danger b {
+    color: var(--danger);
+  }
+  .numbers span {
+    color: var(--ink-soft);
+    font-size: 12.5px;
+    font-weight: 500;
+  }
+  @media (max-width: 900px) {
+    .runtime-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 }
 </style>

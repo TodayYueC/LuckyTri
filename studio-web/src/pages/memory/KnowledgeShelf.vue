@@ -9,6 +9,9 @@ import {
   searchKnowledge,
 } from "../../plates/knowledge";
 import { hueOf } from "../../format";
+import Sheet from "../../components/ui/Sheet.vue";
+import { ask } from "../../dialog";
+import { studio } from "../../stores/studio";
 import Empty from "../../components/ui/Empty.vue";
 import Select from "../../components/ui/Select.vue";
 
@@ -21,6 +24,22 @@ const text = ref("");
 const probe = ref("");
 const hits = ref<any[] | null>(null);
 const saving = ref(false);
+const adding = ref(false);
+async function closeAdd() {
+  if (
+    studio.dirty &&
+    !(await ask(t("有尚未保存的修改，离开这一页吗？"), {
+      title: t("草稿还没保存"),
+      confirmText: t("离开"),
+      cancelText: t("留下"),
+    }))
+  )
+    return;
+  adding.value = false;
+  title.value = "";
+  text.value = "";
+  studio.dirty = false;
+}
 const rebuilding = ref("");
 async function rebuild(id: string) {
   rebuilding.value = id;
@@ -62,6 +81,8 @@ async function ingest() {
     });
     title.value = "";
     text.value = "";
+    studio.dirty = false;
+    adding.value = false;
     await load();
     toast(t("文档已切分入库"));
   } catch (error) {
@@ -87,15 +108,10 @@ onMounted(load);
   <section class="shelf">
     <div class="card shelf-head">
       <div>
-        <span class="eyebrow">{{ t("资料书架") }}</span>
-        <h2>{{ t("给 TA 留一点可以读的东西") }}</h2>
-        <p class="muted">
-          {{
-            t(
-              "存放可供聊天参考的资料，和自动记录的会话记忆分开管理。共享集合里的文章，TA 独处时也会挑着读。",
-            )
-          }}
-        </p>
+        <h2>{{ t("资料库") }}</h2>
+        <small class="faint">{{
+          t("资料书架，{length} 份资料", { length: documents.length })
+        }}</small>
       </div>
       <label class="collection">
         {{ t("文档集合") }}
@@ -105,6 +121,9 @@ onMounted(load);
           :options="collections.map((c) => ({ value: c.id, label: c.name }))"
         />
       </label>
+      <button class="primary" :disabled="!collectionId" @click="adding = true">
+        {{ t("＋ 添加一份资料") }}
+      </button>
     </div>
 
     <div
@@ -114,10 +133,9 @@ onMounted(load);
       <article
         v-for="d in documents"
         :key="d.id"
-        class="book"
+        class="document-card card"
         :style="{ '--hue': hueOf(d.title || d.id) }"
       >
-        <span class="spine" aria-hidden="true"></span>
         <b>{{ d.title }}</b>
         <small class="chip" data-tone="quiet">{{ d.status }}</small>
         <button
@@ -132,29 +150,11 @@ onMounted(load);
       <Empty
         v-if="!documents.length"
         :title="t('书架还空着')"
-        :text="t('在下面放一份资料，TA 就能在聊天里查到，独处时也可能去读。')"
+        :text="t('添加资料后，TA 可以在聊天和独处时阅读。')"
       />
     </div>
 
-    <div class="grid-2">
-      <details class="card add-doc">
-        <summary>{{ t("＋ 添加一份资料") }}</summary>
-        <form class="stack tight" @submit.prevent="ingest">
-          <label>{{ t("标题") }}<input v-model="title" required /></label>
-          <label
-            >{{ t("粘贴正文")
-            }}<textarea v-model="text" rows="8" required></textarea>
-          </label>
-          <div class="save-bar">
-            <button class="primary" :disabled="saving">
-              {{ t("保存到书架") }}
-            </button>
-            <small class="faint">{{
-              t("保存之后，TA 才能在聊天和独处时读到")
-            }}</small>
-          </div>
-        </form>
-      </details>
+    <div class="knowledge-search">
       <form class="card probe" @submit.prevent="search">
         <label>
           {{ t("检索测试") }}
@@ -172,6 +172,33 @@ onMounted(load);
         </p>
       </form>
     </div>
+    <Sheet
+      :open="adding"
+      :title="t('＋ 添加一份资料')"
+      width="660px"
+      @close="closeAdd"
+      ><div class="add-doc">
+        <form
+          class="stack tight"
+          @submit.prevent="ingest"
+          @input="studio.dirty = true"
+        >
+          <label>{{ t("标题") }}<input v-model="title" required /></label>
+          <label
+            >{{ t("粘贴正文")
+            }}<textarea v-model="text" rows="8" required></textarea>
+          </label>
+          <div class="save-bar">
+            <button class="primary" :disabled="saving">
+              {{ t("保存到书架") }}
+            </button>
+            <small class="faint">{{
+              t("保存之后，TA 才能在聊天和独处时读到")
+            }}</small>
+          </div>
+        </form>
+      </div></Sheet
+    >
   </section>
 </template>
 

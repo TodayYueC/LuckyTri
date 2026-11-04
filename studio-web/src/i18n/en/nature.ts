@@ -1,8 +1,6 @@
-// English for the Nature section (the seed: character, rhythm, attention, prompts).
 export default {
   "可用更改次数已用完。之后的性格、兴趣和想法，由 TA 自己从经历里生长。":
     "No edits remain. TA's personality, interests and thoughts will continue growing from experience.",
-  // NaturePage.vue: character scales
   温柔: "Gentle",
   "颜色偏冷，表情淡淡的": "Cooler colours, a faint expression",
   "颜色更暖，嘴角上扬": "Warmer colours, the corners of her mouth turned up",
@@ -18,8 +16,6 @@ export default {
   主动: "Proactive",
   更喜欢独处: "Prefers being alone",
   更愿意分享: "More willing to share",
-
-  // prompt names
   系统指令: "System prompt",
   看见与开口: "Seeing and speaking up",
   分享与发起: "Sharing and initiating",
@@ -27,21 +23,10 @@ export default {
   回复检查: "Reply check",
   上下文压缩: "Context compression",
   摘要合并: "Summary merging",
-
-  // saving / feedback
   "天性已保存，下一次开口时生效":
     "Nature saved; it takes effect the next time she speaks",
   "TA 的日子已按新设置安排": "TA's days are arranged by the new settings",
   "指令已保存，下一轮生效": "Prompt saved; it takes effect next turn",
-  天性预览: "Nature preview",
-
-  // header
-  "THE WAY SHE GROWS · 天性": "THE WAY SHE GROWS",
-  "她的底色，": "Her undertone",
-  "慢慢长成她自己。": "slowly grows into herself.",
-  "一些与生俱来的倾向，会在每一次相遇里长出新的模样。":
-    "Some inborn tendencies take on a new shape in every encounter.",
-  "调节刻度，看看此刻的她": "Adjust the scales and see her as she is now",
   成长中的性格: "Character in growth",
   "BECOMING · 正在成为": "BECOMING",
   此刻的她: "Her right now",
@@ -58,12 +43,6 @@ export default {
     "She has not changed these scales through experience yet. Once a new choice with a source forms during time alone or in the diary, it will be kept here.",
   "天性还可以改 {left} 次，包括性格刻度。用完后由她自己生长。":
     "Nature can still be changed {left} more times, character scales included. After that she grows by herself.",
-
-  // seed form
-  "塑造 TA": "Shape TA",
-  "TA 生来是什么样的？": "What is TA like by birth?",
-  "天性是种子：性格、兴趣和底线。TA 的自我、在各群的样子、对每个人的感觉都会从经历里长出来——你能看到、能撤销，但不在这里改写。":
-    "Nature is a seed: character, interests and boundaries. TA's self, how she is in each group, and how she feels about each person all grow from experience. You can see them and undo them, but not rewrite them here.",
   名字: "Name",
   性别: "Gender",
   女: "Female",
@@ -107,13 +86,10 @@ export default {
   天性有未保存的修改: "Nature has unsaved changes",
   "还可以改 {left} 次": "{left} changes left",
   "调色盘 · 即时反馈": "Palette · instant feedback",
-  "微小的倾向，也会改变表达":
-    "Even small tendencies change how she expresses herself",
+  性格预览: "Personality preview",
   用草稿天性试聊: "Trial chat with the draft nature",
   今天真的好累啊: "I'm so tired today",
   用左边还没保存的天性: "Uses the unsaved nature on the left",
-
-  // her days
   "TA 的日子": "TA's days",
   "TA 怎样度过没人说话的时间": "How TA spends the time when no one is talking",
   "聊天安静下来后，TA 会重新看看最近的事，改变对自己、对人的理解。":
@@ -154,8 +130,6 @@ export default {
   "保存 TA 的日子": "Save TA's days",
   日常安排有未保存的修改: "Daily arrangements have unsaved changes",
   日常安排已保存: "Daily arrangements saved",
-
-  // advanced
   高级: "Advanced",
   "指令（Prompt）": "Prompts",
   要编辑的指令: "Prompt to edit",
@@ -165,9 +139,7 @@ export default {
   指令已保存: "Prompt saved",
   几点睡: "Bedtime",
   几点醒: "Wake time",
-
-  // RhythmClock.vue
   "{h} 小时": "{h} h",
   "{h} 小时 {m} 分": "{h} h {m} min",
   "睡 {hours}": "Sleeps {hours}",
-} as Record<string, string>;
+};

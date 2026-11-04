@@ -64,52 +64,41 @@ usePageActivity("life", load);
 
 <template>
   <div class="page life">
-    <header class="life-intro">
-      <div>
-        <span class="eyebrow">{{ t("LIFE · 一生") }}</span>
-        <h1>
-          {{ t("日子经过，") }}<em>{{ t("留下自己的形状。") }}</em>
-        </h1>
-        <p>{{ t("写下今天，回望从前，也给明天留一点期待。") }}</p>
-      </div>
-      <div class="life-mark" aria-hidden="true"><span></span></div>
-    </header>
-    <div class="life-bar">
-      <button class="text-button" @click="go('time')">
-        {{ t("时间、任务与作品 →") }}
-      </button>
+    <div v-if="['reviews', 'story'].includes(view)" class="life-bar">
       <Tabs
         v-model="view"
         :label="t('一生的分区')"
-        :items="[
-          {
-            key: 'diary',
-            label: t('日记本'),
-            count: life?.diaries.length ?? '',
-          },
-          {
-            key: 'reviews',
-            label: t('回顾'),
-            count: life?.reviews.length ?? '',
-          },
-          {
-            key: 'story',
-            label: t('我的来路'),
-            count: life ? life.chapters.length : '',
-          },
-          {
-            key: 'ahead',
-            label: t('约定与期待'),
-            count:
-              life?.anticipations.filter((a: any) => a.state === 'pending')
-                .length ?? '',
-          },
-          {
-            key: 'shelf',
-            label: t('书架'),
-            count: life?.readings.length ?? '',
-          },
-        ]"
+        :items="
+          [
+            {
+              key: 'diary',
+              label: t('日记本'),
+              count: life?.diaries.length ?? '',
+            },
+            {
+              key: 'reviews',
+              label: t('回顾'),
+              count: life?.reviews.length ?? '',
+            },
+            {
+              key: 'story',
+              label: t('我的来路'),
+              count: life ? life.chapters.length : '',
+            },
+            {
+              key: 'ahead',
+              label: t('约定与期待'),
+              count:
+                life?.anticipations.filter((a: any) => a.state === 'pending')
+                  .length ?? '',
+            },
+            {
+              key: 'shelf',
+              label: t('书架'),
+              count: life?.readings.length ?? '',
+            },
+          ].filter((item) => ['reviews', 'story'].includes(item.key))
+        "
       />
       <span v-if="life" class="chip" data-tone="quiet">{{
         t("来到这里的第 {dayOfLife} 天", { dayOfLife: life.dayOfLife })

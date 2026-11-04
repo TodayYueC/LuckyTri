@@ -1,3 +1,8 @@
+import {
+  navigate as studioNavigate,
+  control,
+  timeTab,
+} from "./studio-navigation.mjs";
 import { chromium } from "@playwright/test";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
@@ -144,7 +149,7 @@ try {
   await page.waitForFunction(
     () => document.querySelectorAll(".time-task").length > 1,
   );
-  await page.getByRole("tab", { name: "今日", exact: true }).click();
+  await timeTab(page, "今日");
   const queued = page.waitForResponse(
     (r) =>
       new URL(r.url()).pathname === "/api/mind/time/care" &&
@@ -190,7 +195,7 @@ try {
     .getByRole("dialog", { name: "月光之门", exact: true })
     .getByRole("button", { name: "关闭", exact: true })
     .click();
-  await page.getByRole("tab", { name: "待办", exact: true }).click();
+  await timeTab(page, "待办");
   await page.locator(".time-task").first().waitFor();
   assert.match(
     await page.locator('[data-task="' + task + '"]').innerText(),
@@ -252,7 +257,10 @@ try {
         };
       });
     assert.equal(size.lines, 1, `${width} 优先级必须横向显示`);
-    assert.ok(size.width > size.select + 30, `${width} 下拉框不能挤压文字`);
+    assert.ok(
+      size.width > size.select + 30,
+      `${width} 下拉框不能挤压文字 ${JSON.stringify(size)}`,
+    );
     assert.ok(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth + 2,
@@ -260,7 +268,7 @@ try {
     );
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.getByRole("tab", { name: "持续项目", exact: true }).click();
+  await timeTab(page, "持续项目");
   await page.getByRole("button", { name: "打开项目" }).first().click();
   await page.getByRole("heading", { name: "已经留下的篇章" }).waitFor();
   await page.getByRole("button", { name: "月光资料整理", exact: true }).click();
@@ -274,6 +282,7 @@ try {
     0,
   );
   await sourceDialog.getByRole("button", { name: "关闭", exact: true }).click();
+  await sourceDialog.waitFor({ state: "detached" });
   await page.getByRole("button", { name: /第 1 篇 · 月光之门/ }).click();
   await page.locator(".work-body").waitFor();
   assert.match(await page.locator(".work-body").innerText(), /第二段/);
@@ -283,7 +292,7 @@ try {
     .click();
   mkdirSync("workspace/ui-review", { recursive: true });
   const beforeReading = bodies;
-  await page.getByRole("tab", { name: "体验记录", exact: true }).click();
+  await timeTab(page, "体验记录");
   await page.locator(".experience-entry").first().waitFor();
   const oldDraft = page
     .locator(".experience-entry")
@@ -332,7 +341,7 @@ try {
   for (const width of [1440, 900, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     for (const tab of ["今日", "待办", "作品库", "持续项目", "体验记录"]) {
-      await page.getByRole("tab", { name: tab, exact: true }).click();
+      await timeTab(page, tab);
       await page.locator(".time-page").waitFor();
       await page.waitForTimeout(100);
       const overflow = await page.evaluate(
@@ -340,12 +349,12 @@ try {
       );
       assert.ok(overflow <= 2, `${width}/${tab} 横向溢出 ${overflow}`);
     }
-    await page.getByRole("tab", { name: "今日", exact: true }).click();
+    await timeTab(page, "今日");
     await page.screenshot({
       path: `workspace/ui-review/time-${width}.png`,
       fullPage: true,
     });
-    await page.getByRole("tab", { name: "待办", exact: true }).click();
+    await timeTab(page, "待办");
     await page.locator(".task-priority span").first().waitFor();
     await page.screenshot({
       path: `workspace/ui-review/time-tasks-${width}.png`,
@@ -353,9 +362,9 @@ try {
     });
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.getByRole("tab", { name: "作品库", exact: true }).click();
+  await timeTab(page, "作品库");
   await page.locator(".work-card").first().waitFor();
-  await page.locator('.dock-link[data-page="life"]').click();
+  await studioNavigate(page, "life");
   await page.locator(".page.life").waitFor();
   let release, seen;
   const started = new Promise((r) => (seen = r)),
@@ -367,8 +376,8 @@ try {
   });
   w.store.revision++;
   await page.waitForTimeout(1800);
-  await page.locator('.dock-link[data-page="time"]').click();
-  await page.getByRole("tab", { name: "作品库", exact: true }).click();
+  await studioNavigate(page, "time");
+  await timeTab(page, "作品库");
   await page.locator(".work-card").first().waitFor({ timeout: 1000 });
   await started;
   const refreshed = page.waitForResponse(
@@ -436,7 +445,7 @@ try {
       fullPage: true,
     });
   }
-  await page.getByRole("tab", { name: "今日", exact: true }).click();
+  await timeTab(page, "今日");
   await page.locator(".main-activity").waitFor();
   assert.match(await page.locator(".main-activity").innerText(), /正在玩/);
   await page.locator(".time-settings summary").click();

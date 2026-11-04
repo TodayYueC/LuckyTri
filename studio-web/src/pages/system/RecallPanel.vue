@@ -143,39 +143,52 @@ onMounted(load);
 </template>
 
 <style scoped>
-.stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 12px 0;
-}
-.pill {
-  padding: 2px 10px;
-  border-radius: 999px;
-  background: var(--surface-2, rgba(127, 127, 127, 0.12));
-  font-size: 0.85em;
-}
-.pill.strong {
-  font-weight: 600;
-}
-.pill.warn {
-  color: var(--danger, #c0392b);
-}
-.waiting {
-  margin: 8px 0;
-  padding-left: 18px;
-  font-size: 0.85em;
-}
-.probe {
-  display: grid;
-  grid-template-columns: minmax(140px, 1fr) minmax(200px, 3fr) auto;
-  gap: 8px;
-  margin-top: 12px;
-}
-.result ol {
-  padding-left: 20px;
-}
-.result li {
-  margin: 6px 0;
+@layer components {
+  .stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 12px 0;
+  }
+  .pill {
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: var(--surface-2, rgba(127, 127, 127, 0.12));
+    font-size: 0.85em;
+  }
+  .pill.strong {
+    font-weight: 600;
+  }
+  .pill.warn {
+    color: var(--danger, #c0392b);
+  }
+  .waiting {
+    margin: 8px 0;
+    padding-left: 18px;
+    font-size: 0.85em;
+  }
+  .probe {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 3fr) auto;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .probe > * {
+    min-width: 0;
+  }
+  @media (max-width: 680px) {
+    .probe {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .probe > .menu-select {
+      grid-column: 1 / -1;
+    }
+  }
+  .result ol {
+    padding-left: 20px;
+  }
+  .result li {
+    margin: 6px 0;
+  }
 }
 </style>

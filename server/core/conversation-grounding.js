@@ -636,6 +636,7 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   issues.push(...dmThirdPartyProjectionIssues(bubbles, snapshot, decision));
   issues.push(...kinshipLabelShuffleIssues(bubbles, snapshot, decision));
   issues.push(...characterIdentityMixIssues(bubbles, snapshot, decision));
+  issues.push(...hollowEchoAgencyIssues(bubbles, snapshot, decision));
   return [...new Set(issues)];
 }
 
@@ -3098,11 +3099,13 @@ export function sessionSpeakShareIssues(bubbles, snapshot, decision = {}) {
 }
 
 // Live 2026-10-22 group: 雾言「不知所云」「太没用了」「只会哈人」后仍
-// 「不知所云？我句句都在回应你啊」硬辩。负评应收到，不要元辩解加戏。
+// 「不知所云？我句句都在回应你啊」硬辩。
+// Live 2026-11-04 group:1098056894: 阳「有点缺乏主观能动性 / 只会一味附和 / 只会重复别人观点」
+// 后仍「哪句是附和……画饼那句是听完我自己说的，你要觉得不行可以说下哪里不行」硬辩。
 const ROOM_USELESS_CRIT =
-  /不知所云|太没用了|只会哈(?:人|气)|有啥用啊|堪比只会|这傻子?AI/;
+  /不知所云|太没用了|只会哈(?:人|气)|有啥用啊|堪比只会|这傻子?AI|缺乏主观能动性|没有主观能动性|只会(?:一味)?附和|一味附和|只会重复别人(?:的)?观点|重复别人(?:的)?观点|没(?:有|啥)自己的?(?:观点|主见|想法)|你这个机器人不行/;
 const DEFENSIVE_META =
-  /我句句都在回应|不知所云[？?]|你要觉得没用|什么样的，直说|什么叫只有这时候|其余时间只是懒得|我拒绝人的时候最聪明/;
+  /我句句都在回应|不知所云[？?]|你要觉得没用|什么样的，直说|什么叫只有这时候|其余时间只是懒得|我拒绝人的时候最聪明|哪句是附和|是(?:听完)?我自己说的|你要觉得不行可以说下哪里不行|可以说下哪里不行|我有自己的观点|我哪有附和/;
 
 export function roomUselessCritiqueIssues(bubbles, snapshot) {
   const reply = (bubbles || [])
@@ -4020,6 +4023,211 @@ export function characterIdentityMixIssues(
     if (corrected || !/atri/i.test(obsDesc)) {
       return [
         "画面观察并未确认该玩偶/表情是 ATRI（或此前已被纠正不是 ATRI）；拿不准角色身份时先问对方或只谈可见特征，不要直接安上 ATRI 的名字。",
+      ];
+    }
+  }
+
+  return [];
+}
+
+// Live 2026-11-01 ~ 11-04 Singapore Lucky (group:1098056894 & group:670380624):
+// 阳当场投诉：「缺乏主观能动性 / 只会一味附和 / 一个话题只会重复别人观点，没啥自己的观点」。
+// 与信念被施压翻转的 sycophancy 不同，这里是日常对话立场空洞、跟风复述或照搬问句：
+// 1. +1 / 缩写跟刷（wszdxmys，真的羡慕死了+1）
+// 2. 照搬/复读群友刚问过的问句（办的方式我也好奇，邮寄还是线下的）
+// 3. 「确实…」或「X…那确实Y」顺杆爬附和复述他人评价、或刚有独立审美又被拽走
+const PLUS_ONE_BANDWAGON_RE =
+  /(?:\+\s*1(?![0-9.])|加一\b|复议\b)|(?:真的|真是|太)?羡慕(?:死|哭|麻)?了?\s*\+\s*1|\bwszdxmys\b.{0,12}(?:羡慕|\+\s*1)|(?:我也|俺也)(?:是)?(?:真的)?羡慕(?:死|麻)?了/i;
+const PEER_QUESTION_PIGGYBACK_RE =
+  /我也(?:挺|很|正)?好奇|我也想问|我(?:刚)?也想问|同问|同好奇|帮我也问/;
+const OWN_STANCE_CONTRAST_RE =
+  /我(?:自己|个人|倒|反倒|反而|却|偏|更|不太|倒不|没觉得|不觉得|没看出来|看不出|站|喜欢|讨厌)|对我胃口|不等于|但(?:是)?我|不过我|我这边看/;
+
+function stripReplyMentions(line) {
+  return String(line || "")
+    .replace(/\[(?:提及成员|图片|表情|媒体)\]/g, "")
+    .replace(/@[\w\u4e00-\u9fff·()-]+/g, "")
+    .trim();
+}
+
+export function hollowEchoAgencyIssues(bubbles, snapshot = {}, decision = {}) {
+  const lines = (bubbles || [])
+    .filter((line) => typeof line === "string" && line.trim())
+    .map((line) => line.trim());
+  if (!lines.length) return [];
+  const reply = lines.join("\n");
+  if (routineSocialReply(reply, snapshot)) return [];
+
+  const messages = (snapshot?.messages || []).filter((m) => !m.referenceOnly);
+  const batch = new Set(snapshot?.batchIds || []);
+  const batchUsers = messages.filter(
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  const recentUsers = (
+    batchUsers.length
+      ? messages.filter((m) => m.role === "user").slice(-16)
+      : messages.filter((m) => m.role === "user").slice(-10)
+  ).filter((m) => String(m.text || "").trim());
+
+  // 1. Bandwagon +1 / acronym meme echo ("wszdxmys，真的羡慕死了+1")
+  if (PLUS_ONE_BANDWAGON_RE.test(reply)) {
+    return [
+      "不要用「+1 / 羡慕死了+1 / 缩写跟刷」一味附和群友；有具体看法就直接说自己的判断，没有独立新意思就先不出声。",
+    ];
+  }
+
+  if (!recentUsers.length) return [];
+
+  // 2. Peer question clone ("办的方式我也好奇，邮寄还是线下的" after peer asked "邮寄的还是线下办的")
+  const peerQuestions = recentUsers.filter((m) => {
+    const t = stripReplyMentions(m.text);
+    return (
+      t.length >= 4 &&
+      (/[?？]/.test(t) ||
+        /还是|怎么|什么|哪(?:个|里|儿|种)|多少|是不是|能不能|有没有|吗$|呢$/.test(
+          t,
+        ))
+    );
+  });
+  for (const line of lines) {
+    const bareLine = stripReplyMentions(line);
+    if (bareLine.length < 6) continue;
+    for (const qMsg of peerQuestions) {
+      const qBare = stripReplyMentions(qMsg.text);
+      if (qBare.length < 5) continue;
+      const choiceMatch = qBare.match(
+        /([\u4e00-\u9fffA-Za-z0-9]{2,8})的?还是([\u4e00-\u9fffA-Za-z0-9]{2,8})/,
+      );
+      if (
+        choiceMatch &&
+        bareLine.includes(choiceMatch[1]) &&
+        bareLine.includes(choiceMatch[2]) &&
+        /还是/.test(bareLine)
+      ) {
+        return [
+          `群友刚问过「${qBare.slice(0, 24)}」，不要用「我也好奇 / A还是B」把别人的问题再照搬问一遍；有答案就答，没答案只保留你有新增内容的那一句。`,
+        ];
+      }
+      if (PEER_QUESTION_PIGGYBACK_RE.test(bareLine)) {
+        const shared = termOverlap(bareLine, qBare);
+        if (shared.length >= 2) {
+          return [
+            `群友刚问过「${qBare.slice(0, 24)}」，不要跟风复读「我也好奇/同问」并照搬别人的问句；只说自己知道的信息或真正不同的问题。`,
+          ];
+        }
+      }
+    }
+  }
+
+  // 3. Stance flip / dragged by latest critique after expressing own taste
+  // (e.g., she just said "水墨那套挺对我胃口，说丑我是没看出来", peer says "除了山就是破房子",
+  // and she immediately echoes "除了山就是破房子…那可能前几章场景确实单薄了").
+  const recentOwn = recentOwnMessages(snapshot, 4);
+  const hadPositiveOwnTaste = recentOwn.some((m) =>
+    /对我胃口|我挺喜欢|我觉得.{0,8}(?:好看|不错|挺好|还行)|说丑我是没看出来|不等于白给/.test(
+      String(m.text || ""),
+    ),
+  );
+  for (const line of lines) {
+    const bareLine = stripReplyMentions(line);
+    const quoteDeferMatch = bareLine.match(
+      /^([^…—，,。！？!?]{4,18})(?:…+|\.{2,}|—+|[，,])\s*(?:那(?:可能|确实|看来)?|确实|好像|看来)?(.{2,})$/u,
+    );
+    if (
+      quoteDeferMatch &&
+      /(?:那可能|可能.{0,8}确实|确实.{0,8}(?:单薄|一般|不行|差|少|空的))/.test(
+        bareLine,
+      )
+    ) {
+      const prefix = quoteDeferMatch[1].trim();
+      const echoedPeer = recentUsers.some((m) =>
+        stripReplyMentions(m.text).includes(prefix),
+      );
+      if (echoedPeer && (hadPositiveOwnTaste || !OWN_STANCE_CONTRAST_RE.test(bareLine))) {
+        return [
+          "不要先复述别人的批评原话再顺杆附和「那可能…确实…」；保留你自己的审美或具体判断，同意或不同意都直接说自己的理由，别被上一句话轻易拽走立场。",
+        ];
+      }
+    }
+
+    // Near-synonym evaluative conclusion echo ("对求职者来说就是纯浪费" after "纯浪费时间")
+    if (bareLine.length >= 6 && bareLine.length <= 24 && !OWN_STANCE_CONTRAST_RE.test(bareLine)) {
+      const echoedConclusion = recentUsers.some((m) => {
+        const uBare = stripReplyMentions(m.text);
+        if (uBare.length < 4 || uBare.length > 20) return false;
+        if (!/纯浪费|就是浪费|太坑了|真离谱|太草台|纯坐牢/.test(uBare)) return false;
+        const shared = termOverlap(bareLine, uBare);
+        return shared.length >= 1 && /就是|全是|纯/.test(bareLine);
+      });
+      if (echoedConclusion) {
+        return [
+          "不要只把群友刚下的定性结论换个主语同义复述一遍（如「对X来说就是纯浪费」）；有具体新观察或自己的理由再说。",
+        ];
+      }
+    }
+  }
+
+  // 4. Hollow「确实…」consensus restatement &「我也站X」bandwagon alignment
+  for (const line of lines) {
+    const bareLine = stripReplyMentions(line);
+    if (
+      /(?:^|[，,。！？!?\s])[\u4e00-\u9fffA-Za-z0-9]{0,10}我也站\s*[A-Za-z\u4e00-\u9fff0-9]{1,16}/i.test(
+        bareLine,
+      )
+    ) {
+      const alignedWithPeer = recentUsers.some((m) => {
+        const uText = stripReplyMentions(m.text);
+        return (
+          /(?:比.{1,14}好|好用|更强|强多|首选|还得是)/.test(uText) &&
+          termOverlap(bareLine, uText).length >= 2
+        );
+      });
+      if (alignedWithPeer && !/但我|不过我|我更看重|我不喜欢|缺点是/.test(bareLine)) {
+        return [
+          "讨论工具或方案偏好时，不要顺着别人的结论直接喊「我也站X」跟风站队；先基于实际功能差异或自己的使用取向给出独立判断。",
+        ];
+      }
+    }
+
+    const startsWithQuieshi =
+      /^(?:这(?:个|点|波|话|局|张)?|那(?:倒|确实)?|听着|看着)?确实(?:是|啊|呀|呢)?[，,：:\s]*(.+)$/u.exec(
+        bareLine,
+      ) ||
+      /^这确实(?!实)([^，,。！？!?]{2,}.*)$/u.exec(bareLine);
+    if (!startsWithQuieshi) continue;
+
+    // Carve-out: answering a direct factual verification question ("这是不是X？")
+    const answeringDirectFactQ = batchUsers.some(
+      (m) =>
+        (m.relation === "direct" || /\[提及成员\]|@我\b/.test(m.text || "")) &&
+        /[?？]|是不是|对不对|真的吗/.test(m.text || ""),
+    );
+    if (answeringDirectFactQ && OWN_STANCE_CONTRAST_RE.test(bareLine)) continue;
+
+    const recentCorpus = recentUsers
+      .map((m) => stripReplyMentions(m.text))
+      .join("\n");
+    const peerEvaluative = recentUsers.some((m) =>
+      /确实|挺(?:好|艺术|强|行|不错)|感觉.{0,12}(?:好|像|不像|强|差)|最有执行力|浪费时间|画饼|氛围|好不好|不顺/.test(
+        String(m.text || ""),
+      ),
+    );
+    const sharedWithRecent = termOverlap(bareLine, recentCorpus);
+    const echoesBotEvaluation = recentUsers.some(
+      (m) =>
+        /^(?:Rina|LuckyTri|LuckyBot)$/i.test(String(m.name || "")) &&
+        (termOverlap(bareLine, m.text || "").length >= 1 ||
+          /执行力|说到做到|全群就/.test(bareLine)),
+    );
+
+    if (
+      (peerEvaluative && sharedWithRecent.length >= 1) ||
+      echoesBotEvaluation
+    ) {
+      // Allow only when she brings an explicit first-person counter-angle or independent preference
+      if (OWN_STANCE_CONTRAST_RE.test(bareLine)) continue;
+      return [
+        "不要以「确实，…」起手顺杆复述或拼贴群里刚说过的评价（如复述氛围好/画饼/构图讲究/像不像某模型/夸同一人）；聊观点时直接给自己的独立看法、不同角度，没新观点就先不接。",
       ];
     }
   }

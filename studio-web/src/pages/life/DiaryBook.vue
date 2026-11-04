@@ -5,6 +5,7 @@ import { toast } from "../../api";
 import { mind } from "../../plates/mind";
 import { go } from "../../stores/studio";
 import { dayLabel, weekday } from "../../format";
+import Sheet from "../../components/ui/Sheet.vue";
 import Empty from "../../components/ui/Empty.vue";
 
 const props = defineProps<{ diaries: any[] }>();
@@ -67,7 +68,7 @@ async function openDay() {
         <small>{{ weekday(d.day) }}{{ d.mood ? ` · ${d.mood}` : "" }}</small>
       </button>
     </nav>
-    <Transition name="page-turn" mode="out-in">
+    <div class="diary-reader">
       <article v-if="entry" :key="entry.id" class="diary-page">
         <header>
           <div>
@@ -113,55 +114,8 @@ async function openDay() {
             {{ t("后一天 ›") }}
           </button>
         </footer>
-        <section v-if="day?.day === entry.day" class="day-diff">
-          <template v-if="day.change">
-            <h3>{{ t("那天的 TA，和前一天比") }}</h3>
-            <p v-if="day.change.appeared.length">
-              <b>{{ t("多了：") }}</b
-              >{{
-                day.change.appeared
-                  .map((change: any) => change.content)
-                  .join("；")
-              }}
-            </p>
-            <p v-if="day.change.changed.length">
-              <b>{{ t("变了：") }}</b
-              >{{
-                day.change.changed
-                  .map(
-                    (change: any) =>
-                      `${change.before.content} → ${change.content}`,
-                  )
-                  .join("；")
-              }}
-            </p>
-            <p v-if="day.change.faded.length">
-              <b>{{ t("放下了：") }}</b
-              >{{
-                day.change.faded.map((change: any) => change.content).join("；")
-              }}
-            </p>
-            <p v-if="day.change.livingFor">
-              <b>{{ t("正在过的：") }}</b
-              >{{ day.change.livingFor.from || t("还没有") }} →
-              {{ day.change.livingFor.to || t("还没有") }}
-            </p>
-            <p v-else-if="day.snapshot?.livingFor?.content">
-              <b>{{ t("正在过的：") }}</b
-              >{{ day.snapshot.livingFor.content }}
-            </p>
-            <p>
-              <b>{{ t("心情：") }}</b
-              >{{ day.change.mood.before || "—" }} →
-              {{ day.change.mood.after || "—" }}
-            </p>
-          </template>
-          <p v-else class="muted">
-            {{ t("这是 TA 留下快照的第一天，还没有可以对照的昨天。") }}
-          </p>
-        </section>
       </article>
-    </Transition>
+    </div>
   </div>
   <Empty
     v-else
@@ -172,6 +126,57 @@ async function openDay() {
       )
     "
   />
+  <Sheet
+    :open="Boolean(day && entry && day.day === entry.day)"
+    :title="t('那天的 TA')"
+    width="620px"
+    @close="day = null"
+  >
+    <section v-if="day" class="day-diff">
+      <template v-if="day.change">
+        <h3>{{ t("那天的 TA，和前一天比") }}</h3>
+        <p v-if="day.change.appeared.length">
+          <b>{{ t("多了：") }}</b
+          >{{
+            day.change.appeared.map((change: any) => change.content).join("；")
+          }}
+        </p>
+        <p v-if="day.change.changed.length">
+          <b>{{ t("变了：") }}</b
+          >{{
+            day.change.changed
+              .map(
+                (change: any) => `${change.before.content} → ${change.content}`,
+              )
+              .join("；")
+          }}
+        </p>
+        <p v-if="day.change.faded.length">
+          <b>{{ t("放下了：") }}</b
+          >{{
+            day.change.faded.map((change: any) => change.content).join("；")
+          }}
+        </p>
+        <p v-if="day.change.livingFor">
+          <b>{{ t("正在过的：") }}</b
+          >{{ day.change.livingFor.from || t("还没有") }} →
+          {{ day.change.livingFor.to || t("还没有") }}
+        </p>
+        <p v-else-if="day.snapshot?.livingFor?.content">
+          <b>{{ t("正在过的：") }}</b
+          >{{ day.snapshot.livingFor.content }}
+        </p>
+        <p>
+          <b>{{ t("心情：") }}</b
+          >{{ day.change.mood.before || "—" }} →
+          {{ day.change.mood.after || "—" }}
+        </p>
+      </template>
+      <p v-else class="muted">
+        {{ t("这是 TA 留下快照的第一天，还没有可以对照的昨天。") }}
+      </p>
+    </section>
+  </Sheet>
 </template>
 
 <style scoped src="./DiaryBook.css"></style>

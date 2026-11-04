@@ -161,100 +161,106 @@ function key(which: "sleep" | "wake", event: KeyboardEvent) {
 </template>
 
 <style scoped>
-.rhythm {
-  width: 220px;
-  max-width: 100%;
-  touch-action: none;
-  padding: 7px;
-  border: 1px solid rgb(255 255 255 / 0.8);
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 25% 20%, rgb(255 255 255 / 0.9), transparent 37%),
-    color-mix(in srgb, var(--glow-b) 15%, rgb(255 255 255 / 0.4));
-  box-shadow:
-    inset 0 1px 0 white,
-    0 16px 32px -24px color-mix(in srgb, var(--accent) 50%, transparent);
-  backdrop-filter: blur(18px) saturate(1.5);
-  transition:
-    transform 0.55s var(--spring),
-    box-shadow 0.35s;
-}
-.rhythm:hover:not(.disabled) {
-  transform: scale(1.035) rotate(-1deg);
-  box-shadow:
-    inset 0 1px 0 white,
-    0 18px 36px -19px color-mix(in srgb, var(--accent) 46%, transparent);
-}
-.rhythm.disabled {
-  opacity: 0.45;
-  pointer-events: none;
-}
-svg {
-  width: 100%;
-  height: auto;
-}
-.glass-center {
-  fill: url(#clock-center);
-  stroke: rgb(255 255 255 / 0.75);
-  stroke-width: 1;
-}
-.track {
-  fill: none;
-  stroke: rgb(255 255 255 / 0.65);
-  stroke-width: 20;
-}
-.awake {
-  fill: none;
-  stroke: url(#clock-awake);
-  stroke-width: 16;
-  stroke-linecap: round;
-  filter: drop-shadow(0 2px 3px rgb(217 147 108 / 0.18));
-}
-.asleep {
-  fill: none;
-  stroke: url(#clock-asleep);
-  stroke-width: 16;
-  stroke-linecap: round;
-  filter: drop-shadow(0 2px 3px rgb(100 113 204 / 0.17));
-}
-.ticks text {
-  fill: var(--ink-soft);
-  font-size: 11px;
-}
-.center {
-  fill: var(--ink-soft);
-  font-size: 12px;
-}
-.center.big {
-  fill: var(--ink);
-  font: 700 15px var(--font-display);
-}
-.handle {
-  cursor: grab;
-  outline: none;
-}
-.handle circle {
-  fill: rgb(255 255 255 / 0.88);
-  stroke: #9baeed;
-  stroke-width: 2;
-  filter: drop-shadow(0 3px 4px rgb(73 94 168 / 0.24));
-  transition: r 0.28s var(--spring);
-}
-.handle.sun circle {
-  stroke: #efbe8a;
-}
-.handle text {
-  font-size: 15px;
-  fill: #4b54b3;
-  pointer-events: none;
-}
-.handle.sun text {
-  fill: #e0892a;
-}
-.handle:hover circle {
-  r: 18;
-}
-.handle:focus-visible circle {
-  stroke-width: 5;
+@layer components {
+  .rhythm {
+    width: 220px;
+    max-width: 100%;
+    touch-action: none;
+    padding: 7px;
+    border: 1px solid rgb(255 255 255 / 0.8);
+    border-radius: 50%;
+    background:
+      radial-gradient(
+        circle at 25% 20%,
+        rgb(255 255 255 / 0.9),
+        transparent 37%
+      ),
+      color-mix(in srgb, var(--glow-b) 15%, rgb(255 255 255 / 0.4));
+    box-shadow:
+      inset 0 1px 0 white,
+      0 16px 32px -24px color-mix(in srgb, var(--accent) 50%, transparent);
+    backdrop-filter: blur(18px) saturate(1.5);
+    transition:
+      transform 0.55s var(--spring),
+      box-shadow 0.35s;
+  }
+  .rhythm:hover:not(.disabled) {
+    transform: scale(1.035) rotate(-1deg);
+    box-shadow:
+      inset 0 1px 0 white,
+      0 18px 36px -19px color-mix(in srgb, var(--accent) 46%, transparent);
+  }
+  .rhythm.disabled {
+    opacity: 0.45;
+    pointer-events: none;
+  }
+  svg {
+    width: 100%;
+    height: auto;
+  }
+  .glass-center {
+    fill: url(#clock-center);
+    stroke: rgb(255 255 255 / 0.75);
+    stroke-width: 1;
+  }
+  .track {
+    fill: none;
+    stroke: rgb(255 255 255 / 0.65);
+    stroke-width: 20;
+  }
+  .awake {
+    fill: none;
+    stroke: url(#clock-awake);
+    stroke-width: 16;
+    stroke-linecap: round;
+    filter: drop-shadow(0 2px 3px rgb(217 147 108 / 0.18));
+  }
+  .asleep {
+    fill: none;
+    stroke: url(#clock-asleep);
+    stroke-width: 16;
+    stroke-linecap: round;
+    filter: drop-shadow(0 2px 3px rgb(100 113 204 / 0.17));
+  }
+  .ticks text {
+    fill: var(--ink-soft);
+    font-size: 11px;
+  }
+  .center {
+    fill: var(--ink-soft);
+    font-size: 12px;
+  }
+  .center.big {
+    fill: var(--ink);
+    font: 700 15px var(--font-display);
+  }
+  .handle {
+    cursor: grab;
+    outline: none;
+  }
+  .handle circle {
+    fill: rgb(255 255 255 / 0.88);
+    stroke: #9baeed;
+    stroke-width: 2;
+    filter: drop-shadow(0 3px 4px rgb(73 94 168 / 0.24));
+    transition: r 0.28s var(--spring);
+  }
+  .handle.sun circle {
+    stroke: #efbe8a;
+  }
+  .handle text {
+    font-size: 15px;
+    fill: #4b54b3;
+    pointer-events: none;
+  }
+  .handle.sun text {
+    fill: #e0892a;
+  }
+  .handle:hover circle {
+    r: 18;
+  }
+  .handle:focus-visible circle {
+    stroke-width: 5;
+  }
 }
 </style>

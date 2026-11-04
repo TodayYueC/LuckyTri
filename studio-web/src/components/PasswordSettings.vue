@@ -78,25 +78,27 @@ async function save() {
   </section>
 </template>
 <style scoped>
-.password-settings {
-  display: grid;
-  gap: 16px;
-}
-form {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 14px;
-  align-items: end;
-}
-form > :last-child {
-  grid-column: 1 / -1;
-}
-label {
-  display: grid;
-  gap: 8px;
-}
-input {
-  width: 100%;
-  box-sizing: border-box;
+@layer components {
+  .password-settings {
+    display: grid;
+    gap: 16px;
+  }
+  form {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+    align-items: end;
+  }
+  form > :last-child {
+    grid-column: 1 / -1;
+  }
+  label {
+    display: grid;
+    gap: 8px;
+  }
+  input {
+    width: 100%;
+    box-sizing: border-box;
+  }
 }
 </style>

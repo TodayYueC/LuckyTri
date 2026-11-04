@@ -16,7 +16,7 @@ import {
   when,
 } from "../../plates/mind";
 import { useMedia } from "../../media";
-import Tabs from "../../components/ui/Tabs.vue";
+import Tabs from "../../components/ui/SectionNav.vue";
 import Sheet from "../../components/ui/Sheet.vue";
 import Meter from "../../components/ui/Meter.vue";
 import Empty from "../../components/ui/Empty.vue";
@@ -30,8 +30,8 @@ const overview = shallowRef<any>(readSnapshot("/mind/mood") || null);
 const thoughts = shallowRef<any[]>(readSnapshot("/mind/thoughts?q=") || []);
 const query = ref("");
 const view = ref(
-  studio.sub === "notes"
-    ? "notes"
+  ["notes", "mood"].includes(studio.sub)
+    ? studio.sub
     : studio.sub === "list" || narrow.value
       ? "list"
       : "stars",
@@ -144,8 +144,8 @@ watch(
   () => [studio.page, studio.sub],
   ([page, sub]) => {
     if (page !== "heart") return;
-    if (sub === "notes" || sub === "list") view.value = sub;
-    else if (!sub && view.value === "notes") view.value = "stars";
+    if (["notes", "list", "mood"].includes(sub)) view.value = sub;
+    else if (!sub) view.value = "stars";
   },
 );
 usePageActivity("heart", load);
@@ -153,13 +153,6 @@ usePageActivity("heart", load);
 
 <template>
   <div class="page heart">
-    <MoodRibbon
-      v-if="overview"
-      :moods="overview.moods"
-      :baseline="overview.affect.baseline"
-      :time-zone="overview.clock.timeZone"
-    />
-
     <div class="heart-bar">
       <Tabs
         v-model="view"
@@ -168,6 +161,7 @@ usePageActivity("heart", load);
           { key: 'stars', label: t('心灵星图'), count: threads.length },
           { key: 'list', label: t('线索清单') },
           { key: 'notes', label: t('放在心上'), count: thoughts.length },
+          { key: 'mood', label: t('心情记录') },
         ]"
       />
       <p v-if="view !== 'notes'" class="muted">
@@ -177,7 +171,14 @@ usePageActivity("heart", load);
       </p>
     </div>
 
-    <template v-if="self">
+    <MoodRibbon
+      v-if="view === 'mood' && overview"
+      :moods="overview.moods"
+      :baseline="overview.affect.baseline"
+      :time-zone="overview.clock.timeZone"
+    />
+
+    <template v-if="self && view !== 'mood'">
       <template v-if="view === 'stars'">
         <StarMap
           v-if="threads.length"
@@ -369,234 +370,220 @@ usePageActivity("heart", load);
 </template>
 
 <style scoped>
-.heart {
-  display: grid;
-  gap: var(--gap);
-}
-.heart-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px 20px;
-}
-.heart-bar p {
-  flex: 1 1 380px;
-  font-size: 13px;
-}
-.thread-groups {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: var(--gap);
-  align-items: start;
-}
-.thread-group {
-  display: grid;
-  align-content: start;
-  gap: 10px;
-}
-.thread-group h2 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 15px;
-}
-.thread-group h2 i {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-}
-.thread {
-  display: grid;
-  justify-items: start;
-  gap: 6px;
-  padding: 12px 14px;
-  border-radius: 16px;
-  text-align: left;
-  font-weight: 500;
-}
-.thread.core {
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-  background: color-mix(in srgb, var(--accent-soft) 70%, var(--surface-strong));
-}
-.thread.faded {
-  opacity: 0.6;
-  border-style: dashed;
-}
-.thread-text {
-  font-size: 14px;
-  line-height: 1.6;
-}
-.thread small {
-  color: var(--ink-soft);
-  font-size: 12px;
-}
-.thread-more {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  padding: 10px 13px;
-  border: 1px dashed #ffffffd0;
-  border-radius: 16px;
-  background: linear-gradient(120deg, #ffffff9c, #ffffff4d);
-  color: var(--ink-soft);
-  font-size: 12px;
-  font-weight: 650;
-  transition:
-    transform 0.4s var(--spring),
-    background 0.25s,
-    border-color 0.25s;
-}
-.thread-more:hover {
-  transform: translateY(-2px);
-  border-color: #fff;
-  background: #ffffffcf;
-}
-.thread-more:active {
-  transform: scale(0.98);
-}
-.fold summary {
-  display: grid;
-  gap: 2px;
-}
-.fold[open] summary {
-  margin-bottom: 12px;
-}
-.grow {
-  flex: 1;
-  min-width: 0;
-}
-.thread-content {
-  font: 600 18px/1.7 var(--font-display);
-}
-.sheet-title {
-  margin-bottom: 10px;
-  font-size: 14px;
-}
-.versions {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.versions li {
-  display: grid;
-  grid-template-columns: auto auto 1fr;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--ink) 4%, transparent);
-  font-size: 13px;
-}
-.versions time {
-  color: var(--ink-soft);
-}
-.versions b {
-  color: var(--accent);
-}
-.thread-sheet > .danger {
-  justify-self: start;
-}
-.heart-bar {
-  padding: 4px 2px 2px;
-}
-.heart-bar p {
-  max-width: 50ch;
-  line-height: 1.65;
-}
-.thread-groups {
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 355px), 1fr));
-  gap: 16px;
-}
-.thread-group {
-  isolation: isolate;
-  overflow: hidden;
-  gap: 10px;
-  border-radius: 28px;
-  border-color: #ffffffe6;
-  background: linear-gradient(138deg, #ffffffcb, #ffffff63 66%, #deecff4f);
-  box-shadow:
-    inset 0 2px 0 #fff,
-    0 20px 37px -31px #637cad;
-}
-.thread-group::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  width: 140px;
-  height: 140px;
-  top: -74px;
-  right: -51px;
-  border-radius: 50%;
-  background: #dceaff9c;
-  filter: blur(23px);
-}
-.thread-group h2 {
-  padding: 2px 3px 8px;
-  border-bottom: 1px solid #ffffffc2;
-  font-size: 15px;
-}
-.thread-group h2 i {
-  width: 12px;
-  height: 12px;
-  border: 2px solid #fff;
-  box-shadow:
-    0 0 0 4px #ffffff8a,
-    0 4px 12px #6895c966;
-}
-.thread {
-  position: relative;
-  border: 1px solid #ffffffd7;
-  border-radius: 18px;
-  background: linear-gradient(120deg, #ffffffbc, #ffffff6e);
-  box-shadow: inset 0 1px 0 #fff;
-  transition:
-    transform 0.42s var(--spring),
-    box-shadow 0.25s;
-}
-.thread:hover:not(:disabled) {
-  transform: translateY(-3px) scale(1.015);
-  border-color: #fff;
-  box-shadow: 0 14px 22px -18px #6280b5;
-}
-.thread:active:not(:disabled) {
-  transform: scale(0.975);
-}
-.thread.core {
-  border-color: color-mix(in srgb, var(--accent) 28%, #fff);
-  background: linear-gradient(
-    125deg,
-    #ffffffd0,
-    color-mix(in srgb, var(--accent-soft) 44%, transparent)
-  );
-}
-.thread.faded {
-  opacity: 0.68;
-  border-style: solid;
-}
-.set-aside .fold {
-  border-radius: 25px;
-  border: 1px solid #ffffffe6;
-  background: linear-gradient(145deg, #ffffffbb, #ffffff5c);
-  box-shadow: inset 0 1px 0 #fff;
-}
-.set-aside .fold summary {
-  transition: transform 0.38s var(--spring);
-}
-.set-aside .fold summary:hover {
-  transform: translateX(4px);
-}
-.versions li {
-  border: 1px solid #ffffffd9;
-  background: #ffffff9c;
-  border-radius: 17px;
-  box-shadow: inset 0 1px 0 #fff;
-}
-@media (max-width: 760px) {
+@layer components {
+  .heart {
+    display: grid;
+    gap: var(--gap);
+  }
+  .heart-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 20px;
+  }
   .heart-bar p {
-    flex-basis: 100%;
+    flex: 1 1 380px;
+    font-size: 13px;
+  }
+  .thread-groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--gap);
+    align-items: start;
+  }
+  .thread-group {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+  }
+  .thread-group h2 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+  }
+  .thread-group h2 i {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+  .thread {
+    display: grid;
+    justify-items: start;
+    gap: 6px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    text-align: left;
+    font-weight: 500;
+  }
+  .thread.core {
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    background: color-mix(
+      in srgb,
+      var(--accent-soft) 70%,
+      var(--surface-strong)
+    );
+  }
+  .thread.faded {
+    opacity: 0.6;
+    border-style: dashed;
+  }
+  .thread-text {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .thread small {
+    color: var(--ink-soft);
+    font-size: 12px;
+  }
+  .thread-more {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 13px;
+    border: 1px dashed #ffffffd0;
+    border-radius: 16px;
+    background: linear-gradient(120deg, #ffffff9c, #ffffff4d);
+    color: var(--ink-soft);
+    font-size: 12px;
+    font-weight: 650;
+    transition:
+      transform 0.4s var(--spring),
+      background 0.25s,
+      border-color 0.25s;
+  }
+  .thread-more:hover {
+    transform: translateY(-2px);
+    border-color: #fff;
+    background: #ffffffcf;
+  }
+  .thread-more:active {
+    transform: scale(0.98);
+  }
+  .fold summary {
+    display: grid;
+    gap: 2px;
+  }
+  .fold[open] summary {
+    margin-bottom: 12px;
+  }
+  .grow {
+    flex: 1;
+    min-width: 0;
+  }
+  .thread-content {
+    font: 600 18px/1.7 var(--font-display);
+  }
+  .sheet-title {
+    margin-bottom: 10px;
+    font-size: 14px;
+  }
+  .versions {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .versions li {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--ink) 4%, transparent);
+    font-size: 13px;
+  }
+  .versions time {
+    color: var(--ink-soft);
+  }
+  .versions b {
+    color: var(--accent);
+  }
+  .thread-sheet > .danger {
+    justify-self: start;
+  }
+  .heart-bar {
+    padding: 4px 2px 2px;
+  }
+  .heart-bar p {
+    max-width: 50ch;
+    line-height: 1.65;
+  }
+  .thread-groups {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 355px), 1fr));
+    gap: 16px;
+  }
+  .thread-group {
+    isolation: isolate;
+    overflow: hidden;
+    gap: 10px;
+    border-radius: 28px;
+    border-color: var(--line);
+    background: var(--surface);
+    box-shadow: none;
+  }
+  .thread-group h2 {
+    padding: 2px 3px 8px;
+    border-bottom: 1px solid #ffffffc2;
+    font-size: 15px;
+  }
+  .thread-group h2 i {
+    width: 12px;
+    height: 12px;
+    border: 1px solid var(--line);
+    box-shadow: none;
+  }
+  .thread {
+    position: relative;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--surface);
+    box-shadow: none;
+    transition:
+      transform 0.42s var(--spring),
+      box-shadow 0.25s;
+  }
+  .thread:hover:not(:disabled) {
+    transform: translateY(-2px);
+    border-color: var(--line);
+    box-shadow: none;
+  }
+  .thread:active:not(:disabled) {
+    transform: scale(0.975);
+  }
+  .thread.core {
+    border-color: var(--line);
+    background: var(--accent-soft);
+  }
+  .thread.faded {
+    opacity: 0.68;
+    border-style: solid;
+  }
+  .set-aside .fold {
+    border-radius: 25px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    box-shadow: none;
+  }
+  .set-aside .fold summary {
+    transition: transform 0.38s var(--spring);
+  }
+  .set-aside .fold summary:hover {
+    transform: none;
+  }
+  .versions li {
+    border: 1px solid #ffffffd9;
+    background: #ffffff9c;
+    border-radius: 17px;
+    box-shadow: inset 0 1px 0 #fff;
+  }
+  @media (max-width: 760px) {
+    .heart-bar p {
+      flex-basis: 100%;
+    }
   }
 }
 </style>

@@ -236,54 +236,56 @@ async function end(row: any) {
   </Sheet>
 </template>
 <style scoped>
-.relationships {
-  display: grid;
-  gap: 14px;
-}
-h2 {
-  margin-top: 5px;
-}
-.grow {
-  flex: 1;
-  min-width: 0;
-}
-.relationship-list {
-  display: grid;
-  gap: 10px;
-}
-.relation {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  padding: 15px;
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  background: var(--surface);
-}
-.relation small {
-  display: block;
-  margin-top: 5px;
-}
-.relation p {
-  margin-top: 8px;
-  overflow-wrap: anywhere;
-}
-.chip {
-  margin-left: 8px;
-}
-.fields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-label {
-  display: grid;
-  gap: 7px;
-}
-@media (max-width: 510px) {
+@layer components {
+  .relationships {
+    display: grid;
+    gap: 14px;
+  }
+  h2 {
+    margin-top: 5px;
+  }
+  .grow {
+    flex: 1;
+    min-width: 0;
+  }
+  .relationship-list {
+    display: grid;
+    gap: 10px;
+  }
+  .relation {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    padding: 15px;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: var(--surface);
+  }
+  .relation small {
+    display: block;
+    margin-top: 5px;
+  }
+  .relation p {
+    margin-top: 8px;
+    overflow-wrap: anywhere;
+  }
+  .chip {
+    margin-left: 8px;
+  }
   .fields {
-    grid-template-columns: 1fr;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+  label {
+    display: grid;
+    gap: 7px;
+  }
+  @media (max-width: 510px) {
+    .fields {
+      grid-template-columns: 1fr;
+    }
   }
 }
 </style>
