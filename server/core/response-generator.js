@@ -98,5 +98,6 @@ export async function generate(
     },
     trace,
     images,
+    ...(options.callOptions ? [0, options.callOptions] : []),
   );
 }

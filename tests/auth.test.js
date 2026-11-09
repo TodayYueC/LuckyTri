@@ -31,13 +31,14 @@ async function fixture(t) {
   let clock = Date.now();
   const key = "auth-test-service-key";
   const auth = createManagementAuth(w.store, { key, now: () => clock });
-  const server = createApp({
+  const app = createApp({
     store: w.store,
     chatSystem: w.system,
     life: w.life,
     auth,
     runtime: { connection: () => ({ online: false }), shutdown: () => {} },
-  }).listen(0, "127.0.0.1");
+  });
+  const server = app.listen(0, "127.0.0.1");
   await new Promise((resolve) => server.on("listening", resolve));
   t.after(async () => {
     await new Promise((resolve) => server.close(resolve));
@@ -50,21 +51,34 @@ async function fixture(t) {
         const req = http.request(
           base + "/api" + path,
           {
-            method: "POST",
-            headers: { "Content-Type": "application/json", ...headers },
+            method: body === undefined ? "GET" : "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(cookie ? { Cookie: cookie } : {}),
+              ...headers,
+            },
           },
           (res) => {
             let raw = "";
             res.on("data", (chunk) => {
               raw += chunk;
             });
-            res.on("end", () =>
-              resolve({ status: res.statusCode, data: JSON.parse(raw) }),
-            );
+            res.on("end", () => {
+              const rawCookie = res.headers["set-cookie"];
+              const setCookie = Array.isArray(rawCookie)
+                ? rawCookie[0]
+                : rawCookie || null;
+              resolve({
+                status: res.statusCode,
+                data: JSON.parse(raw),
+                cookie: setCookie?.split(";")[0],
+                setCookie,
+              });
+            });
           },
         );
         req.on("error", reject);
-        req.end(JSON.stringify(body));
+        req.end(body === undefined ? undefined : JSON.stringify(body));
       });
     const res = await fetch(base + "/api" + path, {
       method: body === undefined ? "GET" : "POST",
@@ -84,6 +98,8 @@ async function fixture(t) {
   };
   return {
     w,
+    app,
+    base,
     auth,
     key,
     call,
@@ -268,4 +284,140 @@ test("only the local CLI can reset the password, without discarding user data", 
     (await f.call("/state", undefined, next.cookie)).data.settings.aliases,
     "reset-kept-alias",
   );
+});
+
+test("loopback HTTPS reverse proxy (Tailscale Serve) allows exact HTTPS origin and sets Secure cookies while preserving CSRF and untrusted-proxy boundaries", async (t) => {
+  const f = await fixture(t);
+  assert.equal(f.app.get("trust proxy"), "loopback");
+  const trustFn = f.app.get("trust proxy fn");
+  for (const loopbackIp of ["127.0.0.1", "::1", "::ffff:127.0.0.1"]) {
+    assert.equal(trustFn(loopbackIp, 0), true, `should trust loopback ${loopbackIp}`);
+  }
+  for (const nonLoopbackIp of [
+    "10.0.0.1",
+    "172.26.6.8",
+    "192.168.1.1",
+    "100.64.0.1",
+    "203.0.113.10",
+  ]) {
+    assert.equal(
+      trustFn(nonLoopbackIp, 0),
+      false,
+      `must not trust non-loopback peer ${nonLoopbackIp}`,
+    );
+  }
+
+  // Initial setup on localhost HTTP sets non-Secure cookie and works with direct HTTP Origin
+  const localHost = new URL(f.base).host;
+  const setup = await f.call(
+    "/auth/setup",
+    { password: "safe-test-password" },
+    "",
+    { Origin: `http://${localHost}` },
+  );
+  assert.equal(setup.status, 200);
+  assert.doesNotMatch(setup.setCookie, /Secure/i);
+
+  // Direct HTTP without X-Forwarded-Proto rejects mismatched https:// Origin
+  assert.equal(
+    (
+      await f.call(
+        "/auth/login",
+        { password: "safe-test-password" },
+        "",
+        { Origin: `https://${localHost}` },
+      )
+    ).status,
+    403,
+  );
+
+  // Tailscale Serve HTTPS -> http://127.0.0.1:3210 on both production tailnet hosts
+  for (const host of [
+    "xui-panel-6f21caae.taildc9f3c.ts.net",
+    "ip-172-26-6-8.taildc9f3c.ts.net",
+  ]) {
+    const proxyHeaders = {
+      Host: host,
+      Origin: `https://${host}`,
+      "X-Forwarded-Proto": "https",
+      "Sec-Fetch-Site": "same-origin",
+    };
+
+    // Wrong password reaches auth (401), not blocked by 403 origin check
+    const bad = await f.call(
+      "/auth/login",
+      { password: "wrong-password" },
+      "",
+      proxyHeaders,
+    );
+    assert.equal(bad.status, 401);
+
+    // Correct password succeeds (200) and issues Secure; HttpOnly; SameSite=Strict cookie
+    const login = await f.call(
+      "/auth/login",
+      { password: "safe-test-password" },
+      "",
+      proxyHeaders,
+    );
+    assert.equal(login.status, 200);
+    assert.match(login.setCookie, /HttpOnly/i);
+    assert.match(login.setCookie, /SameSite=Strict/i);
+    assert.match(login.setCookie, /Secure/i);
+
+    // Authenticated GET and POST APIs succeed behind the HTTPS proxy
+    const state = await f.call("/state", undefined, login.cookie, proxyHeaders);
+    assert.equal(state.status, 200);
+
+    // Cross-origin, scheme downgrade, host mismatch, and Sec-Fetch-Site: cross-site are rejected with 403
+    for (const badHeaders of [
+      { ...proxyHeaders, Origin: "https://evil.example" },
+      { ...proxyHeaders, Origin: `http://${host}` },
+      { ...proxyHeaders, Origin: "https://other.taildc9f3c.ts.net" },
+      { ...proxyHeaders, "Sec-Fetch-Site": "cross-site" },
+    ]) {
+      const rejected = await f.call(
+        "/auth/login",
+        { password: "safe-test-password" },
+        "",
+        badHeaders,
+      );
+      assert.equal(rejected.status, 403);
+      assert.equal(rejected.data.error, "不允许跨站访问");
+    }
+
+    // Logout over HTTPS proxy clears cookie with Secure attribute
+    const logout = await f.call("/auth/logout", {}, login.cookie, proxyHeaders);
+    assert.equal(logout.status, 200);
+    assert.match(logout.setCookie, /Secure/i);
+  }
+
+  // Non-loopback remote peer spoofing X-Forwarded-Proto: https is ignored and rejected with 403
+  const spoofedStatus = await new Promise((resolve) => {
+    const req = Object.create(http.IncomingMessage.prototype);
+    req.method = "POST";
+    req.url = "/api/auth/login";
+    req.headers = {
+      host: "xui-panel-6f21caae.taildc9f3c.ts.net",
+      origin: "https://xui-panel-6f21caae.taildc9f3c.ts.net",
+      "x-forwarded-proto": "https",
+    };
+    req.socket = { remoteAddress: "203.0.113.10", encrypted: false };
+    req.connection = req.socket;
+    const res = Object.create(http.ServerResponse.prototype);
+    const resHeaders = new Map();
+    res.setHeader = (k, v) => resHeaders.set(k.toLowerCase(), v);
+    res.getHeader = (k) => resHeaders.get(k.toLowerCase());
+    res.status = function (code) {
+      this.statusCode = code;
+      return this;
+    };
+    res.json = function (payload) {
+      resolve({ status: this.statusCode, data: payload, protocol: req.protocol });
+      return this;
+    };
+    f.app.handle(req, res, () => resolve({ status: 200 }));
+  });
+  assert.equal(spoofedStatus.protocol, "http");
+  assert.equal(spoofedStatus.status, 403);
+  assert.equal(spoofedStatus.data.error, "不允许跨站访问");
 });
