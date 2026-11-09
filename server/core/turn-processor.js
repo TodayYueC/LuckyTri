@@ -628,7 +628,14 @@ export class TurnProcessor {
               reason: "图片理解调用失败",
             })),
           );
-          if (model.vision) show = show.concat(describe);
+          if (
+            model.vision &&
+            visionModel.id !== model.id &&
+            !error?.timeout &&
+            !error?.circuitOpen &&
+            !error?.unavailable
+          )
+            show = show.concat(describe);
         }
       }
       enrichVisionOwnership(snapshot);
@@ -766,6 +773,7 @@ export class TurnProcessor {
           trace,
         );
       }
+      lap("turn");
       trace.decision = turn;
       if (live) this.owner.mind.time.adjust(turn, clock());
       const reading = turn.understanding;
