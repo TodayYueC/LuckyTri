@@ -330,16 +330,19 @@ export function priorityCues(messages = [], batchIds = [], addressedIds = []) {
         value,
       ) ||
       (!/[?？]/.test(value) && BARE_VENT_HUSH.test(bare));
-    // Private/direct complaint: she keeps talking about herself or things the listener doesn't know.
+    // Private/direct or explicit self-talk complaint: she keeps talking about herself or things the listener doesn't know.
     const isCareRedirect =
-      isDirect &&
-      /总是在说你自己|老顾着讲自己|多关心关心我|能不能关心一下我|你也多关心|怎么总是说些我不知道的|都是些你自己折腾的|少说点你自己的/.test(
+      (isDirect ||
+        /自说自话|说些莫名其妙|只有主动询问才说|把说自己的事|怎么又(?:在)?(?:说|讲|扯)(?:你自己|自己的事)|老顾着讲自己|总是在说你自己/.test(
+          value,
+        )) &&
+      /总是在说你自己|老顾着讲自己|多关心关心我|能不能关心一下我|你也多关心|怎么总是说些我不知道的|都是些你自己折腾的|少说(?:点)?你自己|怎么又(?:在)?(?:说|讲|扯)(?:你自己|自己的事)|没人问你.{0,10}(?:自己|干了什么|写什么|留白)|谁问你.{0,10}(?:自己|干了什么|写什么|留白)|只有主动询问才说|把说自己的事|别(?:老|总)?(?:说|扯|提)你(?:自己|那点事)|我们在聊.{1,16}你(?:怎么)?(?:又|还)?(?:说|讲|扯)|老是自说自话|总是自说自话|怎么.{0,12}自说自话|说些莫名其妙/.test(
         value,
       );
     // Readability / opacity complaint ("你在说什么" / "你说的是中文吗" / "怎么突然这么文艺" / "好人机"):
     const isReadabilityPushback =
-      isDirect &&
-      /你在说什么|你在讲什么|你说的是中文吗|说人话|听不懂|没听懂|看不懂|没看懂|怎么突然这么文艺|这句话好人机|太人机了|好自恋/.test(
+      (isDirect || /这又什么玩意|变弱智了/.test(value)) &&
+      /你在说什么|你在讲什么|你说的是中文吗|说人话|听不懂|没听懂|看不懂|没看懂|怎么突然这么文艺|这句话好人机|太人机了|好自恋|这又什么玩意|变弱智了/.test(
         value,
       );
     // Live 2026-10-24/25/27: 「还在焚化炉」「还在焚化炉？」= fatigue pushback on mono topic, not invite.

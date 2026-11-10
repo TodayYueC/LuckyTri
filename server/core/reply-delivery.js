@@ -369,7 +369,7 @@ export class ReplyDelivery {
       ) ||
       (!ignoreBotTail && groundingView.botOnlyTail >= 6) ||
       snapshot.batch.some((m) =>
-        /看不懂|没看懂|听不懂|太抽象|人机|复读|说人话|好好说话|冷淡|冷漠|你觉得我|我的人格|性格怎么样/.test(
+        /看不懂|没看懂|听不懂|太抽象|人机|复读|说人话|好好说话|冷淡|冷漠|你觉得我|我的人格|性格怎么样|自说自话|莫名其妙|什么玩意|变弱智|说你自己的事|谁问你/.test(
           m.text || "",
         ),
       ) ||
