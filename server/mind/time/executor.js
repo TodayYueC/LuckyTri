@@ -431,7 +431,11 @@ export class TimeExecutor {
                   project.id,
                 );
             }
-            if (result.share?.choice && task.session_id)
+            if (
+              result.share?.choice &&
+              task.session_id &&
+              (task.kind === "promise" || task.checkpoint.contract?.delivery)
+            )
               time.sharing.choose(
                 work.id,
                 task.session_id,

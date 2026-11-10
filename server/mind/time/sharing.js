@@ -174,6 +174,7 @@ export function unsolicitedShareColdOpenReason({
   sessionId,
   events = [],
   work = {},
+  task = null,
   now = Date.now(),
   invited = false,
 } = {}) {
@@ -208,9 +209,25 @@ export function unsolicitedShareColdOpenReason({
   const solo = initiativeSoloChainIssues(report, snapshot);
   if (solo.length) return solo[0];
 
+  const promised =
+    task?.kind === "promise" ||
+    Boolean(task?.checkpoint?.contract?.delivery) ||
+    (events || []).some(
+      (e) =>
+        e &&
+        e.role === "assistant" &&
+        !e.simulated &&
+        /(?:我会|我给你|答应.{0,8}给?你|说好.{0,8}给?你).{0,20}(?:写|读|发|看)/.test(
+          String(e.text || ""),
+        ),
+    );
+
   const cold = selfCenteredOpenIssues(report, snapshot);
   const quietGap = isPriv ? 20 : 45;
-  if (cold.length && echoes.length >= 1 && gapMinutes >= quietGap) {
+  if (
+    cold.length &&
+    (!promised || !isPriv || (echoes.length >= 1 && gapMinutes >= quietGap))
+  ) {
     return cold[0];
   }
 
@@ -490,6 +507,7 @@ export class Sharing {
         return { status: "waiting", reason };
       }
     }
+    const task = this.time.tasks.get(work.task_id);
     // Live 2026-11-02: 预生成 report 气泡在真正 deliver 前再过一遍冷开/自说链门闩。
     // peer 已邀看则放行；否则多泡草稿倾泻 defer，避免分享旁路绕开 grounding。
     if (share.delivery_kind === "report") {
@@ -510,6 +528,7 @@ export class Sharing {
           sessionId: share.session_id,
           events: recentAll,
           work,
+          task,
           now: life.now(),
           invited,
         });
@@ -539,8 +558,7 @@ export class Sharing {
         }
       }
     }
-    const task = this.time.tasks.get(work.task_id),
-      trace = life.repo.trace(share.session_id, "live");
+    const trace = life.repo.trace(share.session_id, "live");
     // Empty targets + shareDelivery: this is a framed share, not a reply to
     // the last sticker war line.
     trace.decision = {
