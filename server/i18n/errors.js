@@ -650,6 +650,8 @@ export const ERRORS = {
   模型服务商预设无效: "The model provider preset is invalid",
   思考强度无效: "The thinking effort is invalid",
   模型名称不能为空: "The model name cannot be empty",
+  "这个模型服务正在恢复探测中，先改走备用模型":
+    "This model service is probing for recovery; using the backup model for now",
 };
 
 // Messages that carry a value. `{0}`, `{1}` are filled with what the code put
@@ -685,6 +687,10 @@ export const ERROR_PATTERNS = [
   [
     "这个模型服务连续失败，已暂停请求，约 {0} 秒后自动恢复",
     "This model service failed repeatedly and is paused; it resumes automatically in about {0} seconds",
+  ],
+  [
+    "主模型近期触发限流，后台整理暂让实时对话优先，约 {0} 秒后恢复",
+    "The main model was recently rate-limited; background upkeep yields to live conversation for about {0} seconds",
   ],
   [
     "主模型 {0} 请求失败（{1}），这一步改用备用模型 {2}",

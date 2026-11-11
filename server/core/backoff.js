@@ -105,7 +105,7 @@ export class Backoff {
 export function providerWaitMs(error) {
   const status = Number(error?.status);
   if ([401, 402, 403].includes(status)) return 3600000;
-  if (status === 429) return 5 * 60000;
+  if (status === 429 || error?.rateLimited) return 5 * 60000;
   if (error?.circuitOpen || error?.unavailable) return 2 * 60000;
   return 0;
 }

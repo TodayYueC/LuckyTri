@@ -104,7 +104,12 @@ export function networkErrorCode(error) {
   return describeNetworkError(error).code;
 }
 
-export function retryDelayFromResponse(response, fallbackMs = 900) {
+export function retryDelayFromResponse(
+  response,
+  fallbackMs = 900,
+  maxMs = 30000,
+) {
+  const cap = Math.max(1000, Number(maxMs) || 30000);
   const value = String(response?.headers?.get?.("retry-after") || "").trim();
   if (value) {
     const seconds = Number(value);
@@ -114,9 +119,9 @@ export function retryDelayFromResponse(response, fallbackMs = 900) {
       : Number.isFinite(dateDelay) && dateDelay > 0
         ? dateDelay
         : Number.NaN;
-    if (Number.isFinite(delay)) return Math.max(0, Math.min(delay, 30000));
+    if (Number.isFinite(delay)) return Math.max(0, Math.min(delay, cap));
   }
-  return Math.max(0, Math.min(Number(fallbackMs) || 900, 30000));
+  return Math.max(0, Math.min(Number(fallbackMs) || 900, cap));
 }
 
 export async function withTransientRequestRetry(
@@ -126,6 +131,7 @@ export async function withTransientRequestRetry(
     delayMs = 600,
     maxDelayMs = 8000,
     deadlineMs = 45000,
+    shouldRetry,
     onRetry,
     random = Math.random,
     sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
@@ -149,6 +155,11 @@ export async function withTransientRequestRetry(
       const hinted = Number(error?.retryDelayMs);
       if (Number.isFinite(hinted))
         wait = Math.max(wait, Math.min(hinted, 30000));
+      if (
+        shouldRetry &&
+        !shouldRetry(error, { attempt, wait, elapsed: now() - started })
+      )
+        throw error;
       if (now() - started + wait > deadlineMs) throw error;
       onRetry?.(attempt + 1, error, wait);
       await sleep(wait);
