@@ -66,7 +66,7 @@ export class ChatSystem {
         "UPDATE core_jobs SET status='interrupted' WHERE status IN ('pending','running')",
       )
       .run();
-    this.models = models || new ModelManager(this.repo);
+    this.models = models || new ModelManager(this.repo, { now });
     this.mind = new Mind(this.repo, { models: this.models, now });
     this.memory = this.mind.memory;
     this.knowledge =
@@ -565,7 +565,16 @@ export class ChatSystem {
     } catch {
       return;
     }
-    const models = withFallback(this.models, this.fallbackFor(policy, profile));
+    const fallbacks = this.fallbackFor(policy, profile);
+    const hasUsableFallback = fallbacks.some(
+      (candidate) => this.models.available?.(candidate, now) !== false,
+    );
+    if (
+      !hasUsableFallback &&
+      this.models.backgroundAvailable?.(profile, now) === false
+    )
+      return;
+    const models = withFallback(this.models, fallbacks);
     const memory = this.mind.memory;
     if (
       policy.memory &&

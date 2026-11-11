@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { localClock } from "./conversation-cues.js";
 import { readableName, speakerNames } from "./speaker-names.js";
 import { grounded } from "../mind/salience.js";
+import { providerWaitMs } from "./backoff.js";
 
 export const DEFAULT_CONTEXT_MESSAGES = 40;
 export const COMPACTION_BLOCK = 30;
@@ -429,10 +430,13 @@ export class ContextCompactor {
       })
       .catch((error) => {
         const count = (this.failures.get(session)?.count || 0) + 1;
+        const wait = Math.max(
+          BACKOFF_MS[Math.min(count, BACKOFF_MS.length) - 1],
+          providerWaitMs(error),
+        );
         this.failures.set(session, {
           count,
-          until:
-            Date.now() + BACKOFF_MS[Math.min(count, BACKOFF_MS.length) - 1],
+          until: Date.now() + wait,
         });
         trace.error = error.message;
         trace.reason = "语境压缩失败，稍后自动重试";
