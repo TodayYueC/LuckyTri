@@ -11,6 +11,8 @@ export const GROUP_CHECK_DEADLINE_MS = 5000;
 export const REWRITE_DEADLINE_MS = 25000;
 export const POST_DRAFT_BUDGET_MS = 45000;
 export const GROUP_POST_DRAFT_BUDGET_MS = 15000;
+export const GROUP_FAILOVER_TURN_POST_DRAFT_BUDGET_MS = 25000;
+const MIN_GROUP_POST_DRAFT_MS = 6000;
 import { replyPrompt } from "./persona-manager.js";
 import { actionLine, performActions } from "../actions/index.js";
 import {
@@ -418,9 +420,25 @@ export class ReplyDelivery {
         trace.steps.push("接话内容已复核过，这次不再为同一原因整段复审");
       return needed;
     };
+    const turnFailedOver = (trace.calls || []).some(
+      (call) => call?.stage === "turn" && call?.fallbackFrom,
+    );
+    const turnCallMs = (trace.calls || [])
+      .filter((call) => call?.stage === "turn")
+      .reduce((sum, call) => sum + (Number(call?.elapsed) || 0), 0);
+    const turnSpentMs = Math.max(Number(trace.timings?.turn) || 0, turnCallMs);
+    const defaultGroupPostDraftMs = turnFailedOver
+      ? Math.min(
+          GROUP_POST_DRAFT_BUDGET_MS,
+          Math.max(
+            MIN_GROUP_POST_DRAFT_MS,
+            GROUP_FAILOVER_TURN_POST_DRAFT_BUDGET_MS - turnSpentMs,
+          ),
+        )
+      : GROUP_POST_DRAFT_BUDGET_MS;
     const postDraftBudgetMs =
       policy.postDraftBudgetMs ??
-      (!c.privateChat ? GROUP_POST_DRAFT_BUDGET_MS : POST_DRAFT_BUDGET_MS);
+      (!c.privateChat ? defaultGroupPostDraftMs : POST_DRAFT_BUDGET_MS);
     let postDraftDeadline = Date.now() + postDraftBudgetMs;
     const deepCheck = async (response) => {
       // The reply is already written; these checks only decide whether it
