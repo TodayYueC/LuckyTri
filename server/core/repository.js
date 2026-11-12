@@ -147,6 +147,7 @@ export function formatSlowTraceLine(trace) {
   const calls = Array.isArray(trace?.calls) ? trace.calls : [];
   const stageMs = {};
   const errors = [];
+  const fallbacks = [];
   for (const call of calls) {
     const st = String(call?.stage || "unknown");
     const ms = Number(call?.elapsed) || 0;
@@ -155,6 +156,10 @@ export function formatSlowTraceLine(trace) {
       const cls = call.errorClass || "error";
       const status = call.status ? `:${call.status}` : "";
       errors.push(`${st}:${cls}${status}`);
+    }
+    if (call?.fallbackFrom) {
+      const modelId = call?.model?.model || call?.model?.id || "backup";
+      fallbacks.push(`${st}:${modelId}:${Math.round(ms)}ms`);
     }
   }
   const stages = Object.entries({
@@ -167,8 +172,10 @@ export function formatSlowTraceLine(trace) {
     .filter(([, v]) => Number(v) > 0)
     .map(([k, v]) => `${k}=${Math.round(Number(v))}ms`)
     .join(" ");
+  const pathPart = trace?.path ? ` path=${trace.path}` : "";
   const errPart = errors.length ? ` errors=${errors.join(",")}` : "";
-  return `[slow-trace] session=${trace?.sessionId || ""} status=${trace?.status || ""} elapsed=${Math.round(Number(trace?.elapsed) || 0)}ms calls=${calls.length}${stages ? ` ${stages}` : ""}${errPart}`;
+  const fbPart = fallbacks.length ? ` fallback=${fallbacks.join(",")}` : "";
+  return `[slow-trace] session=${trace?.sessionId || ""} status=${trace?.status || ""}${pathPart} elapsed=${Math.round(Number(trace?.elapsed) || 0)}ms calls=${calls.length}${stages ? ` ${stages}` : ""}${errPart}${fbPart}`;
 }
 
 function eventRow(r) {

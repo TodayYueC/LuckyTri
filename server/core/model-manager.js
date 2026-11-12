@@ -35,6 +35,12 @@ export const VISION_STAGE_TIMEOUT_MS = 25000;
 export const VISION_TOTAL_BUDGET_MS = 35000;
 export const REWRITE_STAGE_TIMEOUT_MS = 25000;
 export const VALIDATION_STAGE_TIMEOUT_MS = 25000;
+export const GENERATION_STAGE_TIMEOUT_MS = 25000;
+export const FALLBACK_TURN_TIMEOUT_MS = 18000;
+export const FALLBACK_TOTAL_BUDGET_MS = 25000;
+export const BACKGROUND_FALLBACK_TIMEOUT_MS = 45000;
+export const FALLBACK_FAST_RETRY_ELAPSED_MS = 3000;
+export const LIVE_UPSTREAM_5XX_MAX_WAIT_MS = 18000;
 const STAGE_OUTPUT = {
   decision: 2048,
   validation: 2048,
@@ -979,6 +985,11 @@ export function withFallback(models, fallback) {
         );
       } catch (error) {
         let last = error;
+        const fallbackStarted = clock();
+        const fallbackTurnCapMs =
+          Number(models?.fallbackTurnTimeoutMs) || FALLBACK_TURN_TIMEOUT_MS;
+        const fallbackTotalCapMs =
+          Number(models?.fallbackTotalBudgetMs) || FALLBACK_TOTAL_BUDGET_MS;
         for (let i = 0; i < candidates.length; i++) {
           const next = candidates[i];
           if (options?.signal?.aborted) break;
@@ -987,9 +998,12 @@ export function withFallback(models, fallback) {
             clock() >= options.deadlineAt
           )
             break;
+          const fallbackElapsed = clock() - fallbackStarted;
           if (stage === "vision") {
             const elapsed = clock() - callStarted;
             if (elapsed >= VISION_TOTAL_BUDGET_MS - 2000) break;
+          } else if (!BACKGROUND_STAGES.has(stage) && stage !== "test") {
+            if (fallbackElapsed >= fallbackTotalCapMs - 1000) break;
           }
           if (!shouldFallback(last) || models.available?.(next) === false)
             continue;
@@ -997,23 +1011,48 @@ export function withFallback(models, fallback) {
             `主模型 ${profile?.label || profile?.model} 请求失败（${String(last.message || "").slice(0, 120)}），这一步改用备用模型 ${next.label || next.model}`,
           );
           const before = trace?.calls?.length ?? 0;
+          const stageFallbackCapMs =
+            stage === "vision"
+              ? Math.min(
+                  VISION_STAGE_TIMEOUT_MS,
+                  Math.max(
+                    2000,
+                    VISION_TOTAL_BUDGET_MS - (clock() - callStarted),
+                  ),
+                )
+              : BACKGROUND_STAGES.has(stage)
+                ? BACKGROUND_FALLBACK_TIMEOUT_MS
+                : stage === "test"
+                  ? Infinity
+                  : Math.min(
+                      fallbackTurnCapMs,
+                      Math.max(1000, fallbackTotalCapMs - fallbackElapsed),
+                    );
+          const nextTimeoutMs = Math.min(
+            Number(options?.timeoutMs) || Infinity,
+            stageFallbackCapMs,
+          );
+          const nextDeadlineAt = Number.isFinite(nextTimeoutMs)
+            ? Math.min(
+                Number.isFinite(options?.deadlineAt)
+                  ? options.deadlineAt
+                  : Infinity,
+                clock() + nextTimeoutMs,
+              )
+            : options?.deadlineAt;
           const nextOptions = {
             ...options,
+            isFallback: true,
             hasFallback: i + 1 < candidates.length,
-            ...(stage === "vision"
-              ? {
-                  timeoutMs: Math.min(
-                    Number(options?.timeoutMs) || VISION_STAGE_TIMEOUT_MS,
-                    Math.max(
-                      2000,
-                      VISION_TOTAL_BUDGET_MS - (clock() - callStarted),
-                    ),
-                  ),
-                }
+            ...(Number.isFinite(nextTimeoutMs)
+              ? { timeoutMs: nextTimeoutMs }
+              : {}),
+            ...(Number.isFinite(nextDeadlineAt)
+              ? { deadlineAt: nextDeadlineAt }
               : {}),
           };
           try {
-            const result = await models.call(
+            return await models.call(
               next,
               stage,
               system,
@@ -1023,11 +1062,11 @@ export function withFallback(models, fallback) {
               attempt,
               nextOptions,
             );
-            for (const entry of trace?.calls?.slice(before) || [])
-              entry.fallbackFrom = profile?.id;
-            return result;
           } catch (nextError) {
             last = nextError;
+          } finally {
+            for (const entry of trace?.calls?.slice(before) || [])
+              entry.fallbackFrom = profile?.id;
           }
         }
         throw last;
@@ -1038,11 +1077,19 @@ export function withFallback(models, fallback) {
 export class ModelManager {
   constructor(
     repo,
-    { fetcher = fetch, maxConcurrent = 3, now = Date.now } = {},
+    {
+      fetcher = fetch,
+      maxConcurrent = 3,
+      now = Date.now,
+      fallbackTurnTimeoutMs = FALLBACK_TURN_TIMEOUT_MS,
+      fallbackTotalBudgetMs = FALLBACK_TOTAL_BUDGET_MS,
+    } = {},
   ) {
     this.repo = repo;
     this.fetcher = fetcher;
     this.now = now;
+    this.fallbackTurnTimeoutMs = fallbackTurnTimeoutMs;
+    this.fallbackTotalBudgetMs = fallbackTotalBudgetMs;
     this.maxConcurrent = Math.max(1, Number(maxConcurrent) || 3);
     this.requestLanes = new Map();
     this.originCooldowns = new Map();
@@ -1341,6 +1388,9 @@ export class ModelManager {
         { unavailable: true, status: state?.status ?? null },
       );
     }
+    const isFallback = options?.isFallback === true;
+    const fallbackTurnCapMs =
+      Number(this.fallbackTurnTimeoutMs) || FALLBACK_TURN_TIMEOUT_MS;
     const stageCapMs =
       stage === "vision"
         ? VISION_STAGE_TIMEOUT_MS
@@ -1348,7 +1398,15 @@ export class ModelManager {
           ? REWRITE_STAGE_TIMEOUT_MS
           : stage === "validation"
             ? VALIDATION_STAGE_TIMEOUT_MS
-            : Infinity;
+            : stage === "generation"
+              ? isFallback
+                ? fallbackTurnCapMs
+                : GENERATION_STAGE_TIMEOUT_MS
+              : isFallback && !BACKGROUND_STAGES.has(stage) && stage !== "test"
+                ? fallbackTurnCapMs
+                : isFallback && BACKGROUND_STAGES.has(stage)
+                  ? BACKGROUND_FALLBACK_TIMEOUT_MS
+                  : Infinity;
     const deadlineRemainingMs = Number.isFinite(options?.deadlineAt)
       ? options.deadlineAt - this.now()
       : Infinity;
@@ -1430,26 +1488,81 @@ export class ModelManager {
         throw requestFailure(abortErr, entry, profile, effectiveTimeoutMs);
       }
       if (guarded) probing = this.checkCircuit(circuit, entry, { priority });
+      const retryWindowMs = fastBoundedStage
+        ? Math.min(45000, effectiveTimeoutMs)
+        : hasFallback
+          ? FALLBACK_MAX_RETRY_WAIT_MS
+          : isFallback
+            ? Math.min(effectiveTimeoutMs, fallbackTurnCapMs)
+            : Math.min(45000, effectiveTimeoutMs);
+      const retryStartedAt = this.now();
+      const retryWallStartedAt = Date.now();
+      const boundedCall =
+        isFallback ||
+        fastBoundedStage ||
+        Number.isFinite(options?.timeoutMs) ||
+        Number.isFinite(options?.deadlineAt);
       let raw;
       try {
         raw = await withTransientRequestRetry(
-          () =>
+          (retryAttempt) =>
             this.withRequestSlot(
               endpoint,
               async () => {
+                const now = this.now();
+                const deadlineLeft = Number.isFinite(options?.deadlineAt)
+                  ? options.deadlineAt - now
+                  : Infinity;
+                const retryLeft =
+                  retryAttempt > 0
+                    ? Math.min(
+                        retryStartedAt + retryWindowMs - now,
+                        retryWallStartedAt + retryWindowMs - Date.now(),
+                      )
+                    : Infinity;
+                if (deadlineLeft <= 0 || retryLeft <= 0) {
+                  const abortErr = new Error(
+                    "The operation was aborted due to timeout",
+                  );
+                  abortErr.name = "TimeoutError";
+                  throw abortErr;
+                }
+                const attemptTimeoutMs = Math.max(
+                  1,
+                  Math.min(effectiveTimeoutMs, deadlineLeft, retryLeft),
+                );
+                const graceMs = boundedCall
+                  ? Math.min(
+                      1500,
+                      Math.max(100, Math.floor(attemptTimeoutMs * 0.1)),
+                    )
+                  : 5000;
                 const started = this.now();
-                let r;
                 try {
-                  r = await hardDeadline(
-                    (signal) =>
-                      this.fetcher(endpoint, {
+                  return await hardDeadline(
+                    async (signal) => {
+                      const r = await this.fetcher(endpoint, {
                         method: "POST",
                         headers,
                         body: payload,
                         signal,
-                      }),
-                    effectiveTimeoutMs,
-                    5000,
+                      });
+                      if (!r.ok) {
+                        const error = await httpError(r);
+                        if (error.status === 429)
+                          this.pauseBackground(
+                            circuit,
+                            Math.max(
+                              BACKGROUND_RATE_PAUSE_MS,
+                              (error.retryDelayMs || 1500) * 4,
+                            ),
+                          );
+                        throw error;
+                      }
+                      return await r.json();
+                    },
+                    attemptTimeoutMs,
+                    graceMs,
                     options?.signal,
                   );
                 } catch (error) {
@@ -1457,43 +1570,49 @@ export class ModelManager {
                     error.attemptElapsed = this.now() - started;
                   throw error;
                 }
-                if (!r.ok) {
-                  const error = await httpError(r);
-                  error.attemptElapsed = this.now() - started;
-                  if (error.status === 429)
-                    this.pauseBackground(
-                      circuit,
-                      Math.max(
-                        BACKGROUND_RATE_PAUSE_MS,
-                        (error.retryDelayMs || 1500) * 4,
-                      ),
-                    );
-                  throw error;
-                }
-                return await r.json();
               },
               { priority },
             ),
           {
             // A rate-limited gateway is not hammered by her own upkeep, nor
-            // should a live turn sit through 30s Retry-After sleeps when a
-            // backup model is ready to answer now.
+            // should a live turn sit through 30s Retry-After sleeps or multi-
+            // attempt slow 5xx storms when already degraded or failing over.
             retries:
-              priority === "background" || fastBoundedStage || hasFallback
+              priority === "background" ||
+              fastBoundedStage ||
+              hasFallback ||
+              isFallback
                 ? 1
                 : 3,
-            deadlineMs: fastBoundedStage
-              ? Math.min(45000, effectiveTimeoutMs)
-              : hasFallback
-                ? FALLBACK_MAX_RETRY_WAIT_MS
-                : 45000,
+            deadlineMs: retryWindowMs,
             now: this.now,
             shouldRetry: (error, { wait }) => {
-              if (Number(error?.status) === 429) {
-                if (priority === "background" || hasFallback) return false;
+              const status = Number(error?.status);
+              const attemptElapsed = Number(error?.attemptElapsed) || 0;
+              if (status === 429) {
+                if (priority === "background" || hasFallback || isFallback)
+                  return false;
                 return wait <= LIVE_RATE_LIMIT_MAX_WAIT_MS;
               }
-              if (hasFallback) return wait <= FALLBACK_MAX_RETRY_WAIT_MS;
+              if (hasFallback) {
+                return (
+                  attemptElapsed <= FALLBACK_MAX_RETRY_WAIT_MS &&
+                  wait <= FALLBACK_MAX_RETRY_WAIT_MS
+                );
+              }
+              if (isFallback || priority === "background") {
+                return (
+                  attemptElapsed <= FALLBACK_FAST_RETRY_ELAPSED_MS &&
+                  wait <= FALLBACK_MAX_RETRY_WAIT_MS
+                );
+              }
+              if (status >= 500 && status < 600) {
+                return (
+                  attemptElapsed <= LIVE_UPSTREAM_5XX_MAX_WAIT_MS / 2 &&
+                  this.now() - retryStartedAt + wait <
+                    LIVE_UPSTREAM_5XX_MAX_WAIT_MS
+                );
+              }
               return true;
             },
             onRetry: (count, error, waitMs) =>
@@ -1600,6 +1719,8 @@ export class ModelManager {
       }
     } catch (e) {
       entry.error = e.message;
+      if (Number.isFinite(Number(e?.status)) && Number(e.status) > 0)
+        entry.status = Number(e.status);
       entry.errorClass = classifyModelError(e);
       throw e;
     } finally {
