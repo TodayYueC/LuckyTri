@@ -2,6 +2,13 @@
 
 # Changelog
 
+## 1.3.6 — 2026-11-13
+
+- Update the model catalog and provider parameter mappings: add GA Google Gemini 4 Hydrogen, Gemini 4 Carbon, and Gemini 3.6 Flash alongside clearly labeled Gemini 3.1 Pro Preview and Gemini 3 Flash Preview presets; add OpenAI GPT-6.1 Sol and GPT-6.1 Terra, Claude Fable 5.2, Kimi K3.1 Pro, and matching Volcengine Ark Agent Plan / Coding Plan, Amazon Bedrock, OpenRouter, and OpenCode Zen entries. Clamp unsupported `reasoning_effort` values and omit deprecated sampling parameters on Google's OpenAI-compatible endpoint while keeping saved profiles and defaults intact.
+- Bound slow replies, rate-limit waits, and fallback long tails: enforce stage and turn budgets for vision, review, and rewrites, and trip immediately on invalid subscriptions or exhausted quotas; switch to backup models without waiting on primary `429` rate limits while opening the circuit on the first hit and pausing background memory/summary jobs from competing for primary quota for 15 minutes; add hard deadlines and fast-fail retry rules for foreground fallback turns and slow `5xx` responses, link group post-draft budgets after slow failovers, and record fallback attribution in slow traces.
+- Tighten ask-gated self-activity, relationship grounding, and anti-echo checks: keep personal writing, reading, and draft progress out of ordinary replies and cold-open outreach unless explicitly asked or invited, keep group-origin thoughts bound to their source group, and consume work invitations once within a bounded window; stop misattributing her own diary activities to the speaker or blaming model switches when corrected for self-talk; block hollow echoes, mirrored questions, and `+1` pile-ons while strengthening listener-bound relationship checks and visual ownership grounding.
+- Rebuild the studio interface and trust loopback reverse proxies: introduce the grouped studio shell, card workflows, and updated bilingual UI; trust loopback proxy headers (`trust proxy loopback`) so HTTPS forwarders such as Tailscale Serve can sign in to the studio cleanly.
+
 ## 1.3.5 — 2026-10-27
 
 - Honor a stop more cleanly. After a room tells her to be quiet, or someone says stop or shut up, she no longer continues the old thread. A short acknowledgment that she will stop does not turn into another message right away, and the hush lasts longer.
