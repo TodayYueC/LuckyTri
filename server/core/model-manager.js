@@ -1039,14 +1039,15 @@ export function withFallback(models, fallback) {
         for (let i = 0; i < candidates.length; i++) {
           const next = candidates[i];
           if (options?.signal?.aborted) break;
+          const attemptStartedAt = i === 0 ? fallbackStarted : clock();
           if (
             Number.isFinite(options?.deadlineAt) &&
-            clock() >= options.deadlineAt
+            attemptStartedAt >= options.deadlineAt
           )
             break;
-          const fallbackElapsed = clock() - fallbackStarted;
+          const fallbackElapsed = attemptStartedAt - fallbackStarted;
           if (stage === "vision") {
-            const elapsed = clock() - callStarted;
+            const elapsed = attemptStartedAt - callStarted;
             if (elapsed >= VISION_TOTAL_BUDGET_MS - 2000) break;
           } else if (!BACKGROUND_STAGES.has(stage) && stage !== "test") {
             if (fallbackElapsed >= fallbackTotalCapMs - 1000) break;
@@ -1063,7 +1064,7 @@ export function withFallback(models, fallback) {
                   VISION_STAGE_TIMEOUT_MS,
                   Math.max(
                     2000,
-                    VISION_TOTAL_BUDGET_MS - (clock() - callStarted),
+                    VISION_TOTAL_BUDGET_MS - (attemptStartedAt - callStarted),
                   ),
                 )
               : BACKGROUND_STAGES.has(stage)
@@ -1074,8 +1075,12 @@ export function withFallback(models, fallback) {
                       fallbackTurnCapMs,
                       Math.max(1000, fallbackTotalCapMs - fallbackElapsed),
                     );
+          const outerDeadlineLeft = Number.isFinite(options?.deadlineAt)
+            ? Math.max(1, options.deadlineAt - attemptStartedAt)
+            : Infinity;
           const nextTimeoutMs = Math.min(
             Number(options?.timeoutMs) || Infinity,
+            outerDeadlineLeft,
             stageFallbackCapMs,
           );
           const nextDeadlineAt = Number.isFinite(nextTimeoutMs)
@@ -1083,13 +1088,14 @@ export function withFallback(models, fallback) {
                 Number.isFinite(options?.deadlineAt)
                   ? options.deadlineAt
                   : Infinity,
-                clock() + nextTimeoutMs,
+                attemptStartedAt + nextTimeoutMs,
               )
             : options?.deadlineAt;
           const nextOptions = {
             ...options,
             isFallback: true,
             hasFallback: i + 1 < candidates.length,
+            startedAt: attemptStartedAt,
             ...(Number.isFinite(nextTimeoutMs)
               ? { timeoutMs: nextTimeoutMs }
               : {}),
@@ -1220,6 +1226,7 @@ export class ModelManager {
   ) {
     const key = new URL(endpoint).origin;
     const background = priority === "background";
+    const slotStartedAt = this.now();
     const slotStartedWall = Date.now();
     const makeTimeoutError = () => {
       const err = new Error("The operation was aborted due to timeout");
@@ -1252,10 +1259,11 @@ export class ModelManager {
           if (signal && onAbort) signal.removeEventListener("abort", onAbort);
         };
         const onGrant = () => {
-          if (settled) return;
+          if (settled) return false;
           settled = true;
           cleanup();
           resolve();
+          return true;
         };
         const onExpire = () => {
           if (settled) return;
@@ -1289,13 +1297,22 @@ export class ModelManager {
       while (true) {
         if (signal?.aborted) throw makeTimeoutError();
         const blockedUntil = this.originCooldowns.get(key) || 0;
-        const remaining = blockedUntil - this.now();
+        const effectiveNow = Math.max(
+          this.now(),
+          slotStartedAt + (Date.now() - slotStartedWall),
+        );
+        const remaining = blockedUntil - effectiveNow;
         if (remaining <= 0) {
           if (blockedUntil) this.originCooldowns.delete(key);
           break;
         }
+        const slotElapsed = Math.max(
+          0,
+          this.now() - slotStartedAt,
+          Date.now() - slotStartedWall,
+        );
         const budgetLeft = Number.isFinite(timeoutMs)
-          ? timeoutMs - (Date.now() - slotStartedWall)
+          ? timeoutMs - slotElapsed
           : Infinity;
         if (budgetLeft <= 0) throw makeTimeoutError();
         const sleepMs = Math.min(remaining, budgetLeft);
@@ -1318,18 +1335,37 @@ export class ModelManager {
     } finally {
       lane.active--;
       if (background) lane.background--;
-      const next = lane.waiting.shift();
-      if (next) {
-        lane.active++;
-        next();
-      } else if (
+      let handedOff = false;
+      while (lane.waiting.length) {
+        const grant = lane.waiting.shift();
+        if (grant?.()) {
+          lane.active++;
+          handedOff = true;
+          break;
+        }
+      }
+      if (
+        !handedOff &&
         lane.waitingBackground.length &&
         lane.background < backgroundLimit
       ) {
-        lane.active++;
-        lane.background++;
-        lane.waitingBackground.shift()();
-      } else if (!lane.active) this.requestLanes.delete(laneKey);
+        while (lane.waitingBackground.length) {
+          const grant = lane.waitingBackground.shift();
+          if (grant?.()) {
+            lane.active++;
+            lane.background++;
+            handedOff = true;
+            break;
+          }
+        }
+      }
+      if (
+        !handedOff &&
+        !lane.active &&
+        !lane.waiting.length &&
+        !lane.waitingBackground.length
+      )
+        this.requestLanes.delete(laneKey);
     }
   }
   // Consecutive failures of one model on one gateway pause further requests
@@ -1482,6 +1518,10 @@ export class ModelManager {
       options = attempt;
       attempt = 0;
     }
+    const callStartedAt = Number.isFinite(options?.startedAt)
+      ? options.startedAt
+      : this.now();
+    const callWallStartedAt = Date.now();
     if (profile.json && !/json/i.test(system))
       system += "\nReturn a JSON object.";
     const { messages, inputEstimate, removed } = fitInput(
@@ -1530,16 +1570,16 @@ export class ModelManager {
                 : isFallback && BACKGROUND_STAGES.has(stage)
                   ? BACKGROUND_FALLBACK_TIMEOUT_MS
                   : Infinity;
-    const deadlineRemainingMs = Number.isFinite(options?.deadlineAt)
-      ? options.deadlineAt - this.now()
+    const deadlineBudgetMs = Number.isFinite(options?.deadlineAt)
+      ? options.deadlineAt - callStartedAt
       : Infinity;
     const effectiveTimeoutMs = Math.max(
       1,
       Math.min(
         Number(profile.timeoutMs) || 90000,
         Number(options?.timeoutMs) || Infinity,
-        Number.isFinite(deadlineRemainingMs)
-          ? Math.max(1, deadlineRemainingMs)
+        Number.isFinite(deadlineBudgetMs)
+          ? Math.max(1, deadlineBudgetMs)
           : Infinity,
         stageCapMs,
       ),
@@ -1591,7 +1631,7 @@ export class ModelManager {
       requestBytes: Buffer.byteLength(payload),
       maxOutputTokens: outputCap,
       timeoutMs: effectiveTimeoutMs,
-      started: this.now(),
+      started: callStartedAt,
     };
     trace.calls.push(entry);
     const circuit = this.circuitKey(endpoint, profile);
@@ -1599,14 +1639,32 @@ export class ModelManager {
     const fastBoundedStage =
       stage === "vision" || stage === "validation" || stage === "rewrite";
     const hasFallback = options?.hasFallback === true;
-    const callWallStartedAt = Date.now();
+    const boundedCall =
+      isFallback ||
+      fastBoundedStage ||
+      Number.isFinite(stageCapMs) ||
+      Number.isFinite(options?.timeoutMs) ||
+      Number.isFinite(options?.deadlineAt);
+    const callDeadlineAt = boundedCall
+      ? Math.min(
+          Number.isFinite(options?.deadlineAt) ? options.deadlineAt : Infinity,
+          callStartedAt + effectiveTimeoutMs,
+        )
+      : Infinity;
+    const remainingClockBudgetMs = (now = this.now()) =>
+      boundedCall ? callDeadlineAt - now : Infinity;
+    const remainingExecutionBudgetMs = (now = this.now()) => {
+      if (!boundedCall) return Infinity;
+      const clockLeft = callDeadlineAt - now;
+      const wallLeft = effectiveTimeoutMs - (Date.now() - callWallStartedAt);
+      return Math.min(clockLeft, wallLeft);
+    };
     let probing = false;
     let delegated = null;
     try {
       if (
         options?.signal?.aborted ||
-        (Number.isFinite(options?.deadlineAt) &&
-          this.now() >= options.deadlineAt)
+        (boundedCall && remainingClockBudgetMs() <= 0)
       ) {
         const abortErr = new Error("The operation was aborted due to timeout");
         abortErr.name = "TimeoutError";
@@ -1622,33 +1680,17 @@ export class ModelManager {
             : Math.min(45000, effectiveTimeoutMs);
       const retryStartedAt = this.now();
       const retryWallStartedAt = Date.now();
-      const boundedCall =
-        isFallback ||
-        fastBoundedStage ||
-        Number.isFinite(stageCapMs) ||
-        Number.isFinite(options?.timeoutMs) ||
-        Number.isFinite(options?.deadlineAt);
-      const remainingCallBudgetMs = () => {
-        if (!boundedCall) return Infinity;
-        const elapsed = Math.max(
-          0,
-          this.now() - entry.started,
-          Date.now() - callWallStartedAt,
-        );
-        const deadlineLeft = Number.isFinite(options?.deadlineAt)
-          ? options.deadlineAt - this.now()
-          : Infinity;
-        return Math.min(effectiveTimeoutMs - elapsed, deadlineLeft);
-      };
       const delegatedOptions = (extra = {}) => {
         if (!boundedCall) return { ...options, ...extra };
-        const left = Math.max(1, remainingCallBudgetMs());
+        const now = this.now();
+        const left = Math.max(1, remainingClockBudgetMs(now));
         const nextDeadlineAt = Math.min(
           Number.isFinite(options?.deadlineAt) ? options.deadlineAt : Infinity,
-          this.now() + left,
+          now + left,
         );
         return {
           ...options,
+          startedAt: now,
           timeoutMs: Math.min(Number(options?.timeoutMs) || Infinity, left),
           deadlineAt: nextDeadlineAt,
           ...extra,
@@ -1662,10 +1704,7 @@ export class ModelManager {
               endpoint,
               async () => {
                 const now = this.now();
-                const deadlineLeft = Number.isFinite(options?.deadlineAt)
-                  ? options.deadlineAt - now
-                  : Infinity;
-                const callLeft = remainingCallBudgetMs();
+                const callLeft = remainingExecutionBudgetMs(now);
                 const retryLeft =
                   retryAttempt > 0
                     ? Math.min(
@@ -1673,7 +1712,7 @@ export class ModelManager {
                         retryWallStartedAt + retryWindowMs - Date.now(),
                       )
                     : Infinity;
-                if (deadlineLeft <= 0 || retryLeft <= 0 || callLeft <= 0) {
+                if (callLeft <= 0 || retryLeft <= 0) {
                   const abortErr = new Error(
                     "The operation was aborted due to timeout",
                   );
@@ -1682,13 +1721,9 @@ export class ModelManager {
                 }
                 const attemptTimeoutMs = Math.max(
                   1,
-                  Math.min(
-                    effectiveTimeoutMs,
-                    deadlineLeft,
-                    retryLeft,
-                    callLeft,
-                  ),
+                  Math.min(effectiveTimeoutMs, callLeft, retryLeft),
                 );
+                entry.remainingBudgetMs = attemptTimeoutMs;
                 const graceMs = boundedCall
                   ? Math.min(
                       1500,
@@ -1731,7 +1766,7 @@ export class ModelManager {
               },
               {
                 priority,
-                timeoutMs: remainingCallBudgetMs(),
+                timeoutMs: remainingExecutionBudgetMs(),
                 signal: options?.signal,
               },
             ),
@@ -1901,10 +1936,7 @@ export class ModelManager {
       entry.errorClass = classifyModelError(e);
       throw e;
     } finally {
-      entry.elapsed = Math.max(
-        this.now() - entry.started,
-        Date.now() - callWallStartedAt,
-      );
+      entry.elapsed = Math.max(0, this.now() - entry.started);
     }
     if (delegated) return await delegated();
   }
