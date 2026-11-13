@@ -176,11 +176,16 @@ function blank() {
 
 function modelVendor(model: any) {
   const providerLabels: Record<string, string> = {
+    "volcengine-agent-plan": t("火山方舟 Agent Plan"),
     "volcengine-coding-plan": t("火山方舟 Coding Plan"),
     "opencode-go": "OpenCode Go",
     "opencode-zen": "OpenCode Zen",
     deepseek: "DeepSeek",
     openai: "OpenAI",
+    gemini: "Gemini",
+    google: "Gemini",
+    anthropic: "Claude",
+    claude: "Claude",
     bedrock: t("亚马逊 Bedrock"),
     qwen: t("通义千问"),
     moonshot: "Kimi",
