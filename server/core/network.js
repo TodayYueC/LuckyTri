@@ -104,10 +104,29 @@ export function networkErrorCode(error) {
   return describeNetworkError(error).code;
 }
 
+const BODY_RETRY_DURATION_RE =
+  /(?:try again in|retry after)\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m(?!s))?\s*(?:(\d+(?:\.\d+)?)\s*s)?\s*(?:(\d+)\s*ms)?/i;
+
+export function retryDelayFromDetail(detail, maxMs = 30000) {
+  const cap = Math.max(1000, Number(maxMs) || 30000);
+  const match = String(detail || "").match(BODY_RETRY_DURATION_RE);
+  if (!match) return Number.NaN;
+  const [, hours, minutes, seconds, millis] = match;
+  if (!hours && !minutes && !seconds && !millis) return Number.NaN;
+  const totalMs =
+    (Number(hours) || 0) * 3600000 +
+    (Number(minutes) || 0) * 60000 +
+    (Number(seconds) || 0) * 1000 +
+    (Number(millis) || 0);
+  if (!Number.isFinite(totalMs) || totalMs <= 0) return Number.NaN;
+  return Math.max(0, Math.min(Math.round(totalMs), cap));
+}
+
 export function retryDelayFromResponse(
   response,
   fallbackMs = 900,
   maxMs = 30000,
+  detail = "",
 ) {
   const cap = Math.max(1000, Number(maxMs) || 30000);
   const value = String(response?.headers?.get?.("retry-after") || "").trim();
@@ -121,6 +140,8 @@ export function retryDelayFromResponse(
         : Number.NaN;
     if (Number.isFinite(delay)) return Math.max(0, Math.min(delay, cap));
   }
+  const bodyDelay = retryDelayFromDetail(detail, cap);
+  if (Number.isFinite(bodyDelay)) return bodyDelay;
   return Math.max(0, Math.min(Number(fallbackMs) || 900, cap));
 }
 

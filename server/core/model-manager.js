@@ -33,6 +33,7 @@ const QUIET_STAGES = new Set([
 ]);
 export const VISION_STAGE_TIMEOUT_MS = 25000;
 export const VISION_TOTAL_BUDGET_MS = 35000;
+export const TURN_STAGE_TIMEOUT_MS = 30000;
 export const REWRITE_STAGE_TIMEOUT_MS = 25000;
 export const VALIDATION_STAGE_TIMEOUT_MS = 25000;
 export const GENERATION_STAGE_TIMEOUT_MS = 25000;
@@ -895,6 +896,7 @@ async function httpError(response) {
       response,
       status === 429 ? 1500 : 900,
       status === 429 ? RATE_LIMIT_CIRCUIT_MAX_MS : 30000,
+      status === 429 ? detail : "",
     );
   }
   return error;
@@ -1125,6 +1127,7 @@ export class ModelManager {
       fetcher = fetch,
       maxConcurrent = 3,
       now = Date.now,
+      primaryTurnTimeoutMs = TURN_STAGE_TIMEOUT_MS,
       fallbackTurnTimeoutMs = FALLBACK_TURN_TIMEOUT_MS,
       fallbackTotalBudgetMs = FALLBACK_TOTAL_BUDGET_MS,
     } = {},
@@ -1132,6 +1135,7 @@ export class ModelManager {
     this.repo = repo;
     this.fetcher = fetcher;
     this.now = now;
+    this.primaryTurnTimeoutMs = primaryTurnTimeoutMs;
     this.fallbackTurnTimeoutMs = fallbackTurnTimeoutMs;
     this.fallbackTotalBudgetMs = fallbackTotalBudgetMs;
     this.maxConcurrent = Math.max(1, Number(maxConcurrent) || 3);
@@ -1207,10 +1211,23 @@ export class ModelManager {
   async withRequestSlot(
     endpoint,
     request,
-    { priority = "foreground", lane: laneName = "" } = {},
+    {
+      priority = "foreground",
+      lane: laneName = "",
+      timeoutMs = Infinity,
+      signal = null,
+    } = {},
   ) {
     const key = new URL(endpoint).origin;
     const background = priority === "background";
+    const slotStartedWall = Date.now();
+    const makeTimeoutError = () => {
+      const err = new Error("The operation was aborted due to timeout");
+      err.name = "TimeoutError";
+      return err;
+    };
+    if (signal?.aborted) throw makeTimeoutError();
+    if (Number.isFinite(timeoutMs) && timeoutMs <= 0) throw makeTimeoutError();
     const laneKey = laneName ? `${key}#${laneName}` : key;
     let lane = this.requestLanes.get(laneKey);
     if (!lane) {
@@ -1225,19 +1242,77 @@ export class ModelManager {
     if (free()) {
       lane.active++;
       if (background) lane.background++;
-    } else
-      await new Promise((resolve) =>
-        (background ? lane.waitingBackground : lane.waiting).push(resolve),
-      );
+    } else {
+      const queue = background ? lane.waitingBackground : lane.waiting;
+      await new Promise((resolve, reject) => {
+        let settled = false;
+        let timer;
+        const cleanup = () => {
+          if (timer) clearTimeout(timer);
+          if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+        };
+        const onGrant = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve();
+        };
+        const onExpire = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          const idx = queue.indexOf(onGrant);
+          if (idx >= 0) queue.splice(idx, 1);
+          if (
+            !lane.active &&
+            !lane.waiting.length &&
+            !lane.waitingBackground.length
+          )
+            this.requestLanes.delete(laneKey);
+          reject(makeTimeoutError());
+        };
+        const onAbort = signal ? () => onExpire() : null;
+        if (signal) {
+          if (signal.aborted) {
+            onExpire();
+            return;
+          }
+          signal.addEventListener("abort", onAbort, { once: true });
+        }
+        if (Number.isFinite(timeoutMs)) {
+          timer = setTimeout(onExpire, Math.max(1, timeoutMs));
+        }
+        queue.push(onGrant);
+      });
+    }
     try {
       while (true) {
+        if (signal?.aborted) throw makeTimeoutError();
         const blockedUntil = this.originCooldowns.get(key) || 0;
         const remaining = blockedUntil - this.now();
         if (remaining <= 0) {
           if (blockedUntil) this.originCooldowns.delete(key);
           break;
         }
-        await new Promise((resolve) => setTimeout(resolve, remaining));
+        const budgetLeft = Number.isFinite(timeoutMs)
+          ? timeoutMs - (Date.now() - slotStartedWall)
+          : Infinity;
+        if (budgetLeft <= 0) throw makeTimeoutError();
+        const sleepMs = Math.min(remaining, budgetLeft);
+        await new Promise((resolve, reject) => {
+          let onAbort;
+          const t = setTimeout(() => {
+            if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+            resolve();
+          }, sleepMs);
+          if (signal) {
+            onAbort = () => {
+              clearTimeout(t);
+              reject(makeTimeoutError());
+            };
+            signal.addEventListener("abort", onAbort, { once: true });
+          }
+        });
       }
       return await request();
     } finally {
@@ -1433,6 +1508,8 @@ export class ModelManager {
       );
     }
     const isFallback = options?.isFallback === true;
+    const primaryTurnCapMs =
+      Number(this.primaryTurnTimeoutMs) || TURN_STAGE_TIMEOUT_MS;
     const fallbackTurnCapMs =
       Number(this.fallbackTurnTimeoutMs) || FALLBACK_TURN_TIMEOUT_MS;
     const stageCapMs =
@@ -1446,8 +1523,10 @@ export class ModelManager {
               ? isFallback
                 ? fallbackTurnCapMs
                 : GENERATION_STAGE_TIMEOUT_MS
-              : isFallback && !BACKGROUND_STAGES.has(stage) && stage !== "test"
-                ? fallbackTurnCapMs
+              : !BACKGROUND_STAGES.has(stage) && stage !== "test"
+                ? isFallback
+                  ? fallbackTurnCapMs
+                  : primaryTurnCapMs
                 : isFallback && BACKGROUND_STAGES.has(stage)
                   ? BACKGROUND_FALLBACK_TIMEOUT_MS
                   : Infinity;
@@ -1520,7 +1599,9 @@ export class ModelManager {
     const fastBoundedStage =
       stage === "vision" || stage === "validation" || stage === "rewrite";
     const hasFallback = options?.hasFallback === true;
+    const callWallStartedAt = Date.now();
     let probing = false;
+    let delegated = null;
     try {
       if (
         options?.signal?.aborted ||
@@ -1544,8 +1625,35 @@ export class ModelManager {
       const boundedCall =
         isFallback ||
         fastBoundedStage ||
+        Number.isFinite(stageCapMs) ||
         Number.isFinite(options?.timeoutMs) ||
         Number.isFinite(options?.deadlineAt);
+      const remainingCallBudgetMs = () => {
+        if (!boundedCall) return Infinity;
+        const elapsed = Math.max(
+          0,
+          this.now() - entry.started,
+          Date.now() - callWallStartedAt,
+        );
+        const deadlineLeft = Number.isFinite(options?.deadlineAt)
+          ? options.deadlineAt - this.now()
+          : Infinity;
+        return Math.min(effectiveTimeoutMs - elapsed, deadlineLeft);
+      };
+      const delegatedOptions = (extra = {}) => {
+        if (!boundedCall) return { ...options, ...extra };
+        const left = Math.max(1, remainingCallBudgetMs());
+        const nextDeadlineAt = Math.min(
+          Number.isFinite(options?.deadlineAt) ? options.deadlineAt : Infinity,
+          this.now() + left,
+        );
+        return {
+          ...options,
+          timeoutMs: Math.min(Number(options?.timeoutMs) || Infinity, left),
+          deadlineAt: nextDeadlineAt,
+          ...extra,
+        };
+      };
       let raw;
       try {
         raw = await withTransientRequestRetry(
@@ -1557,6 +1665,7 @@ export class ModelManager {
                 const deadlineLeft = Number.isFinite(options?.deadlineAt)
                   ? options.deadlineAt - now
                   : Infinity;
+                const callLeft = remainingCallBudgetMs();
                 const retryLeft =
                   retryAttempt > 0
                     ? Math.min(
@@ -1564,7 +1673,7 @@ export class ModelManager {
                         retryWallStartedAt + retryWindowMs - Date.now(),
                       )
                     : Infinity;
-                if (deadlineLeft <= 0 || retryLeft <= 0) {
+                if (deadlineLeft <= 0 || retryLeft <= 0 || callLeft <= 0) {
                   const abortErr = new Error(
                     "The operation was aborted due to timeout",
                   );
@@ -1573,7 +1682,12 @@ export class ModelManager {
                 }
                 const attemptTimeoutMs = Math.max(
                   1,
-                  Math.min(effectiveTimeoutMs, deadlineLeft, retryLeft),
+                  Math.min(
+                    effectiveTimeoutMs,
+                    deadlineLeft,
+                    retryLeft,
+                    callLeft,
+                  ),
                 );
                 const graceMs = boundedCall
                   ? Math.min(
@@ -1615,7 +1729,11 @@ export class ModelManager {
                   throw error;
                 }
               },
-              { priority },
+              {
+                priority,
+                timeoutMs: remainingCallBudgetMs(),
+                signal: options?.signal,
+              },
             ),
           {
             // A rate-limited gateway is not hammered by her own upkeep, nor
@@ -1673,93 +1791,108 @@ export class ModelManager {
         ) {
           if (guarded) this.recordSuccess(circuit, { priority });
           entry.thinkingRefused = true;
-          return this.call(
-            {
-              ...profile,
-              reasoningEfforts: profile.reasoningEfforts.filter(
-                (effort) => effort !== "none",
-              ),
-            },
-            stage,
-            system,
-            data,
-            trace,
-            images,
-            attempt,
-            options,
-          );
+          entry.error = error.message;
+          entry.errorClass = classifyModelError(error);
+          delegated = () =>
+            this.call(
+              {
+                ...profile,
+                reasoningEfforts: profile.reasoningEfforts.filter(
+                  (effort) => effort !== "none",
+                ),
+              },
+              stage,
+              system,
+              data,
+              trace,
+              images,
+              attempt,
+              delegatedOptions(),
+            );
+        } else {
+          if (
+            guarded &&
+            isAvailabilityFailure(error) &&
+            !options?.signal?.aborted
+          )
+            this.recordFailure(circuit, error);
+          else if (probing)
+            this.releaseProbe(circuit, {
+              reopen: Boolean(options?.signal?.aborted),
+            });
+          if (guarded && accountRefusal(error))
+            this.markUnavailable(profile, error);
+          throw requestFailure(error, entry, profile, effectiveTimeoutMs);
         }
-        if (
-          guarded &&
-          isAvailabilityFailure(error) &&
-          !options?.signal?.aborted
-        )
-          this.recordFailure(circuit, error);
-        else if (probing)
-          this.releaseProbe(circuit, {
-            reopen: Boolean(options?.signal?.aborted),
-          });
-        if (guarded && accountRefusal(error))
-          this.markUnavailable(profile, error);
-        throw requestFailure(error, entry, profile, effectiveTimeoutMs);
       }
-      if (guarded) this.recordSuccess(circuit, { priority });
-      entry.usage = raw.usage || null;
-      entry.tokens = normalizeUsage(raw.usage, request.protocol);
-      entry.raw = responseText(raw, request.protocol);
-      entry.finishReason = responseFinishReason(raw, request.protocol);
-      if (!entry.raw.trim() && attempt === 0 && stage !== "reflection") {
-        entry.error = "服务返回空正文，重试一次";
-        return await this.call(
-          profile,
-          stage,
-          system,
-          data,
-          trace,
-          images,
-          1,
-          options,
-        );
-      }
-      if (["length", "max_tokens"].includes(entry.finishReason)) {
-        if (!options.fullOutput && outputCap < profile.maxOutputTokens) {
-          entry.error = "输出达到本阶段上限，放宽到模型输出上限重试一次";
-          return await this.call(
-            profile,
-            stage,
-            system,
-            data,
-            trace,
-            images,
-            attempt,
-            { ...options, fullOutput: true },
-          );
+      if (!delegated) {
+        if (guarded) this.recordSuccess(circuit, { priority });
+        entry.usage = raw.usage || null;
+        entry.tokens = normalizeUsage(raw.usage, request.protocol);
+        entry.raw = responseText(raw, request.protocol);
+        entry.finishReason = responseFinishReason(raw, request.protocol);
+        if (!entry.raw.trim() && attempt === 0 && stage !== "reflection") {
+          entry.error = "服务返回空正文，重试一次";
+          entry.errorClass = "format";
+          delegated = () =>
+            this.call(
+              profile,
+              stage,
+              system,
+              data,
+              trace,
+              images,
+              1,
+              delegatedOptions(),
+            );
+        } else if (["length", "max_tokens"].includes(entry.finishReason)) {
+          if (!options.fullOutput && outputCap < profile.maxOutputTokens) {
+            entry.error = "输出达到本阶段上限，放宽到模型输出上限重试一次";
+            entry.errorClass = "format";
+            delegated = () =>
+              this.call(
+                profile,
+                stage,
+                system,
+                data,
+                trace,
+                images,
+                attempt,
+                delegatedOptions({ fullOutput: true }),
+              );
+          } else {
+            throw Error("模型输出被截断，请增加输出预算");
+          }
+        } else {
+          try {
+            return parseModelJson(entry.raw);
+          } catch (error) {
+            // A reply that is not JSON at all is usually a one-off slip. Ask once
+            // more before a whole turn (or a stretch of solitude) is thrown away.
+            if (
+              error instanceof SyntaxError &&
+              entry.raw.trim() &&
+              stage !== "test" &&
+              !options.formatRetried
+            ) {
+              entry.error = `模型输出不是有效 JSON，重试一次：${error.message}`;
+              entry.errorClass = "format";
+              delegated = () =>
+                this.call(
+                  profile,
+                  stage,
+                  `${system}\n上一份输出未通过 JSON 解析，请重新组织同一任务的结果：只输出一个完整的 JSON 值。同一对象的每个字段只能写一次，多条 bubbles 合并到同一个数组，不用后一个字段覆盖前面的回答。`,
+                  data,
+                  trace,
+                  images,
+                  attempt,
+                  delegatedOptions({ formatRetried: true }),
+                );
+            } else {
+              throw error;
+            }
+          }
         }
-        throw Error("模型输出被截断，请增加输出预算");
-      }
-      try {
-        return parseModelJson(entry.raw);
-      } catch (error) {
-        // A reply that is not JSON at all is usually a one-off slip. Ask once
-        // more before a whole turn (or a stretch of solitude) is thrown away.
-        if (
-          error instanceof SyntaxError &&
-          stage !== "test" &&
-          !options.formatRetried
-        ) {
-          entry.error = `模型输出不是有效 JSON，重试一次：${error.message}`;
-          return await this.call(
-            profile,
-            stage,
-            `${system}\n上一份输出未通过 JSON 解析，请重新组织同一任务的结果：只输出一个完整的 JSON 值。同一对象的每个字段只能写一次，多条 bubbles 合并到同一个数组，不用后一个字段覆盖前面的回答。`,
-            data,
-            trace,
-            images,
-            attempt,
-            { ...options, formatRetried: true },
-          );
-        }
-        throw error;
       }
     } catch (e) {
       entry.error = e.message;
@@ -1768,8 +1901,12 @@ export class ModelManager {
       entry.errorClass = classifyModelError(e);
       throw e;
     } finally {
-      entry.elapsed = this.now() - entry.started;
+      entry.elapsed = Math.max(
+        this.now() - entry.started,
+        Date.now() - callWallStartedAt,
+      );
     }
+    if (delegated) return await delegated();
   }
   // Vectors travel in their own lane: a reply waiting for a recall vector must
   // not queue behind long chat completions on the same gateway. Two request
