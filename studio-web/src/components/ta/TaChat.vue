@@ -177,148 +177,150 @@ function clear() {
 </template>
 
 <style scoped>
-.ta-chat {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 0;
-  height: 100%;
-}
-.preview-meta {
-  font-size: 12px;
-  color: var(--ink-soft);
-}
-.ta-chat-log {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 64px;
-  padding: 4px 2px;
-}
-.preview-bubble {
-  max-width: 88%;
-  padding: 9px 13px;
-  border-radius: 18px;
-  font-size: 14px;
-  line-height: 1.6;
-  overflow-wrap: anywhere;
-  animation: bubble-in 0.35s var(--spring);
-}
-.preview-bubble p + p {
-  margin-top: 4px;
-}
-.preview-bubble.me {
-  align-self: flex-end;
-  border-bottom-right-radius: 6px;
-  background: var(--accent);
-  color: var(--accent-ink);
-}
-.preview-bubble.bot {
-  align-self: flex-start;
-  border-bottom-left-radius: 6px;
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--orb-a) 80%, var(--surface-strong)),
-    color-mix(in srgb, var(--orb-b) 50%, var(--surface-strong))
-  );
-  color: var(--ink);
-}
-[data-mood="night"] .preview-bubble.bot {
-  background: color-mix(in srgb, var(--orb-b) 40%, var(--surface-strong));
-}
-.why {
-  margin-top: 6px;
-  font-size: 12px;
-}
-.why summary {
-  color: var(--ink-soft);
-  font-weight: 600;
-}
-.why summary::before {
-  content: "▸ ";
-}
-.why[open] summary::before {
-  content: "▾ ";
-}
-.why p {
-  margin-top: 4px;
-  color: var(--ink-soft);
-}
-.typing {
-  align-self: flex-start;
-  display: inline-flex;
-  gap: 5px;
-  padding: 12px 14px;
-  border-radius: 18px 18px 18px 6px;
-  background: color-mix(in srgb, var(--orb-a) 70%, var(--surface-strong));
-}
-.typing i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--orb-face);
-  opacity: 0.5;
-  animation: typing 1.1s ease-in-out infinite;
-}
-.typing i:nth-child(2) {
-  animation-delay: 0.15s;
-}
-.typing i:nth-child(3) {
-  animation-delay: 0.3s;
-}
-.ta-chat-form {
-  flex-shrink: 0;
-  display: grid;
-  gap: 8px;
-}
-.ta-chat-options {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-}
-.where {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 180px;
-}
-.where :deep(.menu-select) {
-  flex: 1;
-  min-width: 0;
-}
-.where span {
-  white-space: nowrap;
-}
-.where select {
-  padding: 6px 10px;
-  font-size: 13px;
-}
-.composer {
-  display: flex;
-  gap: 8px;
-}
-.composer input {
-  border-radius: 999px;
-  padding-inline: 16px;
-}
-@keyframes bubble-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px) scale(0.97);
+@layer components {
+  .ta-chat {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    height: 100%;
   }
-}
-@keyframes typing {
-  0%,
-  100% {
-    transform: translateY(0);
-    opacity: 0.4;
+  .preview-meta {
+    font-size: 12px;
+    color: var(--ink-soft);
   }
-  50% {
-    transform: translateY(-3px);
-    opacity: 1;
+  .ta-chat-log {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 64px;
+    padding: 4px 2px;
+  }
+  .preview-bubble {
+    max-width: 88%;
+    padding: 9px 13px;
+    border-radius: 18px;
+    font-size: 14px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+    animation: bubble-in 0.35s var(--spring);
+  }
+  .preview-bubble p + p {
+    margin-top: 4px;
+  }
+  .preview-bubble.me {
+    align-self: flex-end;
+    border-bottom-right-radius: 6px;
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+  .preview-bubble.bot {
+    align-self: flex-start;
+    border-bottom-left-radius: 6px;
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--orb-a) 80%, var(--surface-strong)),
+      color-mix(in srgb, var(--orb-b) 50%, var(--surface-strong))
+    );
+    color: var(--ink);
+  }
+  [data-mood="night"] .preview-bubble.bot {
+    background: color-mix(in srgb, var(--orb-b) 40%, var(--surface-strong));
+  }
+  .why {
+    margin-top: 6px;
+    font-size: 12px;
+  }
+  .why summary {
+    color: var(--ink-soft);
+    font-weight: 600;
+  }
+  .why summary::before {
+    content: "▸ ";
+  }
+  .why[open] summary::before {
+    content: "▾ ";
+  }
+  .why p {
+    margin-top: 4px;
+    color: var(--ink-soft);
+  }
+  .typing {
+    align-self: flex-start;
+    display: inline-flex;
+    gap: 5px;
+    padding: 12px 14px;
+    border-radius: 18px 18px 18px 6px;
+    background: color-mix(in srgb, var(--orb-a) 70%, var(--surface-strong));
+  }
+  .typing i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--orb-face);
+    opacity: 0.5;
+    animation: typing 1.1s ease-in-out infinite;
+  }
+  .typing i:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+  .typing i:nth-child(3) {
+    animation-delay: 0.3s;
+  }
+  .ta-chat-form {
+    flex-shrink: 0;
+    display: grid;
+    gap: 8px;
+  }
+  .ta-chat-options {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+  }
+  .where {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 180px;
+  }
+  .where :deep(.menu-select) {
+    flex: 1;
+    min-width: 0;
+  }
+  .where span {
+    white-space: nowrap;
+  }
+  .where select {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+  .composer {
+    display: flex;
+    gap: 8px;
+  }
+  .composer input {
+    border-radius: 999px;
+    padding-inline: 16px;
+  }
+  @keyframes bubble-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.97);
+    }
+  }
+  @keyframes typing {
+    0%,
+    100% {
+      transform: translateY(0);
+      opacity: 0.4;
+    }
+    50% {
+      transform: translateY(-3px);
+      opacity: 1;
+    }
   }
 }
 </style>

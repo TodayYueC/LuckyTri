@@ -319,7 +319,7 @@ try {
   await firstPage
     .getByRole("button", { name: "设置密码并进入", exact: true })
     .click();
-  await firstPage.locator(".dock-link[data-page=system]").waitFor();
+  await firstPage.locator('.dock-link[data-page="now"]').waitFor();
   cookie = (await firstPage.context().cookies(base))
     .map(({ name, value }) => `${name}=${value}`)
     .join("; ");
@@ -404,10 +404,16 @@ try {
   await page.goto(base);
   await page.locator('[name="managementPassword"]').fill(password);
   await page.getByRole("button", { name: "登录", exact: true }).click();
-  await page.locator(".dock-link[data-page=system]").waitFor();
-  await page.locator(".dock-link[data-page=system]").click();
+  await page.locator('.dock-link[data-page="now"]').waitFor();
+  await page.locator('[data-control="settings"]').click();
+  await page
+    .locator('.control-popover:popover-open [data-page="system"]')
+    .click();
   await page.locator(".page-system").waitFor();
-  await page.locator(".dock-link[data-page=plugins]").click();
+  await page.locator('[data-control="settings"]').click();
+  await page
+    .locator('.control-popover:popover-open [data-page="plugins"]')
+    .click();
   await page.getByText("天气", { exact: true }).first().waitFor();
   assert.deepEqual(errors, []);
   await browser.close();

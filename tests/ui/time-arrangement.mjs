@@ -1,3 +1,4 @@
+import { navigate as studioNavigate, control, timeTab } from "./studio-navigation.mjs";
 import { chromium } from "@playwright/test";
 import assert from "node:assert/strict";
 import { world, MINUTE } from "../helpers/world.js";
@@ -54,7 +55,7 @@ try {
   );
   assert.match(await page.locator(".day-agenda").innerText(), /她选定的安排/);
   assert.equal(await page.locator(".agenda-block.free").count(), 0);
-  await page.getByRole("tab", { name: "待办", exact: true }).click();
+  await timeTab(page, '待办');
   const waiting = page.locator(`[data-task="${impossible}"]`);
   await waiting.waitFor();
   assert.match(await waiting.innerText(), /需要调整约定.*仍未兑现/s);

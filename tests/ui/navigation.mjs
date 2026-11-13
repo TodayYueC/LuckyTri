@@ -1,3 +1,8 @@
+import {
+  navigate as studioNavigate,
+  control,
+  timeTab,
+} from "./studio-navigation.mjs";
 import { chromium } from "@playwright/test";
 import assert from "node:assert/strict";
 import "../helpers/awake.mjs";
@@ -22,13 +27,13 @@ try {
   });
   await page.goto(server.base + "#people");
   await page.locator('.people [data-person="10001"]').waitFor();
-  await page.locator('.dock-link[data-page="life"]').click();
+  await studioNavigate(page, "life");
   await page.locator(".life .book").waitFor();
   const before = requests;
   await page.locator('.dock-link[data-page="people"]').click();
   await page.locator('.people [data-person="10001"]').waitFor();
   assert.equal(requests, before, "短时间返回人物页复用结果，不重新查询关系");
-  await page.locator('.dock-link[data-page="life"]').click();
+  await studioNavigate(page, "life");
   await page.locator(".life .book").waitFor();
   // The next real server change expires results while retaining a picture.
   let release;
@@ -65,7 +70,7 @@ try {
   // A return can fetch halfway through a coalesced change burst. A later
   // change in that same burst must still get its trailing revalidation.
   await page.waitForTimeout(2600);
-  await page.locator('.dock-link[data-page="life"]').click();
+  await studioNavigate(page, "life");
   await page.locator(".life").waitFor();
   let intervened = false;
   await page.route("**/api/mind/bonds", async (route) => {
@@ -83,6 +88,7 @@ try {
   w.store.revision++;
   await page.waitForTimeout(1800);
   await page.locator('.dock-link[data-page="people"]').click();
+  await page.locator(".people [data-tab=groups]").click();
   await page
     .locator(".faces h3")
     .filter({ hasText: "春日聊天室的新名字" })

@@ -22,11 +22,13 @@ import { roomBusyUnrelated } from "./time/sharing.js";
 // Live 2026-10-31: 「刚写完歌单收尾的感受记录，想给你看看」在对方刚诉苦降额度之后冷开。
 // 草稿分享口吻（不限 portal 族）+ 对方近窗在Distress且未邀看 → defer。
 export const DRAFT_SHARE_CUE =
-  /想给你看看|发给你看看|给你看看|刚写完|刚整理完|感受记录|回看完了|定稿|歌单收尾|家务分配表|手头那个|真定了|定死不再改|头一回见人|拖到最后真定|跟你说个事|停了几天|换个垫法|卡剧情|不打算直接写|这种写法|跟你报备个事|顺便拉个见证|长廊那段|刚想通了|今晚就递|注那行我扣住|让她自己猜|对答案那事|跟姐对答案|姐那摊又续上|刚收口|攒着想给你看|照单子自己翻|单子还没记全/;
+  /想给你看看|发给你看看|给你看看|刚写完|刚整理完|感受记录|回看完了|定稿|歌单收尾|家务分配表|手头那个|真定了|定死不再改|头一回见人|拖到最后真定|跟你说个事|停了几天|换个垫法|卡剧情|不打算直接写|这种写法|跟你报备个事|顺便拉个见证|长廊那段|刚想通了|今晚就递|注那行我扣住|让她自己猜|对答案那事|跟姐对答案|姐那摊又续上|刚收口|攒着想给你看|照单子自己翻|单子还没记全|留白怎么写|怎么写.{0,6}留白|想试(?:着)?(?:写)?个.{0,8}场景|摆几个反复出现的小细节|空出来的就不是余味|我没交代够|接写.{0,12}同人/;
 export const PEER_DISTRESS_CUE =
   /恶心|烦死|讨厌|不想(?:干|做|上班|蹬)|累死|崩溃|麻了|降额度|蹬不完|太坑|气死|难受|郁闷|完蛋|寄了|服了|无语|折磨|惩罚机制/;
 export const SHARE_INVITE_CUE =
-  /分享|发给我|给我看|看看你写|写完了吗|交稿|想看|发来|看看你的|读完发/;
+  /分享|发给我|给我看|看看你写|写完了吗|交稿|想看|发来|看看你的|读完发|在干嘛|在干啥|忙啥|在忙什么|最近在(?:写|读|看|玩|忙)|写到哪|读到哪|留白/;
+const OUTREACH_CARE_ASK_CUE =
+  /你(?:今天|最近|那边|还好吗|怎么了|过得|吃了|忙啥|在干嘛)|今天过得怎么样|最近怎么样|还好吗|在干嘛|吃了没|忙完了吗/;
 
 export function isDraftShareText(value) {
   return DRAFT_SHARE_CUE.test(String(value || ""));
@@ -282,17 +284,36 @@ export class Initiative {
   chooseContact(note, contacts, now = this.life.now()) {
     const kind = note?.audience;
     const thought = note?.id ? this.life.mind.thoughts.get(note.id) : null;
-    const candidates = contacts.filter(
-      (contact) =>
-        (kind === "either" || contact.kind === kind) &&
-        this.audience(thought, contact.session, now).allowed &&
-        !this.thirdPartyTargetMismatch(
+    const candidates = contacts.filter((contact) => {
+      if (!(kind === "either" || contact.kind === kind)) return false;
+      const aud = this.audience(thought, contact.session, now);
+      if (!aud.allowed) return false;
+      if (
+        contact.kind === "group" &&
+        aud.origin.rooms.some((r) => r.kind === "group") &&
+        !aud.shared
+      )
+        return false;
+      if (
+        this.thirdPartyTargetMismatch(
           thought,
           contact.session,
           now,
           note?.words,
-        ),
-    );
+        )
+      )
+        return false;
+      if (
+        this.uninvitedSelfActivityOutreach(
+          thought,
+          contact.session,
+          now,
+          note?.words,
+        )
+      )
+        return false;
+      return true;
+    });
     if (!candidates.length) return null;
     const roots = new Set(
       this.audience(thought, candidates[0].session, now).origin.rooms.map(
@@ -424,6 +445,47 @@ export class Initiative {
       };
     }
     return null;
+  }
+  groupOriginMismatch(thought, session, now = this.life.now()) {
+    if (!isGroupSession(session)) return null;
+    const aud = this.audience(thought, session, now);
+    if (
+      aud.origin?.rooms?.some((r) => r.kind === "group") &&
+      !aud.shared
+    ) {
+      return {
+        reason: "这条念头源于另一个群的讨论，不跨群投放到未参与该话题的群",
+      };
+    }
+    return null;
+  }
+  uninvitedSelfActivityOutreach(
+    thought,
+    session,
+    now = this.life.now(),
+    extraWords = null,
+  ) {
+    const spoken = [
+      thought?.outreach || "",
+      ...(Array.isArray(thought?.outreach_draft) ? thought.outreach_draft : []),
+      ...(Array.isArray(extraWords) ? extraWords : []),
+    ]
+      .filter(Boolean)
+      .join("\n");
+    if (!spoken.trim()) return null;
+    if (!isDraftShareText(spoken)) return null;
+    if (OUTREACH_CARE_ASK_CUE.test(spoken)) return null;
+    if (
+      /答应|说好|约好|兑现/.test(
+        `${thought?.content || ""} ${thought?.outreach_reason || ""}`,
+      )
+    )
+      return null;
+    const recentUser = this.recentUserWords(session, 10).join("\n");
+    if (SHARE_INVITE_CUE.test(recentUser)) return null;
+    return {
+      reason: "对方未询问或邀看自己的写作/活动进度，先留在心里",
+    };
   }
   recentlyToldAnotherGroup(thought, now = this.life.now()) {
     if (!isGroupSession(thought?.outreach_session)) return false;

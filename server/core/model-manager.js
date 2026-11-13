@@ -25,11 +25,22 @@ const CACHE_KEY_HOSTS = /(?:^|\.)(?:openai\.com|opencode\.ai|openrouter\.ai)$/i;
 // the configured reasoning effort.
 const QUIET_STAGES = new Set([
   "decision",
+  "vision",
   "summary",
   "summaryMerge",
   "memory",
   "expression_novelty",
 ]);
+export const VISION_STAGE_TIMEOUT_MS = 25000;
+export const VISION_TOTAL_BUDGET_MS = 35000;
+export const REWRITE_STAGE_TIMEOUT_MS = 25000;
+export const VALIDATION_STAGE_TIMEOUT_MS = 25000;
+export const GENERATION_STAGE_TIMEOUT_MS = 25000;
+export const FALLBACK_TURN_TIMEOUT_MS = 18000;
+export const FALLBACK_TOTAL_BUDGET_MS = 25000;
+export const BACKGROUND_FALLBACK_TIMEOUT_MS = 45000;
+export const FALLBACK_FAST_RETRY_ELAPSED_MS = 3000;
+export const LIVE_UPSTREAM_5XX_MAX_WAIT_MS = 18000;
 const STAGE_OUTPUT = {
   decision: 2048,
   validation: 2048,
@@ -59,6 +70,9 @@ const EFFORT_HEADROOM = {
 const CIRCUIT_FAILURES = 3;
 const CIRCUIT_BASE_MS = 30000;
 const CIRCUIT_MAX_MS = 120000;
+export const RATE_LIMIT_CIRCUIT_MAX_MS = 5 * 60000;
+export const LIVE_RATE_LIMIT_MAX_WAIT_MS = 5000;
+export const FALLBACK_MAX_RETRY_WAIT_MS = 2000;
 const FALLBACK_STATUS = new Set([401, 402, 403, 404, ...RETRYABLE_STATUS]);
 // A bad key, an account without credit, a refused tier or a missing model will
 // not fix itself in a minute. Such a profile leaves the backup list for hours
@@ -69,6 +83,7 @@ export const UNAVAILABLE_MS = 6 * 3600000;
 export const BACKGROUND_STAGES = new Set([
   "memory",
   "summary",
+  "summaryMerge",
   "reflection",
   "expression",
   "expression_novelty",
@@ -77,7 +92,7 @@ export const BACKGROUND_STAGES = new Set([
   "weekly",
   "plugin",
 ]);
-const BACKGROUND_RATE_PAUSE_MS = 60000;
+export const BACKGROUND_RATE_PAUSE_MS = 15 * 60000;
 export const stagePriority = (stage) =>
   BACKGROUND_STAGES.has(stage) ? "background" : "foreground";
 
@@ -179,11 +194,41 @@ function hostname(profile) {
 function thinkingStyle(profile) {
   return profile.thinkingStyle || (isMimoProfile(profile) ? "mimo" : "");
 }
+function isGeminiOpenAiProfile(profile) {
+  return (
+    String(profile?.provider || "").toLowerCase() === "gemini" ||
+    hostname(profile) === "generativelanguage.googleapis.com"
+  );
+}
 function quietStage(profile, stage) {
   return (
     QUIET_STAGES.has(stage) &&
     (["mimo", "volcengine"].includes(thinkingStyle(profile)) ||
       profile.apiProtocol === "anthropic")
+  );
+}
+function clampGeminiOpenAiEffort(profile, effort) {
+  const value = String(effort || "").toLowerCase();
+  const model = String(profile?.model || "").toLowerCase();
+  if (/^gemini-(?:4-|3\.8-|3\.7-|3\.1-pro|3-pro)/.test(model)) {
+    if (value === "none" || value === "minimal") return "low";
+    if (value === "max")
+      return model === "gemini-4-hydrogen" ? "xhigh" : "high";
+    if (value === "xhigh" && model !== "gemini-4-hydrogen") return "high";
+    return value;
+  }
+  if (/^gemini-3/.test(model)) {
+    if (value === "none") return "minimal";
+    if (value === "xhigh" || value === "max") return "high";
+    return value;
+  }
+  if (value === "xhigh" || value === "max") return "high";
+  return value;
+}
+function gemini3OrNewer(profile) {
+  return (
+    isGeminiOpenAiProfile(profile) &&
+    /^gemini-(?:[3-9]|1\d)(?:[.-]|$)/i.test(String(profile?.model || ""))
   );
 }
 // Short verdicts do not need a 128K output reservation; oversized ceilings only
@@ -202,8 +247,11 @@ export function outputLimit(profile, stage) {
     ["glm", "kimi-effort", "anthropic-adaptive"].includes(
       thinkingStyle(profile),
     ) ||
+    gemini3OrNewer(profile) ||
     (efforts.length > 0 && !efforts.includes("none"));
   if (effort === "none" && alwaysThinks && !quiet) effort = "low";
+  if (isGeminiOpenAiProfile(profile) && effort !== "none")
+    effort = clampGeminiOpenAiEffort(profile, effort);
   return Math.max(
     1,
     Math.min(
@@ -220,6 +268,8 @@ function applyGenerationControls(
 ) {
   const style = profile.thinkingStyle || "";
   const mimo = style === "mimo" || (!style && isMimoProfile(profile));
+  const geminiOpenAi = isGeminiOpenAiProfile(profile);
+  const omitSampling = profile.omitSampling || gemini3OrNewer(profile);
   const off = thinkingOff(profile);
   const completion =
     profile.tokenField === "max_completion_tokens" ||
@@ -261,10 +311,19 @@ function applyGenerationControls(
     body.enable_thinking = !off;
     if (style === "qwen-effort" && !off)
       body.reasoning_effort = profile.reasoningEffort;
-    if (!profile.omitSampling) body.temperature = profile.temperature;
+    if (!omitSampling) body.temperature = profile.temperature;
+  } else if (geminiOpenAi) {
+    if (!off || gemini3OrNewer(profile)) {
+      body.reasoning_effort = clampGeminiOpenAiEffort(
+        profile,
+        off ? "none" : profile.reasoningEffort,
+      );
+    } else if (!omitSampling) {
+      body.temperature = profile.temperature;
+    }
   } else if (!off) body.reasoning_effort = profile.reasoningEffort;
   else body.temperature = profile.temperature;
-  if (!profile.omitSampling && profile.topP !== 1) body.top_p = profile.topP;
+  if (!omitSampling && profile.topP !== 1) body.top_p = profile.topP;
 }
 
 function responseContent(content) {
@@ -776,6 +835,41 @@ function providerDetail(text) {
   }
   return sanitizeDetail(detail.replace(/<[^>]+>/g, " "), 240);
 }
+const QUOTA_OR_SUBSCRIPTION_REFUSAL_RE =
+  /coding\s*plan|agent\s*plan|subscription|package\s*(?:expired|invalid|limit)|insufficient[_\s-]*quota|quota.{0,24}(?:exceed|exhaust|limit|reset)|reset.{0,16}20\d\d|billing.{0,20}(?:hard\s*limit|not\s*active)|balance|credit|fund|arrears|overdue|套餐|订阅|额度.{0,12}(?:不足|用尽|耗尽|已满|上限|重置)|余额不足|欠费|未开通|已过期/i;
+
+export function isQuotaOrPlanRefusalText(text) {
+  return QUOTA_OR_SUBSCRIPTION_REFUSAL_RE.test(String(text || ""));
+}
+
+export function classifyModelError(error) {
+  if (!error) return "unknown";
+  if (error.circuitOpen) return "circuit";
+  if (error.timeout || isTimeoutError(error)) return "timeout";
+  if (error.unavailable || accountRefusal(error)) {
+    const status = Number(error.status);
+    if (
+      status === 402 ||
+      status === 429 ||
+      error.quotaExhausted ||
+      isQuotaOrPlanRefusalText(error.detail || error.message)
+    )
+      return "quota";
+    return "auth";
+  }
+  const status = Number(error.status);
+  if (status === 429) return "rate_limit";
+  if (status >= 500 && status < 600) return "upstream_5xx";
+  if (error.networkFailure || isTransientNetworkError(error)) return "network";
+  if (
+    error instanceof SyntaxError ||
+    /JSON|输出被截断/i.test(error.message || "")
+  )
+    return "format";
+  if (status >= 400 && status < 500) return "http_4xx";
+  return "unknown";
+}
+
 async function httpError(response) {
   const status = response.status;
   let detail = "";
@@ -792,11 +886,15 @@ async function httpError(response) {
   );
   error.status = status;
   if (detail) error.detail = detail;
-  if (RETRYABLE_STATUS.has(status)) {
+  const quotaExhausted =
+    (status === 429 || status === 400) && isQuotaOrPlanRefusalText(detail);
+  if (quotaExhausted) error.quotaExhausted = true;
+  if (RETRYABLE_STATUS.has(status) && !quotaExhausted) {
     error.retryableRequest = true;
     error.retryDelayMs = retryDelayFromResponse(
       response,
       status === 429 ? 1500 : 900,
+      status === 429 ? RATE_LIMIT_CIRCUIT_MAX_MS : 30000,
     );
   }
   return error;
@@ -808,14 +906,23 @@ function isAvailabilityFailure(error) {
     RETRYABLE_STATUS.has(Number(error?.status))
   );
 }
-function requestFailure(error, entry, profile) {
+function requestFailure(
+  error,
+  entry,
+  profile,
+  effectiveTimeoutMs = profile?.timeoutMs,
+) {
   if (isTimeoutError(error)) {
     entry.networkCause = "TIMEOUT";
-    return Object.assign(
-      new Error(
-        `模型响应超时（${Math.round(profile.timeoutMs / 1000)} 秒内没有返回）`,
-        { cause: error },
+    const secs = Math.max(
+      1,
+      Math.round(
+        (Number(effectiveTimeoutMs) || Number(profile?.timeoutMs) || 90000) /
+          1000,
       ),
+    );
+    return Object.assign(
+      new Error(`模型响应超时（${secs} 秒内没有返回）`, { cause: error }),
       { timeout: true },
     );
   }
@@ -839,6 +946,7 @@ function requestFailure(error, entry, profile) {
 // request cannot.
 export function isTransientModelFailure(error) {
   if (!error || error instanceof SyntaxError) return false;
+  if (error.quotaExhausted || accountRefusal(error)) return false;
   if (error.circuitOpen || error.timeout || error.networkFailure) return true;
   if (RETRYABLE_STATUS.has(Number(error.status))) return true;
   return isTransientNetworkError(error) || isTimeoutError(error);
@@ -846,19 +954,33 @@ export function isTransientModelFailure(error) {
 // A refusal about the account rather than this request. A 403 can also be a
 // content decision about one message, which must not take the model away.
 export function accountRefusal(error) {
+  if (!error) return false;
+  if (error.quotaExhausted) return true;
   const status = Number(error?.status);
+  const text = String(error?.detail || error?.message || "");
+  if ((status === 400 || status === 429) && isQuotaOrPlanRefusalText(text))
+    return true;
   if (!UNAVAILABLE_STATUS.has(status)) return false;
   if (status === 401 || status === 402) return true;
   return /tier|quota|balance|credit|fund|余额|额度|permission|not allowed|access|subscription|model.{0,20}(?:not|does not) exist|not found|不存在|无权/i.test(
-    String(error?.detail || error?.message || ""),
+    text,
   );
 }
 export function shouldFallback(error) {
   if (!error || error instanceof SyntaxError) return false;
   if (error.circuitOpen || error.timeout || error.networkFailure) return true;
-  if (error.unavailable) return true;
+  if (error.unavailable || accountRefusal(error)) return true;
   if (FALLBACK_STATUS.has(Number(error.status))) return true;
   return isTransientNetworkError(error) || isTimeoutError(error);
+}
+function unpackCallOptions(rest) {
+  if (!rest.length) return { attempt: 0, options: {} };
+  if (typeof rest[0] === "object" && rest[0] !== null)
+    return { attempt: 0, options: rest[0] };
+  return {
+    attempt: Number.isInteger(rest[0]) ? rest[0] : 0,
+    options: typeof rest[1] === "object" && rest[1] !== null ? rest[1] : {},
+  };
 }
 // Wraps any object with a `call` method; formatting problems stay with the
 // primary model because the existing reply fallbacks already handle them.
@@ -866,9 +988,35 @@ export function withFallback(models, fallback) {
   const chain = (Array.isArray(fallback) ? fallback : [fallback]).filter(
     Boolean,
   );
+  const clock = () =>
+    typeof models?.now === "function" ? models.now() : Date.now();
   return {
     profile: (...args) => models.profile(...args),
     async call(profile, stage, system, data, trace, images = [], ...rest) {
+      const callStarted = clock();
+      const { attempt, options } = unpackCallOptions(rest);
+      const boundedStage =
+        BACKGROUND_STAGES.has(stage) ||
+        stage === "vision" ||
+        stage === "validation" ||
+        stage === "rewrite";
+      // Background work, vision, and post-draft validation/rewrite try one
+      // backup at most; a failing or slow model must not stack timeouts
+      // across the whole library on a single step.
+      const maxHops = boundedStage ? 1 : chain.length;
+      const candidates = chain
+        .filter(
+          (next) =>
+            next &&
+            next.id !== profile?.id &&
+            stage !== "test" &&
+            (!images?.length || next.vision) &&
+            models.available?.(next) !== false,
+        )
+        .slice(0, maxHops);
+      const primaryRest = candidates.length
+        ? [attempt, { ...options, hasFallback: true }]
+        : rest;
       try {
         return await models.call(
           profile,
@@ -877,43 +1025,92 @@ export function withFallback(models, fallback) {
           data,
           trace,
           images,
-          ...rest,
+          ...primaryRest,
         );
       } catch (error) {
         let last = error;
-        // Background work tries one backup at most; a failing afternoon of
-        // upkeep must not walk the whole library on every attempt.
-        let hops = BACKGROUND_STAGES.has(stage) ? 1 : chain.length;
-        for (const next of chain) {
+        const fallbackStarted = clock();
+        const fallbackTurnCapMs =
+          Number(models?.fallbackTurnTimeoutMs) || FALLBACK_TURN_TIMEOUT_MS;
+        const fallbackTotalCapMs =
+          Number(models?.fallbackTotalBudgetMs) || FALLBACK_TOTAL_BUDGET_MS;
+        for (let i = 0; i < candidates.length; i++) {
+          const next = candidates[i];
+          if (options?.signal?.aborted) break;
           if (
-            !next ||
-            next.id === profile?.id ||
-            stage === "test" ||
-            !shouldFallback(last) ||
-            (images?.length && !next.vision) ||
-            models.available?.(next) === false
+            Number.isFinite(options?.deadlineAt) &&
+            clock() >= options.deadlineAt
           )
+            break;
+          const fallbackElapsed = clock() - fallbackStarted;
+          if (stage === "vision") {
+            const elapsed = clock() - callStarted;
+            if (elapsed >= VISION_TOTAL_BUDGET_MS - 2000) break;
+          } else if (!BACKGROUND_STAGES.has(stage) && stage !== "test") {
+            if (fallbackElapsed >= fallbackTotalCapMs - 1000) break;
+          }
+          if (!shouldFallback(last) || models.available?.(next) === false)
             continue;
-          if (hops-- <= 0) break;
           trace?.steps?.push(
             `主模型 ${profile?.label || profile?.model} 请求失败（${String(last.message || "").slice(0, 120)}），这一步改用备用模型 ${next.label || next.model}`,
           );
           const before = trace?.calls?.length ?? 0;
+          const stageFallbackCapMs =
+            stage === "vision"
+              ? Math.min(
+                  VISION_STAGE_TIMEOUT_MS,
+                  Math.max(
+                    2000,
+                    VISION_TOTAL_BUDGET_MS - (clock() - callStarted),
+                  ),
+                )
+              : BACKGROUND_STAGES.has(stage)
+                ? BACKGROUND_FALLBACK_TIMEOUT_MS
+                : stage === "test"
+                  ? Infinity
+                  : Math.min(
+                      fallbackTurnCapMs,
+                      Math.max(1000, fallbackTotalCapMs - fallbackElapsed),
+                    );
+          const nextTimeoutMs = Math.min(
+            Number(options?.timeoutMs) || Infinity,
+            stageFallbackCapMs,
+          );
+          const nextDeadlineAt = Number.isFinite(nextTimeoutMs)
+            ? Math.min(
+                Number.isFinite(options?.deadlineAt)
+                  ? options.deadlineAt
+                  : Infinity,
+                clock() + nextTimeoutMs,
+              )
+            : options?.deadlineAt;
+          const nextOptions = {
+            ...options,
+            isFallback: true,
+            hasFallback: i + 1 < candidates.length,
+            ...(Number.isFinite(nextTimeoutMs)
+              ? { timeoutMs: nextTimeoutMs }
+              : {}),
+            ...(Number.isFinite(nextDeadlineAt)
+              ? { deadlineAt: nextDeadlineAt }
+              : {}),
+          };
           try {
-            const result = await models.call(
+            return await models.call(
               next,
               stage,
               system,
               data,
               trace,
               images,
-              ...rest,
+              attempt,
+              nextOptions,
             );
-            for (const entry of trace?.calls?.slice(before) || [])
-              entry.fallbackFrom = profile?.id;
-            return result;
           } catch (nextError) {
             last = nextError;
+          } finally {
+            for (const entry of trace?.calls?.slice(before) || [])
+              entry.fallbackFrom = profile?.id;
           }
         }
         throw last;
@@ -922,9 +1119,21 @@ export function withFallback(models, fallback) {
   };
 }
 export class ModelManager {
-  constructor(repo, { fetcher = fetch, maxConcurrent = 3 } = {}) {
+  constructor(
+    repo,
+    {
+      fetcher = fetch,
+      maxConcurrent = 3,
+      now = Date.now,
+      fallbackTurnTimeoutMs = FALLBACK_TURN_TIMEOUT_MS,
+      fallbackTotalBudgetMs = FALLBACK_TOTAL_BUDGET_MS,
+    } = {},
+  ) {
     this.repo = repo;
     this.fetcher = fetcher;
+    this.now = now;
+    this.fallbackTurnTimeoutMs = fallbackTurnTimeoutMs;
+    this.fallbackTotalBudgetMs = fallbackTotalBudgetMs;
     this.maxConcurrent = Math.max(1, Number(maxConcurrent) || 3);
     this.requestLanes = new Map();
     this.originCooldowns = new Map();
@@ -943,7 +1152,7 @@ export class ModelManager {
     // A changed key or address is a new attempt, not the same refusal.
     return `${origin}|${profile.model}|${key.length}:${key.slice(-6)}`;
   }
-  available(profile, now = Date.now()) {
+  available(profile, now = this.now()) {
     const state = this.unavailable.get(this.healthKey(profile));
     if (!state) return true;
     if (state.until <= now) {
@@ -952,7 +1161,19 @@ export class ModelManager {
     }
     return false;
   }
-  markUnavailable(profile, error, now = Date.now()) {
+  backgroundAvailable(profile, now = this.now()) {
+    if (!profile || !this.available(profile, now)) return false;
+    try {
+      const key = this.circuitKey(profile.baseUrl, profile);
+      if ((this.backgroundPauses.get(key) || 0) > now) return false;
+      const circuit = this.circuits.get(key);
+      if (circuit?.probing || (circuit?.openUntil || 0) > now) return false;
+    } catch {
+      return false;
+    }
+    return true;
+  }
+  markUnavailable(profile, error, now = this.now()) {
     this.unavailable.set(this.healthKey(profile), {
       until: now + UNAVAILABLE_MS,
       status: Number(error.status) || null,
@@ -960,25 +1181,24 @@ export class ModelManager {
       label: profile.label || profile.model,
     });
   }
-  health(now = Date.now()) {
+  health(now = this.now()) {
     return [...this.unavailable.entries()]
       .filter(([, state]) => state.until > now)
       .map(([key, state]) => ({ key, ...state }));
   }
-  pauseBackground(endpoint, delayMs) {
-    const key = new URL(endpoint).origin;
+  pauseBackground(key, delayMs) {
     this.backgroundPauses.set(
       key,
-      Math.max(this.backgroundPauses.get(key) || 0, Date.now() + delayMs),
+      Math.max(this.backgroundPauses.get(key) || 0, this.now() + delayMs),
     );
   }
   deferOrigin(endpoint, delayMs) {
     const key = new URL(endpoint).origin;
-    const delay = Math.max(0, Math.min(Number(delayMs) || 0, 30000));
+    const delay = Math.max(0, Math.min(Number(delayMs) || 0, 1000));
     if (delay)
       this.originCooldowns.set(
         key,
-        Math.max(this.originCooldowns.get(key) || 0, Date.now() + delay),
+        Math.max(this.originCooldowns.get(key) || 0, this.now() + delay),
       );
   }
   // One lane per gateway. The conversation goes first; background work may
@@ -991,12 +1211,6 @@ export class ModelManager {
   ) {
     const key = new URL(endpoint).origin;
     const background = priority === "background";
-    if (background)
-      while (true) {
-        const remaining = (this.backgroundPauses.get(key) || 0) - Date.now();
-        if (remaining <= 0) break;
-        await new Promise((resolve) => setTimeout(resolve, remaining));
-      }
     const laneKey = laneName ? `${key}#${laneName}` : key;
     let lane = this.requestLanes.get(laneKey);
     if (!lane) {
@@ -1018,7 +1232,7 @@ export class ModelManager {
     try {
       while (true) {
         const blockedUntil = this.originCooldowns.get(key) || 0;
-        const remaining = blockedUntil - Date.now();
+        const remaining = blockedUntil - this.now();
         if (remaining <= 0) {
           if (blockedUntil) this.originCooldowns.delete(key);
           break;
@@ -1045,46 +1259,98 @@ export class ModelManager {
   }
   // Consecutive failures of one model on one gateway pause further requests
   // briefly instead of repeating them; one probe goes through after the pause.
+  // Explicit 429 rate limits open the circuit right away and keep background
+  // upkeep off the primary quota until a foreground turn proves it recovered.
   circuitKey(endpoint, profile) {
     return `${new URL(endpoint).origin}|${profile.model}`;
   }
-  checkCircuit(key, entry) {
+  checkCircuit(key, entry, { priority = "foreground" } = {}) {
+    const now = this.now();
+    if (priority === "background") {
+      const pausedUntil = this.backgroundPauses.get(key) || 0;
+      const pauseRemaining = pausedUntil - now;
+      if (pauseRemaining > 0) {
+        entry.circuitOpen = true;
+        throw Object.assign(
+          new Error(
+            `主模型近期触发限流，后台整理暂让实时对话优先，约 ${Math.ceil(pauseRemaining / 1000)} 秒后恢复`,
+          ),
+          { circuitOpen: true, rateLimited: true },
+        );
+      }
+      if (pausedUntil) this.backgroundPauses.delete(key);
+    }
     const state = this.circuits.get(key);
-    if (!state?.openUntil) return;
-    const remaining = state.openUntil - Date.now();
+    if (!state) return false;
+    if (state.probing) {
+      entry.circuitOpen = true;
+      throw Object.assign(
+        new Error("这个模型服务正在恢复探测中，先改走备用模型"),
+        {
+          circuitOpen: true,
+          ...(state.rateLimited ? { rateLimited: true } : {}),
+        },
+      );
+    }
+    if (!state.openUntil) return false;
+    const remaining = state.openUntil - now;
     if (remaining <= 0) {
       state.openUntil = 0;
       state.probing = true;
-      return;
+      return true;
     }
     entry.circuitOpen = true;
     throw Object.assign(
       new Error(
         `这个模型服务连续失败，已暂停请求，约 ${Math.ceil(remaining / 1000)} 秒后自动恢复`,
       ),
-      { circuitOpen: true },
+      {
+        circuitOpen: true,
+        ...(state.rateLimited ? { rateLimited: true } : {}),
+      },
     );
   }
-  recordFailure(key) {
+  recordFailure(key, error) {
     const state = this.circuits.get(key) || {
       failures: 0,
       opens: 0,
       openUntil: 0,
       probing: false,
+      rateLimited: false,
     };
+    const rateLimited = Number(error?.status) === 429;
     state.failures++;
-    if (state.probing || state.failures >= CIRCUIT_FAILURES) {
+    if (state.probing || rateLimited || state.failures >= CIRCUIT_FAILURES) {
       state.opens++;
       state.failures = 0;
       state.probing = false;
-      state.openUntil =
-        Date.now() +
-        Math.min(CIRCUIT_MAX_MS, CIRCUIT_BASE_MS * 2 ** (state.opens - 1));
+      state.rateLimited = rateLimited;
+      const capMs = rateLimited ? RATE_LIMIT_CIRCUIT_MAX_MS : CIRCUIT_MAX_MS;
+      const backoffMs = Math.min(
+        capMs,
+        CIRCUIT_BASE_MS * 2 ** (state.opens - 1),
+      );
+      const hintedMs = rateLimited
+        ? Math.min(capMs, Number(error?.retryDelayMs) || 0)
+        : 0;
+      state.openUntil = this.now() + Math.max(backoffMs, hintedMs);
     }
     this.circuits.set(key, state);
   }
-  recordSuccess(key) {
+  releaseProbe(key, { reopen = false } = {}) {
+    const state = this.circuits.get(key);
+    if (!state?.probing) return;
+    state.probing = false;
+    if (reopen) {
+      state.openUntil = this.now() + CIRCUIT_BASE_MS;
+      this.circuits.set(key, state);
+    } else if (!state.openUntil && !state.failures) {
+      this.circuits.delete(key);
+    }
+  }
+  recordSuccess(key, { priority = "foreground" } = {}) {
     this.circuits.delete(key);
+    if (priority === "foreground") this.backgroundPauses.delete(key);
   }
   noteRetry(entry, endpoint, count, error, waitMs) {
     const network = isTransientNetworkError(error)
@@ -1137,6 +1403,10 @@ export class ModelManager {
     attempt = 0,
     options = {},
   ) {
+    if (typeof attempt === "object" && attempt !== null) {
+      options = attempt;
+      attempt = 0;
+    }
     if (profile.json && !/json/i.test(system))
       system += "\nReturn a JSON object.";
     const { messages, inputEstimate, removed } = fitInput(
@@ -1154,7 +1424,7 @@ export class ModelManager {
     if (stage !== "test" && !this.available(profile)) {
       const state = this.unavailable.get(this.healthKey(profile));
       const label = profile.label || profile.model;
-      const minutes = Math.ceil((state.until - Date.now()) / 60000);
+      const minutes = Math.ceil((state.until - this.now()) / 60000);
       throw Object.assign(
         new Error(
           `${label} 暂时不可用（${state.reason}），约 ${minutes} 分钟后再试`,
@@ -1162,6 +1432,39 @@ export class ModelManager {
         { unavailable: true, status: state?.status ?? null },
       );
     }
+    const isFallback = options?.isFallback === true;
+    const fallbackTurnCapMs =
+      Number(this.fallbackTurnTimeoutMs) || FALLBACK_TURN_TIMEOUT_MS;
+    const stageCapMs =
+      stage === "vision"
+        ? VISION_STAGE_TIMEOUT_MS
+        : stage === "rewrite"
+          ? REWRITE_STAGE_TIMEOUT_MS
+          : stage === "validation"
+            ? VALIDATION_STAGE_TIMEOUT_MS
+            : stage === "generation"
+              ? isFallback
+                ? fallbackTurnCapMs
+                : GENERATION_STAGE_TIMEOUT_MS
+              : isFallback && !BACKGROUND_STAGES.has(stage) && stage !== "test"
+                ? fallbackTurnCapMs
+                : isFallback && BACKGROUND_STAGES.has(stage)
+                  ? BACKGROUND_FALLBACK_TIMEOUT_MS
+                  : Infinity;
+    const deadlineRemainingMs = Number.isFinite(options?.deadlineAt)
+      ? options.deadlineAt - this.now()
+      : Infinity;
+    const effectiveTimeoutMs = Math.max(
+      1,
+      Math.min(
+        Number(profile.timeoutMs) || 90000,
+        Number(options?.timeoutMs) || Infinity,
+        Number.isFinite(deadlineRemainingMs)
+          ? Math.max(1, deadlineRemainingMs)
+          : Infinity,
+        stageCapMs,
+      ),
+    );
     const priority = stagePriority(stage);
     const outputCap = options.fullOutput
       ? profile.maxOutputTokens
@@ -1208,60 +1511,154 @@ export class ModelManager {
       trimmedHistoryMessages: removed,
       requestBytes: Buffer.byteLength(payload),
       maxOutputTokens: outputCap,
-      started: Date.now(),
+      timeoutMs: effectiveTimeoutMs,
+      started: this.now(),
     };
     trace.calls.push(entry);
     const circuit = this.circuitKey(endpoint, profile);
     const guarded = stage !== "test";
+    const fastBoundedStage =
+      stage === "vision" || stage === "validation" || stage === "rewrite";
+    const hasFallback = options?.hasFallback === true;
+    let probing = false;
     try {
-      if (guarded) this.checkCircuit(circuit, entry);
+      if (
+        options?.signal?.aborted ||
+        (Number.isFinite(options?.deadlineAt) &&
+          this.now() >= options.deadlineAt)
+      ) {
+        const abortErr = new Error("The operation was aborted due to timeout");
+        abortErr.name = "TimeoutError";
+        throw requestFailure(abortErr, entry, profile, effectiveTimeoutMs);
+      }
+      if (guarded) probing = this.checkCircuit(circuit, entry, { priority });
+      const retryWindowMs = fastBoundedStage
+        ? Math.min(45000, effectiveTimeoutMs)
+        : hasFallback
+          ? FALLBACK_MAX_RETRY_WAIT_MS
+          : isFallback
+            ? Math.min(effectiveTimeoutMs, fallbackTurnCapMs)
+            : Math.min(45000, effectiveTimeoutMs);
+      const retryStartedAt = this.now();
+      const retryWallStartedAt = Date.now();
+      const boundedCall =
+        isFallback ||
+        fastBoundedStage ||
+        Number.isFinite(options?.timeoutMs) ||
+        Number.isFinite(options?.deadlineAt);
       let raw;
       try {
         raw = await withTransientRequestRetry(
-          () =>
+          (retryAttempt) =>
             this.withRequestSlot(
               endpoint,
               async () => {
-                const started = Date.now();
-                let r;
+                const now = this.now();
+                const deadlineLeft = Number.isFinite(options?.deadlineAt)
+                  ? options.deadlineAt - now
+                  : Infinity;
+                const retryLeft =
+                  retryAttempt > 0
+                    ? Math.min(
+                        retryStartedAt + retryWindowMs - now,
+                        retryWallStartedAt + retryWindowMs - Date.now(),
+                      )
+                    : Infinity;
+                if (deadlineLeft <= 0 || retryLeft <= 0) {
+                  const abortErr = new Error(
+                    "The operation was aborted due to timeout",
+                  );
+                  abortErr.name = "TimeoutError";
+                  throw abortErr;
+                }
+                const attemptTimeoutMs = Math.max(
+                  1,
+                  Math.min(effectiveTimeoutMs, deadlineLeft, retryLeft),
+                );
+                const graceMs = boundedCall
+                  ? Math.min(
+                      1500,
+                      Math.max(100, Math.floor(attemptTimeoutMs * 0.1)),
+                    )
+                  : 5000;
+                const started = this.now();
                 try {
-                  r = await hardDeadline(
-                    (signal) =>
-                      this.fetcher(endpoint, {
+                  return await hardDeadline(
+                    async (signal) => {
+                      const r = await this.fetcher(endpoint, {
                         method: "POST",
                         headers,
                         body: payload,
                         signal,
-                      }),
-                    profile.timeoutMs,
+                      });
+                      if (!r.ok) {
+                        const error = await httpError(r);
+                        if (error.status === 429)
+                          this.pauseBackground(
+                            circuit,
+                            Math.max(
+                              BACKGROUND_RATE_PAUSE_MS,
+                              (error.retryDelayMs || 1500) * 4,
+                            ),
+                          );
+                        throw error;
+                      }
+                      return await r.json();
+                    },
+                    attemptTimeoutMs,
+                    graceMs,
+                    options?.signal,
                   );
                 } catch (error) {
                   if (error && typeof error === "object")
-                    error.attemptElapsed = Date.now() - started;
+                    error.attemptElapsed = this.now() - started;
                   throw error;
                 }
-                if (!r.ok) {
-                  const error = await httpError(r);
-                  error.attemptElapsed = Date.now() - started;
-                  if (error.retryableRequest)
-                    this.deferOrigin(endpoint, error.retryDelayMs);
-                  if (error.status === 429)
-                    this.pauseBackground(
-                      endpoint,
-                      Math.max(
-                        BACKGROUND_RATE_PAUSE_MS,
-                        error.retryDelayMs * 4,
-                      ),
-                    );
-                  throw error;
-                }
-                return await r.json();
               },
               { priority },
             ),
           {
-            // A rate-limited gateway is not hammered by her own upkeep.
-            retries: priority === "background" ? 1 : 3,
+            // A rate-limited gateway is not hammered by her own upkeep, nor
+            // should a live turn sit through 30s Retry-After sleeps or multi-
+            // attempt slow 5xx storms when already degraded or failing over.
+            retries:
+              priority === "background" ||
+              fastBoundedStage ||
+              hasFallback ||
+              isFallback
+                ? 1
+                : 3,
+            deadlineMs: retryWindowMs,
+            now: this.now,
+            shouldRetry: (error, { wait }) => {
+              const status = Number(error?.status);
+              const attemptElapsed = Number(error?.attemptElapsed) || 0;
+              if (status === 429) {
+                if (priority === "background" || hasFallback || isFallback)
+                  return false;
+                return wait <= LIVE_RATE_LIMIT_MAX_WAIT_MS;
+              }
+              if (hasFallback) {
+                return (
+                  attemptElapsed <= FALLBACK_MAX_RETRY_WAIT_MS &&
+                  wait <= FALLBACK_MAX_RETRY_WAIT_MS
+                );
+              }
+              if (isFallback || priority === "background") {
+                return (
+                  attemptElapsed <= FALLBACK_FAST_RETRY_ELAPSED_MS &&
+                  wait <= FALLBACK_MAX_RETRY_WAIT_MS
+                );
+              }
+              if (status >= 500 && status < 600) {
+                return (
+                  attemptElapsed <= LIVE_UPSTREAM_5XX_MAX_WAIT_MS / 2 &&
+                  this.now() - retryStartedAt + wait <
+                    LIVE_UPSTREAM_5XX_MAX_WAIT_MS
+                );
+              }
+              return true;
+            },
             onRetry: (count, error, waitMs) =>
               this.noteRetry(entry, endpoint, count, error, waitMs),
           },
@@ -1274,6 +1671,7 @@ export class ModelManager {
           request.body.thinking?.type === "disabled" &&
           /thinking/i.test(String(error.message || ""))
         ) {
+          if (guarded) this.recordSuccess(circuit, { priority });
           entry.thinkingRefused = true;
           return this.call(
             {
@@ -1291,13 +1689,21 @@ export class ModelManager {
             options,
           );
         }
-        if (guarded && isAvailabilityFailure(error))
-          this.recordFailure(circuit);
+        if (
+          guarded &&
+          isAvailabilityFailure(error) &&
+          !options?.signal?.aborted
+        )
+          this.recordFailure(circuit, error);
+        else if (probing)
+          this.releaseProbe(circuit, {
+            reopen: Boolean(options?.signal?.aborted),
+          });
         if (guarded && accountRefusal(error))
           this.markUnavailable(profile, error);
-        throw requestFailure(error, entry, profile);
+        throw requestFailure(error, entry, profile, effectiveTimeoutMs);
       }
-      if (guarded) this.recordSuccess(circuit);
+      if (guarded) this.recordSuccess(circuit, { priority });
       entry.usage = raw.usage || null;
       entry.tokens = normalizeUsage(raw.usage, request.protocol);
       entry.raw = responseText(raw, request.protocol);
@@ -1357,9 +1763,12 @@ export class ModelManager {
       }
     } catch (e) {
       entry.error = e.message;
+      if (Number.isFinite(Number(e?.status)) && Number(e.status) > 0)
+        entry.status = Number(e.status);
+      entry.errorClass = classifyModelError(e);
       throw e;
     } finally {
-      entry.elapsed = Date.now() - entry.started;
+      entry.elapsed = this.now() - entry.started;
     }
   }
   // Vectors travel in their own lane: a reply waiting for a recall vector must
@@ -1385,7 +1794,7 @@ export class ModelManager {
       profile.baseUrl.replace(/\/$/, "") +
       (multimodal ? "/embeddings/multimodal" : "/embeddings");
     const circuit = `${new URL(endpoint).origin}|embed:${model}`;
-    this.checkCircuit(circuit, {});
+    const probing = this.checkCircuit(circuit, {}, { priority });
     const send = (input) =>
       withTransientRequestRetry(
         () =>
@@ -1445,12 +1854,13 @@ export class ModelManager {
           }))
         : await send(texts);
     } catch (error) {
-      if (isAvailabilityFailure(error)) this.recordFailure(circuit);
+      if (isAvailabilityFailure(error)) this.recordFailure(circuit, error);
+      else if (probing) this.releaseProbe(circuit);
       // A provider's 401 is a bad vector key, not a signed-out studio.
       if (error?.status === 401 || error?.status === 403) error.status = 400;
       throw requestFailure(error, {}, { timeoutMs });
     }
-    this.recordSuccess(circuit);
+    this.recordSuccess(circuit, { priority });
     onUsage?.(raw.usage || null);
     const rows = Array.isArray(raw.data) ? raw.data : [];
     if (rows.length !== texts.length)
@@ -1518,20 +1928,42 @@ function decodeBase64Vector(value) {
 // read has been seen to outlive it by minutes (one eval turn waited 459 s
 // against a 120 s limit), so the wait itself is also bounded: past the limit
 // plus a short grace the request counts as timed out, whatever the socket does.
-export function hardDeadline(start, timeoutMs, graceMs = 5000) {
+export function hardDeadline(
+  start,
+  timeoutMs,
+  graceMs = 5000,
+  externalSignal = null,
+) {
   const controller = new AbortController();
   let timer;
+  let onExternalAbort;
   const limit = new Promise((_, reject) => {
-    timer = setTimeout(() => {
+    const abortNow = () => {
       const error = new Error("The operation was aborted due to timeout");
       error.name = "TimeoutError";
       controller.abort(error);
       reject(error);
-    }, timeoutMs + graceMs);
+    };
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        abortNow();
+        return;
+      }
+      onExternalAbort = abortNow;
+      externalSignal.addEventListener("abort", onExternalAbort, {
+        once: true,
+      });
+    }
+    timer = setTimeout(abortNow, timeoutMs + graceMs);
   });
   const soft = AbortSignal.timeout(timeoutMs);
-  const signal = AbortSignal.any([soft, controller.signal]);
-  return Promise.race([start(signal), limit]).finally(() =>
-    clearTimeout(timer),
-  );
+  const signals = externalSignal
+    ? [soft, controller.signal, externalSignal]
+    : [soft, controller.signal];
+  const signal = AbortSignal.any(signals);
+  return Promise.race([start(signal), limit]).finally(() => {
+    clearTimeout(timer);
+    if (externalSignal && onExternalAbort)
+      externalSignal.removeEventListener("abort", onExternalAbort);
+  });
 }

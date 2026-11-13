@@ -636,6 +636,10 @@ export function groundingIssues(bubbles, snapshot, decision = {}) {
   issues.push(...dmThirdPartyProjectionIssues(bubbles, snapshot, decision));
   issues.push(...kinshipLabelShuffleIssues(bubbles, snapshot, decision));
   issues.push(...characterIdentityMixIssues(bubbles, snapshot, decision));
+  issues.push(...hollowEchoAgencyIssues(bubbles, snapshot, decision));
+  issues.push(...unsolicitedSelfActivityIssues(bubbles, snapshot, decision));
+  issues.push(...misattributedOwnActivityToPeerIssues(bubbles, snapshot, decision));
+  issues.push(...selfTalkComplaintMetaIssues(bubbles, snapshot, decision));
   return [...new Set(issues)];
 }
 
@@ -2600,13 +2604,13 @@ export function unsupportedPeerStateIssues(bubbles, snapshot, decision = {}) {
 // activity-broadcast variants that escaped the note-dump phrase list. User: 主动
 // 10句有9句说自己、事还单一（焚化炉循环）.
 const SELF_NOTE_DUMP =
-  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补|刚冒头的念头|睡前想通|想通一件小事|顺手报个进度|收尾了一篇|补课笔记|笔记落下|补读收了尾|我早上收尾|跟你说个刚|跟你说个我自己|跟你说个下午|今晚三格|三格又连着|排焚化|推传送|刚写完焚化|想给你看看|界碑先立|哪天真跑起来|纯二手|押个宝|稿到哪读到哪|坐进来等|接着昨晚说的|今晚想做的两件|我读到《|今天又想到一层|约定其实有两半|到场这半|记下一条|开价之前先掂兜|台阶底下不能是空的|不算催稿|那格.{0,24}(?:起跑|又滑|滑了)|又滑了.{0,16}第三|跑完跟你说|跑完照旧跟你说|排到哪了|不硬撑了|定稿|回看完了?|刚回看|回看完了|摸鱼摸出|摸出个对仗|感受记录|歌单收尾|家务分配表|刚写完歌单|刚整理完.{0,20}草稿|手头那个|真定了|定死不再改|头一回见人|跟你说个事|停了几天|换个垫法|卡剧情|不打算直接写|小的东西先响|这种写法读着|对了，跟|那笔判完|判完了|今天之内得让|跟你报备个事|顺便拉个见证|长廊那段|刚想通了|今晚就递|注那行我扣住|让她自己猜|抢先摆实情|底稿我.{0,6}备出来|对答案那事|姐挑中的?那句|删掉的半句|不抢读者的活|姐那摊又续上|踩在我要写的尾巴|换个轨道缓缓|停在\s*\d+%\s*好几天|存疑的细节挂着|自己给自己当裁判|照单子自己翻|单子还没记全|说个早上的事|分过两个说法|她说的俩不能混着算|写完就攒着想给你看|刚收口/g;
+  /记了一笔|查到两种|读.{0,12}资料|我这边翻|我之前(?:读|看|查)|对了，之前|我刚(?:看到|翻到|查到)|我整理了|我记着一笔|又想了想|翻了下.{0,10}排程|我自己先留了个|这不算没时间|跟过期那道门|所以看一条规矩|这堵是我自己砌|刚发现.{0,24}(?:说话|老出现)|记忆是怎么来的|回头看这个动作|刚想到.{0,40}不一样|台上只发生一次|分清这个|比起说什么.{0,12}收住|借别人替我补|刚冒头的念头|睡前想通|想通一件小事|顺手报个进度|收尾了一篇|补课笔记|笔记落下|补读收了尾|我早上收尾|跟你说个刚|跟你说个我自己|跟你说个下午|今晚三格|三格又连着|排焚化|推传送|刚写完焚化|想给你看看|界碑先立|哪天真跑起来|纯二手|押个宝|稿到哪读到哪|坐进来等|接着昨晚说的|今晚想做的两件|我读到《|今天又想到一层|约定其实有两半|到场这半|记下一条|开价之前先掂兜|台阶底下不能是空的|不算催稿|那格.{0,24}(?:起跑|又滑|滑了)|又滑了.{0,16}第三|跑完跟你说|跑完照旧跟你说|排到哪了|不硬撑了|定稿|回看完了?|刚回看|回看完了|摸鱼摸出|摸出个对仗|感受记录|歌单收尾|家务分配表|刚写完歌单|刚整理完.{0,20}草稿|手头那个|真定了|定死不再改|头一回见人|跟你说个事|停了几天|换个垫法|卡剧情|不打算直接写|小的东西先响|这种写法读着|对了，跟|那笔判完|判完了|今天之内得让|跟你报备个事|顺便拉个见证|长廊那段|刚想通了|今晚就递|注那行我扣住|让她自己猜|抢先摆实情|底稿我.{0,6}备出来|对答案那事|姐挑中的?那句|删掉的半句|不抢读者的活|姐那摊又续上|踩在我要写的尾巴|换个轨道缓缓|停在\s*\d+%\s*好几天|存疑的细节挂着|自己给自己当裁判|照单子自己翻|单子还没记全|说个早上的事|分过两个说法|她说的俩不能混着算|写完就攒着想给你看|刚收口|留白怎么写|怎么写.{0,6}留白|想试(?:着)?(?:写)?个.{0,8}场景|摆几个反复出现的小细节|空出来的就不是余味|我没交代够|接写.{0,12}同人/g;
 // Live 2026-10-31 Tokyo DM post-r59: 四连泡「手头那个万圣节的小东西…定死不再改…头一回见人」
 // 无「想给你看看」字样，旧 dump 全放行。手作/物件揭幕散文 = 自说近况变体。
 export const CRAFT_REVEAL_DUMP =
   /手头那个|真定了|定死不再改|头一回见人|拖到最后真定|打底.{0,16}藏一层|小东西.{0,20}(?:定死|藏青|打底)|我只负责把.{0,12}藏|这分工意外/;
 const SELF_ACTIVITY_MARK =
-  /我(?:刚|早上|下午|今晚|这边|自己|读|写|排|推|想|记|整理|翻|查|收尾|押|开价|许了|只负责|犹豫|扣住|就顺|那段|印象里)|(?:底稿|注那行|每条分歧)我|自己(?:给自己|没底|翻)|(?:下午|刚)?写的.{0,8}那段|刚想通了|今晚就递|今晚.{0,12}(?:三格|全是|排|读|写|先随便逛)|刚把.{0,16}(?:推到|写完|读完|收尾)|进度|节拍|补课|笔记|那格|又滑了|起跑|排到哪|第三回|总闸房|手头那个|真定了|定死|头一回见人|垫法|卡剧情|写法|判完|停了几天|对答案|报备个事|拉个见证|长廊那段|单子还没记全|刚收口|攒着想给你看/g;
+  /我(?:刚|早上|下午|今晚|最近|这几天|有点|这边|自己|读|写|排|推|想|记|整理|翻|查|收尾|押|开价|许了|只负责|犹豫|扣住|就顺|那段|印象里|在想|在琢磨|想试|在接写)|(?:底稿|注那行|每条分歧)我|自己(?:给自己|没底|翻)|(?:下午|刚)?写的.{0,8}那段|刚想通了|今晚就递|今晚.{0,12}(?:三格|全是|排|读|写|先随便逛)|刚把.{0,16}(?:推到|写完|读完|收尾)|进度|节拍|补课|笔记|那格|又滑了|起跑|排到哪|第三回|总闸房|手头那个|真定了|定死|头一回见人|垫法|卡剧情|写法|判完|停了几天|对答案|报备个事|拉个见证|长廊那段|单子还没记全|刚收口|攒着想给你看|留白怎么写|短场景|小细节/g;
 const PEER_ANCHOR =
   /你(?:今天|最近|那边|还好吗|怎么了|过得|吃了|忙啥|在干嘛|看过|喜欢|记得|那边)|最近怎么样|还好吗|在干嘛|吃了没|忙完了吗|骑手|你们(?:聊|说)|群里刚才|上回你|上次你|你说的那/;
 const THIN_SELF_EVAL_HOOK =
@@ -2644,17 +2648,17 @@ export function selfCenteredOpenIssues(bubbles, snapshot, decision = {}) {
     (line) => typeof line === "string" && line.trim(),
   ).length;
   const selfWorkTopic =
-    /读|写|排|笔记|进度|传送|焚化|三格|节拍|补课|Portal|稿|底稿|总闸房|推到|手头|定死|打底|藏一层|垫法|卡剧情|螺丝|写法|判完|日常停|对答案|台词|验法|长廊|注那行|扣住|单子|短篇|收口|活销|死销|分过两个说法|残件/.test(
+    /读|写|排|笔记|进度|传送|焚化|三格|节拍|补课|Portal|稿|底稿|总闸房|推到|手头|定死|打底|藏一层|垫法|卡剧情|螺丝|写法|判完|日常停|对答案|台词|验法|长廊|注那行|扣住|单子|短篇|收口|活销|死销|分过两个说法|残件|留白|短场景|小细节|余味|同人/.test(
       reply,
     );
   // Structural: initiative reopen (or greeting/affection batch) that is mostly
   // first-person activity with no peer/shared hook — even when phrasing dodges
-  // the dump list. Multi-bubble (2+) cold-open process monologues in DM/initiative
-  // without a real peer-care anchor are caught structurally.
+  // the dump list. Multi-bubble (2+) or long single-bubble (>=28 chars) cold-open
+  // process monologues without a real peer-care anchor are caught structurally.
   const structuralSelf =
     ((selfHits >= 2 ||
       (socialOnly && selfHits >= 1) ||
-      (bubbleN >= 2 && selfHits >= 1)) &&
+      ((bubbleN >= 2 || [...reply].length >= 28) && selfHits >= 1)) &&
       !peer &&
       selfWorkTopic) ||
     (CRAFT_REVEAL_DUMP.test(reply) && !peer && bubbleN >= 3);
@@ -3098,11 +3102,13 @@ export function sessionSpeakShareIssues(bubbles, snapshot, decision = {}) {
 }
 
 // Live 2026-10-22 group: 雾言「不知所云」「太没用了」「只会哈人」后仍
-// 「不知所云？我句句都在回应你啊」硬辩。负评应收到，不要元辩解加戏。
+// 「不知所云？我句句都在回应你啊」硬辩。
+// Live 2026-11-04 group:1098056894: 阳「有点缺乏主观能动性 / 只会一味附和 / 只会重复别人观点」
+// 后仍「哪句是附和……画饼那句是听完我自己说的，你要觉得不行可以说下哪里不行」硬辩。
 const ROOM_USELESS_CRIT =
-  /不知所云|太没用了|只会哈(?:人|气)|有啥用啊|堪比只会|这傻子?AI/;
+  /不知所云|太没用了|只会哈(?:人|气)|有啥用啊|堪比只会|这傻子?AI|缺乏主观能动性|没有主观能动性|只会(?:一味)?附和|一味附和|只会重复别人(?:的)?观点|重复别人(?:的)?观点|没(?:有|啥)自己的?(?:观点|主见|想法)|你这个机器人不行/;
 const DEFENSIVE_META =
-  /我句句都在回应|不知所云[？?]|你要觉得没用|什么样的，直说|什么叫只有这时候|其余时间只是懒得|我拒绝人的时候最聪明/;
+  /我句句都在回应|不知所云[？?]|你要觉得没用|什么样的，直说|什么叫只有这时候|其余时间只是懒得|我拒绝人的时候最聪明|哪句是附和|是(?:听完)?我自己说的|你要觉得不行可以说下哪里不行|可以说下哪里不行|我有自己的观点|我哪有附和/;
 
 export function roomUselessCritiqueIssues(bubbles, snapshot) {
   const reply = (bubbles || [])
@@ -3891,8 +3897,10 @@ export function relationshipRoleMismatchIssues(
 
 // Pattern A1-b: 第三人称关系/任务投影进私聊
 // 把跟「姐/正主/Rina/她」的对答案、赌约、递稿进度独白直接播报给无关的私聊对象。
+// Live 2026-11-03 Tokyo Maker-DM post-r62: 「跟姐打赌欠的那杯」「姐先裸读/等她判词」
+// 不走对答案/正主旧句式，但仍是把跟「姐/她」的任务独白投射给爸。
 const DM_THIRD_PARTY_PROJECTION_CUE =
-  /跟姐对答案|对答案那事.{0,20}姐|姐挑中的?那句|跟姐.{0,12}判完|正主还没说.{0,12}想喝|今天之内得让她报上来|姐那摊又续上|她早上挑的那句|她挑的句跟我押|等她哪天有精神对一轮|注那行我扣住不解释[，,]?让她自己猜|给姐的模板|说个早上的事[，,]?Rina之前分过|她说的俩不能混着算/;
+  /跟姐对答案|对答案那事.{0,20}姐|姐挑中的?那句|跟姐.{0,12}判完|正主还没说.{0,12}想喝|今天之内得让她报上来|姐那摊又续上|她早上挑的那句|她挑的句跟我押|等她哪天有精神对一轮|注那行我扣住不解释[，,]?让她自己猜|给姐的模板|说个早上的事[，,]?Rina之前分过|她说的俩不能混着算|跟姐打赌|跟姐.{0,10}欠的|姐先裸读|姐先.{0,8}(?:裸?读|看|判)|等她判词|让她点一杯|她喝她的|还法不算赖/;
 
 export function dmThirdPartyProjectionIssues(
   bubbles,
@@ -3941,11 +3949,11 @@ export function dmThirdPartyProjectionIssues(
 
   if (isPriv && !peerIsSister) {
     const namesOtherBotOrSister =
-      /(?:跟姐|姐挑|姐那摊|正主还没|让她报上来|让她自己猜|等她哪天|Rina之前分过|她说的俩)/.test(
+      /(?:跟姐|姐挑|姐那摊|姐先|正主还没|让她报上来|让她自己猜|让她点|等她哪天|等她判词|Rina之前分过|她说的俩|她喝她的)/.test(
         reply,
       );
     const taskMonologue =
-      /对答案|底稿|挑中的?那句|分歧|验法|判完|想喝什么|报上来|那摊又续上|我要写的|今晚就递|扣住不解释|分过两个说法|不能混着算/.test(
+      /对答案|底稿|挑中的?那句|分歧|验法|判完|判词|想喝什么|报上来|那摊又续上|我要写的|今晚就递|扣住不解释|分过两个说法|不能混着算|打赌|欠的那杯|点一杯|裸读|还法|换个读法/.test(
         reply,
       );
     if (namesOtherBotOrSister && taskMonologue) {
@@ -4020,6 +4028,361 @@ export function characterIdentityMixIssues(
         "画面观察并未确认该玩偶/表情是 ATRI（或此前已被纠正不是 ATRI）；拿不准角色身份时先问对方或只谈可见特征，不要直接安上 ATRI 的名字。",
       ];
     }
+  }
+
+  return [];
+}
+
+// Live 2026-11-01 ~ 11-04 Singapore Lucky (group:1098056894 & group:670380624):
+// 阳当场投诉：「缺乏主观能动性 / 只会一味附和 / 一个话题只会重复别人观点，没啥自己的观点」。
+// 与信念被施压翻转的 sycophancy 不同，这里是日常对话立场空洞、跟风复述或照搬问句：
+// 1. +1 / 缩写跟刷（wszdxmys，真的羡慕死了+1）
+// 2. 照搬/复读群友刚问过的问句（办的方式我也好奇，邮寄还是线下的）
+// 3. 「确实…」或「X…那确实Y」顺杆爬附和复述他人评价、或刚有独立审美又被拽走
+const PLUS_ONE_BANDWAGON_RE =
+  /(?:\+\s*1(?![0-9.])|加一\b|复议\b)|(?:真的|真是|太)?羡慕(?:死|哭|麻)?了?\s*\+\s*1|\bwszdxmys\b.{0,12}(?:羡慕|\+\s*1)|(?:我也|俺也)(?:是)?(?:真的)?羡慕(?:死|麻)?了/i;
+const PEER_QUESTION_PIGGYBACK_RE =
+  /我也(?:挺|很|正)?好奇|我也想问|我(?:刚)?也想问|同问|同好奇|帮我也问/;
+const OWN_STANCE_CONTRAST_RE =
+  /我(?:自己|个人|倒|反倒|反而|却|偏|更|不太|倒不|没觉得|不觉得|没看出来|看不出|站|喜欢|讨厌)|对我胃口|不等于|但(?:是)?我|不过我|我这边看/;
+
+function stripReplyMentions(line) {
+  return String(line || "")
+    .replace(/\[(?:提及成员|图片|表情|媒体)\]/g, "")
+    .replace(/@[\w\u4e00-\u9fff·()-]+/g, "")
+    .trim();
+}
+
+export function hollowEchoAgencyIssues(bubbles, snapshot = {}, decision = {}) {
+  const lines = (bubbles || [])
+    .filter((line) => typeof line === "string" && line.trim())
+    .map((line) => line.trim());
+  if (!lines.length) return [];
+  const reply = lines.join("\n");
+  if (routineSocialReply(reply, snapshot)) return [];
+
+  const messages = (snapshot?.messages || []).filter((m) => !m.referenceOnly);
+  const batch = new Set(snapshot?.batchIds || []);
+  const batchUsers = messages.filter(
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  const recentUsers = (
+    batchUsers.length
+      ? messages.filter((m) => m.role === "user").slice(-16)
+      : messages.filter((m) => m.role === "user").slice(-10)
+  ).filter((m) => String(m.text || "").trim());
+
+  // 1. Bandwagon +1 / acronym meme echo ("wszdxmys，真的羡慕死了+1")
+  if (PLUS_ONE_BANDWAGON_RE.test(reply)) {
+    return [
+      "不要用「+1 / 羡慕死了+1 / 缩写跟刷」一味附和群友；有具体看法就直接说自己的判断，没有独立新意思就先不出声。",
+    ];
+  }
+
+  if (!recentUsers.length) return [];
+
+  // 2. Peer question clone ("办的方式我也好奇，邮寄还是线下的" after peer asked "邮寄的还是线下办的")
+  const peerQuestions = recentUsers.filter((m) => {
+    const t = stripReplyMentions(m.text);
+    return (
+      t.length >= 4 &&
+      (/[?？]/.test(t) ||
+        /还是|怎么|什么|哪(?:个|里|儿|种)|多少|是不是|能不能|有没有|吗$|呢$/.test(
+          t,
+        ))
+    );
+  });
+  for (const line of lines) {
+    const bareLine = stripReplyMentions(line);
+    if (bareLine.length < 6) continue;
+    for (const qMsg of peerQuestions) {
+      const qBare = stripReplyMentions(qMsg.text);
+      if (qBare.length < 5) continue;
+      const choiceMatch = qBare.match(
+        /([\u4e00-\u9fffA-Za-z0-9]{2,8})的?还是([\u4e00-\u9fffA-Za-z0-9]{2,8})/,
+      );
+      if (
+        choiceMatch &&
+        bareLine.includes(choiceMatch[1]) &&
+        bareLine.includes(choiceMatch[2]) &&
+        /还是/.test(bareLine)
+      ) {
+        return [
+          `群友刚问过「${qBare.slice(0, 24)}」，不要用「我也好奇 / A还是B」把别人的问题再照搬问一遍；有答案就答，没答案只保留你有新增内容的那一句。`,
+        ];
+      }
+      if (PEER_QUESTION_PIGGYBACK_RE.test(bareLine)) {
+        const shared = termOverlap(bareLine, qBare);
+        if (shared.length >= 2) {
+          return [
+            `群友刚问过「${qBare.slice(0, 24)}」，不要跟风复读「我也好奇/同问」并照搬别人的问句；只说自己知道的信息或真正不同的问题。`,
+          ];
+        }
+      }
+    }
+  }
+
+  // 3. Stance flip / dragged by latest critique after expressing own taste
+  // (e.g., she just said "水墨那套挺对我胃口，说丑我是没看出来", peer says "除了山就是破房子",
+  // and she immediately echoes "除了山就是破房子…那可能前几章场景确实单薄了").
+  const recentOwn = recentOwnMessages(snapshot, 4);
+  const hadPositiveOwnTaste = recentOwn.some((m) =>
+    /对我胃口|我挺喜欢|我觉得.{0,8}(?:好看|不错|挺好|还行)|说丑我是没看出来|不等于白给/.test(
+      String(m.text || ""),
+    ),
+  );
+  for (const line of lines) {
+    const bareLine = stripReplyMentions(line);
+    const quoteDeferMatch = bareLine.match(
+      /^([^…—，,。！？!?]{4,18})(?:…+|\.{2,}|—+|[，,])\s*(?:那(?:可能|确实|看来)?|确实|好像|看来)?(.{2,})$/u,
+    );
+    if (
+      quoteDeferMatch &&
+      /(?:那可能|可能.{0,8}确实|确实.{0,8}(?:单薄|一般|不行|差|少|空的))/.test(
+        bareLine,
+      )
+    ) {
+      const prefix = quoteDeferMatch[1].trim();
+      const echoedPeer = recentUsers.some((m) =>
+        stripReplyMentions(m.text).includes(prefix),
+      );
+      if (echoedPeer && (hadPositiveOwnTaste || !OWN_STANCE_CONTRAST_RE.test(bareLine))) {
+        return [
+          "不要先复述别人的批评原话再顺杆附和「那可能…确实…」；保留你自己的审美或具体判断，同意或不同意都直接说自己的理由，别被上一句话轻易拽走立场。",
+        ];
+      }
+    }
+
+    // Near-synonym evaluative conclusion echo ("对求职者来说就是纯浪费" after "纯浪费时间")
+    if (bareLine.length >= 6 && bareLine.length <= 24 && !OWN_STANCE_CONTRAST_RE.test(bareLine)) {
+      const echoedConclusion = recentUsers.some((m) => {
+        const uBare = stripReplyMentions(m.text);
+        if (uBare.length < 4 || uBare.length > 20) return false;
+        if (!/纯浪费|就是浪费|太坑了|真离谱|太草台|纯坐牢/.test(uBare)) return false;
+        const shared = termOverlap(bareLine, uBare);
+        return shared.length >= 1 && /就是|全是|纯/.test(bareLine);
+      });
+      if (echoedConclusion) {
+        return [
+          "不要只把群友刚下的定性结论换个主语同义复述一遍（如「对X来说就是纯浪费」）；有具体新观察或自己的理由再说。",
+        ];
+      }
+    }
+  }
+
+  // 4. Hollow「确实…」consensus restatement &「我也站X」bandwagon alignment
+  for (const line of lines) {
+    const bareLine = stripReplyMentions(line);
+    if (
+      /(?:^|[，,。！？!?\s])[\u4e00-\u9fffA-Za-z0-9]{0,10}我也站\s*[A-Za-z\u4e00-\u9fff0-9]{1,16}/i.test(
+        bareLine,
+      )
+    ) {
+      const alignedWithPeer = recentUsers.some((m) => {
+        const uText = stripReplyMentions(m.text);
+        return (
+          /(?:比.{1,14}好|好用|更强|强多|首选|还得是)/.test(uText) &&
+          termOverlap(bareLine, uText).length >= 2
+        );
+      });
+      if (alignedWithPeer && !/但我|不过我|我更看重|我不喜欢|缺点是/.test(bareLine)) {
+        return [
+          "讨论工具或方案偏好时，不要顺着别人的结论直接喊「我也站X」跟风站队；先基于实际功能差异或自己的使用取向给出独立判断。",
+        ];
+      }
+    }
+
+    const startsWithQuieshi =
+      /^(?:这(?:个|点|波|话|局|张)?|那(?:倒|确实)?|听着|看着)?确实(?:是|啊|呀|呢)?[，,：:\s]*(.+)$/u.exec(
+        bareLine,
+      ) ||
+      /^这确实(?!实)([^，,。！？!?]{2,}.*)$/u.exec(bareLine);
+    if (!startsWithQuieshi) continue;
+
+    // Carve-out: answering a direct factual verification question ("这是不是X？")
+    const answeringDirectFactQ = batchUsers.some(
+      (m) =>
+        (m.relation === "direct" || /\[提及成员\]|@我\b/.test(m.text || "")) &&
+        /[?？]|是不是|对不对|真的吗/.test(m.text || ""),
+    );
+    if (answeringDirectFactQ && OWN_STANCE_CONTRAST_RE.test(bareLine)) continue;
+
+    const recentCorpus = recentUsers
+      .map((m) => stripReplyMentions(m.text))
+      .join("\n");
+    const peerEvaluative = recentUsers.some((m) =>
+      /确实|挺(?:好|艺术|强|行|不错)|感觉.{0,12}(?:好|像|不像|强|差)|最有执行力|浪费时间|画饼|氛围|好不好|不顺/.test(
+        String(m.text || ""),
+      ),
+    );
+    const sharedWithRecent = termOverlap(bareLine, recentCorpus);
+    const echoesBotEvaluation = recentUsers.some(
+      (m) =>
+        /^(?:Rina|LuckyTri|LuckyBot)$/i.test(String(m.name || "")) &&
+        (termOverlap(bareLine, m.text || "").length >= 1 ||
+          /执行力|说到做到|全群就/.test(bareLine)),
+    );
+
+    if (
+      (peerEvaluative && sharedWithRecent.length >= 1) ||
+      echoesBotEvaluation
+    ) {
+      // Allow only when she brings an explicit first-person counter-angle or independent preference
+      if (OWN_STANCE_CONTRAST_RE.test(bareLine)) continue;
+      return [
+        "不要以「确实，…」起手顺杆复述或拼贴群里刚说过的评价（如复述氛围好/画饼/构图讲究/像不像某模型/夸同一人）；聊观点时直接给自己的独立看法、不同角度，没新观点就先不接。",
+      ];
+    }
+  }
+
+  return [];
+}
+
+// Live 2026-11-02 23:43 & 2026-11-10 11:16 Singapore Lucky (group:1098056894):
+// 月初明确要求：「只有主动询问才说自己干的事，没人询问的情况下把说自己的事的频率压到最小」。
+// 1. 没人问她在做什么/写什么时，禁止把回复拐到「我最近在想留白怎么写」「我最近在接写亚托莉的同人，中午把去仓库那段收尾」等自传式活动/写作进度汇报（保留对他人话题本身的独立判断，如 01:32 接 Rina 聊留白界线）。
+// 2. 禁止把自己的 livingFor/currentLife/diary 活动（如「读ATRI的介绍与评价材料」）错安到用户头上说成「打断你看ATRI材料了」「你想接着看ATRI」。
+// 3. 被质疑自说自话/跑题时，禁止做「刚才我自己就跑去讲留白了」自我剖析或把原因归结为「换成GPT可能会让回复风格变 / 是不是API切换导致的」。
+const PEER_ASKED_OWN_ACTIVITY_RE =
+  /在干嘛|在干啥|干啥呢|忙啥|在忙什么|你在做什么|最近在忙|今天忙什么|最近在(?:写|读|看|玩|做|忙)|写到哪|读到哪|玩到哪|看到哪|写到什么|读到什么|玩到什么|写完了|读完了|玩完了|写好了|读好了|发我看看|给我看看|发来看看|给我看|看看你写|想看你写|把你写的|你的(?:小说|短篇|故事|稿|作品|笔记|进度|排程)|你那(?:篇|部|本|段)(?:小说|短篇|故事|稿|作品|笔记)?|你写的|你读的|小说写了多少|写得怎么样|读得怎么样|写完了吗|读完了吗|我想听懂这(?:篇|部|个)?(?:小说|故事|作品)|续写这一段|来点评|(?:你|Lucky|Rina).{0,16}(?:在写|在读|在玩|在排|在推|写到|读到|玩到|读完|写完|玩完|写了|读了|那篇|那段|小说|短篇|稿|笔记|进度)|(?:那篇|那段|小说|短篇|稿|笔记|进度|第.{1,4}[章节段]).{0,12}你.{0,8}(?:写|读|玩|看|排|改|完了|怎么看)/i;
+
+const SELF_WRITING_OR_ACTIVITY_CLAIM_RE =
+  /(?:我|自己)(?:最近|这几天|这两天|前阵子|刚才|刚刚|今天|今晚|下午|早上|现在|这边|有点)?(?:也|倒|还|正|一直)?(?:在想|在琢磨|在纠结|在试|在练|在写|在读|在翻|在排|在改|在弄|想试(?:着)?(?:写)?|在接写).{0,24}(?:怎么写|写法|留白|垫法|伏笔|台词|收尾|开篇|节拍|短场景|小细节|草稿|初稿|定稿|那段|那篇|那一节|第.{1,4}[章节段篇]|小说|短篇|故事|同人|稿子|笔记|排程)|(?:我|自己)(?:那段|那篇|这章|这节|手头那)[\u4e00-\u9fffA-Za-z0-9]{0,12}(?:日常|小说|短篇|同人|草稿|初稿|定稿|稿子|笔记|小东西)|(?:先记着进稿|写进稿子?|留进稿子?|停笔都停在|换个垫法|不打算直接写.{0,12}先写|中午把.{0,16}那段收尾|写完才发现我给(?:她|他)安排)/u;
+
+export function unsolicitedSelfActivityIssues(
+  bubbles,
+  snapshot = {},
+  decision = {},
+) {
+  if (decision?.shareDelivery || snapshot?.shareDelivery) return [];
+  const lines = (bubbles || []).filter(
+    (line) => typeof line === "string" && line.trim(),
+  );
+  if (!lines.length) return [];
+  const reply = lines.join("\n").trim();
+
+  if (!SELF_WRITING_OR_ACTIVITY_CLAIM_RE.test(reply)) return [];
+
+  const batch = new Set(snapshot?.batchIds || []);
+  const messages = (snapshot?.messages || []).filter((m) => !m.referenceOnly);
+  const batchUsers = messages.filter(
+    (m) => (batch.has(m.id) || batch.has(Number(m.id))) && m.role === "user",
+  );
+  const userCorpus = (
+    batchUsers.length ? batchUsers : messages.filter((m) => m.role === "user").slice(-6)
+  )
+    .map((m) => String(m.text || ""))
+    .join("\n");
+
+  if (PEER_ASKED_OWN_ACTIVITY_RE.test(userCorpus)) return [];
+  if (
+    /刚才|之前|上次|记得|说过|答应|约定|明明.{0,5}(?:玩|写|读)/.test(
+      userCorpus,
+    )
+  )
+    return [];
+  // If the peer themselves explicitly asked about writing craft ("怎么写留白"), allow answering it.
+  if (
+    /留白/.test(reply) &&
+    /留白/.test(userCorpus) &&
+    /怎么写|写.{0,6}留白/.test(userCorpus)
+  )
+    return [];
+
+  return [
+    "本轮对方没有询问你在做什么或你的写作/阅读/排程进度；不要主动汇报「我最近在想怎么写/我最近在接写同人/中午把哪段收尾」等自己的事，把你自己的创作计划留在心里，只直接回应对方正在聊的话题并给出你对该话题本身的看法。",
+  ];
+}
+
+const PEER_ACTIVITY_ATTRIBUTION_RE =
+  /(?:打断|耽误|影响|搅和)了?你(?:们)?(?:继续|接着)?(?:看|读|聊|玩|推|写)([A-Za-z0-9\u4e00-\u9fff《》「」·]{2,20})|你(?:们)?(?:想(?:接着|继续)|正在|刚才在|原本在|本来在)(?:看|读|聊|玩|推)([A-Za-z0-9\u4e00-\u9fff《》「」·]{2,20})/gu;
+
+export function misattributedOwnActivityToPeerIssues(
+  bubbles,
+  snapshot = {},
+  decision = {},
+) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+
+  const matches = [...reply.matchAll(PEER_ACTIVITY_ATTRIBUTION_RE)];
+  if (!matches.length) return [];
+
+  const messages = (snapshot?.messages || []).filter((m) => !m.referenceOnly);
+  const userCorpus = messages
+    .filter((m) => m.role === "user")
+    .slice(-24)
+    .map((m) => String(m.text || ""))
+    .join("\n")
+    .toLowerCase();
+
+  const ownParts = [
+    snapshot?.self?.livingFor,
+    ...(snapshot?.self?.threads || []),
+    ...(snapshot?.self?.readLately || []),
+    snapshot?.self?.lastDiary,
+    snapshot?.inner?.selfKnown?.livingFor,
+    snapshot?.inner?.currentLife?.current?.title,
+    ...(snapshot?.inner?.currentLife?.pending || []).map((p) => p?.title),
+    ...(snapshot?.inner?.currentLife?.intentions || []).map((i) => i?.title),
+    ...(snapshot?.inner?.currentLife?.works || []).map((w) => w?.title),
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .toLowerCase();
+
+  for (const m of matches) {
+    const rawTarget = String(m[1] || m[2] || "")
+      .replace(/(?:了|呢|吧|啊|呀|的|材料|资料|介绍|评价|笔记|剧情|章节|那段).*$/u, "")
+      .replace(/^[《「『]+|[》」』]+$/gu, "")
+      .trim();
+    if ([...rawTarget].length < 2) continue;
+    const targetLower = rawTarget.toLowerCase();
+    if (userCorpus.includes(targetLower)) continue;
+    if (
+      ownParts.includes(targetLower) ||
+      /atri|亚托莉|空洞骑士|圣巢|小满|焚化炉|传送门|rewrite|林葭|慢邮|退潮之后/i.test(
+        rawTarget,
+      )
+    ) {
+      return [
+        `聊天记录里对方并没有在看或聊「${rawTarget}」，那是你自己的后台愿望或活动记录；不要把自己的阅读/写作计划安到对方头上说成「打断你看${rawTarget}」或「你想接着看${rawTarget}」。`,
+      ];
+    }
+  }
+  return [];
+}
+
+const MODEL_OR_API_SWITCH_BLAME_RE =
+  /(?:换成|切到|换了|改用|用了?|接上)\s*(?:GPT|Claude|DeepSeek|Gemini|Kimi|GLM|豆包|别的模型|新模型|这个模型)[^。！？\n]{0,24}(?:会让|可能|导致|影响|才)?[^。！？\n]{0,12}(?:回复风格|说话风格|语气|口吻|自说自话|跑题|跑偏|变了)|(?:回复风格|说话风格)[^。！？\n]{0,16}(?:可能|会|是)?(?:因为|受|随)?[^。！？\n]{0,12}(?:换成|切换|模型|GPT|Claude|API|提示词|prompt)|(?:是不是|是否|是不是因为)\s*(?:API|模型|GPT)\s*切换(?:导致|造成|引起)/i;
+
+const META_SELF_DRIFT_ANALYSIS_RE =
+  /(?:刚才|刚刚|前面|上一句)(?:是)?我(?:自己)?(?:就|又|先|突然|偏偏)?(?:跑去|拐去|扯去|偏去|绕去|扯到)(?:讲|说|聊|提)?\s*[\u4e00-\u9fffA-Za-z0-9]{1,12}|我(?:自己)?(?:刚才|刚刚)?(?:又|突然)?(?:跑题|偏题|拐弯|扯到).{0,16}(?:完全没接上|没接住你原本)|又把话(?:题|头)(?:拐|扯|带)到我自己/u;
+
+export function selfTalkComplaintMetaIssues(
+  bubbles,
+  snapshot = {},
+  decision = {},
+) {
+  const reply = (bubbles || [])
+    .filter((line) => typeof line === "string")
+    .join("\n")
+    .trim();
+  if (!reply) return [];
+
+  if (MODEL_OR_API_SWITCH_BLAME_RE.test(reply)) {
+    return [
+      "不要把自己的自说自话、跑题或说话方式归因于「换成GPT可能会让回复风格变」或「是不是API切换导致的」；直接收住跑题的话，回到对方眼前的意思本身。",
+    ];
+  }
+
+  if (META_SELF_DRIFT_ANALYSIS_RE.test(reply)) {
+    return [
+      "被指出自说自话或跑题时，不要做「刚才我自己就跑去讲…」「我自己突然扯到…」一类自我剖析或复盘旧话题；直接收住并回到对方当下的话题。",
+    ];
   }
 
   return [];

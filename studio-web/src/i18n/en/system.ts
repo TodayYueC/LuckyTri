@@ -1,4 +1,3 @@
-// English for the System section (models, embedding, search, runtime, page shell).
 export default {
   语音: "Voice",
   "TA 的声音": "TA's voice",
@@ -100,7 +99,6 @@ export default {
   删除表情: "Delete sticker",
   "删除这张表情？它和大家一起用过的记录也会一并删除。":
     "Delete this sticker? Its history with people is deleted too.",
-  各项设置: "Settings",
   名称: "Name",
   图上的字: "Text in the picture",
   图片与表情: "Images and stickers",
@@ -207,8 +205,6 @@ export default {
   聊天记录: "Chat records",
   请先登录管理台: "Sign in to the studio first",
   QQ: "QQ",
-
-  // EmbeddingProfile.vue
   知识向量: "Knowledge vectors",
   "API 地址": "API URL",
   模型名称: "Model name",
@@ -234,8 +230,6 @@ export default {
   请求格式: "Request format",
   "OpenAI 兼容（可批量）": "OpenAI-compatible (batched)",
   "方舟多模态接口（逐条）": "Ark multimodal endpoint (one at a time)",
-
-  // RecallPanel.vue
   回忆索引: "Recall index",
   "她的事实、情景、自我线索和近一个月的原话都在同一个索引里，按意思、字词和相关的人一起检索。向量还没覆盖的部分先按字词找。":
     "Her facts, episodes, self threads and the last month of messages share one index, searched by meaning, words and the people involved. Whatever vectors do not cover yet is found by words.",
@@ -264,13 +258,12 @@ export default {
   突出度: "Stands out",
   共有字词: "Shared words",
   没有想起什么: "Nothing came to mind",
-
-  // ModelLibrary.vue
   极低: "Minimal",
   中: "Medium",
   极高: "Extra high",
   最深: "Deepest",
   "已保存 {value}": "Saved {value}",
+  "火山方舟 Agent Plan": "Volcengine Ark Agent Plan",
   "火山方舟 Coding Plan": "Volcengine Ark Coding Plan",
   "亚马逊 Bedrock": "Amazon Bedrock",
   通义千问: "Qwen",
@@ -291,8 +284,6 @@ export default {
   "＋ 新增模型": "+ Add model",
   "群聊、私聊和独处都使用默认模型。其余已启用的模型按这里的顺序作为备用。关掉的模型不会被调用。":
     "Group chats, private chats and time alone all use the default model. Other enabled models serve as backups in this order. Models that are switched off are never called.",
-  "还没有模型。": "No models yet.",
-  "{length} 个模型": "{length} models",
   默认模型: "Default model",
   备用模型: "Backup model",
   模型档案: "Model profile",
@@ -334,8 +325,7 @@ export default {
   还没有模型: "No models yet",
   "常见厂商会预填模型参数；OpenRouter 可选 GPT-6 预设，也可用自选模型手动填写模型 ID 和参数。":
     "Common vendors come with parameters prefilled. On OpenRouter you can pick a GPT-6 preset, or choose your own model and enter its ID and parameters by hand.",
-  "TOKEN LEDGER · 累计用量": "TOKEN LEDGER",
-  一路聊到现在: "All the way up to now",
+  累计用量: "Total usage",
   "统计本机账本记录的模型调用；缓存 Token 已包含在输入量里。":
     "Counts the model calls recorded in this machine's ledger; cached tokens are already included in the input.",
   "累计 Token": "Total tokens",
@@ -363,8 +353,6 @@ export default {
   模型库: "Model library",
   已关闭: "Off",
   "超时（毫秒）": "Timeout (ms)",
-
-  // Runtime.vue
   自动备份: "Automatic backup",
   "自动备份出错，稍后重试": "Automatic backup failed; it will retry later",
   "自动备份，运行一阵后会做第一份":
@@ -386,8 +374,6 @@ export default {
   离线: "Offline",
   "QQ 连接": "QQ connection",
   运行开关: "Run switches",
-
-  // BackupManager.vue
   数据与备份: "Data and backups",
   完整备份: "Full backup",
   迁移快照: "Migration snapshot",
@@ -435,8 +421,6 @@ export default {
   旧备份无清单: "No manifest",
   保留恢复点: "Protected restore point",
   "已选 {count} 份 · 约 {size}": "Selected {count} · about {size}",
-
-  // SearchProfile.vue
   不限: "Unlimited",
   搜索配置已保存并生效: "Search settings saved and active",
   "{provider} 联网检索": "{provider} web search",
@@ -477,19 +461,10 @@ export default {
     "Tests the settings as entered without saving them. Failed and connection tests do not use the local daily allowance; the provider manages its own account quota.",
   保存搜索: "Save search",
   测试连接: "Test connection",
-
-  // SystemPage.vue
   "当前设置还没保存，离开这个分区吗？":
     "These settings are not saved. Leave this section?",
   未保存的修改: "Unsaved changes",
   放弃修改: "Discard changes",
   继续编辑: "Keep editing",
-  "THE WORLD AROUND HER · 系统": "THE WORLD AROUND HER",
-  "让她与世界，": "Let her and the world",
-  "温柔相连。": "connect gently.",
-  "连接、模型与运行方式都在这里。每一处改变，都可以看见结果。":
-    "Connection, models and the way she runs are all here. Every change shows its result.",
-  "正在与 QQ 相连": "Connecting to QQ",
-  "等待 QQ 连接": "Waiting for QQ to connect",
   系统的分区: "System sections",
-} as Record<string, string>;
+};

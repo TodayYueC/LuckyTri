@@ -229,23 +229,43 @@ export function affectionBatch(snapshot) {
   );
 }
 
+const DIRECT_ACTIVITY_ASK_RE =
+  /在干嘛|在干啥|干啥呢|忙啥|在忙什么|你在做什么|最近在忙|今天忙什么|最近在(?:写|读|看|玩|做|忙)|写到哪|读到哪|玩到哪|看到哪|写到什么|读到什么|玩到什么|写完了|读完了|玩完了|写好了|读好了|发我看看|给我看看|发来看看|给我看|看看你写|想看你写|把你写的|你的(?:小说|短篇|故事|稿|作品|笔记|进度|排程)|你那(?:篇|部|本|段)(?:小说|短篇|故事|稿|作品|笔记)?|你写的|你读的|小说写了多少|写得怎么样|读得怎么样|写完了吗|读完了吗|我想听懂这(?:篇|部|个)?(?:小说|故事|作品)|续写这一段|来点评/i;
+
+const SECOND_PERSON_WORK_ASK_RE =
+  /(?:你|Lucky|Rina).{0,16}(?:在写|在读|在玩|在排|在推|写到|读到|玩到|读完|写完|玩完|写了|读了|那篇|那段|小说|短篇|稿|笔记|进度)|(?:那篇|那段|小说|短篇|稿|笔记|进度|第.{1,4}[章节段]).{0,12}你.{0,8}(?:写|读|玩|看|排|改|完了|怎么看)/i;
+
+const SELF_CRAFT_OR_STUDY_RE =
+  /(?:我|自己)?.{0,10}(?:想接着读|在想|在琢磨|想试试|想写|在写|在读|在排|写完|读完|把.{1,16}写完|定稿|初稿|草稿|留白.{0,6}怎么写|怎么写.{0,6}留白|垫法|节拍|三格|焚化炉|介绍与评价材料|第.{1,4}[章节段篇])/u;
+
 export function activityAskedInBatch(snapshot) {
   const fresh = new Set(snapshot.batchIds || []);
   const currentWords = (snapshot.messages || [])
-    .filter((m) => fresh.has(m.id) && m.role === "user")
+    .filter(
+      (m) => (fresh.has(m.id) || fresh.has(Number(m.id))) && m.role === "user",
+    )
     .map((m) => m.text || "")
     .join(" ");
   if (!currentWords) return false;
-  const works = snapshot.inner?.currentLife?.works || [];
   if (
-    works.some((w) => w?.title?.length >= 2 && currentWords.includes(w.title))
+    DIRECT_ACTIVITY_ASK_RE.test(currentWords) ||
+    SECOND_PERSON_WORK_ASK_RE.test(currentWords)
   )
     return true;
+  const works = snapshot.inner?.currentLife?.works || [];
   const curTitle = snapshot.inner?.currentLife?.current?.title || "";
-  if (curTitle.length >= 2 && currentWords.includes(curTitle)) return true;
-  return /在干嘛|干啥|忙啥|在忙什么|做什么|写到|读到|玩到|写完了|读完了|发我看看|给我看看|小说|短篇|故事|稿子|作品|传送门|焚化炉|少女歌剧|ATRI|Rewrite/i.test(
-    currentWords,
-  );
+  const titles = [
+    curTitle,
+    ...works.map((w) => String(w?.title || "")),
+  ].filter((t) => t.length >= 2);
+  if (
+    titles.some((title) => currentWords.includes(title)) &&
+    /(?:你|Lucky|Rina).{0,18}(?:写|读|玩|推|排|进度|笔记|稿|到哪|完了|怎么看)|(?:写|读|玩|推|排|进度|笔记|稿).{0,12}(?:到哪|完了|好了|多少|怎么样|给我看|发来)/i.test(
+      currentWords,
+    )
+  )
+    return true;
+  return false;
 }
 
 export function dialogueContext(snapshot) {
@@ -469,14 +489,19 @@ export function dialogueContext(snapshot) {
   } else if (inner.currentLife) {
     const life = inner.currentLife;
     const askedActivity = activityAskedInBatch(snapshot);
+    const isWritingOrScheduleTask = (row) =>
+      /写|读|排|推|定稿|初稿|草稿|小说|短篇|故事|章节|第.{1,4}[章节段篇]|焚化炉|传送门|ATRI|亚托莉|留白|垫法|节拍|三格|笔记/i.test(
+        `${row?.title || ""} ${row?.state || ""}`,
+      );
     const keepTask = (row) =>
       askedActivity ||
       recallAsked ||
       snapshot.initiative ||
-      relevantContext(
-        [{ content: `${row?.title || ""} ${row?.state || ""}` }],
-        { cues, limit: 1, requireOverlap: true },
-      ).length > 0;
+      (!isWritingOrScheduleTask(row) &&
+        relevantContext(
+          [{ content: `${row?.title || ""} ${row?.state || ""}` }],
+          { cues, limit: 1, requireOverlap: true },
+        ).length > 0);
     const compact = (row) => ({
       id: row.id,
       title: row.title,
@@ -494,16 +519,21 @@ export function dialogueContext(snapshot) {
             state: life.current.state,
           }
         : life.current;
+    const keptWorks =
+      !snapshot.initiative && !askedActivity && !recallAsked
+        ? (life.works || []).filter((w) => w?.kind !== "write")
+        : life.works;
     inner.currentLife = {
       ...life,
       current: compactCurrent,
+      ...(Array.isArray(keptWorks) ? { works: keptWorks } : {}),
       pending: (life.pending || []).filter(keepTask).map(compact),
       intentions: (life.intentions || []).filter(keepTask).map(compact),
       ...(askedActivity
         ? {}
         : {
             activityNote:
-              "本轮对方没有问你的后台安排或作品进度；currentLife 仅作背景认知，不要在问候或日常聊天中主动播报排程、作品或阅读进度。",
+              "本轮对方没有问你的后台安排或作品进度；currentLife 仅作背景认知，不要在问候或日常聊天中主动播报排程、作品或阅读进度，也不要把你自己的阅读/写作计划当成对方正在看或想看的东西。",
           }),
       worksCoverage:
         "以下是按本轮话题选出的作品片段，不是全部历史；缺少一篇不能证明从未写过或读过。",
@@ -519,14 +549,36 @@ export function dialogueContext(snapshot) {
         if (!self.readLately.length) delete self.readLately;
       }
       if (
+        self?.livingFor &&
+        (SELF_CRAFT_OR_STUDY_RE.test(String(self.livingFor)) ||
+          !relevantContext([{ content: String(self.livingFor) }], {
+            cues,
+            limit: 1,
+            requireOverlap: true,
+          }).length)
+      ) {
+        delete self.livingFor;
+      }
+      if (Array.isArray(self?.threads)) {
+        self.threads = self.threads.filter(
+          (line) =>
+            !(
+              /^(?:想做的事|意图)[：:]/.test(String(line || "")) &&
+              SELF_CRAFT_OR_STUDY_RE.test(String(line || ""))
+            ),
+        );
+        if (!self.threads.length) delete self.threads;
+      }
+      if (
         inner.selfKnown &&
         typeof inner.selfKnown === "object" &&
         inner.selfKnown.livingFor &&
-        !relevantContext([{ content: String(inner.selfKnown.livingFor) }], {
-          cues,
-          limit: 1,
-          requireOverlap: true,
-        }).length
+        (SELF_CRAFT_OR_STUDY_RE.test(String(inner.selfKnown.livingFor)) ||
+          !relevantContext([{ content: String(inner.selfKnown.livingFor) }], {
+            cues,
+            limit: 1,
+            requireOverlap: true,
+          }).length)
       ) {
         const { livingFor: _wish, ...rest } = inner.selfKnown;
         inner.selfKnown = rest;
@@ -543,6 +595,27 @@ export function dialogueContext(snapshot) {
         { cues, limit: 2, requireOverlap: true },
       ).map((item) => item.content);
       if (!self.readLately.length) delete self.readLately;
+    }
+    if (
+      self?.livingFor &&
+      (SELF_CRAFT_OR_STUDY_RE.test(String(self.livingFor)) ||
+        !relevantContext([{ content: String(self.livingFor) }], {
+          cues,
+          limit: 1,
+          requireOverlap: true,
+        }).length)
+    ) {
+      delete self.livingFor;
+    }
+    if (Array.isArray(self?.threads)) {
+      self.threads = self.threads.filter(
+        (line) =>
+          !(
+            /^(?:想做的事|意图)[：:]/.test(String(line || "")) &&
+            SELF_CRAFT_OR_STUDY_RE.test(String(line || ""))
+          ),
+      );
+      if (!self.threads.length) delete self.threads;
     }
   }
   if (Array.isArray(context.summaries))

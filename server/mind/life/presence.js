@@ -139,6 +139,19 @@ export class LifePresence {
         );
         continue;
       }
+      const groupMismatch = this.owner.initiative.groupOriginMismatch?.(
+        t,
+        session,
+        now,
+      );
+      if (groupMismatch) {
+        this.owner.mind.thoughts.setOutreach(
+          t.id,
+          "skipped",
+          groupMismatch.reason,
+        );
+        continue;
+      }
       if (this.owner.initiative.recentlyToldAnotherGroup(t, now)) {
         this.owner.mind.thoughts.setOutreach(t.id, "declined");
         continue;
@@ -185,6 +198,16 @@ export class LifePresence {
           t.id,
           "declined",
           "对方刚推回过这个话题，不再主动续播",
+        );
+        continue;
+      }
+      const uninvitedSelf =
+        this.owner.initiative.uninvitedSelfActivityOutreach?.(t, session, now);
+      if (uninvitedSelf) {
+        this.owner.mind.thoughts.setOutreach(
+          t.id,
+          "declined",
+          uninvitedSelf.reason,
         );
         continue;
       }

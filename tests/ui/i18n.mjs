@@ -1,3 +1,8 @@
+import {
+  navigate as studioNavigate,
+  control,
+  timeTab,
+} from "./studio-navigation.mjs";
 import { chromium } from "@playwright/test";
 import assert from "node:assert/strict";
 import "../helpers/awake.mjs";
@@ -168,6 +173,7 @@ try {
       /[\u3400-\u9fff]/,
     );
 
+    await control(page, "appearance");
     await page.locator('#locale [data-locale="en"]').click();
     await page.waitForFunction(() => document.documentElement.lang === "en");
     assert.doesNotMatch(
@@ -192,6 +198,7 @@ try {
       "the tutorial opens in the page's language",
     );
 
+    await control(page, "appearance");
     await page.locator('#locale [data-locale="zh"]').click();
     await page.waitForFunction(() => document.documentElement.lang === "zh-CN");
     await page.reload();
@@ -223,7 +230,7 @@ try {
       const overflow = await page.evaluate(() => ({
         page: document.documentElement.scrollWidth - window.innerWidth,
         topbar: (() => {
-          const bar = document.querySelector(".topbar");
+          const bar = document.querySelector(".studio-header");
           return bar ? bar.scrollWidth - bar.clientWidth : 0;
         })(),
       }));
@@ -235,6 +242,7 @@ try {
         overflow.topbar <= 1,
         `${hash} @${width}: top bar is ${overflow.topbar}px too wide`,
       );
+      await control(page, "appearance");
       const switchBox = await page.locator("#locale").boundingBox();
       assert.ok(
         switchBox && switchBox.x >= 0 && switchBox.x + switchBox.width <= width,

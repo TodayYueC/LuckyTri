@@ -811,408 +811,410 @@ defineExpose({ poke, pet, cancel });
 </template>
 
 <style scoped>
-.ta-orb {
-  position: relative;
-  flex: none;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-  border-radius: 50%;
-}
-.ta-orb.interactive {
-  cursor: pointer;
-}
-.ta-orb:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
-  outline-offset: 4px;
-}
-svg {
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  transition:
-    filter 0.6s var(--ease),
-    transform 0.6s var(--spring);
-}
-.aura {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: orb-aura calc(4.8s / var(--tempo, 1)) ease-in-out infinite;
-}
-.shadow {
-  fill: var(--ink);
-  opacity: 0.1;
-}
-.body {
-  filter: drop-shadow(
-    0 8px 14px color-mix(in srgb, var(--orb-c) 40%, transparent)
-  );
-}
-.shine {
-  fill: #ffffff;
-  opacity: 0.5;
-}
-.shine.dot {
-  opacity: 0.7;
-}
-.ink {
-  fill: var(--orb-face);
-}
-.line {
-  fill: none;
-  stroke: var(--orb-face);
-  stroke-width: 3.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-.line.thin {
-  stroke-width: 2.6;
-}
-.line.hair {
-  stroke-width: 1.6;
-  opacity: 0.5;
-}
-.glint {
-  fill: #ffffff;
-}
-.tongue,
-.cheeks ellipse {
-  fill: var(--cheek);
-}
-.cheeks {
-  transition: opacity 0.5s var(--ease);
-}
-.squish {
-  transform-box: view-box;
-  transform-origin: 100px 180px;
-}
-.is-press .squish {
-  transform: scale(1.06, 0.93);
-  transition: transform 0.2s var(--ease);
-}
-.is-poke .squish {
-  animation: orb-squish 0.65s var(--spring);
-}
-.is-pet .squish {
-  animation: orb-wiggle 1.4s ease-in-out;
-}
-.eye {
-  transform-box: fill-box;
-  transform-origin: center;
-}
-.eyes.blinks .eye {
-  animation: orb-blink calc(5.6s / var(--tempo, 1)) var(--blink-delay, 0s)
-    infinite;
-}
-.eyes.blinks .eye.wink {
-  animation: orb-wink 6.5s 2s infinite;
-}
-.talk,
-.yawn {
-  transform-box: fill-box;
-  transform-origin: center;
-}
-.talk {
-  animation: orb-talk 0.42s ease-in-out infinite alternate;
-}
-.yawn {
-  animation: orb-yawn 6s ease-in-out infinite;
-}
-.page {
-  fill: var(--paper, #fffdf6);
-  stroke: var(--orb-face);
-  stroke-width: 1.8;
-  stroke-linejoin: round;
-}
-.pen rect,
-.pen path {
-  fill: var(--accent);
-  stroke: var(--orb-face);
-  stroke-width: 1.4;
-}
-.halo circle {
-  fill: none;
-  stroke: var(--orb-b);
-  stroke-width: 2;
-  stroke-dasharray: 3 9;
-  opacity: 0.85;
-  transform-box: view-box;
-  transform-origin: 100px 112px;
-  animation: orb-spin 26s linear infinite;
-}
-.halo .halo-soft {
-  stroke-dasharray: none;
-  stroke-width: 10;
-  opacity: 0.18;
-  animation: orb-breathe 5s ease-in-out infinite;
-}
-.fx .sparkle {
-  fill: var(--particle);
-  stroke: color-mix(in srgb, var(--accent) 50%, transparent);
-  stroke-width: 0.8;
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: orb-twinkle 2.4s ease-in-out infinite;
-}
-.fx .heart {
-  fill: var(--cheek);
-  opacity: 0.85;
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: orb-rise 3.6s ease-out infinite;
-}
-.fx .cloud {
-  fill: color-mix(in srgb, var(--orb-c) 55%, #ffffff);
-  animation: orb-float 3.5s ease-in-out infinite alternate;
-}
-.storm .cloud {
-  fill: color-mix(in srgb, var(--orb-c) 75%, #444);
-}
-.drop {
-  stroke: var(--orb-c);
-  stroke-width: 2.2;
-  stroke-linecap: round;
-  animation: orb-drop 1.35s linear infinite;
-}
-.scribble {
-  fill: none;
-  stroke: var(--orb-c);
-  stroke-width: 2.4;
-  stroke-linecap: round;
-  animation: orb-float 0.9s ease-in-out infinite alternate;
-}
-.zz {
-  font: 700 13px/1 var(--font-display);
-  fill: var(--orb-face);
-  opacity: 0.7;
-  transform-box: fill-box;
-  animation: orb-z 3.2s ease-in-out infinite;
-}
-[data-mood="night"] .zz {
-  fill: var(--ink);
-}
-.moon {
-  fill: #fff4c2;
-  filter: drop-shadow(0 0 6px rgb(255 240 180 / 0.6));
-}
-.floating-page {
-  animation: orb-float 3s ease-in-out infinite alternate;
-}
-.think .puff {
-  fill: var(--surface-strong);
-  stroke: var(--line);
-  stroke-width: 1.2;
-}
-.think .dot {
-  fill: var(--orb-face);
-  transform-box: fill-box;
-  animation: orb-dots 1.1s ease-in-out infinite;
-}
-.talkwaves path {
-  stroke: var(--accent);
-  animation: pulse-soft 1.2s ease-in-out infinite;
-}
-.orb-say {
-  position: absolute;
-  z-index: 3;
-  left: 50%;
-  bottom: 92%;
-  width: max-content;
-  max-width: min(260px, 70vw);
-  margin: 0;
-  padding: 8px 14px;
-  border-radius: 16px 16px 16px 4px;
-  background: var(--surface-strong);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow-soft);
-  color: var(--ink);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.5;
-  text-align: left;
-  pointer-events: none;
-}
-.orb-say.say-left {
-  left: auto;
-  right: 88%;
-  bottom: 56%;
-  border-radius: 16px 16px 4px 16px;
-}
-.orb-say-enter-active {
-  transition:
-    opacity 0.25s var(--ease),
-    transform 0.4s var(--spring);
-}
-.orb-say-leave-active {
-  transition: opacity 0.2s;
-}
-.orb-say-enter-from {
-  opacity: 0;
-  transform: translateY(8px) scale(0.9);
-}
-.orb-say-leave-to {
-  opacity: 0;
-}
-@keyframes orb-blink {
-  0%,
-  92%,
-  100% {
-    transform: scaleY(1);
+@layer components {
+  .ta-orb {
+    position: relative;
+    flex: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    border-radius: 50%;
   }
-  95% {
-    transform: scaleY(0.12);
+  .ta-orb.interactive {
+    cursor: pointer;
   }
-}
-@keyframes orb-wink {
-  0%,
-  86%,
-  100% {
-    transform: scaleY(1);
+  .ta-orb:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+    outline-offset: 4px;
   }
-  90%,
-  94% {
-    transform: scaleY(0.12);
+  svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    transition:
+      filter 0.6s var(--ease),
+      transform 0.6s var(--spring);
   }
-}
-@keyframes orb-squish {
-  0% {
-    transform: scale(1);
+  .aura {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: orb-aura calc(4.8s / var(--tempo, 1)) ease-in-out infinite;
   }
-  18% {
-    transform: scale(1.2, 0.76);
+  .shadow {
+    fill: var(--ink);
+    opacity: 0.1;
   }
-  42% {
-    transform: scale(0.9, 1.12);
+  .body {
+    filter: drop-shadow(
+      0 8px 14px color-mix(in srgb, var(--orb-c) 40%, transparent)
+    );
   }
-  66% {
-    transform: scale(1.05, 0.96);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-@keyframes orb-wiggle {
-  0%,
-  100% {
-    transform: rotate(0);
-  }
-  15% {
-    transform: rotate(-6deg);
-  }
-  35% {
-    transform: rotate(5deg);
-  }
-  55% {
-    transform: rotate(-4deg);
-  }
-  75% {
-    transform: rotate(2deg);
-  }
-}
-@keyframes orb-aura {
-  0%,
-  100% {
-    transform: scale(0.94);
-    opacity: 0.75;
-  }
-  50% {
-    transform: scale(1.04);
-    opacity: 1;
-  }
-}
-@keyframes orb-breathe {
-  0%,
-  100% {
-    opacity: 0.12;
-  }
-  50% {
-    opacity: 0.28;
-  }
-}
-@keyframes orb-talk {
-  from {
-    transform: scaleY(0.45);
-  }
-  to {
-    transform: scaleY(1.1);
-  }
-}
-@keyframes orb-yawn {
-  0%,
-  70%,
-  100% {
-    transform: scale(0.7);
-  }
-  80%,
-  88% {
-    transform: scale(1.35);
-  }
-}
-@keyframes orb-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@keyframes orb-twinkle {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(0.45);
-    opacity: 0.35;
-  }
-}
-@keyframes orb-rise {
-  0% {
-    transform: translateY(0) scale(1);
-    opacity: 0.85;
-  }
-  70% {
+  .shine {
+    fill: #ffffff;
     opacity: 0.5;
   }
-  100% {
-    transform: translateY(-26px) scale(1.15);
-    opacity: 0;
-  }
-}
-@keyframes orb-drop {
-  0% {
-    transform: translateY(0);
-    opacity: 0.9;
-  }
-  100% {
-    transform: translateY(16px);
-    opacity: 0;
-  }
-}
-@keyframes orb-z {
-  0% {
-    transform: translate(0, 0) scale(1);
+  .shine.dot {
     opacity: 0.7;
   }
-  100% {
-    transform: translate(10px, -16px) scale(1.15);
+  .ink {
+    fill: var(--orb-face);
+  }
+  .line {
+    fill: none;
+    stroke: var(--orb-face);
+    stroke-width: 3.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .line.thin {
+    stroke-width: 2.6;
+  }
+  .line.hair {
+    stroke-width: 1.6;
+    opacity: 0.5;
+  }
+  .glint {
+    fill: #ffffff;
+  }
+  .tongue,
+  .cheeks ellipse {
+    fill: var(--cheek);
+  }
+  .cheeks {
+    transition: opacity 0.5s var(--ease);
+  }
+  .squish {
+    transform-box: view-box;
+    transform-origin: 100px 180px;
+  }
+  .is-press .squish {
+    transform: scale(1.06, 0.93);
+    transition: transform 0.2s var(--ease);
+  }
+  .is-poke .squish {
+    animation: orb-squish 0.65s var(--spring);
+  }
+  .is-pet .squish {
+    animation: orb-wiggle 1.4s ease-in-out;
+  }
+  .eye {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  .eyes.blinks .eye {
+    animation: orb-blink calc(5.6s / var(--tempo, 1)) var(--blink-delay, 0s)
+      infinite;
+  }
+  .eyes.blinks .eye.wink {
+    animation: orb-wink 6.5s 2s infinite;
+  }
+  .talk,
+  .yawn {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+  .talk {
+    animation: orb-talk 0.42s ease-in-out infinite alternate;
+  }
+  .yawn {
+    animation: orb-yawn 6s ease-in-out infinite;
+  }
+  .page {
+    fill: var(--paper, #fffdf6);
+    stroke: var(--orb-face);
+    stroke-width: 1.8;
+    stroke-linejoin: round;
+  }
+  .pen rect,
+  .pen path {
+    fill: var(--accent);
+    stroke: var(--orb-face);
+    stroke-width: 1.4;
+  }
+  .halo circle {
+    fill: none;
+    stroke: var(--orb-b);
+    stroke-width: 2;
+    stroke-dasharray: 3 9;
+    opacity: 0.85;
+    transform-box: view-box;
+    transform-origin: 100px 112px;
+    animation: orb-spin 26s linear infinite;
+  }
+  .halo .halo-soft {
+    stroke-dasharray: none;
+    stroke-width: 10;
+    opacity: 0.18;
+    animation: orb-breathe 5s ease-in-out infinite;
+  }
+  .fx .sparkle {
+    fill: var(--particle);
+    stroke: color-mix(in srgb, var(--accent) 50%, transparent);
+    stroke-width: 0.8;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: orb-twinkle 2.4s ease-in-out infinite;
+  }
+  .fx .heart {
+    fill: var(--cheek);
+    opacity: 0.85;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: orb-rise 3.6s ease-out infinite;
+  }
+  .fx .cloud {
+    fill: color-mix(in srgb, var(--orb-c) 55%, #ffffff);
+    animation: orb-float 3.5s ease-in-out infinite alternate;
+  }
+  .storm .cloud {
+    fill: color-mix(in srgb, var(--orb-c) 75%, #444);
+  }
+  .drop {
+    stroke: var(--orb-c);
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    animation: orb-drop 1.35s linear infinite;
+  }
+  .scribble {
+    fill: none;
+    stroke: var(--orb-c);
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    animation: orb-float 0.9s ease-in-out infinite alternate;
+  }
+  .zz {
+    font: 700 13px/1 var(--font-display);
+    fill: var(--orb-face);
+    opacity: 0.7;
+    transform-box: fill-box;
+    animation: orb-z 3.2s ease-in-out infinite;
+  }
+  [data-mood="night"] .zz {
+    fill: var(--ink);
+  }
+  .moon {
+    fill: #fff4c2;
+    filter: drop-shadow(0 0 6px rgb(255 240 180 / 0.6));
+  }
+  .floating-page {
+    animation: orb-float 3s ease-in-out infinite alternate;
+  }
+  .think .puff {
+    fill: var(--surface-strong);
+    stroke: var(--line);
+    stroke-width: 1.2;
+  }
+  .think .dot {
+    fill: var(--orb-face);
+    transform-box: fill-box;
+    animation: orb-dots 1.1s ease-in-out infinite;
+  }
+  .talkwaves path {
+    stroke: var(--accent);
+    animation: pulse-soft 1.2s ease-in-out infinite;
+  }
+  .orb-say {
+    position: absolute;
+    z-index: 3;
+    left: 50%;
+    bottom: 92%;
+    width: max-content;
+    max-width: min(260px, 70vw);
+    margin: 0;
+    padding: 8px 14px;
+    border-radius: 16px 16px 16px 4px;
+    background: var(--surface-strong);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-soft);
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.5;
+    text-align: left;
+    pointer-events: none;
+  }
+  .orb-say.say-left {
+    left: auto;
+    right: 88%;
+    bottom: 56%;
+    border-radius: 16px 16px 4px 16px;
+  }
+  .orb-say-enter-active {
+    transition:
+      opacity 0.25s var(--ease),
+      transform 0.4s var(--spring);
+  }
+  .orb-say-leave-active {
+    transition: opacity 0.2s;
+  }
+  .orb-say-enter-from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.9);
+  }
+  .orb-say-leave-to {
     opacity: 0;
   }
-}
-@keyframes orb-dots {
-  0%,
-  100% {
-    transform: translateY(0);
+  @keyframes orb-blink {
+    0%,
+    92%,
+    100% {
+      transform: scaleY(1);
+    }
+    95% {
+      transform: scaleY(0.12);
+    }
   }
-  50% {
-    transform: translateY(-3px);
+  @keyframes orb-wink {
+    0%,
+    86%,
+    100% {
+      transform: scaleY(1);
+    }
+    90%,
+    94% {
+      transform: scaleY(0.12);
+    }
   }
-}
-@keyframes orb-float {
-  from {
-    transform: translateY(0);
+  @keyframes orb-squish {
+    0% {
+      transform: scale(1);
+    }
+    18% {
+      transform: scale(1.2, 0.76);
+    }
+    42% {
+      transform: scale(0.9, 1.12);
+    }
+    66% {
+      transform: scale(1.05, 0.96);
+    }
+    100% {
+      transform: scale(1);
+    }
   }
-  to {
-    transform: translateY(-4px);
+  @keyframes orb-wiggle {
+    0%,
+    100% {
+      transform: rotate(0);
+    }
+    15% {
+      transform: rotate(-6deg);
+    }
+    35% {
+      transform: rotate(5deg);
+    }
+    55% {
+      transform: rotate(-4deg);
+    }
+    75% {
+      transform: rotate(2deg);
+    }
+  }
+  @keyframes orb-aura {
+    0%,
+    100% {
+      transform: scale(0.94);
+      opacity: 0.75;
+    }
+    50% {
+      transform: scale(1.04);
+      opacity: 1;
+    }
+  }
+  @keyframes orb-breathe {
+    0%,
+    100% {
+      opacity: 0.12;
+    }
+    50% {
+      opacity: 0.28;
+    }
+  }
+  @keyframes orb-talk {
+    from {
+      transform: scaleY(0.45);
+    }
+    to {
+      transform: scaleY(1.1);
+    }
+  }
+  @keyframes orb-yawn {
+    0%,
+    70%,
+    100% {
+      transform: scale(0.7);
+    }
+    80%,
+    88% {
+      transform: scale(1.35);
+    }
+  }
+  @keyframes orb-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes orb-twinkle {
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+    50% {
+      transform: scale(0.45);
+      opacity: 0.35;
+    }
+  }
+  @keyframes orb-rise {
+    0% {
+      transform: translateY(0) scale(1);
+      opacity: 0.85;
+    }
+    70% {
+      opacity: 0.5;
+    }
+    100% {
+      transform: translateY(-26px) scale(1.15);
+      opacity: 0;
+    }
+  }
+  @keyframes orb-drop {
+    0% {
+      transform: translateY(0);
+      opacity: 0.9;
+    }
+    100% {
+      transform: translateY(16px);
+      opacity: 0;
+    }
+  }
+  @keyframes orb-z {
+    0% {
+      transform: translate(0, 0) scale(1);
+      opacity: 0.7;
+    }
+    100% {
+      transform: translate(10px, -16px) scale(1.15);
+      opacity: 0;
+    }
+  }
+  @keyframes orb-dots {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-3px);
+    }
+  }
+  @keyframes orb-float {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(-4px);
+    }
   }
 }
 </style>

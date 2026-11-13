@@ -20,7 +20,7 @@ try {
   page.on("pageerror", (e) => errors.push(e.message));
   for (const width of [1440, 800, 390, 320]) {
     await page.setViewportSize({ width, height: 1000 });
-    await page.goto(server.base + "/#people");
+    await page.goto(server.base + "/#people/relationships");
     await page.locator(".relationships").waitFor();
     await page
       .locator(".relationships")

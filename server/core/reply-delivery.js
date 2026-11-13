@@ -5,9 +5,14 @@ import { persistReply } from "./message-manager.js";
 import { PRIVATELY_KNOWN } from "../mind/discretion.js";
 import { replyFocus } from "./conversation-cues.js";
 
-// How long a finished reply may wait for its reviews.
-export const DEEP_CHECK_DEADLINE_MS = 40000;
+// How long a finished reply may wait for its reviews and rewrites.
+export const DEEP_CHECK_DEADLINE_MS = 25000;
 export const GROUP_CHECK_DEADLINE_MS = 5000;
+export const REWRITE_DEADLINE_MS = 25000;
+export const POST_DRAFT_BUDGET_MS = 45000;
+export const GROUP_POST_DRAFT_BUDGET_MS = 15000;
+export const GROUP_FAILOVER_TURN_POST_DRAFT_BUDGET_MS = 25000;
+const MIN_GROUP_POST_DRAFT_MS = 6000;
 import { replyPrompt } from "./persona-manager.js";
 import { actionLine, performActions } from "../actions/index.js";
 import {
@@ -120,13 +125,19 @@ export class ReplyDelivery {
     // A group moment nobody called her into is rewritten and reviewed at the
     // same quick effort as its turn: the slow path missed the moment
     // (round 24 replays: group p90 over 50 s).
-    // Being called by name keeps the turn itself at full effort; checking
-    // and rewriting the words is a reading task and runs quick in any group.
+    // Checking and rewriting an already-chosen turn is a reading task in both
+    // group and private chats; a direct question in private still keeps `model`
+    // for its main review below.
     const quickModel = turnModel(model, {
-      group: !c.privateChat,
+      group: true,
       direct: policy.quickGroupReview === false ? !!c.direct : false,
       policy,
     });
+    const addTiming = (name, ms) => {
+      if (trace.timings)
+        trace.timings[name] =
+          (trace.timings[name] || 0) + Math.max(0, Math.round(ms));
+    };
     const targetUsers = new Set(
       snapshot.messages
         .filter((m) => turn.targetMessageIds.includes(m.id))
@@ -215,7 +226,13 @@ export class ReplyDelivery {
       prompt,
       snapshot.initiative ? "initiative" : "generation",
     );
-    const makeResponse = async (issues = [], draft = null, plain = false) => {
+    const makeResponse = async (
+      issues = [],
+      draft = null,
+      plain = false,
+      callOptions = null,
+    ) => {
+      const stageStarted = performance.now();
       try {
         const raw = await generate(
           models,
@@ -226,7 +243,7 @@ export class ReplyDelivery {
           trace,
           c.generationImages,
           issues,
-          { plain },
+          { plain, ...(callOptions ? { callOptions } : {}) },
         );
         return normalizeResponse(
           raw,
@@ -242,6 +259,11 @@ export class ReplyDelivery {
         if (snapshot.initiative) throw error;
         trace.steps.push("模型回复格式异常，已使用本地短句兜底");
         return { bubbles: [fallbackText], reason: "本地短句兜底" };
+      } finally {
+        addTiming(
+          issues.length ? "rewrite" : "generation",
+          performance.now() - stageStarted,
+        );
       }
     };
     const secrets = this.owner.mind.memory.secretsOutside(session);
@@ -349,7 +371,7 @@ export class ReplyDelivery {
       ) ||
       (!ignoreBotTail && groundingView.botOnlyTail >= 6) ||
       snapshot.batch.some((m) =>
-        /看不懂|没看懂|听不懂|太抽象|人机|复读|说人话|好好说话|冷淡|冷漠|你觉得我|我的人格|性格怎么样/.test(
+        /看不懂|没看懂|听不懂|太抽象|人机|复读|说人话|好好说话|冷淡|冷漠|你觉得我|我的人格|性格怎么样|自说自话|莫名其妙|什么玩意|变弱智|说你自己的事|谁问你/.test(
           m.text || "",
         ),
       ) ||
@@ -398,6 +420,26 @@ export class ReplyDelivery {
         trace.steps.push("接话内容已复核过，这次不再为同一原因整段复审");
       return needed;
     };
+    const turnFailedOver = (trace.calls || []).some(
+      (call) => call?.stage === "turn" && call?.fallbackFrom,
+    );
+    const turnCallMs = (trace.calls || [])
+      .filter((call) => call?.stage === "turn")
+      .reduce((sum, call) => sum + (Number(call?.elapsed) || 0), 0);
+    const turnSpentMs = Math.max(Number(trace.timings?.turn) || 0, turnCallMs);
+    const defaultGroupPostDraftMs = turnFailedOver
+      ? Math.min(
+          GROUP_POST_DRAFT_BUDGET_MS,
+          Math.max(
+            MIN_GROUP_POST_DRAFT_MS,
+            GROUP_FAILOVER_TURN_POST_DRAFT_BUDGET_MS - turnSpentMs,
+          ),
+        )
+      : GROUP_POST_DRAFT_BUDGET_MS;
+    const postDraftBudgetMs =
+      policy.postDraftBudgetMs ??
+      (!c.privateChat ? defaultGroupPostDraftMs : POST_DRAFT_BUDGET_MS);
+    let postDraftDeadline = Date.now() + postDraftBudgetMs;
     const deepCheck = async (response) => {
       // The reply is already written; these checks only decide whether it
       // goes out as it is. A stalled call used to hold a finished reply for
@@ -405,10 +447,17 @@ export class ReplyDelivery {
       // deadline a check counts as unavailable, the same as a failed one.
       // In a group nobody called her in, a reply that waits half a minute
       // for its review has already missed the moment.
-      const deadline =
-        Date.now() +
-        (policy.deepCheckDeadlineMs ??
-          (!c.privateChat ? GROUP_CHECK_DEADLINE_MS : DEEP_CHECK_DEADLINE_MS));
+      const checkStarted = performance.now();
+      const perCheckMs =
+        policy.deepCheckDeadlineMs ??
+        (!c.privateChat ? GROUP_CHECK_DEADLINE_MS : DEEP_CHECK_DEADLINE_MS);
+      const budgetLeftMs = Math.max(0, postDraftDeadline - Date.now());
+      const windowMs =
+        policy.deepCheckDeadlineMs !== undefined
+          ? Math.min(perCheckMs, Math.max(perCheckMs, budgetLeftMs))
+          : Math.min(perCheckMs, budgetLeftMs);
+      const deadline = Date.now() + windowMs;
+      const checkAbort = new AbortController();
       let timer;
       const late = new Promise((_, reject) => {
         timer = setTimeout(
@@ -424,8 +473,13 @@ export class ReplyDelivery {
       // read in that order: a reply that needs two or three reviews waits
       // for the slowest one instead of their sum. A later verdict is simply
       // unused when an earlier one already rejects the draft.
-      const ask = (...args) => {
-        const pending = models.call(...args);
+      const ask = (prof, stage, sys, data, tr, imgs = []) => {
+        const callBudgetMs = Math.max(500, deadline - Date.now() + 500);
+        const pending = models.call(prof, stage, sys, data, tr, imgs, 0, {
+          timeoutMs: callBudgetMs,
+          deadlineAt: deadline + 500,
+          signal: checkAbort.signal,
+        });
         pending.catch(() => {});
         return pending;
       };
@@ -595,6 +649,8 @@ export class ReplyDelivery {
           : [];
       } finally {
         clearTimeout(timer);
+        checkAbort.abort();
+        addTiming("validation", performance.now() - checkStarted);
       }
     };
     if (outdated()) return staleExit();
@@ -646,6 +702,7 @@ export class ReplyDelivery {
           fallbackText,
         )
       : await makeResponse();
+    postDraftDeadline = Date.now() + postDraftBudgetMs;
     response = trimmedSpeech(response, snapshot, c.generationImages, trace);
     let issues = check(response);
     if (!issues.length && needsDeepCheck(response)) {
@@ -685,6 +742,10 @@ export class ReplyDelivery {
     }
     const repairConstraints = new Set();
     for (let attempt = 0; issues.length && attempt < rewriteLimit; attempt++) {
+      if (Date.now() >= postDraftDeadline) {
+        trace.steps.push("复审改写已达本轮总时限，停止继续改写");
+        break;
+      }
       (trace.revisions ||= []).push({
         draft: response.bubbles,
         issues: [...issues],
@@ -692,11 +753,24 @@ export class ReplyDelivery {
       trace.validation = issues;
       for (const issue of issues) repairConstraints.add(issue);
       if (outdated()) return staleExit();
-      response = await makeResponse(
-        [...repairConstraints],
-        response,
-        !snapshot.initiative && attempt === rewriteLimit - 1,
-      );
+      const rewriteRemaining = Math.max(1000, postDraftDeadline - Date.now());
+      try {
+        response = await makeResponse(
+          [...repairConstraints],
+          response,
+          !snapshot.initiative && attempt === rewriteLimit - 1,
+          {
+            timeoutMs: Math.min(REWRITE_DEADLINE_MS, rewriteRemaining),
+            deadlineAt: postDraftDeadline,
+          },
+        );
+      } catch (error) {
+        if (error?.timeout) {
+          trace.steps.push("改写超过本轮时限，停止继续改写");
+          break;
+        }
+        throw error;
+      }
       response = trimmedSpeech(response, snapshot, c.generationImages, trace);
       issues = check(response);
       // Last rewrite in a group: local checks only — another deep review on
@@ -709,15 +783,25 @@ export class ReplyDelivery {
         !c.direct &&
         !turn.crisis?.clear &&
         attempt === rewriteLimit - 1;
-      if (!issues.length && needsDeepCheck(response) && !lastGroupRewrite) {
+      const budgetExhausted = Date.now() >= postDraftDeadline;
+      if (
+        !issues.length &&
+        needsDeepCheck(response) &&
+        !lastGroupRewrite &&
+        !budgetExhausted
+      ) {
         if (outdated()) return staleExit();
         issues = await deepCheck(response);
       } else if (
         !issues.length &&
         needsDeepCheck(response) &&
-        lastGroupRewrite
+        (lastGroupRewrite || budgetExhausted)
       ) {
-        trace.steps.push("群里末次改写后只做本地校验，不再二次复审");
+        trace.steps.push(
+          budgetExhausted
+            ? "复审总时限已到，改写通过本地校验后不再二次复审"
+            : "群里末次改写后只做本地校验，不再二次复审",
+        );
       }
     }
     // Deleting an unnecessary final bubble can retain a valid answer. It
@@ -732,6 +816,10 @@ export class ReplyDelivery {
         const remaining = check(prefix);
         if (remaining.length) continue;
         if (outdated()) return staleExit();
+        if (needsDeepCheck(prefix) && Date.now() >= postDraftDeadline) {
+          trace.steps.push("复审改写已达本轮总时限，不再对截断前缀发起复审");
+          break;
+        }
         const reviewed = needsDeepCheck(prefix) ? await deepCheck(prefix) : [];
         if (reviewed.length) continue;
         response = prefix;
@@ -753,7 +841,10 @@ export class ReplyDelivery {
       };
       const remaining = check(plain);
       if (!remaining.length) {
-        const reviewed = needsDeepCheck(plain) ? await deepCheck(plain) : [];
+        const reviewed =
+          needsDeepCheck(plain) && Date.now() < postDraftDeadline
+            ? await deepCheck(plain)
+            : [];
         if (!reviewed.length) {
           response = plain;
           issues = [];
@@ -870,6 +961,7 @@ export class ReplyDelivery {
     trace.response = response;
     // She chose to say it aloud: one voice message instead of the bubbles.
     // If the voice cannot be made, the words go out as text as usual.
+    const sendStarted = performance.now();
     const voiced =
       turn.actions?.some((a) => a.type === "voice") &&
       speakable(response.bubbles) &&
@@ -906,6 +998,7 @@ export class ReplyDelivery {
             ).bubbles[0],
         },
       );
+    addTiming("send", performance.now() - sendStarted);
     if (!trace.sent.length && hasRelevantUpdate()) return staleExit();
     if (trace.sent.length && turn.actions?.length)
       await this.doActions(batch.at(-1) || c.anchor, turn, trace, session);

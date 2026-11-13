@@ -31,21 +31,23 @@ const percent = computed(() =>
 </template>
 
 <style scoped>
-.meter-row {
-  display: grid;
-  grid-template-columns: minmax(64px, max-content) 1fr minmax(
-      40px,
-      max-content
-    );
-  align-items: center;
-  gap: 12px;
-  font-size: 12.5px;
-}
-.meter-label {
-  color: var(--ink-soft);
-}
-.meter-value {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+@layer components {
+  .meter-row {
+    display: grid;
+    grid-template-columns: minmax(64px, max-content) 1fr minmax(
+        40px,
+        max-content
+      );
+    align-items: center;
+    gap: 12px;
+    font-size: 12.5px;
+  }
+  .meter-label {
+    color: var(--ink-soft);
+  }
+  .meter-value {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
 }
 </style>

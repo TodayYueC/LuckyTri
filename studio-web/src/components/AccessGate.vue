@@ -98,74 +98,76 @@ async function submit() {
 </template>
 
 <style scoped>
-.access-gate {
-  min-height: 100dvh;
-  display: grid;
-  place-items: center;
-  padding: 72px 24px;
-  background:
-    radial-gradient(circle at 25% 20%, #dbe7ec 0, transparent 45%),
-    radial-gradient(circle at 85% 70%, #efdfdd 0, transparent 45%), #f4f5ef;
-}
-.access-language {
-  position: absolute;
-  top: 22px;
-  right: 24px;
-}
-.access-card {
-  width: min(100%, 420px);
-  padding: 36px;
-  border: 1px solid #fff;
-  border-radius: 28px;
-  background: #ffffffe0;
-  box-shadow: 0 24px 70px #69838618;
-}
-.access-card h1 {
-  font-size: 26px;
-  margin: 14px 0;
-}
-.access-card > p {
-  line-height: 1.8;
-  color: var(--muted);
-}
-.access-orb {
-  display: grid;
-  place-items: center;
-  width: 70px;
-  height: 70px;
-  border-radius: 50%;
-  font-size: 32px;
-  color: #8b889c;
-  background: radial-gradient(circle at 35% 30%, #fff, #e5dde8 60%, #cedfd8);
-  margin-bottom: 24px;
-}
-.access-form,
-.access-form label {
-  display: grid;
-  gap: 12px;
-}
-.access-form {
-  margin-top: 28px;
-  gap: 20px;
-}
-.access-form input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 12px 14px;
-  border: 1px solid #d6deda;
-  border-radius: 12px;
-  background: #fff;
-  font: inherit;
-}
-.access-form small {
-  color: var(--muted);
-  line-height: 1.7;
-}
-.access-form button {
-  min-height: 44px;
-}
-.access-error {
-  color: #b34e5b;
-  font-size: 13px;
+@layer components {
+  .access-gate {
+    min-height: 100dvh;
+    display: grid;
+    place-items: center;
+    padding: 72px 24px;
+    background:
+      radial-gradient(circle at 25% 20%, #dbe7ec 0, transparent 45%),
+      radial-gradient(circle at 85% 70%, #efdfdd 0, transparent 45%), #f4f5ef;
+  }
+  .access-language {
+    position: absolute;
+    top: 22px;
+    right: 24px;
+  }
+  .access-card {
+    width: min(100%, 420px);
+    padding: 36px;
+    border: 1px solid #fff;
+    border-radius: 28px;
+    background: #ffffffe0;
+    box-shadow: 0 24px 70px #69838618;
+  }
+  .access-card h1 {
+    font-size: 26px;
+    margin: 14px 0;
+  }
+  .access-card > p {
+    line-height: 1.8;
+    color: var(--muted);
+  }
+  .access-orb {
+    display: grid;
+    place-items: center;
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    font-size: 32px;
+    color: #8b889c;
+    background: radial-gradient(circle at 35% 30%, #fff, #e5dde8 60%, #cedfd8);
+    margin-bottom: 24px;
+  }
+  .access-form,
+  .access-form label {
+    display: grid;
+    gap: 12px;
+  }
+  .access-form {
+    margin-top: 28px;
+    gap: 20px;
+  }
+  .access-form input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px 14px;
+    border: 1px solid #d6deda;
+    border-radius: 12px;
+    background: #fff;
+    font: inherit;
+  }
+  .access-form small {
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .access-form button {
+    min-height: 44px;
+  }
+  .access-error {
+    color: #b34e5b;
+    font-size: 13px;
+  }
 }
 </style>

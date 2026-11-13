@@ -63,8 +63,7 @@ const latest = computed(() => recent.value[0]);
   <section class="ribbon">
     <div class="ribbon-head">
       <div class="ribbon-title">
-        <span class="eyebrow">{{ t("MOOD / 此刻的天气") }}</span>
-        <h2>{{ t("心情有自己的潮汐。") }}</h2>
+        <h2>{{ t("心情记录") }}</h2>
         <p>
           {{
             t("最近 {length} 次被经历牵动；有起伏，也会慢慢平静。", {
@@ -156,193 +155,123 @@ const latest = computed(() => recent.value[0]);
 </template>
 
 <style scoped>
-.ribbon {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  padding: 25px 28px 20px;
-  border: 1px solid #ffffffe8;
-  border-radius: 36px;
-  background: linear-gradient(120deg, #ffffffd3, #e5f4ff85 55%, #fae9f682);
-  box-shadow:
-    inset 0 2px 0 #fff,
-    0 26px 52px -39px #6889c492;
-  backdrop-filter: blur(25px) saturate(1.65);
-  -webkit-backdrop-filter: blur(25px) saturate(1.65);
-}
-.ribbon::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  right: -100px;
-  top: -170px;
-  width: 420px;
-  height: 420px;
-  border-radius: 50%;
-  background: conic-gradient(#b9d9ff99, #fff1d9a3, #f5ccf385, #b9d9ff99);
-  filter: blur(31px);
-  animation: ribbon-drift 12s ease-in-out infinite alternate;
-}
-.ribbon-head {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: 24px;
-}
-.ribbon-title h2 {
-  margin: 9px 0 6px;
-  font-size: clamp(22px, 2.5vw, 32px);
-  letter-spacing: -0.035em;
-}
-.ribbon-title p {
-  font-size: 12px;
-  color: var(--ink-soft);
-}
-.latest-mood {
-  display: grid;
-  flex: 0 0 225px;
-  gap: 2px;
-  max-width: 225px;
-  padding: 11px 16px;
-  border-radius: 20px;
-  border: 1px solid #fff;
-  background: #ffffff85;
-  box-shadow:
-    inset 0 1px 0 #fff,
-    0 12px 26px -21px #6280b0;
-  backdrop-filter: blur(14px);
-}
-.latest-mood span {
-  font-size: 10px;
-  color: var(--ink-soft);
-}
-.latest-mood b {
-  font-size: 17px;
-}
-.latest-mood small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--ink-soft);
-  font-size: 11px;
-}
-.ribbon-box {
-  min-width: 0;
-  margin-top: 18px;
-  border-radius: 19px;
-  background: linear-gradient(180deg, #ffffff5b, #ffffff15);
-  border: 1px solid #ffffff9d;
-  box-shadow: inset 0 1px 0 #ffffffb0;
-  overflow: hidden;
-}
-.ribbon-chart {
-  width: 100%;
-  height: 135px;
-  overflow: hidden;
-}
-.base {
-  stroke: color-mix(in srgb, var(--accent) 24%, transparent);
-  stroke-width: 1;
-  stroke-dasharray: 3 8;
-}
-.area {
-  fill: url(#ribbon-fill);
-}
-.line-glow {
-  fill: none;
-  stroke: color-mix(in srgb, var(--orb-c) 46%, transparent);
-  stroke-width: 13;
-  filter: blur(9px);
-}
-.line {
-  fill: none;
-  stroke: url(#ribbon-stroke);
-  stroke-width: 4;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  filter: drop-shadow(0 2px 2px #ffffffb3);
-}
-.pt circle {
-  stroke: #fff;
-  stroke-width: 2.5;
-  filter: drop-shadow(0 2px 4px #678fbd8a);
-}
-.pt.warm circle {
-  fill: var(--cheek);
-}
-.pt.cool circle {
-  fill: var(--orb-c);
-}
-.empty-line {
-  font-size: 13px;
-  padding: 34px 20px;
-}
-.recent {
-  display: flex;
-  gap: 9px;
-  margin: 14px 0 0;
-  padding: 1px 1px 5px;
-  list-style: none;
-  overflow-x: auto;
-}
-.recent li {
-  display: grid;
-  flex: 0 0 auto;
-  width: 186px;
-  gap: 3px;
-  padding: 11px 13px;
-  border-radius: 18px;
-  background: linear-gradient(145deg, #ffffffbd, #ffffff6e);
-  border: 1px solid #ffffffdf;
-  box-shadow: inset 0 1px 0 #fff;
-  transition:
-    transform 0.42s var(--spring),
-    box-shadow 0.25s;
-}
-.recent li:hover {
-  transform: translateY(-4px) scale(1.025);
-  box-shadow: 0 13px 25px -18px #5884b4;
-}
-.recent li::before {
-  content: "";
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--orb-c);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--orb-c) 13%, transparent);
-}
-.recent li.warm::before {
-  background: var(--cheek);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--cheek) 16%, transparent);
-}
-.recent b {
-  font-size: 14px;
-}
-.recent span {
-  overflow: hidden;
-  font-size: 12.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.recent small {
-  color: var(--ink-soft);
-  font-size: 11.5px;
-}
-@keyframes ribbon-drift {
-  to {
-    transform: translate(-45px, 45px) rotate(30deg);
-  }
-}
-@media (max-width: 680px) {
+@layer components {
   .ribbon {
-    padding: 21px 18px 16px;
+    padding: 22px;
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: var(--surface);
+    min-width: 0;
   }
   .ribbon-head {
-    display: grid;
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    align-items: flex-start;
+  }
+  .ribbon-title h2 {
+    font-size: 17px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .ribbon-title p {
+    font-size: 12px;
+    color: var(--ink-soft);
   }
   .latest-mood {
-    max-width: none;
+    display: grid;
+    gap: 4px;
+    text-align: right;
+    max-width: 40%;
+  }
+  .latest-mood span,
+  .latest-mood small {
+    font-size: 11px;
+    color: var(--ink-soft);
+  }
+  .latest-mood b {
+    font-size: 15px;
+    color: var(--accent);
+  }
+  .ribbon-box {
+    height: 150px;
+    margin: 16px 0;
+  }
+  .ribbon-chart {
+    display: block;
     width: 100%;
+    height: 150px;
+    overflow: visible;
+  }
+  .base {
+    stroke: var(--line);
+    stroke-dasharray: 4 5;
+  }
+  .area {
+    fill: url(#ribbon-fill);
+  }
+  .line {
+    fill: none;
+    stroke: url(#ribbon-stroke);
+    stroke-width: 2.5;
+  }
+  .line-glow {
+    display: none;
+  }
+  .pt circle {
+    fill: var(--surface);
+    stroke: var(--accent);
+    stroke-width: 2;
+    transition: r 0.2s;
+  }
+  .pt:hover circle {
+    stroke-width: 3;
+  }
+  .empty-line {
+    display: grid;
+    place-items: center;
+    min-height: 120px;
+    font-size: 13px;
+  }
+  .recent {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .recent li {
+    display: grid;
+    gap: 6px;
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+  }
+  .recent b {
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .recent span {
+    font-size: 12px;
+    color: var(--ink-soft);
+    overflow-wrap: anywhere;
+  }
+  .recent small {
+    font-size: 10px;
+    color: var(--ink-faint);
+  }
+  @media (max-width: 680px) {
+    .recent {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .ribbon-head {
+      flex-direction: column;
+      gap: 12px;
+    }
+    .latest-mood {
+      text-align: left;
+      max-width: 100%;
+    }
   }
 }
 </style>

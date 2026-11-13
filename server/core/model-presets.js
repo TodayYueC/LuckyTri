@@ -1,6 +1,16 @@
-// Checked against vendor API docs on 2026-10-14.
-// maxOutputTokens is the published output ceiling and maxInputTokens is what
-// the window leaves after it, so every preset passes validateModel as is.
+// Checked against official vendor API docs on 2026-11-13.
+// Sources:
+// - Google Gemini API & OpenAI compatibility: https://aistudio.google.com/docs/models , https://aistudio.google.com/docs/thinking , https://aistudio.google.com/docs/openai , https://aistudio.google.com/docs/pricing
+// - OpenAI API: https://developers.openai.com/api/docs/models , https://developers.openai.com/api/docs/guides/latest-model
+// - Anthropic Claude Messages API: https://platform.claude.com/docs/en/models/overview
+// - DeepSeek API: https://api-docs.deepseek.com/quick_start/pricing/
+// - Moonshot Kimi / Zhipu GLM / Alibaba Qwen / MiniMax / Xiaomi MiMo official API docs
+// - Volcengine Ark Agent Plan & Coding Plan: https://docs.volcengine.com/docs/zh/ark/agent-plan-personal-plan-overview.md , https://docs.volcengine.com/docs/zh/ark/coding-plan-personal-plan-overview.md
+// - AWS Bedrock OpenAI model cards & OpenRouter / OpenCode Console model lists
+// maxOutputTokens is the published synchronous output ceiling (or a practical
+// 64K reservation when a plan advertises a 1M shared output window) and
+// maxInputTokens is what the window leaves after it, so every preset passes
+// validateModel as is.
 
 function limits(contextWindow, maxOutputTokens) {
   return {
@@ -158,12 +168,12 @@ function codingPlanModel({
   vision = false,
   summary = "",
 }) {
-  // Kimi K2.8 Preview advertises a 1M output ceiling. Reserve a practical
-  // 64K response budget here so the nearly 1M input window remains usable by
-  // LuckyTri; model-stage output limits are smaller for ordinary conversations.
+  // Kimi K2.8 Preview and K3.1 Pro advertise a 1M output ceiling. Reserve a
+  // practical 64K response budget here so the nearly 1M input window remains
+  // usable by LuckyTri; model-stage output limits are smaller for ordinary chats.
   const maxOutputTokens = Math.min(
     output,
-    model === "kimi-k2.8-preview" ? 65536 : output,
+    ["kimi-k2.8-preview", "kimi-k3.1-pro"].includes(model) ? 65536 : output,
   );
   const contextWindow = context;
   return {
@@ -265,6 +275,13 @@ const VOLCENGINE_CODING_PLAN_MODELS = [
     vision: true,
   }),
   codingPlanModel({
+    model: "deepseek-v4.1-flash-economy",
+    label: "DeepSeek V4.1 Flash Economy",
+    context: 1024000,
+    output: 393216,
+    vision: true,
+  }),
+  codingPlanModel({
     model: "deepseek-v4-flash",
     label: "DeepSeek V4 Flash",
     context: 1024000,
@@ -286,6 +303,13 @@ const VOLCENGINE_CODING_PLAN_MODELS = [
   codingPlanModel({
     model: "kimi-k2.8-preview",
     label: "Kimi K2.8 Preview",
+    context: 1024000,
+    output: 1024000,
+    vision: true,
+  }),
+  codingPlanModel({
+    model: "kimi-k3.1-pro",
+    label: "Kimi K3.1 Pro",
     context: 1024000,
     output: 1024000,
     vision: true,
@@ -383,6 +407,13 @@ const VOLCENGINE_AGENT_PLAN_MODELS = [
     vision: true,
   }),
   agentPlanModel({
+    model: "deepseek-v4.1-flash-economy",
+    label: "DeepSeek V4.1 Flash Economy",
+    context: 1024000,
+    output: 65536,
+    vision: true,
+  }),
+  agentPlanModel({
     model: "deepseek-v4-flash",
     label: "DeepSeek V4 Flash",
     context: 1024000,
@@ -439,6 +470,15 @@ const VOLCENGINE_AGENT_PLAN_MODELS = [
     context: 1024000,
     output: 65536,
     vision: true,
+  }),
+  agentPlanModel({
+    model: "kimi-k3.1-pro",
+    label: "Kimi K3.1 Pro",
+    context: 1024000,
+    output: 65536,
+    vision: true,
+    reasoningEffort: "max",
+    reasoningEfforts: ["low", "high", "max"],
   }),
   agentPlanModel({
     model: "kimi-k3",
@@ -598,6 +638,26 @@ export const MODEL_CATALOG = [
     topP: 0.95,
   },
   {
+    id: "kimi-k3.1-pro",
+    vendor: "Kimi",
+    label: "Kimi K3.1 Pro",
+    summary:
+      "新一代旗舰（2026-10 发布）。思考不能关闭，默认 max；支持看图。1M 共享窗口，预留 128K 输出预算；国内密钥用 api.moonshot.cn，海外密钥需改为 api.moonshot.ai。",
+    provider: "kimi",
+    baseUrl: "https://api.moonshot.cn/v1",
+    model: "kimi-k3.1-pro",
+    ...limits(1048576, 131072),
+    ...shared,
+    vision: true,
+    thinkingStyle: "kimi-effort",
+    tokenField: "max_completion_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["low", "high", "max"],
+    reasoningEffort: "max",
+    temperature: 1,
+    topP: 0.95,
+  },
+  {
     id: "kimi-k3",
     vendor: "Kimi",
     label: "Kimi K3",
@@ -639,7 +699,7 @@ export const MODEL_CATALOG = [
   },
 
   // Anthropic Claude — Messages API, adaptive thinking + output_config.effort.
-  // Specs from https://platform.claude.com/docs/en/models/overview (2026-10-14).
+  // Specs from https://platform.claude.com/docs/en/models/overview (2026-11-13).
   {
     id: "claude-opus-5-5",
     vendor: "Claude",
@@ -704,6 +764,27 @@ export const MODEL_CATALOG = [
     topP: 1,
   },
   {
+    id: "claude-fable-5-2",
+    vendor: "Claude",
+    label: "Claude Fable 5.2",
+    summary:
+      "最新重推理与长程代理（2026-11 发布）。自适应思考，默认 high；支持看图。上下文 1M，输出上限 128K；需账号满足 30 天数据留存。",
+    provider: "anthropic",
+    baseUrl: ANTHROPIC,
+    model: "claude-fable-5-2",
+    apiProtocol: "anthropic",
+    ...limits(1000000, 128000),
+    ...shared,
+    vision: true,
+    thinkingStyle: "anthropic-adaptive",
+    tokenField: "max_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
+    reasoningEffort: "high",
+    temperature: 1,
+    topP: 1,
+  },
+  {
     id: "claude-fable-5-1",
     vendor: "Claude",
     label: "Claude Fable 5.1",
@@ -725,13 +806,57 @@ export const MODEL_CATALOG = [
     topP: 1,
   },
   // Google Gemini — OpenAI-compatible endpoint (Bearer). Specs from
-  // https://ai.google.dev/gemini-api/docs/models (2026-10-14).
+  // https://aistudio.google.com/docs/models , /docs/thinking , /docs/openai (2026-11-13).
+  {
+    id: "gemini-4-hydrogen",
+    vendor: "Gemini",
+    label: "Gemini 4 Hydrogen",
+    summary:
+      "正式版（2026-11-12 发布）· Gemini 4 高速全能主力，免费与付费层级均可用。思考档 low/medium/high/xhigh（默认 high，不支持关闭或 minimal）；支持看图。统一 1M 窗口，单次同步输出 64K；忽略采样参数。",
+    provider: "gemini",
+    baseUrl: GEMINI_OPENAI,
+    model: "gemini-4-hydrogen",
+    apiProtocol: "chat",
+    ...limits(1048576, 65536),
+    ...shared,
+    vision: true,
+    thinkingStyle: "openai",
+    tokenField: "max_completion_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["low", "medium", "high", "xhigh"],
+    reasoningEffort: "high",
+    temperature: 1,
+    topP: 1,
+    timeoutMs: 300000,
+  },
+  {
+    id: "gemini-4-carbon",
+    vendor: "Gemini",
+    label: "Gemini 4 Carbon",
+    summary:
+      "正式版（2026-11-10 发布）· 最强深度推理旗舰，仅限 Gemini API 付费层级（无免费额度）。思考档 low/medium/high（默认 medium，不支持关闭或 minimal）；支持看图。统一 1M 窗口，单次同步输出 64K；忽略采样参数。",
+    provider: "gemini",
+    baseUrl: GEMINI_OPENAI,
+    model: "gemini-4-carbon",
+    apiProtocol: "chat",
+    ...limits(1048576, 65536),
+    ...shared,
+    vision: true,
+    thinkingStyle: "openai",
+    tokenField: "max_completion_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["low", "medium", "high"],
+    reasoningEffort: "medium",
+    temperature: 1,
+    topP: 1,
+    timeoutMs: 900000,
+  },
   {
     id: "gemini-4-argon",
     vendor: "Gemini",
     label: "Gemini 4 Argon",
     summary:
-      "旗舰推理。思考档 low/medium/high，默认 medium；支持看图。统一 1M 窗口；采样参数会被忽略。",
+      "正式版 · 高效前沿推理，仅限 Gemini API 付费层级。思考档 low/medium/high（默认 medium，不支持关闭或 minimal）；支持看图。统一 1M 窗口，单次同步输出 64K；忽略采样参数。",
     provider: "gemini",
     baseUrl: GEMINI_OPENAI,
     model: "gemini-4-argon",
@@ -753,7 +878,7 @@ export const MODEL_CATALOG = [
     vendor: "Gemini",
     label: "Gemini 3.8 Flash",
     summary:
-      "最新 Flash。思考档 low/medium/high，默认 medium；支持看图。输入 1M，输出 64K。",
+      "正式版 · Gemini 3 系主力 Flash，免费与付费层级均可用。思考档 low/medium/high（默认 medium，不支持 minimal）；支持看图。输入 1M，输出 64K；忽略采样参数。",
     provider: "gemini",
     baseUrl: GEMINI_OPENAI,
     model: "gemini-3.8-flash",
@@ -763,7 +888,29 @@ export const MODEL_CATALOG = [
     vision: true,
     thinkingStyle: "openai",
     tokenField: "max_completion_tokens",
+    omitSampling: true,
     reasoningEfforts: ["low", "medium", "high"],
+    reasoningEffort: "medium",
+    temperature: 1,
+    topP: 0.95,
+  },
+  {
+    id: "gemini-3.6-flash",
+    vendor: "Gemini",
+    label: "Gemini 3.6 Flash",
+    summary:
+      "正式版 · 均衡速度与多模态推理，免费与付费层级均可用。思考档 minimal/low/medium/high（默认 medium）；支持看图。输入 1M，输出 64K；忽略采样参数。",
+    provider: "gemini",
+    baseUrl: GEMINI_OPENAI,
+    model: "gemini-3.6-flash",
+    apiProtocol: "chat",
+    ...limits(1048576, 65536),
+    ...shared,
+    vision: true,
+    thinkingStyle: "openai",
+    tokenField: "max_completion_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["minimal", "low", "medium", "high"],
     reasoningEffort: "medium",
     temperature: 1,
     topP: 0.95,
@@ -773,7 +920,7 @@ export const MODEL_CATALOG = [
     vendor: "Gemini",
     label: "Gemini 3.5 Flash-Lite",
     summary:
-      "高吞吐、低成本。思考档 low/medium/high，默认 low；支持看图。适合高频回合。",
+      "正式版 · 高吞吐、低成本轻量多模态，免费与付费层级均可用。思考档 minimal/low/medium/high（预填 low）；支持看图。适合高频回合与备用兜底。",
     provider: "gemini",
     baseUrl: GEMINI_OPENAI,
     model: "gemini-3.5-flash-lite",
@@ -783,8 +930,51 @@ export const MODEL_CATALOG = [
     vision: true,
     thinkingStyle: "openai",
     tokenField: "max_completion_tokens",
-    reasoningEfforts: ["low", "medium", "high"],
+    omitSampling: true,
+    reasoningEfforts: ["minimal", "low", "medium", "high"],
     reasoningEffort: "low",
+    temperature: 1,
+    topP: 0.95,
+  },
+  {
+    id: "gemini-3.1-pro-preview",
+    vendor: "Gemini",
+    label: "Gemini 3.1 Pro Preview（预览版）",
+    summary:
+      "预览版（Preview）· 仅限 Gemini API 付费层级，限流较严且可能随至少两周通知退场。思考档 low/medium/high（默认 high）；支持看图。输入 1M，输出 64K。",
+    provider: "gemini",
+    baseUrl: GEMINI_OPENAI,
+    model: "gemini-3.1-pro-preview",
+    apiProtocol: "chat",
+    ...limits(1048576, 65536),
+    ...shared,
+    vision: true,
+    thinkingStyle: "openai",
+    tokenField: "max_completion_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["low", "medium", "high"],
+    reasoningEffort: "high",
+    temperature: 1,
+    topP: 0.95,
+  },
+  {
+    id: "gemini-3-flash-preview",
+    vendor: "Gemini",
+    label: "Gemini 3 Flash Preview（预览版）",
+    summary:
+      "预览版（Preview）· 早期第三代 Flash 预览端点，新项目建议优先用正式版 Gemini 4 Hydrogen 或 3.8 Flash。思考档 minimal/low/medium/high（默认 high）；支持看图。输入 1M，输出 64K。",
+    provider: "gemini",
+    baseUrl: GEMINI_OPENAI,
+    model: "gemini-3-flash-preview",
+    apiProtocol: "chat",
+    ...limits(1048576, 65536),
+    ...shared,
+    vision: true,
+    thinkingStyle: "openai",
+    tokenField: "max_completion_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["minimal", "low", "medium", "high"],
+    reasoningEffort: "high",
     temperature: 1,
     topP: 0.95,
   },
@@ -798,6 +988,27 @@ export const MODEL_CATALOG = [
     baseUrl: OPENAI,
     model: "gpt-6-astra",
     reasoningEfforts: ASTRA_EFFORTS,
+  }),
+  gpt({
+    id: "gpt-6.1-sol",
+    vendor: "OpenAI",
+    label: "GPT-6.1 Sol",
+    summary:
+      "复杂编码与专业推理主力（替代初版 6-Sol）。思考不能关闭（low 至 max，默认 medium）；支持看图。输入超过 272K 整单按长上下文计价。",
+    provider: "openai",
+    baseUrl: OPENAI,
+    model: "gpt-6.1-sol",
+    reasoningEfforts: ASTRA_EFFORTS,
+  }),
+  gpt({
+    id: "gpt-6.1-terra",
+    vendor: "OpenAI",
+    label: "GPT-6.1 Terra",
+    summary:
+      "最新中档高速多模态与自然写作（2026-10-26 发布）。思考默认 medium，可关闭；支持看图。输入超过 272K 整单按长上下文计价。",
+    provider: "openai",
+    baseUrl: OPENAI,
+    model: "gpt-6.1-terra",
   }),
   gpt({
     id: "gpt-6-sol",
@@ -829,6 +1040,23 @@ export const MODEL_CATALOG = [
     reasoningEfforts: ASTRA_EFFORTS,
   }),
   openRouterGpt({
+    id: "openrouter-gpt-6.1-sol",
+    vendor: "OpenRouter",
+    label: "GPT-6.1 Sol",
+    summary:
+      "OpenRouter 路由 · openai/gpt-6.1-sol。1.05M 上下文、128K 最大输出；思考不能关闭；支持图片、结构化输出和工具调用。",
+    model: "openai/gpt-6.1-sol",
+    reasoningEfforts: ASTRA_EFFORTS,
+  }),
+  openRouterGpt({
+    id: "openrouter-gpt-6.1-terra",
+    vendor: "OpenRouter",
+    label: "GPT-6.1 Terra",
+    summary:
+      "OpenRouter 路由 · openai/gpt-6.1-terra。1.05M 上下文、128K 最大输出；支持图片、结构化输出和工具调用。",
+    model: "openai/gpt-6.1-terra",
+  }),
+  openRouterGpt({
     id: "openrouter-gpt-6-sol",
     vendor: "OpenRouter",
     label: "GPT-6 Sol",
@@ -844,6 +1072,69 @@ export const MODEL_CATALOG = [
       "OpenRouter 路由 · openai/gpt-6-luna。1.05M 上下文、128K 最大输出；支持图片、结构化输出和工具调用。",
     model: "openai/gpt-6-luna",
   }),
+  {
+    id: "openrouter-gemini-4-hydrogen",
+    vendor: "OpenRouter",
+    label: "Gemini 4 Hydrogen",
+    summary:
+      "OpenRouter 路由 · google/gemini-4-hydrogen。1M 统一窗口、单次同步输出 64K；思考档 low/medium/high/xhigh（默认 high）；支持图片、结构化输出和工具调用。",
+    provider: "openrouter",
+    baseUrl: OPENROUTER,
+    model: "google/gemini-4-hydrogen",
+    ...limits(1048576, 65536),
+    ...shared,
+    vision: true,
+    thinkingStyle: "openai",
+    tokenField: "max_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["low", "medium", "high", "xhigh"],
+    reasoningEffort: "high",
+    temperature: 1,
+    topP: 1,
+    timeoutMs: 300000,
+  },
+  {
+    id: "openrouter-gemini-4-carbon",
+    vendor: "OpenRouter",
+    label: "Gemini 4 Carbon",
+    summary:
+      "OpenRouter 路由 · google/gemini-4-carbon。1M 统一窗口、单次同步输出 64K；思考档 low/medium/high（默认 medium）；支持图片、结构化输出和工具调用。",
+    provider: "openrouter",
+    baseUrl: OPENROUTER,
+    model: "google/gemini-4-carbon",
+    ...limits(1048576, 65536),
+    ...shared,
+    vision: true,
+    thinkingStyle: "openai",
+    tokenField: "max_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["low", "medium", "high"],
+    reasoningEffort: "medium",
+    temperature: 1,
+    topP: 1,
+    timeoutMs: 900000,
+  },
+  {
+    id: "openrouter-gemini-4-argon",
+    vendor: "OpenRouter",
+    label: "Gemini 4 Argon",
+    summary:
+      "OpenRouter 路由 · google/gemini-4-argon。1M 统一窗口、单次同步输出 64K；思考档 low/medium/high（默认 medium）；支持图片、结构化输出和工具调用。",
+    provider: "openrouter",
+    baseUrl: OPENROUTER,
+    model: "google/gemini-4-argon",
+    ...limits(1048576, 65536),
+    ...shared,
+    vision: true,
+    thinkingStyle: "openai",
+    tokenField: "max_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["low", "medium", "high"],
+    reasoningEffort: "medium",
+    temperature: 1,
+    topP: 1,
+    timeoutMs: 900000,
+  },
   {
     id: "openrouter-glm-5.3-flash",
     vendor: "OpenRouter",
@@ -946,6 +1237,29 @@ export const MODEL_CATALOG = [
     reasoningEfforts: ASTRA_EFFORTS,
   }),
   gpt({
+    id: "bedrock-gpt-6.1-sol",
+    vendor: "亚马逊 Bedrock",
+    label: "GPT-6.1 Sol",
+    summary:
+      "美国跨区推理（us.openai.gpt-6.1-sol）。思考不能关闭，默认 medium；支持看图，JSON 输出关闭。输入超过 272K 整单按长上下文计价。",
+    provider: "bedrock",
+    baseUrl: BEDROCK,
+    model: "us.openai.gpt-6.1-sol",
+    json: false,
+    reasoningEfforts: ASTRA_EFFORTS,
+  }),
+  gpt({
+    id: "bedrock-gpt-6.1-terra",
+    vendor: "亚马逊 Bedrock",
+    label: "GPT-6.1 Terra",
+    summary:
+      "美国跨区推理（us.openai.gpt-6.1-terra）。思考默认 medium，可关闭；支持看图，JSON 输出关闭。输入超过 272K 整单按长上下文计价。",
+    provider: "bedrock",
+    baseUrl: BEDROCK,
+    model: "us.openai.gpt-6.1-terra",
+    json: false,
+  }),
+  gpt({
     id: "bedrock-gpt-6-sol",
     vendor: "亚马逊 Bedrock",
     label: "GPT-6 Sol",
@@ -976,6 +1290,17 @@ export const MODEL_CATALOG = [
     provider: "opencode-zen",
     baseUrl: OPENCODE_ZEN,
     model: "gpt-6-astra",
+    apiProtocol: "responses",
+    reasoningEfforts: ASTRA_EFFORTS,
+  }),
+  gpt({
+    id: "opencode-zen-gpt-6.1-sol",
+    vendor: "OpenCode Zen",
+    label: "GPT-6.1 Sol",
+    summary: "OpenCode Zen · GPT-6.1 编码与专业推理主力 · Responses 接口。",
+    provider: "opencode-zen",
+    baseUrl: OPENCODE_ZEN,
+    model: "gpt-6.1-sol",
     apiProtocol: "responses",
     reasoningEfforts: ASTRA_EFFORTS,
   }),
@@ -1149,6 +1474,26 @@ export const MODEL_PRESETS = {
     label: "OpenAI",
     baseUrl: OPENAI,
     model: "gpt-6-astra",
+  },
+  gemini: {
+    label: "Gemini",
+    baseUrl: GEMINI_OPENAI,
+    model: "gemini-4-hydrogen",
+  },
+  google: {
+    label: "Gemini",
+    baseUrl: GEMINI_OPENAI,
+    model: "gemini-4-hydrogen",
+  },
+  anthropic: {
+    label: "Claude",
+    baseUrl: ANTHROPIC,
+    model: "claude-opus-5-5",
+  },
+  claude: {
+    label: "Claude",
+    baseUrl: ANTHROPIC,
+    model: "claude-opus-5-5",
   },
   bedrock: {
     label: "亚马逊 Bedrock",

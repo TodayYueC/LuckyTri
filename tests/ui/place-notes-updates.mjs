@@ -90,7 +90,7 @@ try {
   });
   for (const width of [1440, 800, 390, 320]) {
     await page.setViewportSize({ width, height: 960 });
-    await page.goto(server.base + "/#people");
+    await page.goto(server.base + "/#people/groups");
     const card = page.locator(".face-card").first();
     await card.waitFor();
     assert.match(await card.innerText(), /我想和大家一起聊星星/);
@@ -160,7 +160,18 @@ try {
     /暂时无法检查/,
   );
   await page.goto(server.base + "/#nature");
-  await page.locator("#natureForm").waitFor();
+  await page
+    .locator("#natureForm")
+    .waitFor()
+    .catch(async (error) => {
+      console.log(
+        "Nature diagnostics",
+        errors,
+        await page.locator("body").innerText(),
+      );
+      await page.screenshot({ path: "workspace/ui-review/nature-failure.png" });
+      throw error;
+    });
   assert.match(await page.locator("#natureForm").innerText(), /还可以改 1 次/);
   assert.equal(
     await page.locator(".nature-fields").evaluate((field) => field.disabled),

@@ -140,6 +140,43 @@ const TOKEN_FIELDS = [
   "reasoning",
 ];
 export const TRACE_RETENTION_DAYS = 14;
+export const SLOW_LIVE_TRACE_MS = 15000;
+
+export function formatSlowTraceLine(trace) {
+  const t = trace?.timings || {};
+  const calls = Array.isArray(trace?.calls) ? trace.calls : [];
+  const stageMs = {};
+  const errors = [];
+  const fallbacks = [];
+  for (const call of calls) {
+    const st = String(call?.stage || "unknown");
+    const ms = Number(call?.elapsed) || 0;
+    stageMs[st] = (stageMs[st] || 0) + ms;
+    if (call?.error || call?.errorClass) {
+      const cls = call.errorClass || "error";
+      const status = call.status ? `:${call.status}` : "";
+      errors.push(`${st}:${cls}${status}`);
+    }
+    if (call?.fallbackFrom) {
+      const modelId = call?.model?.model || call?.model?.id || "backup";
+      fallbacks.push(`${st}:${modelId}:${Math.round(ms)}ms`);
+    }
+  }
+  const stages = Object.entries({
+    vision: t.vision ?? stageMs.vision ?? 0,
+    turn: t.turn ?? stageMs.turn ?? 0,
+    rewrite: t.rewrite ?? stageMs.rewrite ?? 0,
+    validation: t.validation ?? stageMs.validation ?? 0,
+    send: t.send ?? 0,
+  })
+    .filter(([, v]) => Number(v) > 0)
+    .map(([k, v]) => `${k}=${Math.round(Number(v))}ms`)
+    .join(" ");
+  const pathPart = trace?.path ? ` path=${trace.path}` : "";
+  const errPart = errors.length ? ` errors=${errors.join(",")}` : "";
+  const fbPart = fallbacks.length ? ` fallback=${fallbacks.join(",")}` : "";
+  return `[slow-trace] session=${trace?.sessionId || ""} status=${trace?.status || ""}${pathPart} elapsed=${Math.round(Number(trace?.elapsed) || 0)}ms calls=${calls.length}${stages ? ` ${stages}` : ""}${errPart}${fbPart}`;
+}
 
 function eventRow(r) {
   return {
@@ -302,6 +339,20 @@ export class Repository {
         );
     }
     // Previews spend real tokens too, so every mode is counted once.
+    if (
+      trace.mode === "live" &&
+      (trace.elapsed >= SLOW_LIVE_TRACE_MS ||
+        status === "error" ||
+        (trace.calls || []).some((c) => c?.errorClass))
+    ) {
+      trace.slowSummary = formatSlowTraceLine(trace);
+      if (
+        !process.env.NODE_TEST_CONTEXT &&
+        trace.elapsed >= SLOW_LIVE_TRACE_MS
+      ) {
+        console.warn(trace.slowSummary);
+      }
+    }
     recordUsage(this.db, trace);
     this.db
       .prepare("UPDATE core_traces SET status=?,data=? WHERE id=?")

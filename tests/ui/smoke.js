@@ -1,3 +1,8 @@
+import {
+  navigate as studioNavigate,
+  control,
+  timeTab,
+} from "./studio-navigation.mjs";
 import { chromium } from "@playwright/test";
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync } from "node:fs";
@@ -57,70 +62,58 @@ try {
       await group.locator("summary").click();
     return card;
   }
+  async function closeModelEditor() {
+    if (await p.locator("#modelForm").count()) {
+      await p.keyboard.press("Escape");
+      if (await p.locator(".dialog").count()) await confirmDialog();
+      await p.locator("#modelForm").waitFor({ state: "detached" });
+    }
+  }
   async function selectFirstSavedModel() {
-    const row = p.locator(".entity-row").first();
-    const group = row.locator("xpath=ancestor::details[1]");
-    if (!(await group.evaluate((element) => element.open)))
-      await group.locator("summary").click();
-    await row.click();
+    await closeModelEditor();
+    await p.locator(".model-card").first().click();
+    await p.locator("#modelForm").waitFor();
+  }
+  async function openModelPicker() {
+    await closeModelEditor();
+    await p.locator("#addModel").click();
   }
   async function checkModelLayout(width, state) {
+    await closeModelEditor();
+    const libraryWidth = await p
+      .locator(".library")
+      .evaluate((el) => el.getBoundingClientRect().width);
+    await p.locator(".model-tools [data-tab=embedding]").click();
     const panel = p.locator(".embedding-profile");
     await panel.locator("form").waitFor();
-    await panel.evaluate((element) => {
-      window.scrollTo({
-        top: window.scrollY + element.getBoundingClientRect().top - 120,
-        behavior: "instant",
-      });
-    });
-    const layout = await p.evaluate(() => {
-      const box = (selector) => {
-        const r = document.querySelector(selector).getBoundingClientRect();
-        return {
-          left: r.left,
-          right: r.right,
-          top: r.top,
-          bottom: r.bottom,
-          width: r.width,
-        };
-      };
+    const layout = await panel.evaluate((el) => {
+      const r = el.getBoundingClientRect();
       return {
-        library: box(".library"),
-        panel: box(".embedding-profile"),
-        shelf: box(".library .shelf"),
-        detail: box(".library .detail"),
-        inputs: [
-          ...document.querySelectorAll(".embedding-profile .fields input"),
-        ].map((input) => {
-          const r = input.getBoundingClientRect();
-          return { left: r.left, right: r.right };
+        width: r.width,
+        inputs: [...el.querySelectorAll("input")].map((input) => {
+          const b = input.getBoundingClientRect();
+          return b.left >= r.left - 1 && b.right <= r.right + 1;
         }),
       };
     });
+    assert.ok(
+      layout.width >= libraryWidth - 2,
+      "Embedding settings use their own full-width card",
+    );
+    assert.ok(
+      layout.inputs.every(Boolean),
+      "Embedding controls stay inside the card",
+    );
+    assert.equal(
+      await p.locator("#modelForm").count(),
+      0,
+      "The model editor is not stacked above other settings",
+    );
     await p.screenshot({
       path: `workspace/ui-review/models-${state}-${width}.png`,
       fullPage: true,
     });
-    assert(
-      layout.panel.width >= layout.library.width - 2,
-      `embedding panel uses the available width (${state}, ${width}px)`,
-    );
-    assert(
-      layout.panel.top >= layout.detail.bottom,
-      `embedding panel follows the model editor (${state}, ${width}px)`,
-    );
-    assert(
-      layout.shelf.bottom <= layout.panel.top,
-      `sticky model shelf does not cover embedding settings (${state}, ${width}px)`,
-    );
-    assert(
-      layout.inputs.every(
-        (input) =>
-          input.left >= layout.panel.left && input.right <= layout.panel.right,
-      ),
-      `embedding inputs stay within their panel (${state}, ${width}px)`,
-    );
-    await p.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+    await p.locator(".model-tools [data-tab=library]").click();
   }
   const errors = [];
   mkdirSync("workspace/ui-review", { recursive: true });
@@ -147,17 +140,22 @@ try {
     const [area, sub] = AREA[name] || [name];
     if (await p.locator(".sheet-layer").count()) {
       await p.keyboard.press("Escape");
-      await p.locator(".sheet-layer").waitFor({ state: "detached" });
+      await p.waitForFunction(() => !document.querySelector(".sheet-layer"));
     }
-    if (p.viewportSize().width > 760)
-      await p.locator(`.dock .dock-link[data-page=${area}]`).click();
-    else if (["now", "chats", "heart", "life"].includes(area))
-      await p.locator(`.tabbar [data-page=${area}]`).click();
-    else {
-      await p.locator(".tabbar-more").click();
-      await p.locator(`.more-grid [data-page=${area}]`).click();
-    }
+    await studioNavigate(p, area, sub);
     await p.locator(`.page-${area}`).waitFor();
+    if (name === "spaces") {
+      const details = p.getByRole("button", {
+        name: "会话详情与反馈",
+        exact: true,
+      });
+      if (await details.isEnabled()) {
+        await details.click();
+        const settings = p.locator(".session-settings");
+        if (!(await settings.evaluate((el) => el.open)))
+          await settings.locator(":scope > summary").click();
+      }
+    }
     if (area === "system" && sub)
       await p.locator(`.page-system [data-tab=${sub}]`).click();
     if (sub === "replay")
@@ -201,18 +199,14 @@ try {
   }
   await p.setViewportSize({ width: 1440, height: 1000 });
   await navigate("now");
-  await p
-    .getByRole("button", { name: /减少动画/ })
-    .first()
-    .click();
+  await control(p, "appearance");
+  await p.getByLabel("减少动画", { exact: true }).check();
   assert.equal(
     await p.evaluate(() => document.documentElement.dataset.motion),
     "quiet",
   );
-  await p
-    .getByRole("button", { name: /开启灵动效果/ })
-    .first()
-    .click();
+  await p.getByLabel("减少动画", { exact: true }).uncheck();
+  await p.keyboard.press("Escape");
   await navigate("spaces");
   await p.getByRole("button", { name: "＋ 添加会话", exact: true }).click();
   await p.locator("#addSession [name=id]").fill("12345");
@@ -245,22 +239,29 @@ try {
   await p.locator("[data-session='group:12345'] button.primary").click();
   await p.waitForTimeout(400);
   await navigate("knowledge");
-  await p.getByRole("tab", { name: "资料书架", exact: true }).click();
+  await p.locator(".workspace-tabs [data-tab=knowledge]").click();
   await p.locator(".shelf-head h2").waitFor();
   assert.equal(await p.locator("#memoryList").isVisible(), false);
-  await p.getByRole("tab", { name: "TA 记得的事", exact: true }).click();
+  await p.locator(".workspace-tabs [data-tab=archive]").click();
   await p.getByRole("button", { name: "＋ 手动记忆", exact: true }).click();
   await p.locator("#addMemory [name=subject]").fill("10001");
   await p.locator("#addMemory [name=content]").fill("喜欢拿铁");
   await p.locator("#addMemory button.primary").click();
   await p
-    .locator("#memoryList summary")
+    .locator("#memoryList .memory-open")
     .filter({ hasText: "喜欢拿铁" })
     .click();
   await p.locator("[data-content]").fill("喜欢温拿铁");
   await p.getByRole("button", { name: "保存修改" }).click();
+  await p.waitForFunction(
+    () =>
+      document.querySelector(".memory-editor")?.getAttribute("aria-busy") ===
+      "false",
+  );
+  await p.keyboard.press("Escape");
+  await p.locator(".memory-editor").waitFor({ state: "detached" });
   await p
-    .locator("#memoryList summary")
+    .locator("#memoryList .memory-open")
     .filter({ hasText: "喜欢温拿铁" })
     .waitFor();
   await p.locator("#memorySearch").fill("不存在的记忆");
@@ -278,7 +279,7 @@ try {
   await p.locator("#deleteSelectedMemories").click();
   await confirmDialog();
   await p
-    .locator("#memoryList summary")
+    .locator("#memoryList .memory-open")
     .filter({ hasText: "喜欢温拿铁" })
     .waitFor({ state: "detached" });
   await navigate("her");
@@ -297,10 +298,11 @@ try {
     .click();
   assert.equal(await p.locator("#previewMessages .preview-bubble").count(), 0);
   // Leaving with an unsaved draft asks first.
-  await p.locator(".dock .dock-link[data-page=system]").click();
+  await studioNavigate(p, "system");
   await confirmDialog();
   await p.locator(".page-system").waitFor();
   await navigate("models");
+  await p.locator(".model-tools [data-tab=embedding]").click();
   await p
     .locator('[name="embeddingBaseUrl"]')
     .fill("https://vectors.example/v1");
@@ -315,7 +317,8 @@ try {
       .isDisabled(),
     true,
   );
-  await p.locator("#addModel").click();
+  await p.locator(".model-tools [data-tab=library]").click();
+  await openModelPicker();
   await openPreset("deepseek-flash");
   assert.equal(
     await p.locator("[data-preset=deepseek-flash] b").innerText(),
@@ -336,13 +339,12 @@ try {
   await p.setViewportSize({ width: 1440, height: 1000 });
   // One model editor owns connection and capacity; unsaved new models are discarded.
   assert.equal(await p.locator("#settings").count(), 0);
-  await p.locator("#addModel").click();
+  await openModelPicker();
   await (await openPreset("deepseek-flash")).click();
   await p.locator("[name=label]").fill("未保存模型");
   await selectFirstSavedModel();
-  await confirmDialog();
-  assert.equal(await p.locator(".entity-row").count(), 1);
-  await p.locator("#addModel").click();
+  assert.equal(await p.locator(".model-card").count(), 1);
+  await openModelPicker();
   await (await openPreset("gpt-6-sol")).click();
   assert.equal(await p.locator("[name=label]").inputValue(), "GPT-6 Sol");
   assert.equal(await p.locator("[name=maxInputTokens]").inputValue(), "272000");
@@ -353,14 +355,13 @@ try {
     "128000",
   );
   await selectFirstSavedModel();
-  await confirmDialog();
-  assert.equal(await p.locator(".entity-row").count(), 1);
-  await p.locator("#addModel").click();
+  assert.equal(await p.locator(".model-card").count(), 1);
+  await openModelPicker();
   await (await openPreset("kimi-k2.6")).click();
   await p.locator("[name=label]").fill("界面测试模型");
   await p.locator("#modelForm .primary").click();
   await p.waitForTimeout(300);
-  assert.equal(await p.locator(".entity-row").count(), 2);
+  assert.equal(await p.locator(".model-card").count(), 2);
   assert.equal(await p.locator("#testModel").isVisible(), true);
   assert.equal(await p.locator("#testModel").innerText(), "测试此模型连接");
   await p.locator("#testModel").click();
@@ -371,12 +372,12 @@ try {
   await p.locator("#deleteModel").click();
   await confirmDialog();
   await p.waitForTimeout(300);
-  assert.equal(await p.locator(".entity-row").count(), 1);
-  await p.locator("#addModel").click();
+  assert.equal(await p.locator(".model-card").count(), 1);
+  await openModelPicker();
   await (await openPreset("opencode-go-grok-4.7")).waitFor();
   await (await openPreset("opencode-zen-qwen3.8-flash")).waitFor();
   assert.equal(await p.locator('[data-preset^="opencode-go-"]').count(), 7);
-  assert.equal(await p.locator('[data-preset^="opencode-zen-"]').count(), 11);
+  assert.equal(await p.locator('[data-preset^="opencode-zen-"]').count(), 12);
   assert.equal(await p.locator('[data-preset*="step-5-preview"]').count(), 0);
   assert.equal(await p.locator('[data-preset*="muse-spark"]').count(), 0);
   await (await openPreset("openrouter")).click();
@@ -387,12 +388,16 @@ try {
   );
   assert.equal(await p.locator('[name="model"]').inputValue(), "");
   await selectFirstSavedModel();
-  await confirmDialog();
-  await p.locator("#addModel").click();
+  await openModelPicker();
   for (const id of [
     "openrouter-gpt-6-astra",
+    "openrouter-gpt-6.1-sol",
+    "openrouter-gpt-6.1-terra",
     "openrouter-gpt-6-sol",
     "openrouter-gpt-6-luna",
+    "openrouter-gemini-4-hydrogen",
+    "openrouter-gemini-4-carbon",
+    "openrouter-gemini-4-argon",
     "openrouter-glm-5.3-flash",
   ])
     await (await openPreset(id)).waitFor();
@@ -407,8 +412,7 @@ try {
     "1050000",
   );
   await selectFirstSavedModel();
-  await confirmDialog();
-  await p.locator("#addModel").click();
+  await openModelPicker();
   await (await openPreset("openrouter-glm-5.3-flash")).click();
   assert.equal(
     await p.locator('[name="model"]').inputValue(),
@@ -420,7 +424,6 @@ try {
   );
   assert.equal(await p.locator('[name="vision"]').isChecked(), true);
   await selectFirstSavedModel();
-  await confirmDialog();
   await p.locator("#testModel").click();
   await p.getByText("请先配置模型 API Key", { exact: true }).waitFor();
   const ws = new WebSocket(`ws://127.0.0.1:${port}/onebot/v11/ws`, {
@@ -473,7 +476,7 @@ try {
   await navigate("knowledge");
   await p.locator("#memoryScope").selectOption("group:12345");
   await p
-    .locator("#memoryList summary")
+    .locator("#memoryList .memory-open")
     .getByText("喜欢看海", { exact: true })
     .waitFor();
   ws.close();
@@ -659,7 +662,7 @@ try {
   await p.goto(base + "/#knowledge");
   await p.locator("#memoryScope").selectOption("group:12345");
   await p
-    .locator("#memoryList summary")
+    .locator("#memoryList .memory-open")
     .getByText("第一群独立记忆", { exact: true })
     .waitFor();
   assert(
@@ -667,7 +670,7 @@ try {
   );
   await p.locator("#memoryScope").selectOption("group:54321");
   await p
-    .locator("#memoryList summary")
+    .locator("#memoryList .memory-open")
     .getByText("第二群独立记忆", { exact: true })
     .waitFor();
   assert(
@@ -676,12 +679,15 @@ try {
   await p.getByRole("button", { name: "＋ 手动记忆", exact: true }).click();
   assert.equal(await p.locator("#memorySession").inputValue(), "group:54321");
   await p.getByRole("button", { name: "关闭", exact: true }).click();
-  await p.goto(base + "/#spaces");
+  await p.goto(base + "/#chats");
   await p.getByRole("button", { name: "＋ 添加会话", exact: true }).click();
   await p.locator("#addSession [name=id]").fill("65432");
   await p.locator("#addSession [name=name]").fill("手动添加群");
   await p.locator("#addSession button.primary").click();
   await p.locator("[data-session='group:65432']").waitFor();
+  const sessionSettings = p.locator(".session-settings");
+  if (!(await sessionSettings.evaluate((el) => el.open)))
+    await sessionSettings.locator(":scope > summary").click();
   await p
     .locator("[data-session='group:65432'] details.advanced-policy summary")
     .click();
@@ -711,6 +717,7 @@ try {
   assert.equal(savedPolicy.persona, undefined);
   await p.locator("[data-archive='group:65432']").click();
   await p.waitForTimeout(300);
+  await p.keyboard.press("Escape");
   await p.locator(".archive-list summary").click();
   await p.locator("[data-restore-session='group:65432']").click();
   await p
@@ -718,9 +725,13 @@ try {
     .filter({ hasText: "手动添加群" })
     .click();
   await p.waitForTimeout(300);
+  await p.getByRole("button", { name: "会话详情与反馈", exact: true }).click();
+  if (!(await p.locator(".session-settings").evaluate((el) => el.open)))
+    await p.locator(".session-settings > summary").click();
   await p.locator("[data-session='group:65432']").waitFor();
   await p.goto(base + "/#live");
   await p.locator("[data-pick='group:65432']").click();
+  await p.getByRole("button", { name: "会话详情与反馈", exact: true }).click();
   await p.locator("#clearLiveContext").click();
   await confirmDialog();
   await p
@@ -736,6 +747,7 @@ try {
   await p.waitForTimeout(300);
   assert.equal(await p.locator("#natureForm [name=sarcasm]").inputValue(), "4");
   await navigate("models");
+  await selectFirstSavedModel();
   await p.locator("[name=contextWindow]").waitFor();
   await p.locator("[name=contextWindow]").fill("600000");
   await p.locator("#modelForm button.primary").click();
@@ -762,6 +774,7 @@ try {
   await p.goto(base + "/#live");
   await p.locator("[data-pick='group:12345']").click();
   // Opening the feedback tab fetches the (routed) state again.
+  await p.getByRole("button", { name: "会话详情与反馈", exact: true }).click();
   await p.getByRole("tab", { name: "反馈", exact: true }).click();
   await p.locator(".feedback-item").first().waitFor();
   for (const width of [1440, 820, 390]) {

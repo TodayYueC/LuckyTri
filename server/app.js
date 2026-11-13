@@ -27,6 +27,7 @@ export function createApp({
   updates = new UpdateChecker(),
 }) {
   const app = express();
+  app.set("trust proxy", "loopback");
   app.use("/api", localizeApi);
   app.use("/api", (req, res, next) => {
     res.setHeader("Cache-Control", "no-store");

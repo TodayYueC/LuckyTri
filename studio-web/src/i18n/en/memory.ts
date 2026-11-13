@@ -1,18 +1,11 @@
-// English for the Memory section.
 export default {
-  // KnowledgeShelf.vue
   "已重建 {chunks} 段向量": "Rebuilt vectors for {chunks} passages",
   文档已切分入库: "Document split and stored",
-  "给 TA 留一点可以读的东西": "Leave TA something to read",
-  "存放可供聊天参考的资料，和自动记录的会话记忆分开管理。共享集合里的文章，TA 独处时也会挑着读。":
-    "Holds reference material for chats, managed separately from the memory recorded automatically from sessions. Articles in a shared collection are also something TA picks from to read when alone.",
   文档集合: "Document collections",
   "资料书架，{length} 份资料": "Bookshelf, {length} documents",
   "正在重建…": "Rebuilding…",
   重建向量: "Rebuild vectors",
   书架还空着: "The bookshelf is still empty",
-  "在下面放一份资料，TA 就能在聊天里查到，独处时也可能去读。":
-    "Add a document below and TA can look it up in chat, and may read it when alone.",
   "＋ 添加一份资料": "+ Add a document",
   标题: "Title",
   粘贴正文: "Paste the text",
@@ -23,9 +16,6 @@ export default {
   试着搜索一个关键词: "Try searching a keyword",
   检索: "Search",
   "没有找到相关资料。": "No related material found.",
-  资料书架: "Bookshelf",
-
-  // MemoryArchive.vue
   记忆已写入: "Memory saved",
   "确定删除已选的 {length} 条记忆吗？":
     "Delete the {length} selected memories?",
@@ -77,15 +67,7 @@ export default {
   "选择昵称，或填写用户 ID": "Choose a nickname, or enter a user ID",
   已确认的事实: "A confirmed fact",
   新增人工记忆: "Add a manual memory",
-
-  // MemoryPage.vue
-  "MEMORY · 记忆": "MEMORY",
-  "见过的人与事，": "The people and things she has met",
-  "会慢慢有了重量。": "slowly gain weight.",
-  "记住重要的，也允许改变看法。":
-    "Remember what matters, and allow views to change.",
   记忆的分区: "Memory sections",
-  "TA 记得的事": "What TA remembers",
   "先在「对话」里添加一个会话，TA 才有地方认识人、记住事。":
     "Add a session under Chats first, so TA has somewhere to meet people and remember things.",
-} as Record<string, string>;
+};

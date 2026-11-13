@@ -628,7 +628,14 @@ export class TurnProcessor {
               reason: "图片理解调用失败",
             })),
           );
-          if (model.vision) show = show.concat(describe);
+          if (
+            model.vision &&
+            visionModel.id !== model.id &&
+            !error?.timeout &&
+            !error?.circuitOpen &&
+            !error?.unavailable
+          )
+            show = show.concat(describe);
         }
       }
       enrichVisionOwnership(snapshot);
@@ -706,6 +713,7 @@ export class TurnProcessor {
         return finish("stale", "读房间时又有新话，并入下一批");
       }
       lap("checks");
+      trace.path = occasion?.type || (direct ? "direct" : "contextual");
       // While she thinks in a private chat the other side sees her typing,
       // where the channel can show it; nothing waits on it.
       if (live && privateChat && policy.typingStatus !== false && batch.at(-1))
@@ -765,6 +773,8 @@ export class TurnProcessor {
           snapshot,
           trace,
         );
+      } finally {
+        lap("turn");
       }
       trace.decision = turn;
       if (live) this.owner.mind.time.adjust(turn, clock());
@@ -786,7 +796,6 @@ export class TurnProcessor {
             now,
           );
       }
-      trace.path = occasion?.type || (direct ? "direct" : "contextual");
       const roomKind = privateChat ? "private" : "group";
       let talkSettled = false;
       const land = (spoke) => {

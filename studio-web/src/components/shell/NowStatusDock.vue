@@ -126,99 +126,106 @@ async function run(kind: "reflect" | "review") {
 </template>
 
 <style scoped>
-.presence-dock {
-  position: sticky;
-  z-index: 4;
-  top: 96px;
-  display: grid;
-  align-content: start;
-  gap: 12px;
-  align-self: start;
-  width: 100%;
-  height: calc(100dvh - 112px);
-  max-height: calc(100dvh - 112px);
-  overflow: auto;
-  padding: 22px;
-  border: 1px solid rgb(255 255 255 / 0.88);
-  border-radius: 28px;
-  background: linear-gradient(
-    145deg,
-    rgb(255 255 255 / 0.92),
-    rgb(248 251 255 / 0.88)
-  );
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.96),
-    0 24px 48px -34px rgb(39 69 128 / 0.56);
-  color: var(--ink);
-}
-.presence-detail {
-  display: grid;
-  align-content: start;
-  gap: 12px;
-  min-width: 0;
-}
-.mood-word {
-  font-family: var(--font-display);
-  font-size: clamp(48px, 3.5vw, 70px);
-  font-weight: 750;
-  letter-spacing: -0.055em;
-  background: linear-gradient(105deg, var(--ink) 4%, #83bcf2 52%, #dd9dca 95%);
-  background-clip: text;
-  -webkit-background-clip: text;
-  color: transparent;
-}
-.chips {
-  gap: 7px;
-}
-.chips .chip {
-  background: rgb(255 255 255 / 0.64);
-  border-color: rgb(255 255 255 / 0.84);
-}
-.activity-chip {
-  white-space: normal;
-  overflow-wrap: anywhere;
-  max-width: 100%;
-  min-width: 0;
-  line-height: 1.5;
-}
-.actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-}
-.actions > button {
-  width: 100%;
-  justify-content: center;
-  background: rgb(255 255 255 / 0.54);
-  border-color: rgb(255 255 255 / 0.88);
-}
-.actions > button.primary {
-  background: linear-gradient(120deg, #84bdfb, #a5b5f0 56%, #dfb4e5);
-  color: #213e73;
-  box-shadow: 0 16px 32px -16px #7ca9ef;
-}
-.aside-bit {
-  display: grid;
-  gap: 4px;
-  padding-top: 10px;
-  border-top: 1px solid rgb(255 255 255 / 0.7);
-}
-.aside-bit p {
-  font-size: 13.5px;
-  line-height: 1.55;
-}
-.aside-bit small {
-  color: var(--ink-soft);
-  font-size: 12px;
-}
-@media (max-width: 760px) {
+@layer components {
   .presence-dock {
-    position: relative;
-    top: auto;
-    width: calc(100% - 28px);
-    height: auto;
-    max-height: none;
-    margin: 0 auto 8px;
+    position: sticky;
+    z-index: 4;
+    top: 96px;
+    display: grid;
+    align-content: start;
+    gap: 12px;
+    align-self: start;
+    width: 100%;
+    height: calc(100dvh - 112px);
+    max-height: calc(100dvh - 112px);
+    overflow: auto;
+    padding: 22px;
+    border: 1px solid rgb(255 255 255 / 0.88);
+    border-radius: 28px;
+    background: linear-gradient(
+      145deg,
+      rgb(255 255 255 / 0.92),
+      rgb(248 251 255 / 0.88)
+    );
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.96),
+      0 24px 48px -34px rgb(39 69 128 / 0.56);
+    color: var(--ink);
+  }
+  .presence-detail {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+    min-width: 0;
+  }
+  .mood-word {
+    font-family: var(--font-display);
+    font-size: clamp(48px, 3.5vw, 70px);
+    font-weight: 750;
+    letter-spacing: -0.055em;
+    background: linear-gradient(
+      105deg,
+      var(--ink) 4%,
+      #83bcf2 52%,
+      #dd9dca 95%
+    );
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+  }
+  .chips {
+    gap: 7px;
+  }
+  .chips .chip {
+    background: rgb(255 255 255 / 0.64);
+    border-color: rgb(255 255 255 / 0.84);
+  }
+  .activity-chip {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    max-width: 100%;
+    min-width: 0;
+    line-height: 1.5;
+  }
+  .actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .actions > button {
+    width: 100%;
+    justify-content: center;
+    background: rgb(255 255 255 / 0.54);
+    border-color: rgb(255 255 255 / 0.88);
+  }
+  .actions > button.primary {
+    background: linear-gradient(120deg, #84bdfb, #a5b5f0 56%, #dfb4e5);
+    color: #213e73;
+    box-shadow: 0 16px 32px -16px #7ca9ef;
+  }
+  .aside-bit {
+    display: grid;
+    gap: 4px;
+    padding-top: 10px;
+    border-top: 1px solid rgb(255 255 255 / 0.7);
+  }
+  .aside-bit p {
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+  .aside-bit small {
+    color: var(--ink-soft);
+    font-size: 12px;
+  }
+  @media (max-width: 760px) {
+    .presence-dock {
+      position: relative;
+      top: auto;
+      width: calc(100% - 28px);
+      height: auto;
+      max-height: none;
+      margin: 0 auto 8px;
+    }
   }
 }
 </style>

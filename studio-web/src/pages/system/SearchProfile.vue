@@ -322,49 +322,51 @@ onUnmounted(() => {
   </section>
 </template>
 <style scoped>
-.search-profile {
-  display: grid;
-  gap: 16px;
-  min-width: 0;
-}
-.search-profile form {
-  display: grid;
-  gap: 18px;
-}
-.search-fields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-.search-fields label {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-}
-.search-fields input,
-.search-fields .menu-select {
-  width: 100%;
-  min-width: 0;
-}
-.search-usage {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-.search-result {
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: var(--surface);
-  overflow-wrap: anywhere;
-}
-.search-result.failed {
-  border-color: color-mix(in srgb, var(--warn) 40%, var(--line));
-}
-@media (max-width: 620px) {
+@layer components {
+  .search-profile {
+    display: grid;
+    gap: 16px;
+    min-width: 0;
+  }
+  .search-profile form {
+    display: grid;
+    gap: 18px;
+  }
   .search-fields {
-    grid-template-columns: minmax(0, 1fr);
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .search-fields label {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+  }
+  .search-fields input,
+  .search-fields .menu-select {
+    width: 100%;
+    min-width: 0;
+  }
+  .search-usage {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .search-result {
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--surface);
+    overflow-wrap: anywhere;
+  }
+  .search-result.failed {
+    border-color: color-mix(in srgb, var(--warn) 40%, var(--line));
+  }
+  @media (max-width: 620px) {
+    .search-fields {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 }
 </style>

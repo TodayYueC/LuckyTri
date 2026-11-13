@@ -1,6 +1,6 @@
 {
   "name": "luckytri",
-  "version": "1.3.5",
+  "version": "1.3.6",
   "description": "让由技术诞生的她，在时间、记忆、相遇与选择中逐渐形成自己的方向",
   "license": "MIT",
   "repository": {
@@ -38,6 +38,7 @@
     "public/app/assets/*.js",
     "public/app/assets/*.css",
     "public/app/assets/*.png",
+    "public/app/assets/*.webp",
     "public/plugin-kit/v1/bridge.js",
     "public/plugin-kit/v1/kit.css",
     "public/guide.html",
@@ -104,7 +105,7 @@
     "audit:sent": "node --env-file-if-exists=.env scripts/dev/audit-sent.js",
     "audit:life": "node scripts/dev/audit-life.js",
     "evaluate:traits": "node scripts/dev/evaluate-traits.js",
-    "test:ui": "node tests/ui/access.mjs && node tests/ui/smoke.js && node tests/ui/ta.mjs && node tests/ui/navigation.mjs && node tests/ui/time.mjs && node tests/ui/time-arrangement.mjs && node tests/ui/performance.mjs && node tests/ui/search.mjs && node tests/ui/storage.mjs && node tests/ui/data-transfer.mjs && node tests/ui/place-notes-updates.mjs && node tests/ui/i18n.mjs && node tests/ui/relationships-update.mjs && node tests/ui/stickers.mjs",
+    "test:ui": "node tests/ui/access.mjs && node tests/ui/smoke.js && node tests/ui/ta.mjs && node tests/ui/navigation.mjs && node tests/ui/time.mjs && node tests/ui/time-arrangement.mjs && node tests/ui/performance.mjs && node tests/ui/search.mjs && node tests/ui/storage.mjs && node tests/ui/data-transfer.mjs && node tests/ui/place-notes-updates.mjs && node tests/ui/i18n.mjs && node tests/ui/relationships-update.mjs && node tests/ui/stickers.mjs && node tests/ui/studio-layout.mjs && node tests/ui/card-workflows.mjs",
     "setup": "node scripts/setup.js",
     "stop": "node scripts/stop.js",
     "backup": "node scripts/backup.js",

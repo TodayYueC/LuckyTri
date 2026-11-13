@@ -181,20 +181,22 @@ onMounted(load);
 </template>
 
 <style scoped>
-.embedding-profile {
-  min-width: 0;
-}
-.secret {
-  -webkit-text-security: disc;
-}
-.fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
-  gap: 14px;
-  margin: 16px 0;
-}
-.save-bar {
-  position: relative;
-  bottom: auto;
+@layer components {
+  .embedding-profile {
+    min-width: 0;
+  }
+  .secret {
+    -webkit-text-security: disc;
+  }
+  .fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+    gap: 14px;
+    margin: 16px 0;
+  }
+  .save-bar {
+    position: relative;
+    bottom: auto;
+  }
 }
 </style>
