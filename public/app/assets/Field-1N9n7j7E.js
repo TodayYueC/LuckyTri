@@ -1,0 +1,1 @@
+import{J as e,K as t,St as n,Y as r,ct as i,et as a,ut as o,wt as s}from"./Empty-CVLbaZEa.js";var c={key:0},l=a({__name:`Field`,props:{label:{},hint:{},wide:{type:Boolean}},setup(a){return(l,u)=>(i(),r(`label`,{class:n({wide:a.wide})},[t(`span`,null,s(a.label),1),o(l.$slots,`default`),a.hint?(i(),r(`small`,c,s(a.hint),1)):e(``,!0)],2))}});export{l as t};

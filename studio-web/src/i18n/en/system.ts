@@ -263,6 +263,7 @@ export default {
   极高: "Extra high",
   最深: "Deepest",
   "已保存 {value}": "Saved {value}",
+  "火山方舟 Agent Plan": "Volcengine Ark Agent Plan",
   "火山方舟 Coding Plan": "Volcengine Ark Coding Plan",
   "亚马逊 Bedrock": "Amazon Bedrock",
   通义千问: "Qwen",

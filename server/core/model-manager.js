@@ -194,11 +194,41 @@ function hostname(profile) {
 function thinkingStyle(profile) {
   return profile.thinkingStyle || (isMimoProfile(profile) ? "mimo" : "");
 }
+function isGeminiOpenAiProfile(profile) {
+  return (
+    String(profile?.provider || "").toLowerCase() === "gemini" ||
+    hostname(profile) === "generativelanguage.googleapis.com"
+  );
+}
 function quietStage(profile, stage) {
   return (
     QUIET_STAGES.has(stage) &&
     (["mimo", "volcengine"].includes(thinkingStyle(profile)) ||
       profile.apiProtocol === "anthropic")
+  );
+}
+function clampGeminiOpenAiEffort(profile, effort) {
+  const value = String(effort || "").toLowerCase();
+  const model = String(profile?.model || "").toLowerCase();
+  if (/^gemini-(?:4-|3\.8-|3\.7-|3\.1-pro|3-pro)/.test(model)) {
+    if (value === "none" || value === "minimal") return "low";
+    if (value === "max")
+      return model === "gemini-4-hydrogen" ? "xhigh" : "high";
+    if (value === "xhigh" && model !== "gemini-4-hydrogen") return "high";
+    return value;
+  }
+  if (/^gemini-3/.test(model)) {
+    if (value === "none") return "minimal";
+    if (value === "xhigh" || value === "max") return "high";
+    return value;
+  }
+  if (value === "xhigh" || value === "max") return "high";
+  return value;
+}
+function gemini3OrNewer(profile) {
+  return (
+    isGeminiOpenAiProfile(profile) &&
+    /^gemini-(?:[3-9]|1\d)(?:[.-]|$)/i.test(String(profile?.model || ""))
   );
 }
 // Short verdicts do not need a 128K output reservation; oversized ceilings only
@@ -217,8 +247,11 @@ export function outputLimit(profile, stage) {
     ["glm", "kimi-effort", "anthropic-adaptive"].includes(
       thinkingStyle(profile),
     ) ||
+    gemini3OrNewer(profile) ||
     (efforts.length > 0 && !efforts.includes("none"));
   if (effort === "none" && alwaysThinks && !quiet) effort = "low";
+  if (isGeminiOpenAiProfile(profile) && effort !== "none")
+    effort = clampGeminiOpenAiEffort(profile, effort);
   return Math.max(
     1,
     Math.min(
@@ -235,6 +268,8 @@ function applyGenerationControls(
 ) {
   const style = profile.thinkingStyle || "";
   const mimo = style === "mimo" || (!style && isMimoProfile(profile));
+  const geminiOpenAi = isGeminiOpenAiProfile(profile);
+  const omitSampling = profile.omitSampling || gemini3OrNewer(profile);
   const off = thinkingOff(profile);
   const completion =
     profile.tokenField === "max_completion_tokens" ||
@@ -276,10 +311,19 @@ function applyGenerationControls(
     body.enable_thinking = !off;
     if (style === "qwen-effort" && !off)
       body.reasoning_effort = profile.reasoningEffort;
-    if (!profile.omitSampling) body.temperature = profile.temperature;
+    if (!omitSampling) body.temperature = profile.temperature;
+  } else if (geminiOpenAi) {
+    if (!off || gemini3OrNewer(profile)) {
+      body.reasoning_effort = clampGeminiOpenAiEffort(
+        profile,
+        off ? "none" : profile.reasoningEffort,
+      );
+    } else if (!omitSampling) {
+      body.temperature = profile.temperature;
+    }
   } else if (!off) body.reasoning_effort = profile.reasoningEffort;
   else body.temperature = profile.temperature;
-  if (!profile.omitSampling && profile.topP !== 1) body.top_p = profile.topP;
+  if (!omitSampling && profile.topP !== 1) body.top_p = profile.topP;
 }
 
 function responseContent(content) {
