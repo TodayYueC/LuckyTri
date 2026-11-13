@@ -33,6 +33,7 @@ const QUIET_STAGES = new Set([
 ]);
 export const VISION_STAGE_TIMEOUT_MS = 25000;
 export const VISION_TOTAL_BUDGET_MS = 35000;
+export const TURN_STAGE_TIMEOUT_MS = 30000;
 export const REWRITE_STAGE_TIMEOUT_MS = 25000;
 export const VALIDATION_STAGE_TIMEOUT_MS = 25000;
 export const GENERATION_STAGE_TIMEOUT_MS = 25000;
@@ -895,6 +896,7 @@ async function httpError(response) {
       response,
       status === 429 ? 1500 : 900,
       status === 429 ? RATE_LIMIT_CIRCUIT_MAX_MS : 30000,
+      status === 429 ? detail : "",
     );
   }
   return error;
@@ -1037,14 +1039,15 @@ export function withFallback(models, fallback) {
         for (let i = 0; i < candidates.length; i++) {
           const next = candidates[i];
           if (options?.signal?.aborted) break;
+          const attemptStartedAt = i === 0 ? fallbackStarted : clock();
           if (
             Number.isFinite(options?.deadlineAt) &&
-            clock() >= options.deadlineAt
+            attemptStartedAt >= options.deadlineAt
           )
             break;
-          const fallbackElapsed = clock() - fallbackStarted;
+          const fallbackElapsed = attemptStartedAt - fallbackStarted;
           if (stage === "vision") {
-            const elapsed = clock() - callStarted;
+            const elapsed = attemptStartedAt - callStarted;
             if (elapsed >= VISION_TOTAL_BUDGET_MS - 2000) break;
           } else if (!BACKGROUND_STAGES.has(stage) && stage !== "test") {
             if (fallbackElapsed >= fallbackTotalCapMs - 1000) break;
@@ -1061,7 +1064,7 @@ export function withFallback(models, fallback) {
                   VISION_STAGE_TIMEOUT_MS,
                   Math.max(
                     2000,
-                    VISION_TOTAL_BUDGET_MS - (clock() - callStarted),
+                    VISION_TOTAL_BUDGET_MS - (attemptStartedAt - callStarted),
                   ),
                 )
               : BACKGROUND_STAGES.has(stage)
@@ -1072,8 +1075,12 @@ export function withFallback(models, fallback) {
                       fallbackTurnCapMs,
                       Math.max(1000, fallbackTotalCapMs - fallbackElapsed),
                     );
+          const outerDeadlineLeft = Number.isFinite(options?.deadlineAt)
+            ? Math.max(1, options.deadlineAt - attemptStartedAt)
+            : Infinity;
           const nextTimeoutMs = Math.min(
             Number(options?.timeoutMs) || Infinity,
+            outerDeadlineLeft,
             stageFallbackCapMs,
           );
           const nextDeadlineAt = Number.isFinite(nextTimeoutMs)
@@ -1081,13 +1088,14 @@ export function withFallback(models, fallback) {
                 Number.isFinite(options?.deadlineAt)
                   ? options.deadlineAt
                   : Infinity,
-                clock() + nextTimeoutMs,
+                attemptStartedAt + nextTimeoutMs,
               )
             : options?.deadlineAt;
           const nextOptions = {
             ...options,
             isFallback: true,
             hasFallback: i + 1 < candidates.length,
+            startedAt: attemptStartedAt,
             ...(Number.isFinite(nextTimeoutMs)
               ? { timeoutMs: nextTimeoutMs }
               : {}),
@@ -1125,6 +1133,7 @@ export class ModelManager {
       fetcher = fetch,
       maxConcurrent = 3,
       now = Date.now,
+      primaryTurnTimeoutMs = TURN_STAGE_TIMEOUT_MS,
       fallbackTurnTimeoutMs = FALLBACK_TURN_TIMEOUT_MS,
       fallbackTotalBudgetMs = FALLBACK_TOTAL_BUDGET_MS,
     } = {},
@@ -1132,6 +1141,7 @@ export class ModelManager {
     this.repo = repo;
     this.fetcher = fetcher;
     this.now = now;
+    this.primaryTurnTimeoutMs = primaryTurnTimeoutMs;
     this.fallbackTurnTimeoutMs = fallbackTurnTimeoutMs;
     this.fallbackTotalBudgetMs = fallbackTotalBudgetMs;
     this.maxConcurrent = Math.max(1, Number(maxConcurrent) || 3);
@@ -1207,10 +1217,24 @@ export class ModelManager {
   async withRequestSlot(
     endpoint,
     request,
-    { priority = "foreground", lane: laneName = "" } = {},
+    {
+      priority = "foreground",
+      lane: laneName = "",
+      timeoutMs = Infinity,
+      signal = null,
+    } = {},
   ) {
     const key = new URL(endpoint).origin;
     const background = priority === "background";
+    const slotStartedAt = this.now();
+    const slotStartedWall = Date.now();
+    const makeTimeoutError = () => {
+      const err = new Error("The operation was aborted due to timeout");
+      err.name = "TimeoutError";
+      return err;
+    };
+    if (signal?.aborted) throw makeTimeoutError();
+    if (Number.isFinite(timeoutMs) && timeoutMs <= 0) throw makeTimeoutError();
     const laneKey = laneName ? `${key}#${laneName}` : key;
     let lane = this.requestLanes.get(laneKey);
     if (!lane) {
@@ -1225,36 +1249,123 @@ export class ModelManager {
     if (free()) {
       lane.active++;
       if (background) lane.background++;
-    } else
-      await new Promise((resolve) =>
-        (background ? lane.waitingBackground : lane.waiting).push(resolve),
-      );
+    } else {
+      const queue = background ? lane.waitingBackground : lane.waiting;
+      await new Promise((resolve, reject) => {
+        let settled = false;
+        let timer;
+        const cleanup = () => {
+          if (timer) clearTimeout(timer);
+          if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+        };
+        const onGrant = () => {
+          if (settled) return false;
+          settled = true;
+          cleanup();
+          resolve();
+          return true;
+        };
+        const onExpire = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          const idx = queue.indexOf(onGrant);
+          if (idx >= 0) queue.splice(idx, 1);
+          if (
+            !lane.active &&
+            !lane.waiting.length &&
+            !lane.waitingBackground.length
+          )
+            this.requestLanes.delete(laneKey);
+          reject(makeTimeoutError());
+        };
+        const onAbort = signal ? () => onExpire() : null;
+        if (signal) {
+          if (signal.aborted) {
+            onExpire();
+            return;
+          }
+          signal.addEventListener("abort", onAbort, { once: true });
+        }
+        if (Number.isFinite(timeoutMs)) {
+          timer = setTimeout(onExpire, Math.max(1, timeoutMs));
+        }
+        queue.push(onGrant);
+      });
+    }
     try {
       while (true) {
+        if (signal?.aborted) throw makeTimeoutError();
         const blockedUntil = this.originCooldowns.get(key) || 0;
-        const remaining = blockedUntil - this.now();
+        const effectiveNow = Math.max(
+          this.now(),
+          slotStartedAt + (Date.now() - slotStartedWall),
+        );
+        const remaining = blockedUntil - effectiveNow;
         if (remaining <= 0) {
           if (blockedUntil) this.originCooldowns.delete(key);
           break;
         }
-        await new Promise((resolve) => setTimeout(resolve, remaining));
+        const slotElapsed = Math.max(
+          0,
+          this.now() - slotStartedAt,
+          Date.now() - slotStartedWall,
+        );
+        const budgetLeft = Number.isFinite(timeoutMs)
+          ? timeoutMs - slotElapsed
+          : Infinity;
+        if (budgetLeft <= 0) throw makeTimeoutError();
+        const sleepMs = Math.min(remaining, budgetLeft);
+        await new Promise((resolve, reject) => {
+          let onAbort;
+          const t = setTimeout(() => {
+            if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+            resolve();
+          }, sleepMs);
+          if (signal) {
+            onAbort = () => {
+              clearTimeout(t);
+              reject(makeTimeoutError());
+            };
+            signal.addEventListener("abort", onAbort, { once: true });
+          }
+        });
       }
       return await request();
     } finally {
       lane.active--;
       if (background) lane.background--;
-      const next = lane.waiting.shift();
-      if (next) {
-        lane.active++;
-        next();
-      } else if (
+      let handedOff = false;
+      while (lane.waiting.length) {
+        const grant = lane.waiting.shift();
+        if (grant?.()) {
+          lane.active++;
+          handedOff = true;
+          break;
+        }
+      }
+      if (
+        !handedOff &&
         lane.waitingBackground.length &&
         lane.background < backgroundLimit
       ) {
-        lane.active++;
-        lane.background++;
-        lane.waitingBackground.shift()();
-      } else if (!lane.active) this.requestLanes.delete(laneKey);
+        while (lane.waitingBackground.length) {
+          const grant = lane.waitingBackground.shift();
+          if (grant?.()) {
+            lane.active++;
+            lane.background++;
+            handedOff = true;
+            break;
+          }
+        }
+      }
+      if (
+        !handedOff &&
+        !lane.active &&
+        !lane.waiting.length &&
+        !lane.waitingBackground.length
+      )
+        this.requestLanes.delete(laneKey);
     }
   }
   // Consecutive failures of one model on one gateway pause further requests
@@ -1407,6 +1518,10 @@ export class ModelManager {
       options = attempt;
       attempt = 0;
     }
+    const callStartedAt = Number.isFinite(options?.startedAt)
+      ? options.startedAt
+      : this.now();
+    const callWallStartedAt = Date.now();
     if (profile.json && !/json/i.test(system))
       system += "\nReturn a JSON object.";
     const { messages, inputEstimate, removed } = fitInput(
@@ -1433,6 +1548,8 @@ export class ModelManager {
       );
     }
     const isFallback = options?.isFallback === true;
+    const primaryTurnCapMs =
+      Number(this.primaryTurnTimeoutMs) || TURN_STAGE_TIMEOUT_MS;
     const fallbackTurnCapMs =
       Number(this.fallbackTurnTimeoutMs) || FALLBACK_TURN_TIMEOUT_MS;
     const stageCapMs =
@@ -1446,21 +1563,23 @@ export class ModelManager {
               ? isFallback
                 ? fallbackTurnCapMs
                 : GENERATION_STAGE_TIMEOUT_MS
-              : isFallback && !BACKGROUND_STAGES.has(stage) && stage !== "test"
-                ? fallbackTurnCapMs
+              : !BACKGROUND_STAGES.has(stage) && stage !== "test"
+                ? isFallback
+                  ? fallbackTurnCapMs
+                  : primaryTurnCapMs
                 : isFallback && BACKGROUND_STAGES.has(stage)
                   ? BACKGROUND_FALLBACK_TIMEOUT_MS
                   : Infinity;
-    const deadlineRemainingMs = Number.isFinite(options?.deadlineAt)
-      ? options.deadlineAt - this.now()
+    const deadlineBudgetMs = Number.isFinite(options?.deadlineAt)
+      ? options.deadlineAt - callStartedAt
       : Infinity;
     const effectiveTimeoutMs = Math.max(
       1,
       Math.min(
         Number(profile.timeoutMs) || 90000,
         Number(options?.timeoutMs) || Infinity,
-        Number.isFinite(deadlineRemainingMs)
-          ? Math.max(1, deadlineRemainingMs)
+        Number.isFinite(deadlineBudgetMs)
+          ? Math.max(1, deadlineBudgetMs)
           : Infinity,
         stageCapMs,
       ),
@@ -1512,7 +1631,7 @@ export class ModelManager {
       requestBytes: Buffer.byteLength(payload),
       maxOutputTokens: outputCap,
       timeoutMs: effectiveTimeoutMs,
-      started: this.now(),
+      started: callStartedAt,
     };
     trace.calls.push(entry);
     const circuit = this.circuitKey(endpoint, profile);
@@ -1520,12 +1639,32 @@ export class ModelManager {
     const fastBoundedStage =
       stage === "vision" || stage === "validation" || stage === "rewrite";
     const hasFallback = options?.hasFallback === true;
+    const boundedCall =
+      isFallback ||
+      fastBoundedStage ||
+      Number.isFinite(stageCapMs) ||
+      Number.isFinite(options?.timeoutMs) ||
+      Number.isFinite(options?.deadlineAt);
+    const callDeadlineAt = boundedCall
+      ? Math.min(
+          Number.isFinite(options?.deadlineAt) ? options.deadlineAt : Infinity,
+          callStartedAt + effectiveTimeoutMs,
+        )
+      : Infinity;
+    const remainingClockBudgetMs = (now = this.now()) =>
+      boundedCall ? callDeadlineAt - now : Infinity;
+    const remainingExecutionBudgetMs = (now = this.now()) => {
+      if (!boundedCall) return Infinity;
+      const clockLeft = callDeadlineAt - now;
+      const wallLeft = effectiveTimeoutMs - (Date.now() - callWallStartedAt);
+      return Math.min(clockLeft, wallLeft);
+    };
     let probing = false;
+    let delegated = null;
     try {
       if (
         options?.signal?.aborted ||
-        (Number.isFinite(options?.deadlineAt) &&
-          this.now() >= options.deadlineAt)
+        (boundedCall && remainingClockBudgetMs() <= 0)
       ) {
         const abortErr = new Error("The operation was aborted due to timeout");
         abortErr.name = "TimeoutError";
@@ -1541,11 +1680,22 @@ export class ModelManager {
             : Math.min(45000, effectiveTimeoutMs);
       const retryStartedAt = this.now();
       const retryWallStartedAt = Date.now();
-      const boundedCall =
-        isFallback ||
-        fastBoundedStage ||
-        Number.isFinite(options?.timeoutMs) ||
-        Number.isFinite(options?.deadlineAt);
+      const delegatedOptions = (extra = {}) => {
+        if (!boundedCall) return { ...options, ...extra };
+        const now = this.now();
+        const left = Math.max(1, remainingClockBudgetMs(now));
+        const nextDeadlineAt = Math.min(
+          Number.isFinite(options?.deadlineAt) ? options.deadlineAt : Infinity,
+          now + left,
+        );
+        return {
+          ...options,
+          startedAt: now,
+          timeoutMs: Math.min(Number(options?.timeoutMs) || Infinity, left),
+          deadlineAt: nextDeadlineAt,
+          ...extra,
+        };
+      };
       let raw;
       try {
         raw = await withTransientRequestRetry(
@@ -1554,9 +1704,7 @@ export class ModelManager {
               endpoint,
               async () => {
                 const now = this.now();
-                const deadlineLeft = Number.isFinite(options?.deadlineAt)
-                  ? options.deadlineAt - now
-                  : Infinity;
+                const callLeft = remainingExecutionBudgetMs(now);
                 const retryLeft =
                   retryAttempt > 0
                     ? Math.min(
@@ -1564,7 +1712,7 @@ export class ModelManager {
                         retryWallStartedAt + retryWindowMs - Date.now(),
                       )
                     : Infinity;
-                if (deadlineLeft <= 0 || retryLeft <= 0) {
+                if (callLeft <= 0 || retryLeft <= 0) {
                   const abortErr = new Error(
                     "The operation was aborted due to timeout",
                   );
@@ -1573,8 +1721,9 @@ export class ModelManager {
                 }
                 const attemptTimeoutMs = Math.max(
                   1,
-                  Math.min(effectiveTimeoutMs, deadlineLeft, retryLeft),
+                  Math.min(effectiveTimeoutMs, callLeft, retryLeft),
                 );
+                entry.remainingBudgetMs = attemptTimeoutMs;
                 const graceMs = boundedCall
                   ? Math.min(
                       1500,
@@ -1615,7 +1764,11 @@ export class ModelManager {
                   throw error;
                 }
               },
-              { priority },
+              {
+                priority,
+                timeoutMs: remainingExecutionBudgetMs(),
+                signal: options?.signal,
+              },
             ),
           {
             // A rate-limited gateway is not hammered by her own upkeep, nor
@@ -1673,93 +1826,108 @@ export class ModelManager {
         ) {
           if (guarded) this.recordSuccess(circuit, { priority });
           entry.thinkingRefused = true;
-          return this.call(
-            {
-              ...profile,
-              reasoningEfforts: profile.reasoningEfforts.filter(
-                (effort) => effort !== "none",
-              ),
-            },
-            stage,
-            system,
-            data,
-            trace,
-            images,
-            attempt,
-            options,
-          );
+          entry.error = error.message;
+          entry.errorClass = classifyModelError(error);
+          delegated = () =>
+            this.call(
+              {
+                ...profile,
+                reasoningEfforts: profile.reasoningEfforts.filter(
+                  (effort) => effort !== "none",
+                ),
+              },
+              stage,
+              system,
+              data,
+              trace,
+              images,
+              attempt,
+              delegatedOptions(),
+            );
+        } else {
+          if (
+            guarded &&
+            isAvailabilityFailure(error) &&
+            !options?.signal?.aborted
+          )
+            this.recordFailure(circuit, error);
+          else if (probing)
+            this.releaseProbe(circuit, {
+              reopen: Boolean(options?.signal?.aborted),
+            });
+          if (guarded && accountRefusal(error))
+            this.markUnavailable(profile, error);
+          throw requestFailure(error, entry, profile, effectiveTimeoutMs);
         }
-        if (
-          guarded &&
-          isAvailabilityFailure(error) &&
-          !options?.signal?.aborted
-        )
-          this.recordFailure(circuit, error);
-        else if (probing)
-          this.releaseProbe(circuit, {
-            reopen: Boolean(options?.signal?.aborted),
-          });
-        if (guarded && accountRefusal(error))
-          this.markUnavailable(profile, error);
-        throw requestFailure(error, entry, profile, effectiveTimeoutMs);
       }
-      if (guarded) this.recordSuccess(circuit, { priority });
-      entry.usage = raw.usage || null;
-      entry.tokens = normalizeUsage(raw.usage, request.protocol);
-      entry.raw = responseText(raw, request.protocol);
-      entry.finishReason = responseFinishReason(raw, request.protocol);
-      if (!entry.raw.trim() && attempt === 0 && stage !== "reflection") {
-        entry.error = "服务返回空正文，重试一次";
-        return await this.call(
-          profile,
-          stage,
-          system,
-          data,
-          trace,
-          images,
-          1,
-          options,
-        );
-      }
-      if (["length", "max_tokens"].includes(entry.finishReason)) {
-        if (!options.fullOutput && outputCap < profile.maxOutputTokens) {
-          entry.error = "输出达到本阶段上限，放宽到模型输出上限重试一次";
-          return await this.call(
-            profile,
-            stage,
-            system,
-            data,
-            trace,
-            images,
-            attempt,
-            { ...options, fullOutput: true },
-          );
+      if (!delegated) {
+        if (guarded) this.recordSuccess(circuit, { priority });
+        entry.usage = raw.usage || null;
+        entry.tokens = normalizeUsage(raw.usage, request.protocol);
+        entry.raw = responseText(raw, request.protocol);
+        entry.finishReason = responseFinishReason(raw, request.protocol);
+        if (!entry.raw.trim() && attempt === 0 && stage !== "reflection") {
+          entry.error = "服务返回空正文，重试一次";
+          entry.errorClass = "format";
+          delegated = () =>
+            this.call(
+              profile,
+              stage,
+              system,
+              data,
+              trace,
+              images,
+              1,
+              delegatedOptions(),
+            );
+        } else if (["length", "max_tokens"].includes(entry.finishReason)) {
+          if (!options.fullOutput && outputCap < profile.maxOutputTokens) {
+            entry.error = "输出达到本阶段上限，放宽到模型输出上限重试一次";
+            entry.errorClass = "format";
+            delegated = () =>
+              this.call(
+                profile,
+                stage,
+                system,
+                data,
+                trace,
+                images,
+                attempt,
+                delegatedOptions({ fullOutput: true }),
+              );
+          } else {
+            throw Error("模型输出被截断，请增加输出预算");
+          }
+        } else {
+          try {
+            return parseModelJson(entry.raw);
+          } catch (error) {
+            // A reply that is not JSON at all is usually a one-off slip. Ask once
+            // more before a whole turn (or a stretch of solitude) is thrown away.
+            if (
+              error instanceof SyntaxError &&
+              entry.raw.trim() &&
+              stage !== "test" &&
+              !options.formatRetried
+            ) {
+              entry.error = `模型输出不是有效 JSON，重试一次：${error.message}`;
+              entry.errorClass = "format";
+              delegated = () =>
+                this.call(
+                  profile,
+                  stage,
+                  `${system}\n上一份输出未通过 JSON 解析，请重新组织同一任务的结果：只输出一个完整的 JSON 值。同一对象的每个字段只能写一次，多条 bubbles 合并到同一个数组，不用后一个字段覆盖前面的回答。`,
+                  data,
+                  trace,
+                  images,
+                  attempt,
+                  delegatedOptions({ formatRetried: true }),
+                );
+            } else {
+              throw error;
+            }
+          }
         }
-        throw Error("模型输出被截断，请增加输出预算");
-      }
-      try {
-        return parseModelJson(entry.raw);
-      } catch (error) {
-        // A reply that is not JSON at all is usually a one-off slip. Ask once
-        // more before a whole turn (or a stretch of solitude) is thrown away.
-        if (
-          error instanceof SyntaxError &&
-          stage !== "test" &&
-          !options.formatRetried
-        ) {
-          entry.error = `模型输出不是有效 JSON，重试一次：${error.message}`;
-          return await this.call(
-            profile,
-            stage,
-            `${system}\n上一份输出未通过 JSON 解析，请重新组织同一任务的结果：只输出一个完整的 JSON 值。同一对象的每个字段只能写一次，多条 bubbles 合并到同一个数组，不用后一个字段覆盖前面的回答。`,
-            data,
-            trace,
-            images,
-            attempt,
-            { ...options, formatRetried: true },
-          );
-        }
-        throw error;
       }
     } catch (e) {
       entry.error = e.message;
@@ -1768,8 +1936,9 @@ export class ModelManager {
       entry.errorClass = classifyModelError(e);
       throw e;
     } finally {
-      entry.elapsed = this.now() - entry.started;
+      entry.elapsed = Math.max(0, this.now() - entry.started);
     }
+    if (delegated) return await delegated();
   }
   // Vectors travel in their own lane: a reply waiting for a recall vector must
   // not queue behind long chat completions on the same gateway. Two request
