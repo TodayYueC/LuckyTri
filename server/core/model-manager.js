@@ -42,6 +42,7 @@ export const FALLBACK_TOTAL_BUDGET_MS = 25000;
 export const BACKGROUND_FALLBACK_TIMEOUT_MS = 45000;
 export const FALLBACK_FAST_RETRY_ELAPSED_MS = 3000;
 export const LIVE_UPSTREAM_5XX_MAX_WAIT_MS = 18000;
+export const MIN_RETRY_BUDGET_MS = 1000;
 const STAGE_OUTPUT = {
   decision: 2048,
   validation: 2048,
@@ -1645,43 +1646,77 @@ export class ModelManager {
       Number.isFinite(stageCapMs) ||
       Number.isFinite(options?.timeoutMs) ||
       Number.isFinite(options?.deadlineAt);
-    const callDeadlineAt = boundedCall
-      ? Math.min(
-          Number.isFinite(options?.deadlineAt) ? options.deadlineAt : Infinity,
-          callStartedAt + effectiveTimeoutMs,
-        )
-      : Infinity;
+    const callDeadlineAt = Math.min(
+      Number.isFinite(options?.deadlineAt) ? options.deadlineAt : Infinity,
+      callStartedAt + effectiveTimeoutMs,
+    );
+    let untrackedSleepMs = 0;
     const remainingClockBudgetMs = (now = this.now()) =>
-      boundedCall ? callDeadlineAt - now : Infinity;
+      Math.min(
+        callDeadlineAt - (now + untrackedSleepMs),
+        effectiveTimeoutMs -
+          (Math.max(0, now - callStartedAt) + untrackedSleepMs),
+      );
     const remainingExecutionBudgetMs = (now = this.now()) => {
-      if (!boundedCall) return Infinity;
-      const clockLeft = callDeadlineAt - now;
-      const wallLeft = effectiveTimeoutMs - (Date.now() - callWallStartedAt);
-      return Math.min(clockLeft, wallLeft);
+      const elapsed = Math.max(
+        0,
+        now - callStartedAt + untrackedSleepMs,
+        Date.now() - callWallStartedAt,
+      );
+      return Math.min(
+        callDeadlineAt - (now + untrackedSleepMs),
+        effectiveTimeoutMs - elapsed,
+      );
     };
+    let activeTimeoutMs = effectiveTimeoutMs;
     let probing = false;
     let delegated = null;
     try {
-      if (
-        options?.signal?.aborted ||
-        (boundedCall && remainingClockBudgetMs() <= 0)
-      ) {
+      if (options?.signal?.aborted || remainingClockBudgetMs() <= 0) {
         const abortErr = new Error("The operation was aborted due to timeout");
         abortErr.name = "TimeoutError";
-        throw requestFailure(abortErr, entry, profile, effectiveTimeoutMs);
+        throw requestFailure(abortErr, entry, profile, activeTimeoutMs);
       }
       if (guarded) probing = this.checkCircuit(circuit, entry, { priority });
-      const retryWindowMs = fastBoundedStage
-        ? Math.min(45000, effectiveTimeoutMs)
-        : hasFallback
-          ? FALLBACK_MAX_RETRY_WAIT_MS
-          : isFallback
-            ? Math.min(effectiveTimeoutMs, fallbackTurnCapMs)
-            : Math.min(45000, effectiveTimeoutMs);
+      const minRetryBudgetMs = Math.min(
+        MIN_RETRY_BUDGET_MS,
+        Math.max(100, Math.floor(effectiveTimeoutMs * 0.05)),
+      );
+      // Dispatch deadline bounds only (failed attempt + backoff sleep) before
+      // deciding whether a retry is still worth starting vs failing over now;
+      // once started, the retry request runs against the remaining stage / 5xx
+      // execution window rather than the 2s pre-failover dispatch gate.
+      const retryDispatchWindowMs = hasFallback
+        ? Math.min(FALLBACK_MAX_RETRY_WAIT_MS, effectiveTimeoutMs)
+        : Math.min(BACKGROUND_FALLBACK_TIMEOUT_MS, effectiveTimeoutMs);
       const retryStartedAt = this.now();
       const retryWallStartedAt = Date.now();
+      let lastSleepAtClock = retryStartedAt;
+      let pendingSleepWaitMs = 0;
+      let lastRetryError = null;
+      const retryExecutionWindowMs = (err = lastRetryError) => {
+        const status = Number(err?.status);
+        if (
+          priority === "foreground" &&
+          stage !== "test" &&
+          status >= 500 &&
+          status < 600
+        ) {
+          return Math.min(effectiveTimeoutMs, LIVE_UPSTREAM_5XX_MAX_WAIT_MS);
+        }
+        return Math.min(effectiveTimeoutMs, BACKGROUND_FALLBACK_TIMEOUT_MS);
+      };
+      const retryExecutionLeft = (now = this.now(), err = lastRetryError) => {
+        const winMs = retryExecutionWindowMs(err);
+        const retryElapsed = Math.max(
+          0,
+          now - retryStartedAt + untrackedSleepMs,
+          Date.now() - retryWallStartedAt,
+        );
+        return winMs - retryElapsed;
+      };
       const delegatedOptions = (extra = {}) => {
-        if (!boundedCall) return { ...options, ...extra };
+        if (stage === "test") return { ...options, ...extra };
         const now = this.now();
         const left = Math.max(1, remainingClockBudgetMs(now));
         const nextDeadlineAt = Math.min(
@@ -1699,37 +1734,61 @@ export class ModelManager {
       let raw;
       try {
         raw = await withTransientRequestRetry(
-          (retryAttempt) =>
-            this.withRequestSlot(
+          (retryAttempt) => {
+            if (pendingSleepWaitMs > 0) {
+              const advancedDuringSleep = Math.max(
+                0,
+                this.now() - lastSleepAtClock,
+              );
+              untrackedSleepMs += Math.max(
+                0,
+                pendingSleepWaitMs - advancedDuringSleep,
+              );
+              pendingSleepWaitMs = 0;
+            }
+            const preSlotNow = this.now();
+            const preSlotBudgetMs =
+              retryAttempt > 0
+                ? Math.min(
+                    remainingExecutionBudgetMs(preSlotNow),
+                    retryExecutionLeft(preSlotNow),
+                  )
+                : remainingExecutionBudgetMs(preSlotNow);
+            activeTimeoutMs = Math.max(
+              1,
+              Math.min(effectiveTimeoutMs, preSlotBudgetMs),
+            );
+            return this.withRequestSlot(
               endpoint,
               async () => {
                 const now = this.now();
                 const callLeft = remainingExecutionBudgetMs(now);
                 const retryLeft =
-                  retryAttempt > 0
-                    ? Math.min(
-                        retryStartedAt + retryWindowMs - now,
-                        retryWallStartedAt + retryWindowMs - Date.now(),
-                      )
-                    : Infinity;
-                if (callLeft <= 0 || retryLeft <= 0) {
+                  retryAttempt > 0 ? retryExecutionLeft(now) : Infinity;
+                const nextBudgetMs = Math.min(
+                  effectiveTimeoutMs,
+                  callLeft,
+                  retryLeft,
+                );
+                if (
+                  nextBudgetMs <= 0 ||
+                  (retryAttempt > 0 && nextBudgetMs < minRetryBudgetMs)
+                ) {
                   const abortErr = new Error(
                     "The operation was aborted due to timeout",
                   );
                   abortErr.name = "TimeoutError";
                   throw abortErr;
                 }
-                const attemptTimeoutMs = Math.max(
-                  1,
-                  Math.min(effectiveTimeoutMs, callLeft, retryLeft),
-                );
+                const attemptTimeoutMs = Math.max(1, nextBudgetMs);
                 entry.remainingBudgetMs = attemptTimeoutMs;
-                const graceMs = boundedCall
-                  ? Math.min(
-                      1500,
-                      Math.max(100, Math.floor(attemptTimeoutMs * 0.1)),
-                    )
-                  : 5000;
+                const graceMs =
+                  boundedCall || retryAttempt > 0
+                    ? Math.min(
+                        1500,
+                        Math.max(100, Math.floor(attemptTimeoutMs * 0.1)),
+                      )
+                    : 5000;
                 const started = this.now();
                 try {
                   return await hardDeadline(
@@ -1766,10 +1825,11 @@ export class ModelManager {
               },
               {
                 priority,
-                timeoutMs: remainingExecutionBudgetMs(),
+                timeoutMs: preSlotBudgetMs,
                 signal: options?.signal,
               },
-            ),
+            );
+          },
           {
             // A rate-limited gateway is not hammered by her own upkeep, nor
             // should a live turn sit through 30s Retry-After sleeps or multi-
@@ -1781,11 +1841,17 @@ export class ModelManager {
               isFallback
                 ? 1
                 : 3,
-            deadlineMs: retryWindowMs,
+            deadlineMs: retryDispatchWindowMs,
             now: this.now,
             shouldRetry: (error, { wait }) => {
               const status = Number(error?.status);
               const attemptElapsed = Number(error?.attemptElapsed) || 0;
+              const now = this.now();
+              const budgetAfterWait = Math.min(
+                remainingExecutionBudgetMs(now) - wait,
+                retryExecutionLeft(now, error) - wait,
+              );
+              if (budgetAfterWait < minRetryBudgetMs) return false;
               if (status === 429) {
                 if (priority === "background" || hasFallback || isFallback)
                   return false;
@@ -1806,14 +1872,17 @@ export class ModelManager {
               if (status >= 500 && status < 600) {
                 return (
                   attemptElapsed <= LIVE_UPSTREAM_5XX_MAX_WAIT_MS / 2 &&
-                  this.now() - retryStartedAt + wait <
-                    LIVE_UPSTREAM_5XX_MAX_WAIT_MS
+                  now - retryStartedAt + wait < LIVE_UPSTREAM_5XX_MAX_WAIT_MS
                 );
               }
               return true;
             },
-            onRetry: (count, error, waitMs) =>
-              this.noteRetry(entry, endpoint, count, error, waitMs),
+            onRetry: (count, error, waitMs) => {
+              lastRetryError = error;
+              lastSleepAtClock = this.now();
+              pendingSleepWaitMs = Math.max(0, Math.round(Number(waitMs) || 0));
+              this.noteRetry(entry, endpoint, count, error, waitMs);
+            },
           },
         );
       } catch (error) {
@@ -1857,7 +1926,7 @@ export class ModelManager {
             });
           if (guarded && accountRefusal(error))
             this.markUnavailable(profile, error);
-          throw requestFailure(error, entry, profile, effectiveTimeoutMs);
+          throw requestFailure(error, entry, profile, activeTimeoutMs);
         }
       }
       if (!delegated) {
@@ -1936,7 +2005,10 @@ export class ModelManager {
       entry.errorClass = classifyModelError(e);
       throw e;
     } finally {
-      entry.elapsed = Math.max(0, this.now() - entry.started);
+      entry.elapsed = Math.max(
+        0,
+        this.now() - entry.started + untrackedSleepMs,
+      );
     }
     if (delegated) return await delegated();
   }
