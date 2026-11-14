@@ -291,15 +291,18 @@ test("R69-4: postDraftBudgetMs 耗尽时阻断多轮 rewrite+validation 级联�
 
   let rewriteCount = 0;
   let validationCount = 0;
+  let speakStarted = 0;
   w.answers.validation = async (data) => {
     if (data.questions) return { answered: true, issues: [] };
     validationCount++;
-    await new Promise((resolve) => setTimeout(resolve, 35));
+    await new Promise((resolve) => setTimeout(resolve, 10));
     return { ok: false, issues: ["还需要调整措辞"] };
   };
   w.answers.rewrite = async () => {
     rewriteCount++;
-    await new Promise((resolve) => setTimeout(resolve, 35));
+    while (Date.now() < speakStarted + 175) {
+      await new Promise((resolve) => setTimeout(resolve, 15));
+    }
     return { bubbles: ["对这件事我觉得得看后面的实际动作", "第二句补充"] };
   };
 
@@ -330,6 +333,7 @@ test("R69-4: postDraftBudgetMs 耗尽时阻断多轮 rewrite+validation 级联�
     snapshot,
   );
   const trace = w.system.repo.trace(snapshot.sessionId, "live");
+  speakStarted = Date.now();
   await w.system.speak({
     session: snapshot.sessionId,
     batch: snapshot.batch,
@@ -351,8 +355,8 @@ test("R69-4: postDraftBudgetMs 耗尽时阻断多轮 rewrite+validation 级联�
     policy: {
       maxReply: 180,
       deepCheck: true,
-      deepCheckDeadlineMs: 100,
-      postDraftBudgetMs: 55,
+      deepCheckDeadlineMs: 300,
+      postDraftBudgetMs: 160,
     },
     state: w.system.sessionState(snapshot.sessionId),
     watermark: 1,
