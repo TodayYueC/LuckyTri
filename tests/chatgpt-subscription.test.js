@@ -1862,3 +1862,547 @@ test("P2 回归：CLI export-transfer --out 严格 0600 独占创建并拒绝已
   assert.equal(importOut.hostId, statusBeforeB.hostId);
   assert.equal(importOut.accounts, 1);
 });
+
+test("P1 回归：延迟 OAuth 回调（token 交换 / JWKS）在 cancel/signout/remove/替代登录/重新导入后不写回凭据，且正常 reauth 仍可用", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "luckytri-siwc-cb-race-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+  const { privateKey, publicKey } = generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+  });
+  const pubJwk = {
+    ...publicKey.export({ format: "jwk" }),
+    kid: "cb-race-k1",
+    use: "sig",
+    alg: "RS256",
+  };
+  const signId = ({ aud, sub, nonce, email = "cb@example.com" }) => {
+    const now = Math.floor(Date.now() / 1000);
+    const header = b64url(
+      JSON.stringify({ alg: "RS256", typ: "JWT", kid: "cb-race-k1" }),
+    );
+    const payload = b64url(
+      JSON.stringify({
+        iss: "https://auth.openai.com",
+        aud,
+        sub,
+        nonce,
+        sid: "sid-cb-1",
+        email,
+        email_verified: true,
+        iat: now - 5,
+        exp: now + 3600,
+      }),
+    );
+    const sig = createSign("RSA-SHA256")
+      .update(`${header}.${payload}`)
+      .sign(privateKey)
+      .toString("base64url");
+    return `${header}.${payload}.${sig}`;
+  };
+  const discoveryOverride = {
+    issuer: "https://auth.openai.com",
+    authorization_endpoint: "https://auth.openai.com/api/accounts/authorize",
+    token_endpoint: "https://auth.openai.com/api/accounts/oauth/token",
+    revocation_endpoint: "https://auth.openai.com/api/accounts/oauth/revoke",
+    jwks_uri: "https://auth.openai.com/.well-known/jwks.json",
+  };
+
+  // --- Scenario 1: Delayed token exchange resolves AFTER cancelPendingAuth() (mode=new) ---
+  {
+    const storagePath = join(dir, "cb-cancel.json");
+    let resolveToken;
+    const auth = new ChatGptSubscriptionManager({
+      storagePath,
+      discoveryOverride,
+      fetcher: (url) => {
+        const href = String(url);
+        if (href.includes("/token")) {
+          // Intentionally ignore AbortSignal to test post-await generation gate.
+          return new Promise((r) => {
+            resolveToken = r;
+          });
+        }
+        if (href.includes("jwks")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ keys: [pubJwk] }), { status: 200 }),
+          );
+        }
+        throw new Error(`unexpected ${href}`);
+      },
+    });
+    t.after(() => auth.close());
+
+    const started = await auth.startSignIn({ mode: "new" });
+    const u = new URL(started.authorizeUrl);
+    const state = u.searchParams.get("state");
+    const nonce = u.searchParams.get("nonce");
+    const cbUrl = `${started.redirectUri}?code=c_cancel&state=${encodeURIComponent(state)}&client_id=client_cancel_1`;
+
+    const cbPromise = auth.completeCallback(started.pendingId, cbUrl);
+    await new Promise((r) => setTimeout(r, 15));
+
+    auth.cancelPendingAuth();
+    assert.equal(auth.publicStatus().pendingAuth, null);
+
+    resolveToken(
+      new Response(
+        JSON.stringify({
+          access_token: "at_cancelled",
+          refresh_token: "rt_cancelled",
+          id_token: signId({
+            aud: "client_cancel_1",
+            sub: "sub_cancel",
+            nonce,
+          }),
+          expires_in: 3600,
+          scope: "openid chatgpt.tokens.use.direct",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    await assert.rejects(
+      () => cbPromise,
+      (err) => err?.staleAuthAttempt === true,
+    );
+    assert.equal(Object.keys(auth.state.accounts).length, 0);
+    assert.equal(auth.state.activeAccountId, "");
+    const reloaded = new ChatGptSubscriptionManager({ storagePath });
+    assert.equal(Object.keys(reloaded.state.accounts).length, 0);
+    assert.equal(reloaded.state.activeAccountId, "");
+  }
+
+  // --- Scenario 2: Delayed reauth token exchange resolves AFTER signOutAccount() ---
+  {
+    const storagePath = join(dir, "cb-signout.json");
+    let resolveToken;
+    const auth = new ChatGptSubscriptionManager({
+      storagePath,
+      discoveryOverride,
+      fetcher: (url) => {
+        const href = String(url);
+        if (href.includes("/token")) {
+          return new Promise((r) => {
+            resolveToken = r;
+          });
+        }
+        if (href.includes("jwks")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ keys: [pubJwk] }), { status: 200 }),
+          );
+        }
+        if (href.includes("/revoke")) {
+          return Promise.resolve(new Response("", { status: 200 }));
+        }
+        throw new Error(`unexpected ${href}`);
+      },
+    });
+    t.after(() => auth.close());
+
+    auth.importTransferRecord({
+      client_id: "client_so_1",
+      subject: "sub_so_1",
+      access_token: "at_so_init",
+      refresh_token: "rt_so_init",
+      scopes: ["openid", "chatgpt.tokens.use.direct"],
+      expires_at: Date.now() + 3600_000,
+    });
+    const accId = auth.state.activeAccountId;
+
+    const started = await auth.startSignIn({
+      mode: "reauth",
+      accountId: accId,
+    });
+    const u = new URL(started.authorizeUrl);
+    const state = u.searchParams.get("state");
+    const nonce = u.searchParams.get("nonce");
+    const cbUrl = `${started.redirectUri}?code=c_so&state=${encodeURIComponent(state)}&client_id=client_so_1`;
+
+    const cbPromise = auth.completeCallback(started.pendingId, cbUrl);
+    await new Promise((r) => setTimeout(r, 15));
+
+    await auth.signOutAccount(accId);
+    assert.equal(auth.hasUsableCredential(accId), false);
+
+    resolveToken(
+      new Response(
+        JSON.stringify({
+          access_token: "at_so_zombie",
+          refresh_token: "rt_so_zombie",
+          id_token: signId({ aud: "client_so_1", sub: "sub_so_1", nonce }),
+          expires_in: 3600,
+          scope: "openid chatgpt.tokens.use.direct",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    await assert.rejects(
+      () => cbPromise,
+      (err) => err?.staleAuthAttempt === true,
+    );
+    assert.equal(auth.state.accounts[accId].access_token, "");
+    assert.equal(auth.state.accounts[accId].refresh_token, "");
+    assert.equal(auth.state.accounts[accId].planUsageEnabled, false);
+    const reloaded = new ChatGptSubscriptionManager({ storagePath });
+    assert.equal(reloaded.hasUsableCredential(accId), false);
+    assert.equal(reloaded.state.accounts[accId].access_token, "");
+  }
+
+  // --- Scenario 3: Delayed reauth resolves AFTER removeAccount() (both at /token AND at /jwks!) ---
+  for (const stallAt of ["token", "jwks"]) {
+    const storagePath = join(dir, `cb-remove-${stallAt}.json`);
+    let resolveStalled;
+    const auth = new ChatGptSubscriptionManager({
+      storagePath,
+      discoveryOverride,
+      fetcher: (url) => {
+        const href = String(url);
+        if (href.includes("/token")) {
+          if (stallAt === "token") {
+            return new Promise((r) => {
+              resolveStalled = r;
+            });
+          }
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                access_token: `at_rm_${stallAt}`,
+                refresh_token: `rt_rm_${stallAt}`,
+                id_token: signId({
+                  aud: `client_rmcb_${stallAt}`,
+                  sub: `sub_rmcb_${stallAt}`,
+                  nonce: currentNonce,
+                }),
+                expires_in: 3600,
+                scope: "openid chatgpt.tokens.use.direct",
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (href.includes("jwks")) {
+          if (stallAt === "jwks") {
+            return new Promise((r) => {
+              resolveStalled = r;
+            });
+          }
+          return Promise.resolve(
+            new Response(JSON.stringify({ keys: [pubJwk] }), { status: 200 }),
+          );
+        }
+        if (href.includes("/revoke")) {
+          return Promise.resolve(new Response("", { status: 200 }));
+        }
+        throw new Error(`unexpected ${href}`);
+      },
+    });
+    t.after(() => auth.close());
+
+    auth.importTransferRecord({
+      client_id: `client_rmcb_${stallAt}`,
+      subject: `sub_rmcb_${stallAt}`,
+      access_token: "at_init",
+      refresh_token: "rt_init",
+      scopes: ["openid", "chatgpt.tokens.use.direct"],
+      expires_at: Date.now() + 3600_000,
+    });
+    const accId = auth.state.activeAccountId;
+
+    const started = await auth.startSignIn({
+      mode: "reauth",
+      accountId: accId,
+    });
+    const u = new URL(started.authorizeUrl);
+    const state = u.searchParams.get("state");
+    const currentNonce = u.searchParams.get("nonce");
+    const cbUrl = `${started.redirectUri}?code=c_rm&state=${encodeURIComponent(state)}&client_id=client_rmcb_${stallAt}`;
+
+    const cbPromise = auth.completeCallback(started.pendingId, cbUrl);
+    await new Promise((r) => setTimeout(r, 20));
+
+    await auth.removeAccount(accId);
+    assert.equal(auth.state.accounts[accId], undefined);
+    assert.equal(auth.state.activeAccountId, "");
+
+    if (stallAt === "token") {
+      resolveStalled(
+        new Response(
+          JSON.stringify({
+            access_token: "at_zombie_tok",
+            refresh_token: "rt_zombie_tok",
+            id_token: signId({
+              aud: `client_rmcb_${stallAt}`,
+              sub: `sub_rmcb_${stallAt}`,
+              nonce: currentNonce,
+            }),
+            expires_in: 3600,
+            scope: "openid chatgpt.tokens.use.direct",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+    } else {
+      resolveStalled(
+        new Response(JSON.stringify({ keys: [pubJwk] }), { status: 200 }),
+      );
+    }
+
+    await assert.rejects(
+      () => cbPromise,
+      (err) => err?.staleAuthAttempt === true,
+    );
+    assert.equal(auth.state.accounts[accId], undefined);
+    assert.equal(auth.state.activeAccountId, "");
+    const reloaded = new ChatGptSubscriptionManager({ storagePath });
+    assert.equal(reloaded.state.accounts[accId], undefined);
+    assert.equal(reloaded.state.activeAccountId, "");
+  }
+
+  // --- Scenario 4: Delayed callback resolves AFTER replacement startSignIn(), then replacement succeeds ---
+  {
+    const storagePath = join(dir, "cb-replace.json");
+    let resolveFirstToken;
+    let tokenCall = 0;
+    let secondNonce = "";
+    const auth = new ChatGptSubscriptionManager({
+      storagePath,
+      discoveryOverride,
+      fetcher: (url) => {
+        const href = String(url);
+        if (href.includes("/token")) {
+          tokenCall++;
+          if (tokenCall === 1) {
+            return new Promise((r) => {
+              resolveFirstToken = r;
+            });
+          }
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                access_token: "at_second_win",
+                refresh_token: "rt_second_win",
+                id_token: signId({
+                  aud: "client_second",
+                  sub: "sub_second",
+                  nonce: secondNonce,
+                }),
+                expires_in: 3600,
+                scope: "openid chatgpt.tokens.use.direct",
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (href.includes("jwks")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ keys: [pubJwk] }), { status: 200 }),
+          );
+        }
+        throw new Error(`unexpected ${href}`);
+      },
+    });
+    t.after(() => auth.close());
+
+    const first = await auth.startSignIn({ mode: "new" });
+    const u1 = new URL(first.authorizeUrl);
+    const firstNonce = u1.searchParams.get("nonce");
+    const cb1Url = `${first.redirectUri}?code=c1&state=${encodeURIComponent(u1.searchParams.get("state"))}&client_id=client_first`;
+    const cb1Promise = auth.completeCallback(first.pendingId, cb1Url);
+    await new Promise((r) => setTimeout(r, 15));
+
+    // Start replacement sign-in BEFORE first completes
+    const second = await auth.startSignIn({ mode: "new" });
+    const u2 = new URL(second.authorizeUrl);
+    secondNonce = u2.searchParams.get("nonce");
+
+    // Old first callback's token exchange finally resolves -> rejected!
+    resolveFirstToken(
+      new Response(
+        JSON.stringify({
+          access_token: "at_first_stale",
+          refresh_token: "rt_first_stale",
+          id_token: signId({
+            aud: "client_first",
+            sub: "sub_first",
+            nonce: firstNonce,
+          }),
+          expires_in: 3600,
+          scope: "openid chatgpt.tokens.use.direct",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    await assert.rejects(
+      () => cb1Promise,
+      (err) => err?.staleAuthAttempt === true,
+    );
+    assert.equal(Object.keys(auth.state.accounts).length, 0);
+    assert.equal(auth.publicStatus().pendingAuth?.id, second.pendingId);
+
+    // Replacement sign-in completes cleanly!
+    const cb2Url = `${second.redirectUri}?code=c2&state=${encodeURIComponent(u2.searchParams.get("state"))}&client_id=client_second`;
+    const cb2Res = await auth.completeCallback(second.pendingId, cb2Url);
+    assert.equal(cb2Res.ok, true);
+    assert.equal(Object.keys(auth.state.accounts).length, 1);
+    assert.equal(
+      auth.state.accounts[cb2Res.accountId].access_token,
+      "at_second_win",
+    );
+  }
+
+  // --- Scenario 5: Delayed callback (both mode=new & mode=reauth) resolves AFTER importTransferRecord ---
+  for (const mode of ["new", "reauth"]) {
+    const storagePath = join(dir, `cb-import-${mode}.json`);
+    let resolveToken;
+    const auth = new ChatGptSubscriptionManager({
+      storagePath,
+      discoveryOverride,
+      fetcher: (url) => {
+        const href = String(url);
+        if (href.includes("/token")) {
+          return new Promise((r) => {
+            resolveToken = r;
+          });
+        }
+        if (href.includes("jwks")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ keys: [pubJwk] }), { status: 200 }),
+          );
+        }
+        throw new Error(`unexpected ${href}`);
+      },
+    });
+    t.after(() => auth.close());
+
+    if (mode === "reauth") {
+      auth.importTransferRecord({
+        client_id: `client_imp_${mode}`,
+        subject: `sub_imp_${mode}`,
+        access_token: "at_old",
+        refresh_token: "rt_old",
+        scopes: ["openid", "chatgpt.tokens.use.direct"],
+        expires_at: Date.now() + 3600_000,
+      });
+    }
+    const started = await auth.startSignIn(
+      mode === "reauth"
+        ? { mode: "reauth", accountId: auth.state.activeAccountId }
+        : { mode: "new" },
+    );
+    const u = new URL(started.authorizeUrl);
+    const nonce = u.searchParams.get("nonce");
+    const cbUrl = `${started.redirectUri}?code=c_imp&state=${encodeURIComponent(u.searchParams.get("state"))}&client_id=client_imp_${mode}`;
+
+    const cbPromise = auth.completeCallback(started.pendingId, cbUrl);
+    await new Promise((r) => setTimeout(r, 15));
+
+    // Newer transfer record imported for the same account while callback is in flight!
+    auth.importTransferRecord({
+      client_id: `client_imp_${mode}`,
+      subject: `sub_imp_${mode}`,
+      access_token: "at_imported_newer",
+      refresh_token: "rt_imported_newer",
+      scopes: ["openid", "chatgpt.tokens.use.direct"],
+      expires_at: Date.now() + 3600_000,
+    });
+    const accId = auth.state.activeAccountId;
+
+    resolveToken(
+      new Response(
+        JSON.stringify({
+          access_token: "at_cb_older",
+          refresh_token: "rt_cb_older",
+          id_token: signId({
+            aud: `client_imp_${mode}`,
+            sub: `sub_imp_${mode}`,
+            nonce,
+          }),
+          expires_in: 3600,
+          scope: "openid chatgpt.tokens.use.direct",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    await assert.rejects(
+      () => cbPromise,
+      (err) => err?.staleAuthAttempt === true,
+    );
+    assert.equal(auth.state.accounts[accId].access_token, "at_imported_newer");
+    const reloaded = new ChatGptSubscriptionManager({ storagePath });
+    assert.equal(
+      reloaded.state.accounts[accId].access_token,
+      "at_imported_newer",
+    );
+  }
+
+  // --- Scenario 6: Ordinary successful reauth (including after prior sign-out) still works ---
+  {
+    const storagePath = join(dir, "cb-normal-reauth.json");
+    let expectedNonce = "";
+    const auth = new ChatGptSubscriptionManager({
+      storagePath,
+      discoveryOverride,
+      fetcher: (url) => {
+        const href = String(url);
+        if (href.includes("/token")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                access_token: "at_reauth_ok",
+                refresh_token: "rt_reauth_ok",
+                id_token: signId({
+                  aud: "client_ok_1",
+                  sub: "sub_ok_1",
+                  nonce: expectedNonce,
+                }),
+                expires_in: 3600,
+                scope: "openid chatgpt.tokens.use.direct",
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (href.includes("jwks")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ keys: [pubJwk] }), { status: 200 }),
+          );
+        }
+        if (href.includes("/revoke")) {
+          return Promise.resolve(new Response("", { status: 200 }));
+        }
+        throw new Error(`unexpected ${href}`);
+      },
+    });
+    t.after(() => auth.close());
+
+    auth.importTransferRecord({
+      client_id: "client_ok_1",
+      subject: "sub_ok_1",
+      access_token: "at_before_so",
+      refresh_token: "rt_before_so",
+      scopes: ["openid", "chatgpt.tokens.use.direct"],
+      expires_at: Date.now() + 3600_000,
+    });
+    const accId = auth.state.activeAccountId;
+    await auth.signOutAccount(accId);
+    assert.equal(auth.hasUsableCredential(accId), false);
+
+    // Reauth AFTER prior sign-out succeeds cleanly
+    const started = await auth.startSignIn({
+      mode: "reauth",
+      accountId: accId,
+    });
+    const u = new URL(started.authorizeUrl);
+    expectedNonce = u.searchParams.get("nonce");
+    const cbUrl = `${started.redirectUri}?code=c_ok&state=${encodeURIComponent(u.searchParams.get("state"))}&client_id=client_ok_1`;
+    const done = await auth.completeCallback(started.pendingId, cbUrl);
+    assert.equal(done.ok, true);
+    assert.equal(done.planUsageEnabled, true);
+    assert.equal(auth.hasUsableCredential(accId), true);
+    assert.equal(auth.state.accounts[accId].access_token, "at_reauth_ok");
+    const reloaded = new ChatGptSubscriptionManager({ storagePath });
+    assert.equal(reloaded.state.accounts[accId].access_token, "at_reauth_ok");
+  }
+});

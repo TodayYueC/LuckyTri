@@ -575,6 +575,17 @@ function staleRefreshError() {
   );
 }
 
+function staleAuthAttemptError() {
+  return Object.assign(
+    new Error("ChatGPT 登录授权已取消、失效或被新操作替代，未保存本次凭据"),
+    {
+      authError: true,
+      staleAuthAttempt: true,
+      retryableRequest: false,
+    },
+  );
+}
+
 function requestIdFromHeaders(headers) {
   if (!headers || typeof headers.get !== "function") return "";
   return (
@@ -1042,7 +1053,10 @@ export class ChatGptSubscriptionManager {
     this.openBrowserFn = openBrowserFn;
     this.discoveryCache = null;
     this.jwksCache = null;
+    this.authGeneration = 0;
+    this.lifecycleSeq = 0;
     this.accountGenerations = new Map();
+    this.accountLastMutationSeq = new Map();
     this.refreshInFlight = new Map();
     this.pendingAuth = null;
     this.state = this.loadOrInitState();
@@ -1058,6 +1072,8 @@ export class ChatGptSubscriptionManager {
     if (!id) return 0;
     const next = this.accountGeneration(id) + 1;
     this.accountGenerations.set(id, next);
+    this.lifecycleSeq += 1;
+    this.accountLastMutationSeq.set(id, this.lifecycleSeq);
     const entry = this.refreshInFlight.get(id);
     if (entry) {
       this.refreshInFlight.delete(id);
@@ -1288,7 +1304,7 @@ export class ChatGptSubscriptionManager {
     return this.discoveryCache?.doc || { ...DEFAULT_OIDC_DISCOVERY };
   }
 
-  async getJwks(jwksUri, { forceRefresh = false } = {}) {
+  async getJwks(jwksUri, { forceRefresh = false, signal = null } = {}) {
     const now = this.now();
     if (
       !forceRefresh &&
@@ -1301,7 +1317,9 @@ export class ChatGptSubscriptionManager {
     const response = await this.fetcher(jwksUri, {
       method: "GET",
       headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(10000),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(10000)])
+        : AbortSignal.timeout(10000),
     });
     if (!response.ok) {
       throw Object.assign(
@@ -1322,7 +1340,7 @@ export class ChatGptSubscriptionManager {
 
   async verifyIdToken(
     idToken,
-    { expectedClientId, expectedNonce, discovery = null } = {},
+    { expectedClientId, expectedNonce, discovery = null, signal = null } = {},
   ) {
     if (typeof idToken !== "string" || !idToken.trim()) {
       throw Object.assign(new Error("令牌响应缺少 ID Token"), {
@@ -1355,10 +1373,10 @@ export class ChatGptSubscriptionManager {
           (!header.kid || key.kid === header.kid) &&
           (!key.use || key.use === "sig"),
       );
-    let keys = await this.getJwks(oidc.jwks_uri);
+    let keys = await this.getJwks(oidc.jwks_uri, { signal });
     let jwk = selectKey(keys);
     if (!jwk) {
-      keys = await this.getJwks(oidc.jwks_uri, { forceRefresh: true });
+      keys = await this.getJwks(oidc.jwks_uri, { forceRefresh: true, signal });
       jwk = selectKey(keys);
     }
     if (!jwk) {
@@ -1484,8 +1502,18 @@ export class ChatGptSubscriptionManager {
   }
 
   cancelPendingAuth() {
+    this.authGeneration += 1;
     if (!this.pendingAuth) return { ok: true };
-    this.closePendingListener(this.pendingAuth);
+    const pending = this.pendingAuth;
+    pending.cancelled = true;
+    if (pending.abortController) {
+      try {
+        pending.abortController.abort();
+      } catch {
+        // ignore
+      }
+    }
+    this.closePendingListener(pending);
     this.pendingAuth = null;
     return { ok: true };
   }
@@ -1524,7 +1552,23 @@ export class ChatGptSubscriptionManager {
     }
 
     this.cancelPendingAuth();
+    const myAuthGeneration = ++this.authGeneration;
+    const startSeq = this.lifecycleSeq;
+    const targetAccountId = targetAccount?.accountId || "";
+    const expectedAccountGeneration = targetAccountId
+      ? this.accountGeneration(targetAccountId)
+      : null;
     const discovery = await this.getDiscovery();
+    if (this.authGeneration !== myAuthGeneration) {
+      throw staleAuthAttemptError();
+    }
+    if (
+      targetAccountId &&
+      (!this.state.accounts[targetAccountId] ||
+        this.accountGeneration(targetAccountId) !== expectedAccountGeneration)
+    ) {
+      throw staleAuthAttemptError();
+    }
     const state = randomBase64Url(32);
     const nonce = randomBase64Url(32);
     const codeVerifier = randomBase64Url(64);
@@ -1555,6 +1599,17 @@ export class ChatGptSubscriptionManager {
         resolve();
       });
     });
+
+    if (
+      this.authGeneration !== myAuthGeneration ||
+      (targetAccountId &&
+        (!this.state.accounts[targetAccountId] ||
+          this.accountGeneration(targetAccountId) !==
+            expectedAccountGeneration))
+    ) {
+      server.close();
+      throw staleAuthAttemptError();
+    }
 
     const address = server.address();
     const boundPort = typeof address === "object" && address ? address.port : 0;
@@ -1600,9 +1655,12 @@ export class ChatGptSubscriptionManager {
     const pending = {
       id: pendingId,
       mode,
-      accountId: targetAccount?.accountId || "",
+      accountId: targetAccountId,
       expectedClientId: targetAccount?.client_id || "",
       expectedSubject: targetAccount?.subject || "",
+      authGeneration: myAuthGeneration,
+      startSeq,
+      expectedAccountGeneration,
       state,
       nonce,
       codeVerifier,
@@ -1612,11 +1670,17 @@ export class ChatGptSubscriptionManager {
       status: "pending",
       error: "",
       consumed: false,
+      cancelled: false,
+      abortController: new AbortController(),
       server,
       timer: null,
     };
     pending.timer = setTimeout(() => {
-      if (this.pendingAuth?.id === pendingId && !pending.consumed) {
+      if (
+        this.pendingAuth === pending &&
+        !pending.consumed &&
+        !pending.cancelled
+      ) {
         pending.status = "expired";
         pending.error = "授权登录已超时，请重新发起连接";
         this.closePendingListener(pending);
@@ -1691,9 +1755,40 @@ export class ChatGptSubscriptionManager {
     const url =
       callbackUrl instanceof URL ? callbackUrl : new URL(String(callbackUrl));
     const pending = this.pendingAuth;
-    if (!pending || pending.id !== pendingId || pending.consumed) {
+    if (
+      !pending ||
+      pending.id !== pendingId ||
+      pending.consumed ||
+      pending.cancelled ||
+      this.authGeneration !== pending.authGeneration
+    ) {
       throw Error("授权事务不存在或已被使用，请重新发起登录");
     }
+    const isAttemptStillValid = (resolvedAccountId = "") => {
+      if (pending.cancelled) return false;
+      if (this.pendingAuth !== pending) return false;
+      if (this.authGeneration !== pending.authGeneration) return false;
+      if (pending.mode !== "new" && pending.accountId) {
+        if (!this.state.accounts[pending.accountId]) return false;
+        if (
+          this.accountGeneration(pending.accountId) !==
+          pending.expectedAccountGeneration
+        ) {
+          return false;
+        }
+      }
+      if (resolvedAccountId) {
+        const lastMutated =
+          this.accountLastMutationSeq.get(resolvedAccountId) || 0;
+        if (lastMutated > pending.startSeq) return false;
+      }
+      return true;
+    };
+    const assertAttemptStillValid = (resolvedAccountId = "") => {
+      if (!isAttemptStillValid(resolvedAccountId)) {
+        throw staleAuthAttemptError();
+      }
+    };
     if (this.now() >= pending.expiresAt) {
       pending.consumed = true;
       pending.status = "expired";
@@ -1710,6 +1805,8 @@ export class ChatGptSubscriptionManager {
       throw Error("OAuth state 校验失败，已拒绝本次回调");
     }
 
+    assertAttemptStillValid();
+
     // Atomic single-use consumption before network exchange.
     pending.consumed = true;
     const {
@@ -1719,6 +1816,7 @@ export class ChatGptSubscriptionManager {
       nonce,
       codeVerifier,
       redirectUri,
+      abortController,
     } = pending;
     pending.codeVerifier = "";
     pending.nonce = "";
@@ -1767,6 +1865,7 @@ export class ChatGptSubscriptionManager {
 
     try {
       const discovery = await this.getDiscovery();
+      assertAttemptStillValid();
       const body = new URLSearchParams({
         grant_type: "authorization_code",
         code,
@@ -1783,8 +1882,12 @@ export class ChatGptSubscriptionManager {
         },
         body,
         redirect: "manual",
-        signal: AbortSignal.timeout(20000),
+        signal: AbortSignal.any([
+          abortController.signal,
+          AbortSignal.timeout(20000),
+        ]),
       });
+      assertAttemptStillValid();
       assertNotRedirectResponse(tokenResponse);
       const requestId = requestIdFromHeaders(tokenResponse.headers);
       if (!tokenResponse.ok) {
@@ -1797,15 +1900,18 @@ export class ChatGptSubscriptionManager {
         } catch {
           detail = "";
         }
+        assertAttemptStillValid();
         throw Error(
           `OpenAI 令牌交换失败（HTTP ${tokenResponse.status}${detail ? `：${detail}` : ""}${requestId ? `，请求 ID：${requestId}` : ""}）`,
         );
       }
       const tokens = await tokenResponse.json();
+      assertAttemptStillValid();
       const claims = await this.verifyIdToken(tokens.id_token, {
         expectedClientId: issuedClientId,
         expectedNonce: nonce,
         discovery,
+        signal: abortController.signal,
       });
 
       if (mode !== "new" && expectedSubject && claims.sub !== expectedSubject) {
@@ -1825,6 +1931,11 @@ export class ChatGptSubscriptionManager {
       const now = this.now();
       const expiresIn = Number(tokens.expires_in) || 3600;
       const accountId = accountKeyOf(issuedClientId, claims.sub);
+
+      // Final synchronous lifecycle gate immediately before any state write:
+      // covers cancel, signout, remove, superseding sign-in, and newer import.
+      assertAttemptStillValid(accountId);
+
       const existing = this.state.accounts[accountId] || {};
       const verifiedEmail =
         typeof claims.email === "string" && claims.email.trim()
@@ -1895,9 +2006,17 @@ export class ChatGptSubscriptionManager {
         scopes: grantedScopes,
       };
     } catch (error) {
-      pending.status = "error";
-      pending.error = redactSiwcSecrets(error.message || "授权交换失败");
-      throw error;
+      const normalizedError =
+        !isAttemptStillValid() && !error?.staleAuthAttempt
+          ? staleAuthAttemptError()
+          : error;
+      if (this.pendingAuth === pending && !pending.cancelled) {
+        pending.status = "error";
+        pending.error = redactSiwcSecrets(
+          normalizedError.message || "授权交换失败",
+        );
+      }
+      throw normalizedError;
     }
   }
 
@@ -2398,6 +2517,9 @@ export class ChatGptSubscriptionManager {
     const expiresAt = Number(record.expires_at) || now + expiresIn * 1000;
     const accountId = accountKeyOf(clientId, subject);
     const existing = this.state.accounts[accountId] || {};
+    if (this.pendingAuth?.accountId === accountId) {
+      this.cancelPendingAuth();
+    }
     this.bumpAccountGeneration(accountId);
     this.state.accounts[accountId] = {
       accountId,

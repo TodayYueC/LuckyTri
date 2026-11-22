@@ -670,6 +670,8 @@ export const ERRORS = {
     "ChatGPT subscription request received a redirect response and was aborted to protect credentials",
   "ChatGPT 订阅账号已退出或变更，本次刷新已取消":
     "ChatGPT subscription account was signed out or changed; token refresh was cancelled",
+  "ChatGPT 登录授权已取消、失效或被新操作替代，未保存本次凭据":
+    "ChatGPT sign-in authorization was cancelled, expired, or superseded; credentials were not saved",
   目标文件路径无效: "Invalid target file path",
   "拒绝导出到符号链接路径，请指定新的普通文件路径":
     "Refused to export to a symlink path; specify a new regular file path",
