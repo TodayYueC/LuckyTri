@@ -75,6 +75,15 @@ After saving, click "Test this model's connection". The test carries no group ch
 
 You can also stay in simulation mode and trial-chat with TA under "Nature" to see how she speaks before letting her join real QQ.
 
+### ChatGPT Subscription (Sign in with ChatGPT)
+
+Alongside metered API-key providers, LuckyTri provides a **ChatGPT Subscription** provider built on OpenAI's official open-source Sign in with ChatGPT (OAuth 2.0 + PKCE) flow and the Direct Responses API (`https://api.openai.com/v1/responses`, always `store: false`, `stream: true`) for your own self-hosted LuckyTri instance:
+
+- **Scope and official boundaries**: This entry is strictly an invocation endpoint for your own personal bot instance, not a quota-sharing service, reseller, or multi-user proxy. Under OpenAI's official Sign in with ChatGPT documentation and terms, it connects an individual end user's subscription to their own agent and draws from the shared rolling usage limit of that ChatGPT plan (for example, the Plus 5-hour rolling window shared with ChatGPT web and apps—not unlimited or separate quota). Actual plan eligibility, model availability, and rate limits are enforced live by OpenAI and visible at `https://chatgpt.com/settings/usage`.
+- **Local sign-in and credential isolation**: In "System → Model library", click **Continue with ChatGPT**. LuckyTri listens on an ephemeral `127.0.0.1` loopback port at `/auth/callback`. OAuth tokens are stored separately in `<instance-home>/data/openai-siwc-auth.json` (`0600` permissions, outside SQLite and `.luckytri` exports). LuckyTri never borrows Codex/ChatGPT internal credentials and never reads `LLM_API_KEY` for subscription profiles.
+- **Background consent and failover guards**: Both "Allow background autonomous tasks to use ChatGPT subscription" and "Allow fallback to paid API-key backups when subscription fails" are off by default. On usage limits or auth expiry, LuckyTri surfaces the error with a direct "Manage usage" link, never rotates across ChatGPT accounts, and never silently switches to metered API keys without explicit opt-in. Subscription profiles support the Responses API only, not embeddings (configure a separate API-key model for knowledge vectors).
+- **Headless remote VPS**: Because OpenAI's official callback requires a local `127.0.0.1` loopback redirect, sign in on your own computer, run `luckytri chatgpt-auth export-transfer --out transfer.json`, transfer it over SSH to your controlled VPS, run `luckytri chatgpt-auth import-transfer transfer.json` (or paste in the studio), and delete the temporary file immediately. The VPS retains its own `ext_agent_host_id`.
+
 ### Reading images
 
 Enable "Image understanding" in the model profile and use a model whose provider supports vision. Images can be read from QQ URLs, local cache files or the image-cache API. Originals up to 32 MiB and 80 million pixels are accepted by default, so ordinary photos and screenshots larger than 4 MiB are no longer rejected outright. Small images retain their bytes after decoding validation. Large screenshots first try lossless compression, then encoding compression or proportional resizing as needed. Photos are oriented correctly without cropping. Each image sent to the model defaults to at most 4 MiB, 8192 pixels on its longest side and 16 million output pixels. Originals stay unchanged and duplicate detection uses their original contents.
@@ -198,6 +207,8 @@ The server removes the export copy after download. Cancelled, expired and interr
 | Model 401 / 403                   | Key and permissions; an environment-variable key may override the one saved in LuckyTri                                                  |
 | Model 404                         | Do not append `/chat/completions` twice to the API address; check the model ID                                                           |
 | Model returns no JSON             | Use a model that supports JSON object output and run the connection test first                                                           |
+| ChatGPT plan limit or expiry      | Check shared rolling quota at `https://chatgpt.com/settings/usage`; sign in again or re-consent from System → Model library              |
+| Headless VPS loopback callback    | Sign in locally, export via `luckytri chatgpt-auth export-transfer`, import on the VPS over SSH, and delete the temporary file           |
 | Memory did not appear             | Was it an explicit "remember, I…", was it undone, is its discretion "keep secret" and you are not in the original session                |
 | Too much motion                   | "Reduce motion" at the bottom left; when the system asks for reduced motion, particles and morphing switch off automatically             |
 
