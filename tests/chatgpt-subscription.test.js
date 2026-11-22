@@ -2480,7 +2480,17 @@ test("remote Tailscale HTTPS WebUI detection, /complete callback flow, and secre
 
   // 3. Full HTTP API flow simulating Tailscale HTTPS proxy hitting LuckyTri Studio
   const dir = mkdtempSync(join(tmpdir(), "luckytri-siwc-remote-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cleanups = [];
+  t.after(async () => {
+    for (const fn of cleanups.reverse()) {
+      try {
+        await fn();
+      } catch {
+        // Continue closing remaining handles before removing temp dir on Windows.
+      }
+    }
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  });
   const storagePath = join(dir, "openai-siwc-auth.json");
   const rsaKey = makeRsaKey("remote-key-1");
   const { jwk: pubJwk } = rsaKey;
@@ -2534,16 +2544,16 @@ test("remote Tailscale HTTPS WebUI detection, /complete callback flow, and secre
       throw new Error(`unexpected fetch ${href}`);
     },
   });
-  t.after(() => auth.close());
+  cleanups.push(() => auth.close());
 
   const store = createStore(join(dir, "studio.sqlite"));
-  t.after(() => store.db.close());
+  cleanups.push(() => store.db.close());
   const models = new ModelManager(new Repository(store), { chatgptAuth: auth });
   const system = new ChatSystem(store, async () => {}, {
     models,
     chatgptAuth: auth,
   });
-  t.after(() => system.close());
+  cleanups.push(() => system.close());
 
   const app = express();
   app.set("trust proxy", "loopback");
@@ -2552,7 +2562,7 @@ test("remote Tailscale HTTPS WebUI detection, /complete callback flow, and secre
 
   const server = createServer(app);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(async () => {
+  cleanups.push(async () => {
     server.closeAllConnections?.();
     await new Promise((resolve) => server.close(resolve));
   });
@@ -2724,7 +2734,7 @@ test("remote Tailscale HTTPS WebUI detection, /complete callback flow, and secre
   });
   const fullServer = createServer(fullApp);
   await new Promise((resolve) => fullServer.listen(0, "127.0.0.1", resolve));
-  t.after(async () => {
+  cleanups.push(async () => {
     fullServer.closeAllConnections?.();
     await new Promise((resolve) => fullServer.close(resolve));
   });
