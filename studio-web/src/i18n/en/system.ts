@@ -467,4 +467,93 @@ export default {
   放弃修改: "Discard changes",
   继续编辑: "Keep editing",
   系统的分区: "System sections",
+  // ChatGPT Subscription (Sign in with ChatGPT)
+  "ChatGPT 订阅": "ChatGPT Subscription",
+  需要重新登录: "Sign-in required",
+  需要重新授权: "Re-consent required",
+  额度受限: "Usage limit reached",
+  "ChatGPT 订阅连接已更新": "ChatGPT subscription connection updated",
+  "请在浏览器完成 ChatGPT 授权": "Finish authorizing ChatGPT in your browser",
+  "已取消本次 ChatGPT 登录": "ChatGPT sign-in cancelled",
+  授权链接已复制: "Authorization link copied",
+  "无法自动复制，请手动点击打开授权页":
+    "Could not copy automatically; open the authorization page manually",
+  "已切换默认 ChatGPT 订阅账号":
+    "Default ChatGPT subscription account switched",
+  "ChatGPT 订阅策略已更新": "ChatGPT subscription policy updated",
+  "断开此 ChatGPT 订阅账号的本机登录令牌？已保存的模型档案不会删除，之后可重新登录。":
+    "Disconnect local sign-in tokens for this ChatGPT subscription account? Saved model profiles are kept and you can sign in again later.",
+  "断开 ChatGPT 订阅": "Disconnect ChatGPT subscription",
+  断开登录: "Sign out",
+  已断开登录并撤销远端令牌: "Signed out and revoked remote token",
+  "已清除本机登录令牌；如需彻底解除授权，请到 ChatGPT 设置 → Apps 中移除 LuckyTri":
+    "Local sign-in tokens cleared; to remove authorization completely, remove LuckyTri in ChatGPT Settings → Apps",
+  "确定彻底移除这个 ChatGPT 订阅账号记录？":
+    "Remove this saved ChatGPT subscription account?",
+  移除订阅账号: "Remove subscription account",
+  移除: "Remove",
+  "已移除该 ChatGPT 订阅账号": "ChatGPT subscription account removed",
+  "已拉取 {count} 个账号列出模型。目录仅表示当前可见列表，最终可用性与额度仍以调用时的订阅校验为准。":
+    "Fetched {count} listed models for this account. The list is catalog-only; actual eligibility and usage limits are enforced at request time.",
+  "{name}（ChatGPT 订阅）": "{name} (ChatGPT Subscription)",
+  "已导入本地迁移凭据，本机 host ID 已保留":
+    "Imported local transfer credentials while preserving this host's ID",
+  订阅已连接: "Subscription connected",
+  "待连接 ChatGPT 订阅": "ChatGPT subscription needed",
+  "ChatGPT 订阅入口": "ChatGPT Subscription",
+  "与现有 API Key 供应商并列，通过官方 Sign in with ChatGPT 和直连 Responses API（store=false、stream=true）为你的自用机器人提供调用入口，不用于共享额度或对外代理。":
+    "Alongside existing API-key providers, uses official Sign in with ChatGPT and Direct Responses API (store=false, stream=true) for your own bot instance—not for quota sharing or public proxying.",
+  "正在使用你的 ChatGPT 订阅": "Using your ChatGPT plan",
+  "调用消耗你本人的 ChatGPT 订阅共享滚动额度（与 ChatGPT 网页和应用共享，并非无限或独立额度），可在 ChatGPT 用量设置中随时查看或撤销授权。":
+    "Calls draw from your own ChatGPT plan's shared rolling usage limit (shared with ChatGPT web and apps, not unlimited or separate). You can view usage or revoke access anytime in ChatGPT settings.",
+  知道了: "Got it",
+  "ChatGPT 订阅额度已达上限": "ChatGPT subscription usage limit reached",
+  "当前共享滚动额度已用尽，调用已暂停。不会自动切换其他 ChatGPT 账号，也不会在未同意时切到付费 API Key。":
+    "Your shared rolling usage limit is reached and calls are paused. LuckyTri will not rotate to another ChatGPT account or silently fall back to a paid API key without your consent.",
+  "前往 ChatGPT 管理用量 ↗": "Manage usage in ChatGPT ↗",
+  "ChatGPT 订阅登录已失效": "ChatGPT subscription sign-in expired",
+  "请重新通过官方登录恢复调用；已保存的模型档案与本机 host ID 会保留。":
+    "Sign in again through the official flow to resume; saved model profiles and this host's ID are preserved.",
+  重新登录: "Sign in again",
+  "尚未授予 ChatGPT 订阅用量权限": "ChatGPT plan usage permission not granted",
+  "当前仅完成了身份登录，未授予 chatgpt.tokens.use.direct 权限，暂不能发起模型调用。":
+    "Identity sign-in succeeded, but chatgpt.tokens.use.direct was not granted, so model calls are blocked.",
+  重新授权订阅权限: "Re-consent plan usage",
+  "正在使用 ChatGPT 订阅": "Using ChatGPT plan",
+  "管理用量 ↗": "Manage usage ↗",
+  默认订阅账号: "Default subscription account",
+  "拉取中…": "Fetching…",
+  拉取账号可用模型: "Fetch account models",
+  移除账号: "Remove account",
+  "正在本机临时回调端口等待 ChatGPT 授权完成（约 10 分钟内有效）。完成授权后此页面会自动刷新。":
+    "Waiting for ChatGPT authorization on the local loopback callback port (valid for ~10 minutes). This page refreshes automatically once completed.",
+  "打开 ChatGPT 授权页 ↗": "Open ChatGPT authorization page ↗",
+  复制授权链接: "Copy authorization link",
+  取消本次登录: "Cancel sign-in",
+  "允许后台自主任务使用 ChatGPT 订阅":
+    "Allow background autonomous tasks to use ChatGPT subscription",
+  "默认关闭。开启前仅响应对话与手动测试；开启后独处、整理记忆、日记与回顾等后台阶段也可使用你选中的 ChatGPT 订阅模型。":
+    "Off by default. While off, only live replies and manual tests use it; when enabled, time alone, memory sorting, diary and reflection stages may also use your selected ChatGPT subscription model.",
+  "订阅失败时允许回退到付费 API Key 备用模型":
+    "Allow fallback to paid API-key backups when subscription fails",
+  "默认关闭。未开启时，订阅限额或失效不会静默切到按量计费 API Key，也绝不会在多个 ChatGPT 账号间自动轮换。":
+    "Off by default. While off, subscription limits or expiry never silently fail over to metered API keys and never rotate across ChatGPT accounts.",
+  新建此订阅模型: "Create subscription profile",
+  "自托管服务器（VPS）与使用边界说明":
+    "Self-hosted server (VPS) & usage boundaries",
+  "官方 OAuth 回调固定监听本机 127.0.0.1 临时端口，浏览器与回调必须在同一机器上完成。若 LuckyTri 运行在远程无界面 VPS，可在你本人电脑完成登录后执行命令导出迁移凭据，通过 SSH 传到服务器导入。":
+    "The official OAuth callback listens on a local 127.0.0.1 ephemeral port, so browser sign-in and callback must run on the same machine. For a headless VPS, sign in on your own computer, export a transfer record via CLI, and import it over SSH.",
+  "本机 Host ID（迁移不会覆盖）：": "Host ID (preserved across imports):",
+  "或在此粘贴本地导出的迁移凭据 JSON（仅限你本人的受控主机）":
+    "Or paste the locally exported transfer JSON here (for your own controlled host only)",
+  "粘贴 luckytri chatgpt-auth export-transfer 输出的 JSON":
+    "Paste the JSON printed by luckytri chatgpt-auth export-transfer",
+  "正在导入…": "Importing…",
+  导入本地迁移凭据: "Import local transfer credentials",
+  "绑定的 ChatGPT 订阅账号": "Bound ChatGPT subscription account",
+  跟随默认订阅账号: "Follow default subscription account",
+  "此模型通过官方 Sign in with ChatGPT 和直连 Responses API（store=false、stream=true）调用，无需填写 OpenAI API Key。":
+    "This model calls the official Direct Responses API (store=false, stream=true) via Sign in with ChatGPT—no OpenAI API key needed.",
+  "ChatGPT 订阅预览接口固定使用 store=false、stream=true，不支持采样参数和向量 Embedding；如需知识向量请在「系统 → 知识向量」单独配置 API Key 模型。":
+    "The ChatGPT subscription preview API enforces store=false and stream=true and does not support sampling parameters or embeddings; configure a separate API-key model under System → Knowledge vectors for embeddings.",
 };

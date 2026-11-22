@@ -1,5 +1,6 @@
 import { recordModelCheck, savedConnectionSettings } from "./readiness.js";
 import { FEEDBACK_LABELS } from "../core/feedback.js";
+import { isChatGptSubscriptionProfile } from "../core/chatgpt-subscription.js";
 
 function connectionSettings(store, modelId = "") {
   const selected = savedConnectionSettings(store, modelId);
@@ -56,8 +57,14 @@ export function mountManagement(app, store, chatSystem) {
     const started = Date.now();
     const { settings, profile, isDefault } = selected;
     try {
-      if (!(profile.apiKey || process.env.LLM_API_KEY))
+      if (isChatGptSubscriptionProfile(profile)) {
+        if (
+          !chatSystem.chatgptAuth?.hasUsableCredential?.(profile.oauthAccountId)
+        )
+          throw Error("请先在模型库中连接 ChatGPT 订阅账号并授予订阅权限");
+      } else if (!(profile.apiKey || process.env.LLM_API_KEY)) {
         throw Error("请先配置模型 API Key");
+      }
       const result = await chatSystem.models.call(
         profile,
         "test",

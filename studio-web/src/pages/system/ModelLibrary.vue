@@ -1,11 +1,31 @@
 <script setup lang="ts">
 import { intlLocale, t } from "../../i18n";
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  watch,
+} from "vue";
 import { api, toast } from "../../api";
 import { ask } from "../../dialog";
 import { reload, studio } from "../../stores/studio";
-import { deleteModel, saveModels, testSavedModel } from "../../plates/models";
-import { hueOf } from "../../format";
+import {
+  cancelChatGptSignIn,
+  confirmChatGptFirstUse,
+  deleteModel,
+  getChatGptAuthStatus,
+  importChatGptTransfer,
+  listChatGptModels,
+  removeChatGptAccount,
+  saveModels,
+  selectChatGptAccount,
+  signOutChatGptAccount,
+  startChatGptSignIn,
+  testSavedModel,
+  updateChatGptSettings,
+} from "../../plates/models";
 import Sheet from "../../components/ui/Sheet.vue";
 import Empty from "../../components/ui/Empty.vue";
 import Select from "../../components/ui/Select.vue";
@@ -46,9 +66,361 @@ const testResult = ref("");
 const tokenUsage = ref<any>(null);
 const usageBusy = ref(false);
 const usageError = ref("");
+const chatgptStatus = ref<any>(
+  studio.core?.chatgptAuth || studio.health?.chatgptAuth || null,
+);
+const chatgptBusy = ref(false);
+const chatgptModels = ref<any[]>([]);
+const chatgptModelsBusy = ref(false);
+const chatgptModelsError = ref("");
+const chatgptModelsNotice = ref("");
+const pendingAuthorizeUrl = ref("");
+const transferInput = ref("");
+const transferBusy = ref(false);
+let authPollTimer: ReturnType<typeof setInterval> | null = null;
 const draft = reactive<any>(blank());
 if (modelList.value[0])
   Object.assign(draft, modelList.value[0], { apiKey: "" });
+
+const chatgptAccounts = computed<any[]>(
+  () => chatgptStatus.value?.accounts || [],
+);
+const activeChatGptAccount = computed<any>(() => {
+  const accounts = chatgptAccounts.value;
+  if (!accounts.length) return null;
+  const activeId = chatgptStatus.value?.activeAccountId;
+  return (
+    accounts.find((item: any) => item.accountId === activeId) || accounts[0]
+  );
+});
+const chatgptPending = computed(() => chatgptStatus.value?.pendingAuth || null);
+const chatgptUsageUrl = computed(
+  () => chatgptStatus.value?.usageUrl || "https://chatgpt.com/settings/usage",
+);
+const isDraftChatGpt = computed(
+  () =>
+    draft.authMode === "chatgpt-oauth" ||
+    String(draft.provider || "").toLowerCase() === "openai-chatgpt",
+);
+
+function isChatGptModel(model: any) {
+  return (
+    model?.authMode === "chatgpt-oauth" ||
+    String(model?.provider || "").toLowerCase() === "openai-chatgpt"
+  );
+}
+
+function accountForProfile(model: any) {
+  if (!isChatGptModel(model)) return null;
+  const accounts = chatgptAccounts.value;
+  if (!accounts.length) return null;
+  const targetId = String(model?.oauthAccountId || "").trim();
+  if (targetId)
+    return accounts.find((item: any) => item.accountId === targetId) || null;
+  return activeChatGptAccount.value;
+}
+
+function isChatGptProfileReady(model: any) {
+  const account = accountForProfile(model);
+  return Boolean(
+    account &&
+    account.hasTokens &&
+    account.planUsageEnabled &&
+    !account.needsReauth,
+  );
+}
+
+function chatGptAccountLabel(account: any) {
+  if (!account) return "";
+  return account.email || account.name || account.label || account.accountId;
+}
+
+function chatGptStatusLabel(account: any) {
+  if (!account) return t("未连接");
+  if (!account.hasTokens || account.needsReauth) return t("需要重新登录");
+  if (!account.planUsageEnabled) return t("需要重新授权");
+  if (account.lastUsageLimitAt) return t("额度受限");
+  return t("已连接");
+}
+
+function chatGptStatusTone(account: any) {
+  if (!account) return "muted";
+  if (!account.hasTokens || account.needsReauth) return "warn";
+  if (!account.planUsageEnabled) return "warn";
+  if (account.lastUsageLimitAt) return "warn";
+  return "ok";
+}
+
+function stopAuthPolling() {
+  if (authPollTimer) {
+    clearInterval(authPollTimer);
+    authPollTimer = null;
+  }
+}
+
+async function loadChatGptStatus(silent = true) {
+  try {
+    const status = await getChatGptAuthStatus();
+    chatgptStatus.value = status;
+    if (!status?.pendingAuth) {
+      pendingAuthorizeUrl.value = "";
+      stopAuthPolling();
+    }
+  } catch (error) {
+    if (!silent) toast((error as Error).message, true);
+  }
+}
+
+function startAuthPolling() {
+  stopAuthPolling();
+  authPollTimer = setInterval(async () => {
+    const hadPending = Boolean(chatgptStatus.value?.pendingAuth);
+    await loadChatGptStatus(true);
+    if (hadPending && !chatgptStatus.value?.pendingAuth) {
+      await reload();
+      if (activeChatGptAccount.value?.hasTokens) {
+        toast(t("ChatGPT 订阅连接已更新"));
+      }
+    }
+  }, 2500);
+}
+
+async function beginChatGptSignIn(
+  mode: "new" | "reauth" | "reconsent" = "new",
+  accountId = "",
+) {
+  if (chatgptBusy.value) return;
+  chatgptBusy.value = true;
+  try {
+    const isLocalHost = ["127.0.0.1", "localhost", "::1"].includes(
+      location.hostname,
+    );
+    const result = await startChatGptSignIn({
+      mode,
+      accountId,
+      openBrowser: isLocalHost,
+    });
+    chatgptStatus.value = result.status;
+    pendingAuthorizeUrl.value = result.authorizeUrl || "";
+    startAuthPolling();
+    if (!result.browserOpened && result.authorizeUrl) {
+      window.open(result.authorizeUrl, "_blank", "noopener,noreferrer");
+    }
+    toast(t("请在浏览器完成 ChatGPT 授权"));
+  } catch (error) {
+    toast((error as Error).message, true);
+  } finally {
+    chatgptBusy.value = false;
+  }
+}
+
+async function cancelPendingSignIn() {
+  if (chatgptBusy.value) return;
+  chatgptBusy.value = true;
+  try {
+    const result = await cancelChatGptSignIn();
+    chatgptStatus.value = result.status;
+    pendingAuthorizeUrl.value = "";
+    stopAuthPolling();
+    toast(t("已取消本次 ChatGPT 登录"));
+  } catch (error) {
+    toast((error as Error).message, true);
+  } finally {
+    chatgptBusy.value = false;
+  }
+}
+
+async function copyPendingUrl() {
+  if (!pendingAuthorizeUrl.value) return;
+  try {
+    await navigator.clipboard.writeText(pendingAuthorizeUrl.value);
+    toast(t("授权链接已复制"));
+  } catch {
+    toast(t("无法自动复制，请手动点击打开授权页"), true);
+  }
+}
+
+async function chooseActiveChatGptAccount(event: Event) {
+  const accountId = (event.target as HTMLSelectElement).value;
+  if (!accountId) return;
+  try {
+    const result = await selectChatGptAccount(accountId);
+    chatgptStatus.value = result.status;
+    chatgptModels.value = [];
+    toast(t("已切换默认 ChatGPT 订阅账号"));
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
+}
+
+async function acknowledgeFirstSignIn() {
+  try {
+    const result = await confirmChatGptFirstUse();
+    chatgptStatus.value = result.status;
+  } catch (error) {
+    toast((error as Error).message, true);
+  }
+}
+
+async function toggleChatGptSetting(
+  key: "allowBackgroundUse" | "allowPaidFallback",
+  event: Event,
+) {
+  const checked = (event.target as HTMLInputElement).checked;
+  try {
+    const result = await updateChatGptSettings({ [key]: checked });
+    chatgptStatus.value = result.status;
+    toast(t("ChatGPT 订阅策略已更新"));
+  } catch (error) {
+    toast((error as Error).message, true);
+    await loadChatGptStatus(true);
+  }
+}
+
+async function disconnectChatGpt(accountId = "") {
+  if (
+    !(await ask(
+      t(
+        "断开此 ChatGPT 订阅账号的本机登录令牌？已保存的模型档案不会删除，之后可重新登录。",
+      ),
+      {
+        title: t("断开 ChatGPT 订阅"),
+        confirmText: t("断开登录"),
+        cancelText: t("取消"),
+      },
+    ))
+  )
+    return;
+  chatgptBusy.value = true;
+  try {
+    const result = await signOutChatGptAccount(accountId);
+    chatgptStatus.value = result.status;
+    chatgptModels.value = [];
+    await reload();
+    toast(
+      result.remoteRevoked
+        ? t("已断开登录并撤销远端令牌")
+        : t(
+            "已清除本机登录令牌；如需彻底解除授权，请到 ChatGPT 设置 → Apps 中移除 LuckyTri",
+          ),
+    );
+  } catch (error) {
+    toast((error as Error).message, true);
+  } finally {
+    chatgptBusy.value = false;
+  }
+}
+
+async function forgetChatGptAccount(accountId: string) {
+  if (
+    !(await ask(t("确定彻底移除这个 ChatGPT 订阅账号记录？"), {
+      title: t("移除订阅账号"),
+      confirmText: t("移除"),
+      danger: true,
+    }))
+  )
+    return;
+  chatgptBusy.value = true;
+  try {
+    const result = await removeChatGptAccount(accountId);
+    chatgptStatus.value = result.status;
+    chatgptModels.value = [];
+    await reload();
+    toast(t("已移除该 ChatGPT 订阅账号"));
+  } catch (error) {
+    toast((error as Error).message, true);
+  } finally {
+    chatgptBusy.value = false;
+  }
+}
+
+async function fetchAccountModels() {
+  if (chatgptModelsBusy.value) return;
+  chatgptModelsBusy.value = true;
+  chatgptModelsError.value = "";
+  chatgptModelsNotice.value = "";
+  try {
+    const res = await listChatGptModels(
+      activeChatGptAccount.value?.accountId || "",
+    );
+    chatgptModels.value = Array.isArray(res.models) ? res.models : [];
+    chatgptModelsNotice.value = t(
+      "已拉取 {count} 个账号列出模型。目录仅表示当前可见列表，最终可用性与额度仍以调用时的订阅校验为准。",
+      { count: chatgptModels.value.length },
+    );
+  } catch (error) {
+    chatgptModelsError.value = (error as Error).message;
+  } finally {
+    chatgptModelsBusy.value = false;
+  }
+}
+
+async function createProfileFromLiveModel(item: any) {
+  if (!(await discardDraft())) return;
+  modelList.value = studio.core.models.map((m: any) => ({ ...m }));
+  const ctx =
+    Number(item.contextWindow) >= 8192 ? Number(item.contextWindow) : 400000;
+  const maxOut = Math.min(128000, Math.floor(ctx / 3));
+  const row = {
+    ...blank(),
+    id: "model-" + Date.now(),
+    vendor: t("ChatGPT 订阅"),
+    label: t("{name}（ChatGPT 订阅）", {
+      name: item.displayName || item.slug,
+    }),
+    provider: "openai-chatgpt",
+    authMode: "chatgpt-oauth",
+    oauthAccountId: activeChatGptAccount.value?.accountId || "",
+    baseUrl: "https://api.openai.com/v1",
+    model: item.slug,
+    apiProtocol: "responses",
+    apiKey: "",
+    hasApiKey: false,
+    contextWindow: ctx,
+    maxInputTokens: ctx - maxOut,
+    maxOutputTokens: maxOut,
+    vision: true,
+    system: true,
+    json: true,
+    tools: true,
+    embedding: false,
+    embeddingModel: "",
+    thinkingStyle: "openai",
+    tokenField: "max_completion_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
+    reasoningEffort: "medium",
+    temperature: 1,
+    topP: 1,
+    timeoutMs: 120000,
+    isDefault: modelList.value.length === 0,
+    enabled: true,
+  };
+  modelList.value.push(row);
+  index.value = modelList.value.length - 1;
+  expandedSavedVendor.value = modelVendor(row);
+  Object.assign(draft, row);
+  testResult.value = "";
+  editorOpen.value = true;
+  studio.dirty = true;
+}
+
+async function submitTransferImport() {
+  const raw = transferInput.value.trim();
+  if (!raw || transferBusy.value) return;
+  transferBusy.value = true;
+  try {
+    const result = await importChatGptTransfer(raw);
+    chatgptStatus.value = result.status;
+    transferInput.value = "";
+    await reload();
+    toast(t("已导入本地迁移凭据，本机 host ID 已保留"));
+  } catch (error) {
+    toast((error as Error).message, true);
+  } finally {
+    transferBusy.value = false;
+  }
+}
 
 const editing = computed(() => index.value >= 0 && !!draft.id);
 const groups = computed(() => {
@@ -148,6 +520,9 @@ function blank() {
     label: "",
     provider: "",
     vendor: "",
+    authMode: "api-key",
+    oauthAccountId: "",
+    apiProtocol: "chat",
     baseUrl: "",
     model: "",
     apiKey: "",
@@ -176,6 +551,7 @@ function blank() {
 
 function modelVendor(model: any) {
   const providerLabels: Record<string, string> = {
+    "openai-chatgpt": t("ChatGPT 订阅"),
     "volcengine-agent-plan": t("火山方舟 Agent Plan"),
     "volcengine-coding-plan": t("火山方舟 Coding Plan"),
     "opencode-go": "OpenCode Go",
@@ -301,10 +677,17 @@ async function loadUsage() {
   }
 }
 
-onMounted(() => void loadUsage());
+onMounted(() => {
+  void loadUsage();
+  void loadChatGptStatus(true);
+});
+onBeforeUnmount(() => stopAuthPolling());
 watch(
   () => studio.tick,
-  () => void loadUsage(),
+  () => {
+    void loadUsage();
+    void loadChatGptStatus(true);
+  },
 );
 
 async function discardDraft() {
@@ -362,6 +745,10 @@ function choosePreset(preset: any) {
     id: "model-" + Date.now(),
     apiKey: "",
     hasApiKey: false,
+    oauthAccountId:
+      preset.authMode === "chatgpt-oauth"
+        ? activeChatGptAccount.value?.accountId || ""
+        : "",
     isDefault: modelList.value.length === 0,
   };
   modelList.value.push(row);
@@ -397,12 +784,23 @@ function makeDefault() {
 
 async function save() {
   const fitted = fitBudget(draft);
+  const chatGptDraft = isDraftChatGpt.value;
   const models = modelList.value.map((m: any, i: number) =>
     withoutWindows(
       i === index.value
         ? {
             ...draft,
             ...fitted,
+            ...(chatGptDraft
+              ? {
+                  authMode: "chatgpt-oauth",
+                  apiProtocol: "responses",
+                  baseUrl: "https://api.openai.com/v1",
+                  apiKey: "",
+                  omitSampling: true,
+                  embedding: false,
+                }
+              : {}),
             isDefault: !!draft.isDefault,
             enabled: draft.isDefault ? true : draft.enabled !== false,
             timeoutMs: Number(draft.timeoutMs),
@@ -519,7 +917,13 @@ async function testModel() {
                   : t("备用模型")
             }}</span>
             <small>{{
-              model.hasApiKey ? t("密钥已保存") : t("待填写密钥")
+              isChatGptModel(model)
+                ? isChatGptProfileReady(model)
+                  ? t("订阅已连接")
+                  : t("待连接 ChatGPT 订阅")
+                : model.hasApiKey
+                  ? t("密钥已保存")
+                  : t("待填写密钥")
             }}</small>
           </button>
           <Empty
@@ -533,6 +937,378 @@ async function testModel() {
           />
         </div>
       </aside>
+
+      <section
+        id="chatgptSubscriptionCard"
+        class="card chatgpt-sub-panel"
+        aria-labelledby="chatgpt-sub-title"
+      >
+        <div class="card-head">
+          <div>
+            <span class="eyebrow">SIGN IN WITH CHATGPT</span>
+            <h2 id="chatgpt-sub-title">{{ t("ChatGPT 订阅入口") }}</h2>
+          </div>
+          <span
+            class="chip"
+            :data-tone="chatGptStatusTone(activeChatGptAccount)"
+            >{{ chatGptStatusLabel(activeChatGptAccount) }}</span
+          >
+        </div>
+
+        <p class="faint">
+          {{
+            t(
+              "与现有 API Key 供应商并列，通过官方 Sign in with ChatGPT 和直连 Responses API（store=false、stream=true）为你的自用机器人提供调用入口，不用于共享额度或对外代理。",
+            )
+          }}
+        </p>
+
+        <div
+          v-if="
+            activeChatGptAccount &&
+            activeChatGptAccount.planUsageEnabled &&
+            chatgptStatus &&
+            !chatgptStatus.firstSignInConfirmed
+          "
+          class="notice chatgpt-banner"
+          role="status"
+        >
+          <div>
+            <strong>{{ t("正在使用你的 ChatGPT 订阅") }}</strong>
+            <p class="faint">
+              {{
+                t(
+                  "调用消耗你本人的 ChatGPT 订阅共享滚动额度（与 ChatGPT 网页和应用共享，并非无限或独立额度），可在 ChatGPT 用量设置中随时查看或撤销授权。",
+                )
+              }}
+            </p>
+          </div>
+          <button
+            type="button"
+            class="small primary"
+            @click="acknowledgeFirstSignIn"
+          >
+            {{ t("知道了") }}
+          </button>
+        </div>
+
+        <div
+          v-if="activeChatGptAccount?.lastUsageLimitAt"
+          class="notice chatgpt-warn"
+          role="alert"
+        >
+          <div>
+            <strong>{{ t("ChatGPT 订阅额度已达上限") }}</strong>
+            <p class="faint">
+              {{
+                t(
+                  "当前共享滚动额度已用尽，调用已暂停。不会自动切换其他 ChatGPT 账号，也不会在未同意时切到付费 API Key。",
+                )
+              }}
+            </p>
+          </div>
+          <a
+            :href="chatgptUsageUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="usage-link primary-link"
+            >{{ t("前往 ChatGPT 管理用量 ↗") }}</a
+          >
+        </div>
+
+        <div
+          v-if="
+            activeChatGptAccount &&
+            (!activeChatGptAccount.hasTokens ||
+              activeChatGptAccount.needsReauth)
+          "
+          class="notice chatgpt-warn"
+          role="alert"
+        >
+          <div>
+            <strong>{{ t("ChatGPT 订阅登录已失效") }}</strong>
+            <p class="faint">
+              {{
+                t(
+                  "请重新通过官方登录恢复调用；已保存的模型档案与本机 host ID 会保留。",
+                )
+              }}
+            </p>
+          </div>
+          <button
+            type="button"
+            class="small primary"
+            data-oai-siwc-button
+            :data-oai-siwc-button-client="activeChatGptAccount.clientId"
+            :disabled="chatgptBusy"
+            @click="
+              beginChatGptSignIn('reauth', activeChatGptAccount.accountId)
+            "
+          >
+            {{ t("重新登录") }}
+          </button>
+        </div>
+
+        <div
+          v-else-if="
+            activeChatGptAccount &&
+            activeChatGptAccount.hasTokens &&
+            !activeChatGptAccount.planUsageEnabled
+          "
+          class="notice chatgpt-warn"
+          role="alert"
+        >
+          <div>
+            <strong>{{ t("尚未授予 ChatGPT 订阅用量权限") }}</strong>
+            <p class="faint">
+              {{
+                t(
+                  "当前仅完成了身份登录，未授予 chatgpt.tokens.use.direct 权限，暂不能发起模型调用。",
+                )
+              }}
+            </p>
+          </div>
+          <button
+            type="button"
+            class="small primary"
+            data-oai-siwc-button
+            :data-oai-siwc-button-client="activeChatGptAccount.clientId"
+            :disabled="chatgptBusy"
+            @click="
+              beginChatGptSignIn('reconsent', activeChatGptAccount.accountId)
+            "
+          >
+            {{ t("重新授权订阅权限") }}
+          </button>
+        </div>
+
+        <div v-if="activeChatGptAccount" class="chatgpt-account-bar">
+          <div class="chatgpt-account-meta">
+            <span class="plan-pill">{{ t("正在使用 ChatGPT 订阅") }}</span>
+            <b>{{ chatGptAccountLabel(activeChatGptAccount) }}</b>
+          </div>
+          <a
+            :href="chatgptUsageUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="usage-link"
+            >{{ t("管理用量 ↗") }}</a
+          >
+        </div>
+
+        <div v-if="chatgptAccounts.length > 1" class="chatgpt-account-picker">
+          <label>
+            {{ t("默认订阅账号") }}
+            <Select
+              :model-value="activeChatGptAccount?.accountId || ''"
+              :aria-label="t('默认订阅账号')"
+              :options="
+                chatgptAccounts.map((acc: any) => ({
+                  value: acc.accountId,
+                  label: `${chatGptAccountLabel(acc)} · ${chatGptStatusLabel(acc)}`,
+                }))
+              "
+              @change="chooseActiveChatGptAccount"
+            />
+          </label>
+        </div>
+
+        <div class="chatgpt-actions">
+          <button
+            id="continueWithChatGpt"
+            type="button"
+            class="primary siwc-btn"
+            data-oai-siwc-button
+            :data-oai-siwc-button-client="
+              activeChatGptAccount?.clientId || undefined
+            "
+            :disabled="chatgptBusy || !!chatgptPending"
+            @click="
+              beginChatGptSignIn(
+                activeChatGptAccount && !activeChatGptAccount.hasTokens
+                  ? 'reauth'
+                  : 'new',
+                activeChatGptAccount && !activeChatGptAccount.hasTokens
+                  ? activeChatGptAccount.accountId
+                  : '',
+              )
+            "
+          >
+            Continue with ChatGPT
+          </button>
+          <button
+            v-if="activeChatGptAccount?.planUsageEnabled"
+            id="fetchChatGptModels"
+            type="button"
+            :disabled="chatgptModelsBusy"
+            @click="fetchAccountModels"
+          >
+            {{ chatgptModelsBusy ? t("拉取中…") : t("拉取账号可用模型") }}
+          </button>
+          <button
+            v-if="activeChatGptAccount?.hasTokens"
+            type="button"
+            :disabled="chatgptBusy"
+            @click="disconnectChatGpt(activeChatGptAccount.accountId)"
+          >
+            {{ t("断开登录") }}
+          </button>
+          <button
+            v-if="activeChatGptAccount"
+            type="button"
+            class="danger"
+            :disabled="chatgptBusy"
+            @click="forgetChatGptAccount(activeChatGptAccount.accountId)"
+          >
+            {{ t("移除账号") }}
+          </button>
+        </div>
+
+        <div v-if="chatgptPending" class="notice chatgpt-pending" role="status">
+          <p>
+            {{
+              t(
+                "正在本机临时回调端口等待 ChatGPT 授权完成（约 10 分钟内有效）。完成授权后此页面会自动刷新。",
+              )
+            }}
+          </p>
+          <div class="chatgpt-actions">
+            <a
+              v-if="pendingAuthorizeUrl"
+              :href="pendingAuthorizeUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="usage-link primary-link"
+              >{{ t("打开 ChatGPT 授权页 ↗") }}</a
+            >
+            <button
+              v-if="pendingAuthorizeUrl"
+              type="button"
+              class="small"
+              @click="copyPendingUrl"
+            >
+              {{ t("复制授权链接") }}
+            </button>
+            <button
+              type="button"
+              class="small"
+              :disabled="chatgptBusy"
+              @click="cancelPendingSignIn"
+            >
+              {{ t("取消本次登录") }}
+            </button>
+          </div>
+        </div>
+
+        <div class="chatgpt-policies">
+          <label class="check policy-check">
+            <input
+              type="checkbox"
+              :checked="chatgptStatus?.settings?.allowBackgroundUse === true"
+              @change="toggleChatGptSetting('allowBackgroundUse', $event)"
+            />
+            <span>
+              <b>{{ t("允许后台自主任务使用 ChatGPT 订阅") }}</b>
+              <small class="faint">{{
+                t(
+                  "默认关闭。开启前仅响应对话与手动测试；开启后独处、整理记忆、日记与回顾等后台阶段也可使用你选中的 ChatGPT 订阅模型。",
+                )
+              }}</small>
+            </span>
+          </label>
+          <label class="check policy-check">
+            <input
+              type="checkbox"
+              :checked="chatgptStatus?.settings?.allowPaidFallback === true"
+              @change="toggleChatGptSetting('allowPaidFallback', $event)"
+            />
+            <span>
+              <b>{{ t("订阅失败时允许回退到付费 API Key 备用模型") }}</b>
+              <small class="faint">{{
+                t(
+                  "默认关闭。未开启时，订阅限额或失效不会静默切到按量计费 API Key，也绝不会在多个 ChatGPT 账号间自动轮换。",
+                )
+              }}</small>
+            </span>
+          </label>
+        </div>
+
+        <div v-if="chatgptModelsError" class="notice chatgpt-warn" role="alert">
+          {{ chatgptModelsError }}
+        </div>
+        <div
+          v-if="chatgptModelsNotice || chatgptModels.length"
+          class="chatgpt-live-models"
+        >
+          <p v-if="chatgptModelsNotice" class="faint">
+            {{ chatgptModelsNotice }}
+          </p>
+          <div v-if="chatgptModels.length" class="live-model-list">
+            <div
+              v-for="item in chatgptModels"
+              :key="item.slug"
+              class="live-model-row"
+            >
+              <div class="live-model-info">
+                <b>{{ item.displayName || item.slug }}</b>
+                <small>{{ item.slug }}</small>
+              </div>
+              <button
+                type="button"
+                class="small"
+                @click="createProfileFromLiveModel(item)"
+              >
+                {{ t("新建此订阅模型") }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <details class="advanced chatgpt-vm-box">
+          <summary>{{ t("自托管服务器（VPS）与使用边界说明") }}</summary>
+          <div class="chatgpt-vm-content">
+            <p class="faint">
+              {{
+                t(
+                  "官方 OAuth 回调固定监听本机 127.0.0.1 临时端口，浏览器与回调必须在同一机器上完成。若 LuckyTri 运行在远程无界面 VPS，可在你本人电脑完成登录后执行命令导出迁移凭据，通过 SSH 传到服务器导入。",
+                )
+              }}
+            </p>
+            <code class="vm-cmd"
+              >luckytri chatgpt-auth export-transfer --out transfer.json</code
+            >
+            <code class="vm-cmd"
+              >luckytri chatgpt-auth import-transfer transfer.json</code
+            >
+            <p v-if="chatgptStatus?.hostId" class="faint host-id-line">
+              {{ t("本机 Host ID（迁移不会覆盖）：") }}
+              <code>{{ chatgptStatus.hostId }}</code>
+            </p>
+            <label class="transfer-label">
+              <span>{{
+                t("或在此粘贴本地导出的迁移凭据 JSON（仅限你本人的受控主机）")
+              }}</span>
+              <textarea
+                v-model="transferInput"
+                rows="3"
+                :placeholder="
+                  t('粘贴 luckytri chatgpt-auth export-transfer 输出的 JSON')
+                "
+              />
+            </label>
+            <div class="chatgpt-actions">
+              <button
+                type="button"
+                class="small"
+                :disabled="transferBusy || !transferInput.trim()"
+                @click="submitTransferImport"
+              >
+                {{ transferBusy ? t("正在导入…") : t("导入本地迁移凭据") }}
+              </button>
+            </div>
+          </div>
+        </details>
+      </section>
     </div>
     <Sheet
       :open="editorOpen"
@@ -546,10 +1322,28 @@ async function testModel() {
             <span class="eyebrow">{{ t("模型档案") }}</span>
             <h2>{{ draft.label || t("新模型") }}</h2>
           </div>
-          <span class="chip" :data-tone="draft.hasApiKey ? 'ok' : 'warn'">{{
-            (draft.isDefault ? t("默认模型 · ") : "") +
-            (draft.hasApiKey ? t("密钥已保存") : t("待填写密钥"))
-          }}</span>
+          <span
+            class="chip"
+            :data-tone="
+              isDraftChatGpt
+                ? isChatGptProfileReady(draft)
+                  ? 'ok'
+                  : 'warn'
+                : draft.hasApiKey
+                  ? 'ok'
+                  : 'warn'
+            "
+            >{{
+              (draft.isDefault ? t("默认模型 · ") : "") +
+              (isDraftChatGpt
+                ? isChatGptProfileReady(draft)
+                  ? t("订阅已连接")
+                  : t("待连接 ChatGPT 订阅")
+                : draft.hasApiKey
+                  ? t("密钥已保存")
+                  : t("待填写密钥"))
+            }}</span
+          >
         </div>
         <form
           id="modelForm"
@@ -591,13 +1385,44 @@ async function testModel() {
                   v-model="draft.baseUrl"
                   name="baseUrl"
                   type="url"
+                  :readonly="isDraftChatGpt"
                   required
               /></label>
               <label
                 >{{ t("模型名称")
                 }}<input v-model="draft.model" name="model" required
               /></label>
-              <label class="wide">
+              <div v-if="isDraftChatGpt" class="wide chatgpt-draft-note">
+                <label v-if="chatgptAccounts.length">
+                  {{ t("绑定的 ChatGPT 订阅账号") }}
+                  <Select
+                    v-model="draft.oauthAccountId"
+                    :aria-label="t('绑定的 ChatGPT 订阅账号')"
+                    :options="[
+                      { value: '', label: t('跟随默认订阅账号') },
+                      ...chatgptAccounts.map((acc: any) => ({
+                        value: acc.accountId,
+                        label: `${chatGptAccountLabel(acc)} · ${chatGptStatusLabel(acc)}`,
+                      })),
+                    ]"
+                  />
+                </label>
+                <p class="faint">
+                  {{
+                    t(
+                      "此模型通过官方 Sign in with ChatGPT 和直连 Responses API（store=false、stream=true）调用，无需填写 OpenAI API Key。",
+                    )
+                  }}
+                  <a
+                    :href="chatgptUsageUrl"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="usage-link"
+                    >{{ t("管理用量 ↗") }}</a
+                  >
+                </p>
+              </div>
+              <label v-else class="wide">
                 API Key
                 <input
                   v-model="draft.apiKey"
@@ -677,7 +1502,7 @@ async function testModel() {
           <details class="advanced">
             <summary>{{ t("高级参数与模型能力") }}</summary>
             <div class="form-grid">
-              <label
+              <label v-if="!isDraftChatGpt"
                 >{{ t("随机程度 Temperature")
                 }}<input
                   v-model.number="draft.temperature"
@@ -685,7 +1510,7 @@ async function testModel() {
                   type="number"
                   step="0.05"
               /></label>
-              <label
+              <label v-if="!isDraftChatGpt"
                 >{{ t("采样范围 Top P")
                 }}<input
                   v-model.number="draft.topP"
@@ -700,7 +1525,7 @@ async function testModel() {
                   name="timeoutMs"
                   type="number"
               /></label>
-              <label
+              <label v-if="!isDraftChatGpt"
                 >{{ t("知识检索模型")
                 }}<input
                   v-model="draft.embeddingModel"
@@ -708,6 +1533,13 @@ async function testModel() {
                   :placeholder="t('留空跟随对话模型')"
               /></label>
             </div>
+            <p v-if="isDraftChatGpt" class="faint">
+              {{
+                t(
+                  "ChatGPT 订阅预览接口固定使用 store=false、stream=true，不支持采样参数和向量 Embedding；如需知识向量请在「系统 → 知识向量」单独配置 API Key 模型。",
+                )
+              }}
+            </p>
             <p class="faint">
               {{
                 t(
@@ -727,9 +1559,12 @@ async function testModel() {
                 :key="key"
                 class="check"
               >
-                <input v-model="draft[key]" :name="key" type="checkbox" />{{
-                  label
-                }}
+                <input
+                  v-model="draft[key]"
+                  :name="key"
+                  type="checkbox"
+                  :disabled="isDraftChatGpt && key === 'embedding'"
+                />{{ label }}
               </label>
             </div>
           </details>
@@ -958,6 +1793,164 @@ async function testModel() {
         transparent 56%
       ),
       var(--surface);
+  }
+  .chatgpt-sub-panel {
+    display: grid;
+    gap: 14px;
+    min-width: 0;
+    background:
+      radial-gradient(
+        ellipse at 100% 0,
+        color-mix(in srgb, var(--glow-b) 22%, transparent),
+        transparent 54%
+      ),
+      var(--surface);
+  }
+  .chatgpt-banner,
+  .chatgpt-warn,
+  .chatgpt-pending {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .chatgpt-warn {
+    border-color: color-mix(in srgb, var(--warn, #d97706) 35%, white);
+  }
+  .chatgpt-account-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    border: 1px solid rgb(255 255 255 / 0.78);
+    border-radius: 16px;
+    background: rgb(255 255 255 / 0.38);
+    min-width: 0;
+  }
+  .chatgpt-account-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .plan-pill {
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent-soft) 75%, white);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .usage-link {
+    color: var(--accent);
+    font-size: 12.5px;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .usage-link:hover {
+    text-decoration: underline;
+  }
+  .chatgpt-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .chatgpt-policies {
+    display: grid;
+    gap: 10px;
+  }
+  .policy-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid rgb(255 255 255 / 0.72);
+    border-radius: 14px;
+    background: rgb(255 255 255 / 0.28);
+  }
+  .policy-check span {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .policy-check b {
+    font-size: 13px;
+  }
+  .chatgpt-live-models {
+    display: grid;
+    gap: 8px;
+  }
+  .live-model-list {
+    display: grid;
+    gap: 6px;
+    max-height: 240px;
+    overflow: auto;
+  }
+  .live-model-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 9px 12px;
+    border: 1px solid rgb(255 255 255 / 0.78);
+    border-radius: 14px;
+    background: rgb(255 255 255 / 0.42);
+  }
+  .live-model-info {
+    display: grid;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .live-model-info small {
+    color: var(--ink-soft);
+    font-size: 11px;
+  }
+  .chatgpt-vm-content {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+  }
+  .vm-cmd {
+    display: block;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgb(255 255 255 / 0.55);
+    font-size: 11.5px;
+    overflow-wrap: anywhere;
+    word-break: break-all;
+  }
+  .host-id-line {
+    overflow-wrap: anywhere;
+    word-break: break-all;
+  }
+  .transfer-label {
+    display: grid;
+    gap: 6px;
+    font-size: 12px;
+  }
+  .transfer-label textarea {
+    width: 100%;
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid rgb(255 255 255 / 0.85);
+    border-radius: 12px;
+    background: rgb(255 255 255 / 0.6);
+    color: var(--ink);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11.5px;
+    resize: vertical;
+  }
+  .chatgpt-draft-note {
+    display: grid;
+    gap: 8px;
   }
   .detail {
     background:

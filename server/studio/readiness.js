@@ -30,6 +30,8 @@ export function savedConnectionSettings(store, modelId = "") {
           model: profile.model,
           apiKey: profile.apiKey || "",
           providerPreset: profile.provider || settings.providerPreset,
+          authMode: profile.authMode || "api-key",
+          oauthAccountId: profile.oauthAccountId || "",
           reasoningEffort: profile.reasoningEffort || "none",
           temperature: profile.temperature ?? settings.temperature,
           topP: profile.topP ?? settings.topP,
@@ -39,12 +41,17 @@ export function savedConnectionSettings(store, modelId = "") {
   };
 }
 export function modelSignature(settings) {
+  const isChatGpt =
+    settings.authMode === "chatgpt-oauth" ||
+    settings.providerPreset === "openai-chatgpt";
   return createHash("sha256")
     .update(
       JSON.stringify([
         settings.baseUrl,
         settings.model,
-        process.env.LLM_API_KEY || settings.apiKey,
+        isChatGpt
+          ? `chatgpt-oauth:${settings.oauthAccountId || ""}`
+          : process.env.LLM_API_KEY || settings.apiKey,
         settings.providerPreset,
         settings.reasoningEffort,
         settings.temperature,

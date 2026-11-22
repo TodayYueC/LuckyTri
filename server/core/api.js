@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { isLoopback } from "../local-access.js";
+import { isChatGptSubscriptionProfile } from "./chatgpt-subscription.js";
 import {
   normalizeModels,
   publicModel,
@@ -67,6 +69,7 @@ export function mountCore(app, system) {
     const names = displayNames(repo.db, system.now());
     res.json({
       models: normalizeModels(storedModels(repo)).map(publicModel),
+      chatgptAuth: system.chatgptAuth?.publicStatus?.() ?? null,
       persona: system.mind.nature.current(),
       prompts: prompts(repo),
       sessions: repo.db
@@ -229,7 +232,9 @@ export function mountCore(app, system) {
           validateModel({
             ...m,
             isDefault: !!m.isDefault,
-            apiKey: m.apiKey || old.find((x) => x.id === m.id)?.apiKey || "",
+            apiKey: isChatGptSubscriptionProfile(m)
+              ? ""
+              : m.apiKey || old.find((x) => x.id === m.id)?.apiKey || "",
           }),
         ),
       );
@@ -237,6 +242,109 @@ export function mountCore(app, system) {
         throw Error("模型 ID 重复");
       repo.saveConfig("models", profiles);
       res.json({ ok: true });
+    }),
+  );
+  const requireChatGptAuth = () => {
+    if (!system.chatgptAuth) throw Error("ChatGPT 订阅认证服务未初始化");
+    return system.chatgptAuth;
+  };
+  app.get(
+    "/api/core/chatgpt-auth/status",
+    wrap((req, res) => {
+      res.json(requireChatGptAuth().publicStatus());
+    }),
+  );
+  app.post(
+    "/api/core/chatgpt-auth/start",
+    wrap(async (req, res) => {
+      const auth = requireChatGptAuth();
+      const mode =
+        typeof req.body?.mode === "string" && req.body.mode
+          ? req.body.mode
+          : "new";
+      const accountId =
+        typeof req.body?.accountId === "string" ? req.body.accountId : "";
+      const openBrowser = Boolean(req.body?.openBrowser) && isLoopback(req);
+      const started = await auth.startSignIn({ mode, accountId, openBrowser });
+      res.json({
+        ...started,
+        status: auth.publicStatus(),
+      });
+    }),
+  );
+  app.post(
+    "/api/core/chatgpt-auth/cancel",
+    wrap((req, res) => {
+      const auth = requireChatGptAuth();
+      auth.cancelPendingAuth();
+      res.json({ ok: true, status: auth.publicStatus() });
+    }),
+  );
+  app.post(
+    "/api/core/chatgpt-auth/select",
+    wrap((req, res) => {
+      const auth = requireChatGptAuth();
+      const status = auth.selectAccount(req.body?.accountId);
+      repo.store.revision++;
+      res.json({ ok: true, status });
+    }),
+  );
+  app.post(
+    "/api/core/chatgpt-auth/confirm-first-use",
+    wrap((req, res) => {
+      const auth = requireChatGptAuth();
+      res.json({ ok: true, status: auth.confirmFirstSignIn() });
+    }),
+  );
+  app.patch(
+    "/api/core/chatgpt-auth/settings",
+    wrap((req, res) => {
+      const auth = requireChatGptAuth();
+      const status = auth.updateSettings(req.body || {});
+      repo.store.revision++;
+      res.json({ ok: true, status });
+    }),
+  );
+  app.post(
+    "/api/core/chatgpt-auth/signout",
+    wrap(async (req, res) => {
+      const auth = requireChatGptAuth();
+      const accountId =
+        typeof req.body?.accountId === "string" ? req.body.accountId : "";
+      const result = await auth.signOutAccount(accountId);
+      repo.store.revision++;
+      res.json(result);
+    }),
+  );
+  app.delete(
+    "/api/core/chatgpt-auth/accounts/:accountId",
+    wrap(async (req, res) => {
+      const auth = requireChatGptAuth();
+      const result = await auth.removeAccount(req.params.accountId);
+      repo.store.revision++;
+      res.json(result);
+    }),
+  );
+  app.get(
+    "/api/core/chatgpt-auth/models",
+    wrap(async (req, res) => {
+      const auth = requireChatGptAuth();
+      const accountId =
+        typeof req.query?.accountId === "string" ? req.query.accountId : "";
+      res.json(await auth.listModels(accountId));
+    }),
+  );
+  app.post(
+    "/api/core/chatgpt-auth/import-transfer",
+    wrap((req, res) => {
+      const auth = requireChatGptAuth();
+      const raw = req.body?.record;
+      if (raw === undefined || raw === null || raw === "") {
+        throw Error("请提供要导入的本地迁移凭据 JSON");
+      }
+      const status = auth.importTransferRecord(raw);
+      repo.store.revision++;
+      res.json({ ok: true, status });
     }),
   );
   app.delete(

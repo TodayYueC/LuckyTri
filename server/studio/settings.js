@@ -84,6 +84,7 @@ export function mountStudio(app, store, runtime, chat) {
       feedbackLabels: FEEDBACK_LABELS,
       modelPresets: MODEL_PRESETS,
       modelCatalog: MODEL_CATALOG,
+      chatgptAuth: chat?.chatgptAuth?.publicStatus?.() ?? null,
       reasoningEfforts: REASONING_EFFORTS,
       effortLabels: EFFORT_LABELS,
       connection,
@@ -166,7 +167,7 @@ export function mountStudio(app, store, runtime, chat) {
       res.status(400).json({ error: error.message });
     }
   });
-    app.patch("/api/settings", (req, res) => {
+  app.patch("/api/settings", (req, res) => {
     const v = req.body;
     const allowed = {};
     for (const k of [

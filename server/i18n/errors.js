@@ -652,6 +652,100 @@ export const ERRORS = {
   模型名称不能为空: "The model name cannot be empty",
   "这个模型服务正在恢复探测中，先改走备用模型":
     "This model service is probing for recovery; using the backup model for now",
+
+  // ChatGPT Subscription (Sign in with ChatGPT)
+  "ChatGPT 订阅认证服务未初始化":
+    "ChatGPT subscription auth service is not initialized",
+  "请提供要导入的本地迁移凭据 JSON":
+    "Provide the local transfer credential JSON to import",
+  "请先在模型库中连接 ChatGPT 订阅账号并授予订阅权限":
+    "Connect a ChatGPT subscription account in the Model Library and grant plan usage permission first",
+  "ChatGPT 订阅不支持自填 API Key，请改用官方 Sign in with ChatGPT 登录":
+    "ChatGPT subscription profiles do not accept an API key; sign in with official Sign in with ChatGPT instead",
+  "ChatGPT 订阅只能连接官方公共 Responses API，禁止连接 chatgpt.com 内部接口":
+    "ChatGPT subscription profiles may only call the official public Responses API; chatgpt.com internal endpoints are forbidden",
+  "ChatGPT 订阅本地凭据文件必须是普通文件":
+    "The local ChatGPT subscription credential file must be a regular file",
+  "ChatGPT 订阅本地凭据文件格式无效":
+    "The local ChatGPT subscription credential file format is invalid",
+  "ChatGPT 订阅本地凭据文件不能是符号链接":
+    "The local ChatGPT subscription credential file cannot be a symlink",
+  "ChatGPT 订阅流式响应体为空": "ChatGPT subscription stream body was empty",
+  设置格式无效: "Invalid settings format",
+  "所选 ChatGPT 账号不存在": "Selected ChatGPT account does not exist",
+  "OpenAI 公钥集（JWKS）为空": "OpenAI JWKS key set is empty",
+  "令牌响应缺少 ID Token": "Token response is missing id_token",
+  "ID Token JWT 结构无效": "Invalid ID token JWT structure",
+  "未找到匹配的 OpenAI 公钥（kid）":
+    "No matching OpenAI public key (kid) found",
+  "OpenAI 公钥格式无效": "Invalid OpenAI public key format",
+  "ID Token 签名校验失败": "ID token signature verification failed",
+  "ID Token 签发方（iss）不匹配": "ID token issuer (iss) does not match",
+  "ID Token 受众（aud）与客户端 ID 不匹配":
+    "ID token audience (aud) does not match client ID",
+  "ID Token 缺少主体标识（sub）": "ID token is missing subject (sub)",
+  "ID Token 已过期": "ID token has expired",
+  "ID Token 签发时间（iat）无效": "ID token issued-at (iat) is invalid",
+  "ID Token 尚未生效（nbf）": "ID token is not yet valid (nbf)",
+  "ID Token nonce 校验失败": "ID token nonce verification failed",
+  "ID Token 会话标识（sid）无效": "ID token session ID (sid) is invalid",
+  登录模式无效: "Invalid sign-in mode",
+  "所选 ChatGPT 账号没有已签发的客户端 ID，请使用新账号登录":
+    "Selected ChatGPT account has no issued client ID; sign in as a new account",
+  "动态注册入口不能作为已签发客户端 ID 复用":
+    "The dynamic registration sentinel cannot be reused as an issued client ID",
+  "无法在本机 127.0.0.1 启动 OAuth 回调监听":
+    "Could not start the local 127.0.0.1 OAuth callback listener",
+  "授权登录已超时，请重新发起连接":
+    "Authorization timed out; start connecting again",
+  "授权事务不存在或已被使用，请重新发起登录":
+    "Authorization transaction does not exist or was already consumed; start sign-in again",
+  "授权登录已过期，请重新发起登录":
+    "Authorization session expired; start sign-in again",
+  "OAuth state 校验失败，已拒绝本次回调":
+    "OAuth state verification failed; callback rejected",
+  "回调缺少授权码（code）": "Callback is missing the authorization code",
+  "新注册回调未返回有效的已签发 client_id，注册未完成（不会保存 dynamic_agent_client）":
+    "New registration callback did not return a valid issued client_id; dynamic_agent_client is never saved",
+  "重新授权回调返回的 client_id 与所选账号不一致，已拒绝替换凭据":
+    "Reauthorization callback client_id does not match the selected account; credentials were not replaced",
+  "重新登录的 ChatGPT 账号身份与原账号不一致，已拒绝覆盖":
+    "The signed-in ChatGPT account identity does not match the original account; overwrite rejected",
+  "OpenAI 令牌响应缺少 access_token":
+    "OpenAI token response is missing access_token",
+  "尚未连接 ChatGPT 订阅账号，请先在模型库中完成登录":
+    "No ChatGPT subscription account connected; sign in from the Model Library first",
+  "当前 ChatGPT 账号未启用订阅调用权限（缺少 chatgpt.tokens.use.direct），请重新授权启用或改用 API Key":
+    "This ChatGPT account has not enabled plan usage permission (missing chatgpt.tokens.use.direct); re-consent or use an API key",
+  "ChatGPT 订阅会话已过期且没有刷新令牌，请重新登录":
+    "ChatGPT subscription session expired with no refresh token; please sign in again",
+  "ChatGPT 订阅账号不存在": "ChatGPT subscription account does not exist",
+  "缺少刷新令牌，请重新登录 ChatGPT":
+    "Refresh token missing; please sign in with ChatGPT again",
+  "客户端 ID 无效，请重新连接 ChatGPT 订阅":
+    "Invalid client ID; reconnect your ChatGPT subscription",
+  "刷新响应缺少新的 access_token":
+    "Token refresh response did not include a new access_token",
+  "没有可导出的已登录 ChatGPT 订阅凭据":
+    "No signed-in ChatGPT subscription credentials available to export",
+  "导入凭据格式无效，需要 JSON 对象":
+    "Invalid transfer credential format; a JSON object is required",
+  "迁移凭据中的 issuer 必须指向 https://auth.openai.com":
+    "Transfer credential issuer must point to https://auth.openai.com",
+  "导入凭据缺少有效的已签发 client_id":
+    "Transfer credentials are missing a valid issued client_id",
+  "导入凭据缺少已验证的账号主体（subject）":
+    "Transfer credentials are missing a verified account subject",
+  "导入凭据至少需要 access_token 或 refresh_token":
+    "Transfer credentials require at least an access_token or refresh_token",
+  "导入凭据不包含 chatgpt.tokens.use.direct 权限，不能用于订阅调用":
+    "Transfer credentials do not include chatgpt.tokens.use.direct permission and cannot be used for plan inference",
+  "ChatGPT 订阅未授权用于后台自主任务，如需启用请在模型库中明确同意":
+    "ChatGPT subscription is not enabled for background autonomous tasks; opt in explicitly in the Model Library",
+  "ChatGPT 订阅不支持向量接口，请使用独立的知识向量模型 API Key":
+    "ChatGPT subscription does not support embeddings; configure a separate API-key model for knowledge vectors",
+  "ChatGPT 订阅流在收到 response.completed 前中断":
+    "ChatGPT subscription stream ended before response.completed arrived",
 };
 
 // Messages that carry a value. `{0}`, `{1}` are filled with what the code put
@@ -724,4 +818,37 @@ export const ERROR_PATTERNS = [
   ],
   ["{0} 须为布尔值", "{0} must be a boolean"],
   ["音乐卡片发送失败：{0}。{1}", "Music card failed to send: {0}. {1}"],
+  ["ID Token {0} 格式无效", "Invalid ID token {0} format"],
+  [
+    "无法获取 OpenAI 公钥集（JWKS HTTP {0}）",
+    "Could not fetch OpenAI JWKS keys (HTTP {0})",
+  ],
+  [
+    "ID Token 签名算法不受支持（{0}）",
+    "Unsupported ID token signing algorithm ({0})",
+  ],
+  [
+    "ChatGPT 订阅响应未完成（{0}）",
+    "ChatGPT subscription response incomplete ({0})",
+  ],
+  [
+    "OpenAI 令牌交换失败（HTTP {0}）",
+    "OpenAI token exchange failed (HTTP {0})",
+  ],
+  [
+    "刷新 ChatGPT 订阅令牌时网络连接失败（{0}）",
+    "Network error refreshing ChatGPT subscription token ({0})",
+  ],
+  [
+    "ChatGPT 订阅授权已失效（{0}）",
+    "ChatGPT subscription authorization expired ({0})",
+  ],
+  [
+    "刷新 ChatGPT 订阅令牌时服务端暂时不可用（HTTP {0}），已保留本地登录状态",
+    "OpenAI token service temporarily unavailable (HTTP {0}); local sign-in state preserved",
+  ],
+  [
+    "刷新 ChatGPT 订阅令牌失败（HTTP {0}）",
+    "Failed to refresh ChatGPT subscription token (HTTP {0})",
+  ],
 ];
