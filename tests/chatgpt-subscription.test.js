@@ -1,13 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createSign, generateKeyPairSync } from "node:crypto";
 import {
+  chmodSync,
+  existsSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import express from "express";
@@ -18,6 +23,8 @@ import {
   ChatGptSubscriptionManager,
   DYNAMIC_CLIENT_ID,
   SIWC_UNSUPPORTED_FIELDS,
+  assertOfficialChatGptBaseUrl,
+  assertOfficialOpenAiIssuer,
   buildChatGptResponsesBody,
   generateHostId,
   isValidHostId,
@@ -1109,4 +1116,749 @@ test("Studio API 路由与 /api/model/test 支持 ChatGPT 订阅模型且不泄�
     modelsJson.models.map((m) => m.slug),
     ["gpt-6.2-sol", "gpt-6-luna"],
   );
+});
+
+test("P1 回归：订阅目标锁定官方 https://api.openai.com/v1（校验层+发送边界+防重定向泄漏+issuer 严格匹配）", async (t) => {
+  const baseSubProfile = (baseUrl) => ({
+    id: "sub-dest",
+    label: "ChatGPT 订阅",
+    provider: CHATGPT_PROVIDER_ID,
+    authMode: CHATGPT_AUTH_MODE,
+    baseUrl,
+    model: "gpt-6.2-sol",
+    apiProtocol: "responses",
+    contextWindow: 400000,
+    maxInputTokens: 272000,
+    maxOutputTokens: 128000,
+    timeoutMs: 60000,
+    vision: true,
+    system: true,
+    json: true,
+    tools: true,
+    embedding: false,
+    temperature: 1,
+    topP: 1,
+  });
+
+  // 1. Accepted canonical forms
+  for (const okUrl of [
+    "",
+    "https://api.openai.com/v1",
+    "https://api.openai.com/v1/",
+    "https://API.OPENAI.COM:443/v1",
+  ]) {
+    const validated = validateModel(baseSubProfile(okUrl));
+    assert.equal(validated.baseUrl, CHATGPT_API_BASE);
+    assert.equal(
+      assertOfficialChatGptBaseUrl(okUrl, { allowEmpty: true }),
+      CHATGPT_API_BASE,
+    );
+  }
+
+  // 2. Rejected URLs: arbitrary HTTPS, plain HTTP, loopback/private, lookalike host, port/path/query/hash/traversal
+  const rejectedUrls = [
+    "https://example.org/v1",
+    "http://api.openai.com/v1",
+    "http://example.org/v1",
+    "http://127.0.0.1:8080/v1",
+    "https://127.0.0.1/v1",
+    "https://localhost/v1",
+    "https://10.0.0.1/v1",
+    "http://[::1]:8080/v1",
+    "https://api.openai.com.evil.com/v1",
+    "https://evil-api.openai.com/v1",
+    "https://api.openai.com@evil.com/v1",
+    "https://api.openai.com:8443/v1",
+    "https://api.openai.com/v1/extra",
+    "https://api.openai.com/v2",
+    "https://api.openai.com/",
+    "https://api.openai.com/v1?x=1",
+    "https://api.openai.com/v1#frag",
+    "https://api.openai.com/v1/../v1",
+    "https://chatgpt.com/backend-api",
+    "https://api.openai.com/backend-api/codex",
+  ];
+  for (const badUrl of rejectedUrls) {
+    assert.throws(
+      () => validateModel(baseSubProfile(badUrl)),
+      /官方/,
+      `validateModel should reject ${badUrl}`,
+    );
+  }
+
+  // 3. Constructor rejects non-official apiBase; importTransferRecord rejects lookalike issuer
+  assert.throws(
+    () =>
+      new ChatGptSubscriptionManager({
+        memoryOnly: true,
+        apiBase: "https://example.org/v1",
+      }),
+    /官方/,
+  );
+  assert.throws(
+    () => assertOfficialOpenAiIssuer("https://auth.openai.com.evil.com"),
+    /auth\.openai\.com/,
+  );
+  const auth = new ChatGptSubscriptionManager({ memoryOnly: true });
+  t.after(() => auth.close());
+  assert.throws(
+    () =>
+      auth.importTransferRecord({
+        issuer: "https://auth.openai.com.evil.com",
+        client_id: "client_1",
+        subject: "sub_1",
+        access_token: "at_1",
+        refresh_token: "rt_1",
+        scopes: ["openid", "chatgpt.tokens.use.direct"],
+      }),
+    /auth\.openai\.com/,
+  );
+
+  // Seed valid credential
+  auth.importTransferRecord({
+    issuer: "https://auth.openai.com",
+    client_id: "client_dest_1",
+    subject: "sub_dest_1",
+    access_token: "at_dest_secret",
+    refresh_token: "rt_dest_secret",
+    scopes: ["openid", "chatgpt.tokens.use.direct"],
+    expires_at: Date.now() + 3600_000,
+  });
+
+  // 4. Send-boundary rejection for tampered/imported profile stored directly in SQLite
+  const store = createStore(":memory:");
+  t.after(() => store.db.close());
+  const repo = new Repository(store);
+  const tamperedProfile = baseSubProfile("https://evil.example/v1");
+  tamperedProfile.isDefault = true;
+  repo.saveConfig("models", [tamperedProfile]);
+
+  let fetcherCalls = 0;
+  let tokenLookupCalls = 0;
+  const origGetAccessToken = auth.getAccessToken.bind(auth);
+  auth.getAccessToken = async (...args) => {
+    tokenLookupCalls++;
+    return origGetAccessToken(...args);
+  };
+
+  const models = new ModelManager(repo, {
+    chatgptAuth: auth,
+    fetcher: async () => {
+      fetcherCalls++;
+      return new Response("", { status: 200 });
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      models.call(
+        tamperedProfile,
+        "test",
+        "sys",
+        { prompt: "hi" },
+        { calls: [] },
+      ),
+    /官方 https:\/\/api\.openai\.com\/v1/,
+  );
+  assert.equal(fetcherCalls, 0);
+  assert.equal(tokenLookupCalls, 0);
+
+  // Also verify /api/model/test rejects tampered SQLite profile with 0 outbound calls
+  const chatSystem = new ChatSystem(store, async () => {}, {
+    models,
+    chatgptAuth: auth,
+  });
+  t.after(() => chatSystem.close());
+  const app = express();
+  app.use(express.json());
+  mountManagement(app, store, chatSystem);
+  const apiServer = await new Promise((resolve) => {
+    const s = app.listen(0, "127.0.0.1", () => resolve(s));
+  });
+  t.after(() => apiServer.close());
+  const testRes = await fetch(
+    `http://127.0.0.1:${apiServer.address().port}/api/model/test`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ modelId: "sub-dest" }),
+    },
+  );
+  assert.equal(testRes.status, 502);
+  const testJson = await testRes.json();
+  assert.match(testJson.error, /官方 https:\/\/api\.openai\.com\/v1/);
+  assert.equal(fetcherCalls, 0);
+  assert.equal(tokenLookupCalls, 0);
+
+  // 5. Real Node fetch redirect-leak regression: 302 from primary must NEVER follow to sink
+  let sinkHits = 0;
+  const sinkServer = createServer((req, res) => {
+    sinkHits++;
+    res.writeHead(200);
+    res.end("leaked");
+  });
+  await new Promise((resolve) => sinkServer.listen(0, "127.0.0.1", resolve));
+  t.after(() => sinkServer.close());
+  const sinkUrl = `http://127.0.0.1:${sinkServer.address().port}/steal`;
+
+  const redirectServer = createServer((req, res) => {
+    res.writeHead(302, { Location: sinkUrl });
+    res.end();
+  });
+  await new Promise((resolve) =>
+    redirectServer.listen(0, "127.0.0.1", resolve),
+  );
+  t.after(() => redirectServer.close());
+  const redirectOrigin = `http://127.0.0.1:${redirectServer.address().port}`;
+
+  const observedOfficialUrls = [];
+  const redirectAdapterFetch = (url, init) => {
+    const href = String(url);
+    observedOfficialUrls.push({ href, redirect: init?.redirect });
+    assert.ok(
+      href.startsWith(`${CHATGPT_API_BASE}/`),
+      `expected official API URL, got ${href}`,
+    );
+    return fetch(href.replace(CHATGPT_API_BASE, redirectOrigin), init);
+  };
+
+  const authRedirect = new ChatGptSubscriptionManager({
+    memoryOnly: true,
+    fetcher: redirectAdapterFetch,
+  });
+  t.after(() => authRedirect.close());
+  authRedirect.importTransferRecord({
+    issuer: "https://auth.openai.com",
+    client_id: "client_redir",
+    subject: "sub_redir",
+    access_token: "at_redir_tok",
+    refresh_token: "rt_redir_tok",
+    scopes: ["openid", "chatgpt.tokens.use.direct"],
+    expires_at: Date.now() + 3600_000,
+  });
+
+  const redirectModels = new ModelManager(repo, {
+    chatgptAuth: authRedirect,
+    fetcher: redirectAdapterFetch,
+  });
+  const officialProfile = validateModel(baseSubProfile(CHATGPT_API_BASE));
+  await assert.rejects(
+    () =>
+      redirectModels.call(
+        officialProfile,
+        "test",
+        "sys",
+        { prompt: "hi" },
+        { calls: [] },
+      ),
+    /重定向/,
+  );
+  await assert.rejects(() => authRedirect.listModels(), /重定向/);
+  assert.equal(sinkHits, 0, "302 redirect must never be followed to sink");
+  assert.ok(observedOfficialUrls.every((entry) => entry.redirect === "manual"));
+  assert.ok(
+    observedOfficialUrls.some(
+      (entry) => entry.href === "https://api.openai.com/v1/responses",
+    ),
+  );
+  assert.ok(
+    observedOfficialUrls.some(
+      (entry) => entry.href === "https://api.openai.com/v1/models",
+    ),
+  );
+});
+
+test("P1 回归：延迟刷新与登出/删除/重新导入/回合取消的生命周期代次协调", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "luckytri-siwc-race-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+  // --- Scenario A: Delayed refresh ignores abort and resolves AFTER signOutAccount ---
+  {
+    const storagePath = join(dir, "race-signout.json");
+    let resolveToken;
+    let resolveRevoke;
+    let tokenStarted = false;
+    let revokeStarted = false;
+    const auth = new ChatGptSubscriptionManager({
+      storagePath,
+      discoveryOverride: {
+        issuer: "https://auth.openai.com",
+        token_endpoint: "https://auth.openai.com/api/accounts/oauth/token",
+        revocation_endpoint:
+          "https://auth.openai.com/api/accounts/oauth/revoke",
+      },
+      fetcher: (url) => {
+        const href = String(url);
+        if (href.includes("/token")) {
+          tokenStarted = true;
+          // Intentionally ignore AbortSignal to simulate a response already in flight.
+          return new Promise((resolve) => {
+            resolveToken = resolve;
+          });
+        }
+        if (href.includes("/revoke")) {
+          revokeStarted = true;
+          return new Promise((resolve) => {
+            resolveRevoke = resolve;
+          });
+        }
+        throw new Error(`unexpected ${href}`);
+      },
+    });
+    t.after(() => auth.close());
+
+    auth.importTransferRecord({
+      client_id: "client_race_a",
+      subject: "sub_race_a",
+      access_token: "at_old_a",
+      refresh_token: "rt_old_a",
+      scopes: ["openid", "chatgpt.tokens.use.direct"],
+      expires_at: Date.now() - 5000,
+    });
+    const accId = auth.state.activeAccountId;
+
+    const refreshPromise = auth.refreshAccount(accId);
+    await new Promise((r) => setTimeout(r, 15));
+    assert.equal(tokenStarted, true);
+
+    // Start sign-out while refresh is STILL pending (never resolved yet)
+    const signOutPromise = auth.signOutAccount(accId);
+    await new Promise((r) => setTimeout(r, 15));
+    assert.equal(revokeStarted, true);
+
+    // Immediate request gating BEFORE remote revocation even finishes!
+    assert.equal(auth.hasUsableCredential(accId), false);
+    assert.equal(auth.publicStatus().connected, false);
+    await assert.rejects(() => auth.getAccessToken(accId), /权限|重新登录/);
+
+    // Complete remote revocation -> signOut completes WITHOUT waiting for hung refresh!
+    resolveRevoke(new Response("", { status: 200 }));
+    const signOutRes = await signOutPromise;
+    assert.equal(signOutRes.ok, true);
+    assert.equal(signOutRes.remoteRevoked, true);
+
+    // Now the old delayed refresh finally returns fresh tokens -> MUST be discarded!
+    resolveToken(
+      new Response(
+        JSON.stringify({
+          access_token: "at_zombie_a",
+          refresh_token: "rt_zombie_a",
+          expires_in: 3600,
+          scope: "openid chatgpt.tokens.use.direct",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    await assert.rejects(
+      () => refreshPromise,
+      (err) => err?.staleRefresh === true,
+    );
+
+    // Memory AND persisted file must remain signed out (no resurrection!)
+    assert.equal(auth.state.accounts[accId].access_token, "");
+    assert.equal(auth.state.accounts[accId].refresh_token, "");
+    assert.equal(auth.state.accounts[accId].planUsageEnabled, false);
+    const reloaded = new ChatGptSubscriptionManager({ storagePath });
+    assert.equal(reloaded.hasUsableCredential(accId), false);
+    assert.equal(reloaded.state.accounts[accId].access_token, "");
+  }
+
+  // --- Scenario B: Delayed refresh (both 200 and invalid_grant) resolves AFTER removeAccount ---
+  for (const mode of ["success", "invalid_grant"]) {
+    const storagePath = join(dir, `race-remove-${mode}.json`);
+    let resolveToken;
+    const auth = new ChatGptSubscriptionManager({
+      storagePath,
+      discoveryOverride: {
+        issuer: "https://auth.openai.com",
+        token_endpoint: "https://auth.openai.com/api/accounts/oauth/token",
+        revocation_endpoint:
+          "https://auth.openai.com/api/accounts/oauth/revoke",
+      },
+      fetcher: (url) => {
+        if (String(url).includes("/token")) {
+          return new Promise((resolve) => {
+            resolveToken = resolve;
+          });
+        }
+        return Promise.resolve(new Response("", { status: 200 }));
+      },
+    });
+    t.after(() => auth.close());
+
+    auth.importTransferRecord({
+      client_id: `client_rm_${mode}`,
+      subject: `sub_rm_${mode}`,
+      access_token: "at_rm",
+      refresh_token: "rt_rm",
+      scopes: ["openid", "chatgpt.tokens.use.direct"],
+      expires_at: Date.now() - 5000,
+    });
+    const accId = auth.state.activeAccountId;
+
+    const refreshPromise = auth.refreshAccount(accId);
+    await new Promise((r) => setTimeout(r, 15));
+
+    // removeAccount completes immediately without waiting for hung refresh
+    const removed = await auth.removeAccount(accId);
+    assert.equal(removed.ok, true);
+    assert.equal(auth.state.accounts[accId], undefined);
+
+    if (mode === "success") {
+      resolveToken(
+        new Response(
+          JSON.stringify({
+            access_token: "at_zombie_rm",
+            refresh_token: "rt_zombie_rm",
+            expires_in: 3600,
+            scope: "openid chatgpt.tokens.use.direct",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+    } else {
+      resolveToken(
+        new Response(JSON.stringify({ error: "invalid_grant" }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    await assert.rejects(
+      () => refreshPromise,
+      (err) => err?.staleRefresh === true,
+    );
+    assert.equal(auth.state.accounts[accId], undefined);
+    const reloaded = new ChatGptSubscriptionManager({ storagePath });
+    assert.equal(reloaded.state.accounts[accId], undefined);
+  }
+
+  // --- Scenario C: Delayed refresh resolves AFTER importTransferRecord for same account ---
+  {
+    const storagePath = join(dir, "race-reimport.json");
+    let resolveToken;
+    const auth = new ChatGptSubscriptionManager({
+      storagePath,
+      discoveryOverride: {
+        issuer: "https://auth.openai.com",
+        token_endpoint: "https://auth.openai.com/api/accounts/oauth/token",
+      },
+      fetcher: () =>
+        new Promise((resolve) => {
+          resolveToken = resolve;
+        }),
+    });
+    t.after(() => auth.close());
+
+    auth.importTransferRecord({
+      client_id: "client_imp",
+      subject: "sub_imp",
+      access_token: "at_v1",
+      refresh_token: "rt_v1",
+      scopes: ["openid", "chatgpt.tokens.use.direct"],
+      expires_at: Date.now() - 1000,
+    });
+    const accId = auth.state.activeAccountId;
+
+    const refreshPromise = auth.refreshAccount(accId);
+    await new Promise((r) => setTimeout(r, 15));
+
+    // Newer bundle imported for same account while old refresh is still in flight
+    auth.importTransferRecord({
+      client_id: "client_imp",
+      subject: "sub_imp",
+      access_token: "at_v2_fresh",
+      refresh_token: "rt_v2_fresh",
+      scopes: ["openid", "chatgpt.tokens.use.direct"],
+      expires_at: Date.now() + 3600_000,
+    });
+
+    resolveToken(
+      new Response(
+        JSON.stringify({
+          access_token: "at_v1_stale",
+          refresh_token: "rt_v1_stale",
+          expires_in: 3600,
+          scope: "openid chatgpt.tokens.use.direct",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    await assert.rejects(
+      () => refreshPromise,
+      (err) => err?.staleRefresh === true,
+    );
+    assert.equal(auth.state.accounts[accId].access_token, "at_v2_fresh");
+    assert.equal(auth.state.accounts[accId].refresh_token, "rt_v2_fresh");
+  }
+
+  // --- Scenario D: Single turn abort does NOT abort shared refresh or discard rotated refresh_token ---
+  {
+    const storagePath = join(dir, "race-turn-abort.json");
+    let resolveToken;
+    let fetchAborted = false;
+    const auth = new ChatGptSubscriptionManager({
+      storagePath,
+      discoveryOverride: {
+        issuer: "https://auth.openai.com",
+        token_endpoint: "https://auth.openai.com/api/accounts/oauth/token",
+      },
+      fetcher: (_url, init) => {
+        init?.signal?.addEventListener("abort", () => {
+          fetchAborted = true;
+        });
+        return new Promise((resolve) => {
+          resolveToken = resolve;
+        });
+      },
+    });
+    t.after(() => auth.close());
+
+    auth.importTransferRecord({
+      client_id: "client_turn",
+      subject: "sub_turn",
+      access_token: "at_turn_old",
+      refresh_token: "rt_turn_old",
+      scopes: ["openid", "chatgpt.tokens.use.direct"],
+      expires_at: Date.now() - 1000,
+    });
+    const accId = auth.state.activeAccountId;
+
+    const turn1Abort = new AbortController();
+    const turn2Abort = new AbortController();
+    const p1 = auth.getAccessToken(accId, {
+      forceRefresh: true,
+      signal: turn1Abort.signal,
+    });
+    const p2 = auth.getAccessToken(accId, {
+      forceRefresh: true,
+      signal: turn2Abort.signal,
+    });
+    await new Promise((r) => setTimeout(r, 15));
+
+    // Cancel turn 1 while token rotation is in flight
+    turn1Abort.abort();
+    await assert.rejects(() => p1, /aborted|timeout/i);
+    assert.equal(
+      fetchAborted,
+      false,
+      "caller turn cancellation must not abort shared refresh_token rotation",
+    );
+
+    // Server responds with rotated refresh token -> persisted cleanly and delivered to turn 2!
+    resolveToken(
+      new Response(
+        JSON.stringify({
+          access_token: "at_turn_rot",
+          refresh_token: "rt_turn_rot",
+          expires_in: 3600,
+          scope: "openid chatgpt.tokens.use.direct",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const res2 = await p2;
+    assert.equal(res2.accessToken, "at_turn_rot");
+    assert.equal(auth.state.accounts[accId].refresh_token, "rt_turn_rot");
+    const reloaded = new ChatGptSubscriptionManager({ storagePath });
+    assert.equal(reloaded.state.accounts[accId].refresh_token, "rt_turn_rot");
+  }
+
+  // --- Scenario E: Never-resolving refresh never blocks signOutAccount; 302 on revoke is not followed ---
+  {
+    let revokeRedirectsFollowed = false;
+    const auth = new ChatGptSubscriptionManager({
+      memoryOnly: true,
+      discoveryOverride: {
+        issuer: "https://auth.openai.com",
+        token_endpoint: "https://auth.openai.com/api/accounts/oauth/token",
+        revocation_endpoint:
+          "https://auth.openai.com/api/accounts/oauth/revoke",
+      },
+      fetcher: (url, init) => {
+        const href = String(url);
+        if (href.includes("/token")) {
+          // Never resolves, ignores AbortSignal
+          return new Promise(() => {});
+        }
+        if (href.includes("/revoke")) {
+          assert.equal(init?.redirect, "manual");
+          return Promise.resolve(
+            new Response(null, {
+              status: 302,
+              headers: { Location: "https://evil.example/steal-rt" },
+            }),
+          );
+        }
+        revokeRedirectsFollowed = true;
+        throw new Error(`unexpected ${href}`);
+      },
+    });
+    t.after(() => auth.close());
+    auth.importTransferRecord({
+      client_id: "client_hang",
+      subject: "sub_hang",
+      access_token: "at_hang",
+      refresh_token: "rt_hang",
+      scopes: ["openid", "chatgpt.tokens.use.direct"],
+      expires_at: Date.now() - 1000,
+    });
+    const accId = auth.state.activeAccountId;
+    const hungRefresh = auth.refreshAccount(accId);
+    hungRefresh.catch(() => {});
+    const t0 = Date.now();
+    const res = await auth.signOutAccount(accId);
+    assert.ok(
+      Date.now() - t0 < 2000,
+      "signOutAccount must never wait for a never-returning refresh",
+    );
+    assert.equal(res.ok, true);
+    assert.equal(res.remoteRevoked, false);
+    assert.equal(revokeRedirectsFollowed, false);
+    assert.equal(auth.hasUsableCredential(accId), false);
+  }
+});
+
+test("P2 回归：CLI export-transfer --out 严格 0600 独占创建并拒绝已存在文件与符号链接", async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "luckytri-siwc-cli-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+  const homeA = join(dir, "home-a");
+  const homeB = join(dir, "home-b");
+  const authA = new ChatGptSubscriptionManager({
+    storagePath: join(homeA, "data", "openai-siwc-auth.json"),
+  });
+  authA.importTransferRecord({
+    issuer: "https://auth.openai.com",
+    client_id: "client_cli_1",
+    subject: "sub_cli_1",
+    email: "cli@example.com",
+    access_token: "at_cli_tok",
+    refresh_token: "rt_cli_tok",
+    scopes: ["openid", "chatgpt.tokens.use.direct"],
+    expires_at: Date.now() + 3600_000,
+  });
+
+  const runCli = (cliArgs, homeDir) =>
+    execFileSync(process.execPath, ["bin/luckytri.js", ...cliArgs], {
+      cwd: process.cwd(),
+      env: { ...process.env, LUCKYTRI_HOME: homeDir },
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+  // 1. Fresh new export destination succeeds with mode 0600 and valid JSON
+  const freshOut = join(dir, "fresh-transfer.json");
+  const stdoutFresh = runCli(
+    ["chatgpt-auth", "export-transfer", "--out", freshOut],
+    homeA,
+  );
+  assert.match(stdoutFresh, /0600/);
+  if (process.platform !== "win32") {
+    assert.equal(statSync(freshOut).mode & 0o777, 0o600);
+  }
+  const exportedJson = JSON.parse(readFileSync(freshOut, "utf8"));
+  assert.equal(exportedJson.client_id, "client_cli_1");
+  assert.equal(exportedJson.refresh_token, "rt_cli_tok");
+  assert.equal(exportedJson.ext_agent_host_id, undefined);
+
+  // 2. Pre-existing 0644 file MUST be refused (no overwrite, no tokens written, mode unchanged)
+  const existing644 = join(dir, "existing-0644.json");
+  writeFileSync(existing644, "original-content", "utf8");
+  if (process.platform !== "win32") chmodSync(existing644, 0o644);
+  assert.throws(
+    () =>
+      runCli(["chatgpt-auth", "export-transfer", "--out", existing644], homeA),
+    (err) => {
+      assert.notEqual(err.status, 0);
+      assert.match(String(err.stderr || err.message), /目标文件已存在/);
+      return true;
+    },
+  );
+  assert.equal(readFileSync(existing644, "utf8"), "original-content");
+  if (process.platform !== "win32") {
+    assert.equal(statSync(existing644).mode & 0o777, 0o644);
+  }
+
+  // 3. Live symlink AND dangling symlink MUST be refused on export and import
+  let symlinksSupported = true;
+  const victimFile = join(dir, "victim.txt");
+  writeFileSync(victimFile, "do-not-touch", "utf8");
+  const liveLink = join(dir, "live-link.json");
+  const danglingTarget = join(dir, "does-not-exist-target.json");
+  const danglingLink = join(dir, "dangling-link.json");
+  try {
+    symlinkSync(victimFile, liveLink);
+    symlinkSync(danglingTarget, danglingLink);
+  } catch (error) {
+    if (process.platform === "win32" && error?.code === "EPERM") {
+      symlinksSupported = false;
+    } else {
+      throw error;
+    }
+  }
+  if (symlinksSupported) {
+    assert.throws(
+      () =>
+        runCli(["chatgpt-auth", "export-transfer", "--out", liveLink], homeA),
+      (err) => {
+        assert.notEqual(err.status, 0);
+        assert.match(String(err.stderr || err.message), /符号链接/);
+        return true;
+      },
+    );
+    assert.equal(readFileSync(victimFile, "utf8"), "do-not-touch");
+
+    assert.throws(
+      () =>
+        runCli(
+          ["chatgpt-auth", "export-transfer", "--out", danglingLink],
+          homeA,
+        ),
+      (err) => {
+        assert.notEqual(err.status, 0);
+        assert.match(String(err.stderr || err.message), /符号链接/);
+        return true;
+      },
+    );
+    assert.equal(existsSync(danglingTarget), false);
+
+    // import-transfer also refuses symlink
+    const importLink = join(dir, "import-link.json");
+    symlinkSync(freshOut, importLink);
+    assert.throws(
+      () => runCli(["chatgpt-auth", "import-transfer", importLink], homeB),
+      (err) => {
+        assert.notEqual(err.status, 0);
+        assert.match(String(err.stderr || err.message), /符号链接/);
+        return true;
+      },
+    );
+
+    // Main credential store also refuses a dangling symlink target
+    const danglingStoreTarget = join(dir, "dangling-store-target.json");
+    const danglingStoreLink = join(dir, "dangling-store-link.json");
+    symlinkSync(danglingStoreTarget, danglingStoreLink);
+    const danglingManager = new ChatGptSubscriptionManager({
+      storagePath: danglingStoreLink,
+    });
+    assert.throws(
+      () => danglingManager.updateSettings({ allowBackgroundUse: true }),
+      /符号链接/,
+    );
+    assert.equal(existsSync(danglingStoreTarget), false);
+  }
+
+  // 4. Normal stdout export + CLI import-transfer on regular file works and preserves target host ID
+  const stdoutRaw = runCli(["chatgpt-auth", "export-transfer"], homeA);
+  const parsedStdout = JSON.parse(stdoutRaw);
+  assert.equal(parsedStdout.refresh_token, "rt_cli_tok");
+
+  const statusBeforeB = JSON.parse(runCli(["chatgpt-auth", "status"], homeB));
+  const importOut = JSON.parse(
+    runCli(["chatgpt-auth", "import-transfer", freshOut], homeB),
+  );
+  assert.equal(importOut.ok, true);
+  assert.equal(importOut.hostId, statusBeforeB.hostId);
+  assert.equal(importOut.accounts, 1);
 });

@@ -9,7 +9,9 @@ import {
 import {
   chmodSync,
   closeSync,
+  constants as fsConstants,
   existsSync,
+  fchmodSync,
   lstatSync,
   mkdirSync,
   openSync,
@@ -95,6 +97,188 @@ export function isChatGptSubscriptionProfile(profile) {
   return (
     profile.authMode === CHATGPT_AUTH_MODE ||
     String(profile.provider || "").toLowerCase() === CHATGPT_PROVIDER_ID
+  );
+}
+
+const UNSAFE_URL_RAW_RE = /[\\]|(?:\.\.)|%/;
+
+export function assertOfficialChatGptBaseUrl(
+  rawUrl,
+  { allowEmpty = false } = {},
+) {
+  const raw = String(rawUrl ?? "").trim();
+  if (!raw) {
+    if (allowEmpty) return CHATGPT_API_BASE;
+    throw Error(
+      "ChatGPT 订阅只能连接官方 https://api.openai.com/v1，不允许自定义或非官方 API 地址",
+    );
+  }
+  let u;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw Error(
+      "ChatGPT 订阅只能连接官方 https://api.openai.com/v1，不允许自定义或非官方 API 地址",
+    );
+  }
+  if (
+    /(?:^|\.)chatgpt\.com$/i.test(u.hostname) ||
+    /backend-api/i.test(u.pathname) ||
+    /backend-api/i.test(raw)
+  ) {
+    throw Error(
+      "ChatGPT 订阅只能连接官方公共 Responses API，禁止连接 chatgpt.com 内部接口",
+    );
+  }
+  const exactOfficial =
+    !UNSAFE_URL_RAW_RE.test(raw) &&
+    u.protocol === "https:" &&
+    u.origin === "https://api.openai.com" &&
+    u.hostname === "api.openai.com" &&
+    u.port === "" &&
+    !u.username &&
+    !u.password &&
+    !u.search &&
+    !u.hash &&
+    (u.pathname === "/v1" || u.pathname === "/v1/");
+  if (!exactOfficial) {
+    throw Error(
+      "ChatGPT 订阅只能连接官方 https://api.openai.com/v1，不允许自定义或非官方 API 地址",
+    );
+  }
+  return CHATGPT_API_BASE;
+}
+
+export function assertOfficialChatGptEndpoint(
+  rawUrl,
+  expectedPath = "/v1/responses",
+) {
+  const raw = String(rawUrl ?? "").trim();
+  let u;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw Error(
+      "ChatGPT 订阅只能连接官方 https://api.openai.com/v1，不允许自定义或非官方 API 地址",
+    );
+  }
+  if (
+    /(?:^|\.)chatgpt\.com$/i.test(u.hostname) ||
+    /backend-api/i.test(u.pathname) ||
+    /backend-api/i.test(raw)
+  ) {
+    throw Error(
+      "ChatGPT 订阅只能连接官方公共 Responses API，禁止连接 chatgpt.com 内部接口",
+    );
+  }
+  const exactOfficial =
+    !UNSAFE_URL_RAW_RE.test(raw) &&
+    u.protocol === "https:" &&
+    u.origin === "https://api.openai.com" &&
+    u.hostname === "api.openai.com" &&
+    u.port === "" &&
+    !u.username &&
+    !u.password &&
+    !u.search &&
+    !u.hash &&
+    u.pathname === expectedPath;
+  if (!exactOfficial) {
+    throw Error(
+      "ChatGPT 订阅只能连接官方 https://api.openai.com/v1，不允许自定义或非官方 API 地址",
+    );
+  }
+  return `https://api.openai.com${expectedPath}`;
+}
+
+export function assertOfficialOpenAiIssuer(
+  rawUrl,
+  { allowEmpty = false } = {},
+) {
+  const raw = String(rawUrl ?? "").trim();
+  if (!raw) {
+    if (allowEmpty) return DEFAULT_OIDC_DISCOVERY.issuer;
+    throw Error("迁移凭据中的 issuer 必须指向 https://auth.openai.com");
+  }
+  let u;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw Error("迁移凭据中的 issuer 必须指向 https://auth.openai.com");
+  }
+  const exactIssuer =
+    !UNSAFE_URL_RAW_RE.test(raw) &&
+    u.protocol === "https:" &&
+    u.origin === "https://auth.openai.com" &&
+    u.hostname === "auth.openai.com" &&
+    u.port === "" &&
+    !u.username &&
+    !u.password &&
+    !u.search &&
+    !u.hash &&
+    (u.pathname === "" || u.pathname === "/");
+  if (!exactIssuer) {
+    throw Error("迁移凭据中的 issuer 必须指向 https://auth.openai.com");
+  }
+  return DEFAULT_OIDC_DISCOVERY.issuer;
+}
+
+function isOfficialAuthEndpoint(rawUrl) {
+  const raw = String(rawUrl ?? "").trim();
+  if (!raw || UNSAFE_URL_RAW_RE.test(raw)) return false;
+  try {
+    const u = new URL(raw);
+    return (
+      u.protocol === "https:" &&
+      u.origin === "https://auth.openai.com" &&
+      u.hostname === "auth.openai.com" &&
+      u.port === "" &&
+      !u.username &&
+      !u.password &&
+      !u.search &&
+      !u.hash &&
+      u.pathname.startsWith("/")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isOfficialJwksUri(rawUrl) {
+  const raw = String(rawUrl ?? "").trim();
+  if (!raw || UNSAFE_URL_RAW_RE.test(raw)) return false;
+  try {
+    const u = new URL(raw);
+    return (
+      u.protocol === "https:" &&
+      (u.hostname === "auth.openai.com" ||
+        u.hostname.endsWith(".openai.com")) &&
+      u.port === "" &&
+      !u.username &&
+      !u.password &&
+      !u.search &&
+      !u.hash
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function isRedirectResponse(response) {
+  if (!response) return false;
+  if (response.type === "opaqueredirect") return true;
+  const status = Number(response.status);
+  return Number.isFinite(status) && status >= 300 && status < 400;
+}
+
+export function assertNotRedirectResponse(response) {
+  if (!isRedirectResponse(response)) return;
+  throw Object.assign(
+    new Error("ChatGPT 订阅请求收到重定向响应，已中止以保护凭据"),
+    {
+      status: Number(response?.status) || 302,
+      redirectBlocked: true,
+      retryableRequest: false,
+    },
   );
 }
 
@@ -198,9 +382,19 @@ function emptyState(hostId = generateHostId()) {
   };
 }
 
+function lstatIfExists(filePath) {
+  try {
+    return lstatSync(filePath);
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
 function readProtectedJson(filePath) {
-  if (!filePath || !existsSync(filePath)) return null;
-  const stat = lstatSync(filePath);
+  if (!filePath) return null;
+  const stat = lstatIfExists(filePath);
+  if (!stat) return null;
   if (stat.isSymbolicLink() || !stat.isFile()) {
     throw Error("ChatGPT 订阅本地凭据文件必须是普通文件");
   }
@@ -221,21 +415,26 @@ function writeProtectedJsonAtomic(filePath, data) {
   } catch {
     // Best-effort owner-only directory permissions.
   }
-  if (existsSync(filePath)) {
-    const stat = lstatSync(filePath);
-    if (stat.isSymbolicLink() || !stat.isFile()) {
-      throw Error("ChatGPT 订阅本地凭据文件不能是符号链接");
-    }
+  const existing = lstatIfExists(filePath);
+  if (existing && (existing.isSymbolicLink() || !existing.isFile())) {
+    throw Error("ChatGPT 订阅本地凭据文件不能是符号链接");
   }
   const tempPath = `${filePath}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
   const payload = JSON.stringify(data, null, 2) + "\n";
   let fd;
   try {
     fd = openSync(tempPath, "wx", 0o600);
+    if (process.platform !== "win32") fchmodSync(fd, 0o600);
     writeSync(fd, payload, 0, "utf8");
     closeSync(fd);
     fd = undefined;
-    if (process.platform !== "win32") chmodSync(tempPath, 0o600);
+    const beforeRename = lstatIfExists(filePath);
+    if (
+      beforeRename &&
+      (beforeRename.isSymbolicLink() || !beforeRename.isFile())
+    ) {
+      throw Error("ChatGPT 订阅本地凭据文件不能是符号链接");
+    }
     renameSync(tempPath, filePath);
     if (process.platform !== "win32") chmodSync(filePath, 0o600);
   } catch (error) {
@@ -253,6 +452,127 @@ function writeProtectedJsonAtomic(filePath, data) {
     }
     throw error;
   }
+}
+
+// Create a brand-new owner-only (0600) transfer file atomically.
+// Refuses symlinks (live or dangling) and refuses overwriting any existing
+// file so an existing 0644 destination can never silently receive tokens.
+export function writeProtectedTransferFile(filePath, data) {
+  const target = String(filePath || "").trim();
+  if (!target) {
+    throw Error("目标文件路径无效");
+  }
+  const existing = lstatIfExists(target);
+  if (existing) {
+    if (existing.isSymbolicLink()) {
+      throw Error("拒绝导出到符号链接路径，请指定新的普通文件路径");
+    }
+    throw Error(
+      "目标文件已存在，为避免覆盖或沿用不安全权限已拒绝导出；请指定新的文件路径或先手动删除旧文件",
+    );
+  }
+  const dir = dirname(target);
+  mkdirSync(dir, { recursive: true });
+  const payload =
+    typeof data === "string" ? data : `${JSON.stringify(data, null, 2)}\n`;
+  const flags =
+    fsConstants.O_CREAT |
+    fsConstants.O_EXCL |
+    fsConstants.O_WRONLY |
+    (fsConstants.O_NOFOLLOW ?? 0);
+  let fd;
+  let created = false;
+  try {
+    fd = openSync(target, flags, 0o600);
+    created = true;
+    if (process.platform !== "win32") fchmodSync(fd, 0o600);
+    writeSync(fd, payload, 0, "utf8");
+    closeSync(fd);
+    fd = undefined;
+  } catch (error) {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {
+        // ignore
+      }
+    }
+    if (created) {
+      try {
+        unlinkSync(target);
+      } catch {
+        // ignore
+      }
+    }
+    if (error?.code === "ELOOP") {
+      throw Error("拒绝导出到符号链接路径，请指定新的普通文件路径");
+    }
+    if (error?.code === "EEXIST") {
+      const raced = lstatIfExists(target);
+      if (raced?.isSymbolicLink()) {
+        throw Error("拒绝导出到符号链接路径，请指定新的普通文件路径");
+      }
+      throw Error(
+        "目标文件已存在，为避免覆盖或沿用不安全权限已拒绝导出；请指定新的文件路径或先手动删除旧文件",
+      );
+    }
+    throw error;
+  }
+}
+
+export function readProtectedTransferFile(filePath) {
+  const target = String(filePath || "").trim();
+  const stat = lstatSync(target);
+  if (stat.isSymbolicLink()) {
+    throw Error("迁移凭据文件不能是符号链接，请提供普通文件");
+  }
+  if (!stat.isFile()) {
+    throw Error("迁移凭据文件必须是普通文件");
+  }
+  if (stat.size > 1024 * 1024) {
+    throw Error("迁移凭据文件过大，请确认文件是否正确");
+  }
+  return readFileSync(target, "utf8");
+}
+
+function awaitWithAbort(promise, signal) {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    promise.catch(() => {});
+    const err = new Error("The operation was aborted due to timeout");
+    err.name = signal.reason?.name || "TimeoutError";
+    return Promise.reject(err);
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      const err = new Error("The operation was aborted due to timeout");
+      err.name = signal.reason?.name || "TimeoutError";
+      reject(err);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+function staleRefreshError() {
+  return Object.assign(
+    new Error("ChatGPT 订阅账号已退出或变更，本次刷新已取消"),
+    {
+      authError: true,
+      reauthRequired: true,
+      staleRefresh: true,
+      retryableRequest: false,
+    },
+  );
 }
 
 function requestIdFromHeaders(headers) {
@@ -718,13 +1038,36 @@ export class ChatGptSubscriptionManager {
     this.now = now;
     this.discoveryUrl = discoveryUrl;
     this.discoveryOverride = discoveryOverride;
-    this.apiBase = String(apiBase || CHATGPT_API_BASE).replace(/\/$/, "");
+    this.apiBase = assertOfficialChatGptBaseUrl(apiBase, { allowEmpty: true });
     this.openBrowserFn = openBrowserFn;
     this.discoveryCache = null;
     this.jwksCache = null;
+    this.accountGenerations = new Map();
     this.refreshInFlight = new Map();
     this.pendingAuth = null;
     this.state = this.loadOrInitState();
+  }
+
+  accountGeneration(accountId) {
+    const id = String(accountId || "").trim();
+    return this.accountGenerations.get(id) || 0;
+  }
+
+  bumpAccountGeneration(accountId) {
+    const id = String(accountId || "").trim();
+    if (!id) return 0;
+    const next = this.accountGeneration(id) + 1;
+    this.accountGenerations.set(id, next);
+    const entry = this.refreshInFlight.get(id);
+    if (entry) {
+      this.refreshInFlight.delete(id);
+      try {
+        entry.abortController.abort();
+      } catch {
+        // ignore
+      }
+    }
+    return next;
   }
 
   loadOrInitState() {
@@ -926,8 +1269,14 @@ export class ChatGptSubscriptionManager {
           typeof doc.issuer === "string" &&
           typeof doc.authorization_endpoint === "string" &&
           typeof doc.token_endpoint === "string" &&
-          typeof doc.jwks_uri === "string"
+          typeof doc.jwks_uri === "string" &&
+          isOfficialAuthEndpoint(doc.authorization_endpoint) &&
+          isOfficialAuthEndpoint(doc.token_endpoint) &&
+          (!doc.revocation_endpoint ||
+            isOfficialAuthEndpoint(doc.revocation_endpoint)) &&
+          isOfficialJwksUri(doc.jwks_uri)
         ) {
+          assertOfficialOpenAiIssuer(doc.issuer);
           const merged = { ...DEFAULT_OIDC_DISCOVERY, ...doc };
           this.discoveryCache = { doc: merged, fetchedAt: now };
           return merged;
@@ -1143,6 +1492,15 @@ export class ChatGptSubscriptionManager {
 
   close() {
     this.cancelPendingAuth();
+    for (const [id, entry] of this.refreshInFlight.entries()) {
+      this.accountGenerations.set(id, this.accountGeneration(id) + 1);
+      try {
+        entry.abortController.abort();
+      } catch {
+        // ignore
+      }
+    }
+    this.refreshInFlight.clear();
   }
 
   async startSignIn({
@@ -1424,8 +1782,10 @@ export class ChatGptSubscriptionManager {
           "content-type": "application/x-www-form-urlencoded",
         },
         body,
+        redirect: "manual",
         signal: AbortSignal.timeout(20000),
       });
+      assertNotRedirectResponse(tokenResponse);
       const requestId = requestIdFromHeaders(tokenResponse.headers);
       if (!tokenResponse.ok) {
         let detail = "";
@@ -1482,6 +1842,10 @@ export class ChatGptSubscriptionManager {
         (acc) =>
           acc.planUsageEnabled && (acc.access_token || acc.refresh_token),
       );
+
+      // Invalidate any stale in-flight refresh targeting this account before
+      // persisting freshly issued tokens.
+      this.bumpAccountGeneration(accountId);
 
       this.state.accounts[accountId] = {
         accountId,
@@ -1578,7 +1942,10 @@ export class ChatGptSubscriptionManager {
   }
 
   // Single-flight serialized refresh per account so concurrent requests never
-  // race a rotating refresh token.
+  // race a rotating refresh token. A caller's turn signal only cancels that
+  // caller's wait (never the shared token rotation), while sign-out, removal,
+  // reauth, or import bumps the account generation and invalidates/aborts any
+  // stale in-flight refresh so old tokens can never resurrect cleared state.
   async refreshAccount(accountId, { signal } = {}) {
     const id = String(accountId || this.state.activeAccountId || "").trim();
     if (!id || !this.state.accounts[id]) {
@@ -1587,8 +1954,16 @@ export class ChatGptSubscriptionManager {
         reauthRequired: true,
       });
     }
+    const generation = this.accountGeneration(id);
     const existing = this.refreshInFlight.get(id);
-    if (existing) return existing;
+    if (existing && existing.generation === generation) {
+      return awaitWithAbort(existing.promise, signal);
+    }
+
+    const abortController = new AbortController();
+    const isCurrent = () =>
+      this.accountGeneration(id) === generation &&
+      Boolean(this.state.accounts[id]);
 
     const task = (async () => {
       const account = this.state.accounts[id];
@@ -1605,6 +1980,8 @@ export class ChatGptSubscriptionManager {
         );
       }
       const discovery = await this.getDiscovery();
+      if (!isCurrent()) throw staleRefreshError();
+
       const body = new URLSearchParams({
         grant_type: "refresh_token",
         client_id: account.client_id,
@@ -1620,11 +1997,14 @@ export class ChatGptSubscriptionManager {
             "content-type": "application/x-www-form-urlencoded",
           },
           body,
-          signal: signal
-            ? AbortSignal.any([signal, AbortSignal.timeout(15000)])
-            : AbortSignal.timeout(15000),
+          redirect: "manual",
+          signal: AbortSignal.any([
+            abortController.signal,
+            AbortSignal.timeout(15000),
+          ]),
         });
       } catch (error) {
+        if (!isCurrent()) throw staleRefreshError();
         // Transient network failure: preserve existing credentials intact!
         if (isTransientNetworkError(error)) {
           const { code, detail } = describeNetworkError(error);
@@ -1638,6 +2018,9 @@ export class ChatGptSubscriptionManager {
         throw error;
       }
 
+      if (!isCurrent()) throw staleRefreshError();
+      assertNotRedirectResponse(response);
+
       const requestId = requestIdFromHeaders(response.headers);
       if (!response.ok) {
         let parsed = null;
@@ -1648,6 +2031,8 @@ export class ChatGptSubscriptionManager {
         } catch {
           parsed = null;
         }
+        if (!isCurrent()) throw staleRefreshError();
+
         const errorCode = String(
           parsed?.error?.code || parsed?.error || "",
         ).trim();
@@ -1661,17 +2046,21 @@ export class ChatGptSubscriptionManager {
           ).slice(0, 200),
         );
         if (TERMINAL_REFRESH_ERRORS.has(errorCode)) {
-          // Clear unusable tokens while retaining client_id/account mapping & host ID.
-          this.state.accounts[id] = {
-            ...account,
-            access_token: "",
-            refresh_token: "",
-            id_token: "",
-            expires_at: 0,
-            needsReauth: true,
-            lastError: `刷新令牌已失效（${errorCode}），请重新登录 ChatGPT`,
-          };
-          this.saveState();
+          // Clear unusable tokens while retaining client_id/account mapping & host ID,
+          // ONLY if this account generation is still current (never resurrect removed/reauthed accounts).
+          if (isCurrent()) {
+            const latest = this.state.accounts[id];
+            this.state.accounts[id] = {
+              ...latest,
+              access_token: "",
+              refresh_token: "",
+              id_token: "",
+              expires_at: 0,
+              needsReauth: true,
+              lastError: `刷新令牌已失效（${errorCode}），请重新登录 ChatGPT`,
+            };
+            this.saveState();
+          }
           throw Object.assign(
             new Error(
               `ChatGPT 订阅授权已失效（${errorCode}${requestId ? `，请求 ID：${requestId}` : ""}），请重新登录`,
@@ -1714,36 +2103,40 @@ export class ChatGptSubscriptionManager {
       }
 
       const data = await response.json();
+      if (!isCurrent()) throw staleRefreshError();
       if (typeof data?.access_token !== "string" || !data.access_token) {
         throw Object.assign(new Error("刷新响应缺少新的 access_token"), {
           authError: true,
         });
       }
+      const latest = this.state.accounts[id];
+      if (!isCurrent() || !latest) throw staleRefreshError();
+
       const now = this.now();
       const expiresIn = Number(data.expires_in) || 3600;
       const scopes = data.scope
         ? parseScopes(data.scope)
-        : Array.isArray(account.scopes)
-          ? account.scopes
+        : Array.isArray(latest.scopes)
+          ? latest.scopes
           : [];
       const planUsageEnabled = scopes.includes(SIWC_DIRECT_SCOPE);
       // Replace access_token, expiry, scopes, and rotating refresh_token atomically.
       const updated = {
-        ...account,
+        ...latest,
         access_token: data.access_token,
         refresh_token:
           typeof data.refresh_token === "string" && data.refresh_token
             ? data.refresh_token
-            : account.refresh_token,
+            : latest.refresh_token,
         id_token:
           typeof data.id_token === "string" && data.id_token
             ? data.id_token
-            : account.id_token,
-        token_type: String(data.token_type || account.token_type || "Bearer"),
+            : latest.id_token,
+        token_type: String(data.token_type || latest.token_type || "Bearer"),
         expires_in: expiresIn,
         expires_at: now + expiresIn * 1000,
         earliest_refresh_at:
-          data.earliest_refresh_at ?? account.earliest_refresh_at ?? null,
+          data.earliest_refresh_at ?? latest.earliest_refresh_at ?? null,
         scopes,
         planUsageEnabled,
         saved_at: new Date(now).toISOString(),
@@ -1763,19 +2156,22 @@ export class ChatGptSubscriptionManager {
       return { accessToken: updated.access_token, account: updated };
     })();
 
-    this.refreshInFlight.set(id, task);
-    try {
-      return await task;
-    } finally {
-      if (this.refreshInFlight.get(id) === task) {
+    const entry = { generation, promise: task, abortController };
+    this.refreshInFlight.set(id, entry);
+    // Attach both handlers so rejecting tasks clean up refreshInFlight and
+    // never emit unhandledRejection if a caller aborted its own wait early.
+    const cleanup = () => {
+      if (this.refreshInFlight.get(id) === entry) {
         this.refreshInFlight.delete(id);
       }
-    }
+    };
+    task.then(cleanup, cleanup);
+    return awaitWithAbort(task, signal);
   }
 
   recordUsageLimit(accountId = "") {
     const account = this.resolveAccount(accountId);
-    if (!account) return;
+    if (!account || (!account.access_token && !account.refresh_token)) return;
     account.lastUsageLimitAt = this.now();
     account.lastError =
       "ChatGPT 订阅使用额度已达上限，请前往 ChatGPT 用量设置查看";
@@ -1788,7 +2184,7 @@ export class ChatGptSubscriptionManager {
     { needsReauth = false } = {},
   ) {
     const account = this.resolveAccount(accountId);
-    if (!account) return;
+    if (!account || (!account.access_token && !account.refresh_token)) return;
     account.lastError = redactSiwcSecrets(String(message || "").slice(0, 240));
     if (needsReauth) account.needsReauth = true;
     this.saveState();
@@ -1796,12 +2192,52 @@ export class ChatGptSubscriptionManager {
 
   clearAccountError(accountId = "") {
     const account = this.resolveAccount(accountId);
-    if (!account) return;
+    if (!account || (!account.access_token && !account.refresh_token)) return;
     if (account.lastError || account.lastUsageLimitAt) {
       account.lastError = "";
       account.lastUsageLimitAt = null;
       this.saveState();
     }
+  }
+
+  async revokeRefreshTokenRemote(clientId, refreshToken) {
+    if (!refreshToken || !clientId || clientId === DYNAMIC_CLIENT_ID) {
+      return false;
+    }
+    const discovery = await this.getDiscovery();
+    const body = new URLSearchParams({
+      token: refreshToken,
+      token_type_hint: "refresh_token",
+      client_id: clientId,
+    });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const response = await this.fetcher(discovery.revocation_endpoint, {
+          method: "POST",
+          headers: {
+            "content-type": "application/x-www-form-urlencoded",
+          },
+          body,
+          redirect: "manual",
+          signal: AbortSignal.timeout(10000),
+        });
+        if (isRedirectResponse(response)) {
+          return false;
+        }
+        if (response.status === 200) {
+          return true;
+        }
+        if (response.status < 500) break;
+      } catch {
+        // Retry transient network errors while refresh token is still available.
+      }
+      if (attempt < 2) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, 250 * (attempt + 1)),
+        );
+      }
+    }
+    return false;
   }
 
   async signOutAccount(accountId = "") {
@@ -1814,49 +2250,19 @@ export class ChatGptSubscriptionManager {
         status: this.publicStatus(),
       };
     }
-    if (this.pendingAuth?.accountId === account.accountId) {
+    const id = account.accountId;
+    const clientId = account.client_id;
+    const refreshToken = account.refresh_token;
+
+    if (this.pendingAuth?.accountId === id) {
       this.cancelPendingAuth();
     }
-    let remoteRevoked = false;
-    if (
-      account.refresh_token &&
-      account.client_id &&
-      account.client_id !== DYNAMIC_CLIENT_ID
-    ) {
-      const discovery = await this.getDiscovery();
-      const body = new URLSearchParams({
-        token: account.refresh_token,
-        token_type_hint: "refresh_token",
-        client_id: account.client_id,
-      });
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          const response = await this.fetcher(discovery.revocation_endpoint, {
-            method: "POST",
-            headers: {
-              "content-type": "application/x-www-form-urlencoded",
-            },
-            body,
-            signal: AbortSignal.timeout(10000),
-          });
-          if (response.status === 200) {
-            remoteRevoked = true;
-            break;
-          }
-          if (response.status < 500) break;
-        } catch {
-          // Retry transient network errors while refresh token is still available.
-        }
-        if (attempt < 2) {
-          await new Promise((resolve) =>
-            setTimeout(resolve, 250 * (attempt + 1)),
-          );
-        }
-      }
-    }
 
-    // Clear local tokens while retaining account/client mapping and host ID.
-    this.state.accounts[account.accountId] = {
+    // Immediately invalidate any in-flight refresh and clear local tokens
+    // BEFORE awaiting remote revocation, so new requests are gated at once
+    // and logout never blocks on a hung refresh or overwrites a later re-login.
+    this.bumpAccountGeneration(id);
+    this.state.accounts[id] = {
       ...account,
       access_token: "",
       refresh_token: "",
@@ -1868,6 +2274,11 @@ export class ChatGptSubscriptionManager {
       lastUsageLimitAt: null,
     };
     this.saveState();
+
+    const remoteRevoked = await this.revokeRefreshTokenRemote(
+      clientId,
+      refreshToken,
+    );
 
     const notice = remoteRevoked
       ? "已撤销远端会话并清除本地 ChatGPT 订阅令牌（已保留客户端映射，下次可直接重新登录）"
@@ -1882,21 +2293,30 @@ export class ChatGptSubscriptionManager {
 
   async removeAccount(accountId) {
     const id = String(accountId || "").trim();
-    if (!id || !this.state.accounts[id]) {
+    const account = id ? this.state.accounts[id] : null;
+    if (!account) {
       throw Error("所选 ChatGPT 账号不存在");
     }
-    if (
-      this.state.accounts[id].access_token ||
-      this.state.accounts[id].refresh_token
-    ) {
-      await this.signOutAccount(id);
+    const clientId = account.client_id;
+    const refreshToken = account.refresh_token;
+    if (this.pendingAuth?.accountId === id) {
+      this.cancelPendingAuth();
     }
+
+    // Immediately invalidate any in-flight refresh and remove the account from
+    // local state BEFORE remote revocation so a delayed refresh can never
+    // resurrect it and removal never hangs on a stalled refresh.
+    this.bumpAccountGeneration(id);
     delete this.state.accounts[id];
     if (this.state.activeAccountId === id) {
       const remaining = Object.keys(this.state.accounts);
       this.state.activeAccountId = remaining[0] || "";
     }
     this.saveState();
+
+    if (refreshToken && clientId && clientId !== DYNAMIC_CLIENT_ID) {
+      await this.revokeRefreshTokenRemote(clientId, refreshToken);
+    }
     return { ok: true, status: this.publicStatus() };
   }
 
@@ -1933,8 +2353,16 @@ export class ChatGptSubscriptionManager {
   // Import a protected credential bundle onto a self-hosted VM while ALWAYS
   // preserving the VM's own persisted ext_agent_host_id.
   importTransferRecord(rawRecord) {
-    const record =
-      typeof rawRecord === "string" ? JSON.parse(rawRecord) : rawRecord;
+    let record;
+    if (typeof rawRecord === "string") {
+      try {
+        record = JSON.parse(rawRecord);
+      } catch {
+        throw Error("导入凭据格式无效，需要 JSON 对象");
+      }
+    } else {
+      record = rawRecord;
+    }
     if (!record || typeof record !== "object" || Array.isArray(record)) {
       throw Error("导入凭据格式无效，需要 JSON 对象");
     }
@@ -1945,9 +2373,9 @@ export class ChatGptSubscriptionManager {
     const issuerRaw = String(
       record.issuer || record.auth_url || DEFAULT_OIDC_DISCOVERY.issuer,
     ).trim();
-    if (issuerRaw && !issuerRaw.startsWith("https://auth.openai.com")) {
-      throw Error("迁移凭据中的 issuer 必须指向 https://auth.openai.com");
-    }
+    const canonicalIssuer = assertOfficialOpenAiIssuer(issuerRaw, {
+      allowEmpty: true,
+    });
     if (!clientId || clientId === DYNAMIC_CLIENT_ID) {
       throw Error("导入凭据缺少有效的已签发 client_id");
     }
@@ -1970,6 +2398,7 @@ export class ChatGptSubscriptionManager {
     const expiresAt = Number(record.expires_at) || now + expiresIn * 1000;
     const accountId = accountKeyOf(clientId, subject);
     const existing = this.state.accounts[accountId] || {};
+    this.bumpAccountGeneration(accountId);
     this.state.accounts[accountId] = {
       accountId,
       label:
@@ -1981,7 +2410,7 @@ export class ChatGptSubscriptionManager {
           clientId,
           subject,
         }),
-      issuer: String(record.issuer || DEFAULT_OIDC_DISCOVERY.issuer),
+      issuer: canonicalIssuer,
       client_id: clientId,
       subject,
       sid: String(record.sid || ""),
@@ -2010,21 +2439,27 @@ export class ChatGptSubscriptionManager {
   }
 
   async listModels(accountId = "", { signal } = {}) {
+    const modelsUrl = assertOfficialChatGptEndpoint(
+      `${this.apiBase}/models`,
+      "/v1/models",
+    );
     const fetchWithToken = async (forceRefresh) => {
       const { accessToken, account } = await this.getAccessToken(accountId, {
         forceRefresh,
         signal,
       });
-      const response = await this.fetcher(`${this.apiBase}/models`, {
+      const response = await this.fetcher(modelsUrl, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${accessToken}`,
           accept: "application/json",
         },
+        redirect: "manual",
         signal: signal
           ? AbortSignal.any([signal, AbortSignal.timeout(15000)])
           : AbortSignal.timeout(15000),
       });
+      assertNotRedirectResponse(response);
       return { response, account };
     };
 

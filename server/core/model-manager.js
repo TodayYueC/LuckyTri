@@ -6,6 +6,9 @@ import {
   CHATGPT_API_BASE,
   CHATGPT_AUTH_MODE,
   CHATGPT_PROVIDER_ID,
+  assertNotRedirectResponse,
+  assertOfficialChatGptBaseUrl,
+  assertOfficialChatGptEndpoint,
   buildChatGptResponsesBody,
   classifySiwcError,
   isChatGptSubscriptionProfile,
@@ -579,7 +582,7 @@ export function validateModel(m) {
     m.apiProtocol = "responses";
     m.apiKey = "";
     m.omitSampling = true;
-    m.baseUrl = String(m.baseUrl || CHATGPT_API_BASE).trim();
+    m.baseUrl = assertOfficialChatGptBaseUrl(m.baseUrl, { allowEmpty: true });
     m.oauthAccountId =
       typeof m.oauthAccountId === "string" ? m.oauthAccountId.trim() : "";
   }
@@ -592,14 +595,6 @@ export function validateModel(m) {
     u.hash
   )
     throw Error("API 地址无效");
-  if (
-    isChatGpt &&
-    (/(?:^|\.)chatgpt\.com$/i.test(u.hostname) ||
-      /backend-api/i.test(u.pathname))
-  )
-    throw Error(
-      "ChatGPT 订阅只能连接官方公共 Responses API，禁止连接 chatgpt.com 内部接口",
-    );
   if (!m.id || !m.model || typeof m.model !== "string")
     throw Error("模型名称必填");
   for (const k of [
@@ -1673,12 +1668,18 @@ export class ModelManager {
     const isChatGpt = isChatGptSubscriptionProfile(profile);
     const priority = stagePriority(stage);
     let key = "";
+    let officialChatGptBase = "";
     if (isChatGpt) {
       if (!this.chatgptAuth) {
         throw Object.assign(new Error("ChatGPT 订阅认证服务未初始化"), {
           authError: true,
         });
       }
+      // Enforce official Responses destination at the send boundary even for
+      // tampered or externally imported profiles stored in SQLite.
+      officialChatGptBase = assertOfficialChatGptBaseUrl(profile.baseUrl, {
+        allowEmpty: true,
+      });
       if (
         priority === "background" &&
         !this.chatgptAuth.allowsBackgroundUse()
@@ -1755,7 +1756,12 @@ export class ModelManager {
     if (!isChatGpt && usesPromptCacheKey(profile))
       body.prompt_cache_key = promptCacheKey(key, session, stage);
     const request = protocolRequest(body, profile, stage);
-    const endpoint = profile.baseUrl.replace(/\/$/, "") + request.path;
+    const endpoint = isChatGpt
+      ? assertOfficialChatGptEndpoint(
+          `${officialChatGptBase}${request.path}`,
+          "/v1/responses",
+        )
+      : profile.baseUrl.replace(/\/$/, "") + request.path;
     const headers = {
       "Content-Type": "application/json",
       ...request.headers,
@@ -1953,20 +1959,26 @@ export class ModelManager {
                     async (signal) => {
                       if (isChatGpt) {
                         const sendWithOAuth = async (forceRefresh) => {
+                          const targetEndpoint = assertOfficialChatGptEndpoint(
+                            endpoint,
+                            "/v1/responses",
+                          );
                           const { accessToken, account } =
                             await this.chatgptAuth.getAccessToken(
                               profile.oauthAccountId,
                               { forceRefresh, signal },
                             );
-                          const r = await this.fetcher(endpoint, {
+                          const r = await this.fetcher(targetEndpoint, {
                             method: "POST",
                             headers: {
                               ...headers,
                               Authorization: `Bearer ${accessToken}`,
                             },
                             body: payload,
+                            redirect: "manual",
                             signal,
                           });
+                          assertNotRedirectResponse(r);
                           return { r, account };
                         };
                         let { r, account } = await sendWithOAuth(false);

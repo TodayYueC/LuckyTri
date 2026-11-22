@@ -664,6 +664,22 @@ export const ERRORS = {
     "ChatGPT subscription profiles do not accept an API key; sign in with official Sign in with ChatGPT instead",
   "ChatGPT 订阅只能连接官方公共 Responses API，禁止连接 chatgpt.com 内部接口":
     "ChatGPT subscription profiles may only call the official public Responses API; chatgpt.com internal endpoints are forbidden",
+  "ChatGPT 订阅只能连接官方 https://api.openai.com/v1，不允许自定义或非官方 API 地址":
+    "ChatGPT subscription profiles may only connect to the official https://api.openai.com/v1 endpoint; custom or unofficial API URLs are not allowed",
+  "ChatGPT 订阅请求收到重定向响应，已中止以保护凭据":
+    "ChatGPT subscription request received a redirect response and was aborted to protect credentials",
+  "ChatGPT 订阅账号已退出或变更，本次刷新已取消":
+    "ChatGPT subscription account was signed out or changed; token refresh was cancelled",
+  目标文件路径无效: "Invalid target file path",
+  "拒绝导出到符号链接路径，请指定新的普通文件路径":
+    "Refused to export to a symlink path; specify a new regular file path",
+  "目标文件已存在，为避免覆盖或沿用不安全权限已拒绝导出；请指定新的文件路径或先手动删除旧文件":
+    "Target file already exists; export refused to avoid overwriting or inheriting unsafe permissions. Choose a new file path or remove the existing file first",
+  "迁移凭据文件不能是符号链接，请提供普通文件":
+    "Transfer credential file cannot be a symlink; provide a regular file",
+  迁移凭据文件必须是普通文件: "Transfer credential file must be a regular file",
+  "迁移凭据文件过大，请确认文件是否正确":
+    "Transfer credential file is too large; check that you selected the right file",
   "ChatGPT 订阅本地凭据文件必须是普通文件":
     "The local ChatGPT subscription credential file must be a regular file",
   "ChatGPT 订阅本地凭据文件格式无效":

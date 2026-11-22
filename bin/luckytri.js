@@ -82,10 +82,12 @@ try {
       prepareRuntime({ initialize: false });
       console.log(JSON.stringify(runtimePaths(), null, 2));
     } else if (command === "chatgpt-auth") {
-      const { readFileSync, writeFileSync } = await import("node:fs");
       const { prepareRuntime } = await import("../scripts/runtime.js");
-      const { ChatGptSubscriptionManager } =
-        await import("../server/core/chatgpt-subscription.js");
+      const {
+        ChatGptSubscriptionManager,
+        readProtectedTransferFile,
+        writeProtectedTransferFile,
+      } = await import("../server/core/chatgpt-subscription.js");
       prepareRuntime({ initialize: false });
       const paths = runtimePaths();
       const manager = new ChatGptSubscriptionManager({
@@ -111,7 +113,7 @@ try {
         const record = manager.exportTransferRecord(accountId);
         const text = `${JSON.stringify(record, null, 2)}\n`;
         if (outFile) {
-          writeFileSync(outFile, text, { mode: 0o600 });
+          writeProtectedTransferFile(outFile, text);
           console.log(
             `已导出本地迁移凭据（不含本机 host ID），权限 0600，请通过 SSH 传输到目标机器后立即删除临时文件：${outFile}`,
           );
@@ -124,7 +126,7 @@ try {
           throw Error(
             "用法 / Usage: luckytri chatgpt-auth import-transfer <FILE>",
           );
-        const raw = readFileSync(file, "utf8");
+        const raw = readProtectedTransferFile(file);
         const status = manager.importTransferRecord(raw);
         console.log(
           JSON.stringify(
