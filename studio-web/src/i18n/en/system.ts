@@ -489,10 +489,10 @@ export default {
     "Could not copy automatically; select and copy the command manually",
   "当前通过远程地址访问管理台（如 Tailscale / VPS）":
     "Accessing Studio remotely (e.g. Tailscale / VPS)",
-  "OpenAI 官方要求 OAuth 回调固定为本机 127.0.0.1，不能直接跳回远程域名。点击下方 Continue with ChatGPT 后，浏览器授权结束会跳到 127.0.0.1 并显示无法访问——这是正常现象，按页面指引复制地址栏链接粘贴回此处即可完成认证（也支持 SSH 端口转发或下方本机导出迁移）。":
-    "OpenAI requires the OAuth callback to stay on loopback 127.0.0.1 and cannot redirect straight back to a remote domain. After clicking Continue with ChatGPT, your browser will redirect to 127.0.0.1 and show a connection error—this is expected. Copy that address-bar URL and paste it back here to finish sign-in (SSH port forwarding and local transfer import below are also supported).",
-  "远程登录步骤（约 10 分钟内有效）":
-    "Remote sign-in steps (valid for ~10 minutes)",
+  "OpenAI 官方要求 OAuth 回调固定为本机 127.0.0.1，不能直接跳回远程域名；官方文档明确的自托管 VM 方式是在本机完成授权后再通过 SSH 安全迁移凭据（见下方说明）。如不便在本地运行客户端，也可点击 Continue with ChatGPT 使用本应用提供的手工回传回调链接或 SSH 端口转发辅助（该辅助流程并非 OpenAI 官方文档背书方式）。":
+    "OpenAI requires the OAuth callback to stay on loopback 127.0.0.1 and cannot redirect straight back to a remote domain; OpenAI's documented self-hosted VM flow is to sign in locally and transfer credentials securely over SSH (see below). If you cannot run a local client, you can also click Continue with ChatGPT to use LuckyTri's app-side manual callback paste or SSH port-forwarding helpers (not an OpenAI-endorsed self-hosted flow).",
+  "本应用提供的远程手工回传步骤（约 10 分钟内有效）":
+    "App-side remote manual callback steps (valid for ~10 minutes)",
   "点击下方按钮在新标签页打开 ChatGPT 授权并同意。完成后浏览器会跳转到 {uri}?... 并提示「无法访问/拒绝连接」，这是 OpenAI 强制 127.0.0.1 回调（指向你当前设备而非远程服务器）导致的正常现象。":
     "Click below to open ChatGPT authorization in a new tab and approve. Your browser will then redirect to {uri}?... and show a connection refused error—this is expected because OpenAI enforces a 127.0.0.1 callback pointing to your own device instead of the remote server.",
   "复制该标签页地址栏里的完整回调链接，粘贴到下方输入框并提交，即可在当前远程管理台安全完成令牌交换（不会记录到日志）。":
@@ -501,8 +501,8 @@ export default {
     "The authorization link is not cached across page reloads; to open it again, cancel this session and click Continue with ChatGPT again.",
   "粘贴浏览器跳转后的完整回调链接（以 {uri} 开头）":
     "Paste the full redirected callback URL (starting with {uri})",
-  "已识别到匹配本次回调端口的官方 127.0.0.1 链接，可以提交。":
-    "Recognized an official 127.0.0.1 callback URL matching this session's port. Ready to submit.",
+  "已识别到匹配本次回调端口的 127.0.0.1 回调链接，可以提交。":
+    "Recognized a 127.0.0.1 callback URL matching this session's port. Ready to submit.",
   "请确认粘贴的是以 {uri} 开头且包含 code 与 state 参数的完整地址栏链接。":
     "Make sure you pasted the full address-bar URL starting with {uri} containing code and state.",
   "正在完成认证…": "Completing sign-in…",
@@ -577,8 +577,8 @@ export default {
   新建此订阅模型: "Create subscription profile",
   "自托管服务器（VPS）与使用边界说明":
     "Self-hosted server (VPS) & usage boundaries",
-  "官方 OAuth 回调固定为本机 127.0.0.1 临时端口。通过 Tailscale HTTPS 等远程打开管理台时，可直接点击 Continue with ChatGPT 并粘贴回调链接完成认证，也可使用 SSH 端口转发，或按官方自托管 VM 流程在本机登录后通过 SSH 导出迁移凭据导入。":
-    "The official OAuth callback is fixed to a local 127.0.0.1 ephemeral port. When opening Studio remotely (such as over Tailscale HTTPS), click Continue with ChatGPT and paste the redirected callback URL back into Studio, or use SSH port forwarding, or follow OpenAI's self-hosted VM CLI transfer flow over SSH.",
+  "OpenAI 官方文档明确的自托管 VM 流程为：在本机电脑完成 127.0.0.1 回环登录后，导出凭据并通过 SSH 安全传至受控 VPS 导入（保留目标主机 Host ID）。上方远程管理台提供的手动粘贴回调链接与 SSH 端口转发属于 LuckyTri 额外提供的应用侧辅助方式，未改变 OAuth 协议字段，但不代表 OpenAI 官方明确认可该具体 UI 流程。":
+    "OpenAI's documented self-hosted VM flow is to sign in locally via 127.0.0.1, export the credentials, and transfer/import them securely over SSH to your controlled VPS (preserving the target host's ID). The manual callback URL paste and SSH port-forwarding helpers in remote Studio above are LuckyTri app-side conveniences that leave OAuth protocol fields unchanged, but are not an OpenAI-endorsed self-hosted UI workflow.",
   "本机 Host ID（迁移不会覆盖）：": "Host ID (preserved across imports):",
   "或在此粘贴本地导出的迁移凭据 JSON（仅限你本人的受控主机）":
     "Or paste the locally exported transfer JSON here (for your own controlled host only)",

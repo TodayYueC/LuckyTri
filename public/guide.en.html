@@ -583,35 +583,14 @@ luckytri
             domain callbacks are not permitted), opening Studio over Tailscale
             HTTPS causes the browser redirect to target
             <code>127.0.0.1</code> on your own device rather than the VPS,
-            showing a connection error—this is expected. You have three
-            officially compliant ways to finish sign-in:
+            showing a connection error—this is expected. Distinguish between
+            OpenAI&#39;s documented flow and LuckyTri&#39;s app-side helpers:
             <ol>
               <li>
                 <strong
-                  >In-Studio callback completion (recommended, no local CLI or
-                  SSH required)</strong
-                >: Click <strong>Continue with ChatGPT</strong>, approve in the
-                new tab, copy the full redirected
-                <code>http://127.0.0.1:&lt;port&gt;/auth/callback?...</code> URL
-                from the address bar, and paste it back into the remote Studio
-                form. The server verifies the exact loopback port/path,
-                <code>state</code>, PKCE <code>code_verifier</code>,
-                <code>nonce</code>, and RS256 JWKS without logging the URL or
-                code.
-              </li>
-              <li>
-                <strong>SSH local port forwarding</strong>: Run the
-                <code
-                  >ssh -N -L &lt;port&gt;:127.0.0.1:&lt;port&gt;
-                  &lt;server&gt;</code
-                >
-                command shown in Studio before opening the authorization page so
-                the browser callback automatically reaches the VPS listener and
-                refreshes Studio.
-              </li>
-              <li>
-                <strong>Official self-hosted VM transfer</strong>: Sign in on
-                your own computer, run
+                  >OpenAI&#39;s documented self-hosted VM flow (local sign-in +
+                  secure transfer)</strong
+                >: Sign in on your own computer, run
                 <code
                   >luckytri chatgpt-auth export-transfer --out
                   transfer.json</code
@@ -619,6 +598,33 @@ luckytri
                 <code>luckytri chatgpt-auth import-transfer transfer.json</code>
                 (or paste in Studio), and delete the temporary file immediately.
                 The VPS retains its own <code>ext_agent_host_id</code>.
+              </li>
+              <li>
+                <strong
+                  >Manual callback URL paste in Studio (LuckyTri app-side
+                  helper, not an OpenAI-endorsed self-hosted flow)</strong
+                >: Click <strong>Continue with ChatGPT</strong>, approve in the
+                new tab, copy the full redirected
+                <code>http://127.0.0.1:&lt;port&gt;/auth/callback?...</code> URL
+                from the address bar, and paste it back into the remote Studio
+                form. LuckyTri keeps the OAuth protocol fields unchanged and
+                verifies the loopback port/path, <code>state</code>, PKCE
+                <code>code_verifier</code>, <code>nonce</code>, and RS256 JWKS
+                without logging the URL or code (if preferred or if issues
+                occur, use OpenAI&#39;s documented local sign-in + SSH transfer
+                flow above).
+              </li>
+              <li>
+                <strong
+                  >SSH local port forwarding (LuckyTri app-side helper)</strong
+                >: Run the
+                <code
+                  >ssh -N -L &lt;port&gt;:127.0.0.1:&lt;port&gt;
+                  &lt;server&gt;</code
+                >
+                command shown in Studio before opening the authorization page so
+                your browser&#39;s <code>127.0.0.1</code> callback reaches the
+                VPS listener.
               </li>
             </ol>
           </li>

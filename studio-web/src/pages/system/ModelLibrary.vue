@@ -1227,7 +1227,7 @@ async function testModel() {
           <p class="faint">
             {{
               t(
-                "OpenAI 官方要求 OAuth 回调固定为本机 127.0.0.1，不能直接跳回远程域名。点击下方 Continue with ChatGPT 后，浏览器授权结束会跳到 127.0.0.1 并显示无法访问——这是正常现象，按页面指引复制地址栏链接粘贴回此处即可完成认证（也支持 SSH 端口转发或下方本机导出迁移）。",
+                "OpenAI 官方要求 OAuth 回调固定为本机 127.0.0.1，不能直接跳回远程域名；官方文档明确的自托管 VM 方式是在本机完成授权后再通过 SSH 安全迁移凭据（见下方说明）。如不便在本地运行客户端，也可点击 Continue with ChatGPT 使用本应用提供的手工回传回调链接或 SSH 端口转发辅助（该辅助流程并非 OpenAI 官方文档背书方式）。",
               )
             }}
           </p>
@@ -1286,7 +1286,9 @@ async function testModel() {
 
         <div v-if="chatgptPending" class="notice chatgpt-pending" role="status">
           <template v-if="isRemoteStudio">
-            <strong>{{ t("远程登录步骤（约 10 分钟内有效）") }}</strong>
+            <strong>{{
+              t("本应用提供的远程手工回传步骤（约 10 分钟内有效）")
+            }}</strong>
             <ol class="chatgpt-remote-steps">
               <li>
                 {{
@@ -1361,7 +1363,7 @@ async function testModel() {
                 class="callback-hint ok"
               >
                 {{
-                  t("已识别到匹配本次回调端口的官方 127.0.0.1 链接，可以提交。")
+                  t("已识别到匹配本次回调端口的 127.0.0.1 回调链接，可以提交。")
                 }}
               </small>
               <small
@@ -1573,7 +1575,7 @@ async function testModel() {
             <p class="faint">
               {{
                 t(
-                  "官方 OAuth 回调固定为本机 127.0.0.1 临时端口。通过 Tailscale HTTPS 等远程打开管理台时，可直接点击 Continue with ChatGPT 并粘贴回调链接完成认证，也可使用 SSH 端口转发，或按官方自托管 VM 流程在本机登录后通过 SSH 导出迁移凭据导入。",
+                  "OpenAI 官方文档明确的自托管 VM 流程为：在本机电脑完成 127.0.0.1 回环登录后，导出凭据并通过 SSH 安全传至受控 VPS 导入（保留目标主机 Host ID）。上方远程管理台提供的手动粘贴回调链接与 SSH 端口转发属于 LuckyTri 额外提供的应用侧辅助方式，未改变 OAuth 协议字段，但不代表 OpenAI 官方明确认可该具体 UI 流程。",
                 )
               }}
             </p>

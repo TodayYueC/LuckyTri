@@ -82,10 +82,10 @@ LuckyTri 是「TA 的小世界」，左侧导航分三组、十个入口：
 - **定位与用途边界**：此入口仅作为你本人自用机器人的调用入口，不用于多人共享额度、额度转售或公共代理。按照 OpenAI 官方 Sign in with ChatGPT 文档与条款，它面向个人终端用户连接到你自己的代理实例，并受你的 ChatGPT 套餐共享滚动用量上限约束（例如 Plus 5 小时滚动窗口，与 ChatGPT 网页和应用共享，不是无限或独立额度）；具体套餐资格、模型开放范围和配额以 OpenAI 实时校验与 `https://chatgpt.com/settings/usage` 为准。
 - **本机登录与权限**：在「系统 → 模型库」右侧的 **ChatGPT 订阅入口** 点击 **Continue with ChatGPT**，程序会在本机 `127.0.0.1` 随机临时端口监听 `/auth/callback` 完成授权。OAuth 凭据独立保存在 `<实例目录>/data/openai-siwc-auth.json`（`0600` 权限，不进入 SQLite 或 `.luckytri` 数据包），不借用 Codex/ChatGPT 客户端内部密钥，也不会读取 `LLM_API_KEY` 或回退到按量计费接口。
 - **后台任务与容错保护**：默认关闭「允许后台自主任务使用 ChatGPT 订阅」与「订阅失败时允许回退到付费 API Key 备用模型」。订阅限额或失效时会明确提示并提供「管理用量」链接，绝不在多个 ChatGPT 账号间自动轮换，也不会在未明确同意时静默切到付费 API Key。订阅通道目前仅支持对话 Responses API，不支持向量 Embedding（知识向量请单独配置 API Key 模型）。
-- **远程访问 / 无界面服务器（Tailscale HTTPS / VPS）**：因 OpenAI 官方协议强制 `redirect_uri` 固定为 `http://127.0.0.1:<端口>/auth/callback`（不支持任意远程域名回调），当你在电脑或手机通过 Tailscale HTTPS 等远程地址打开管理台时，浏览器跳转到 `127.0.0.1` 会指向你当前设备而非服务器，显示「无法访问/拒绝连接」属于正常现象。此时有三种官方兼容方式完成认证：
-  1. **管理台内安全回传（推荐，无需本机安装 CLI 或 SSH）**：点击 **Continue with ChatGPT** 后，按页面指引在新标签页完成授权，直接复制浏览器地址栏里以 `http://127.0.0.1:<端口>/auth/callback?...` 开头的完整链接，粘贴回远程管理台输入框提交即可（仍严格校验官方回调端口、PKCE、`state`、`nonce` 与 RS256 JWKS，不会写入日志）。
-  2. **SSH 本地端口转发**：按页面展示的命令先运行 `ssh -N -L <端口>:127.0.0.1:<端口> <服务器>`，再打开授权页，浏览器回调会自动经隧道抵达服务器并刷新管理台。
-  3. **官方自托管 VM 迁移**：在你本人电脑完成登录后执行 `luckytri chatgpt-auth export-transfer --out transfer.json`，通过 SSH 传到受控 VPS 后运行 `luckytri chatgpt-auth import-transfer transfer.json`（或在管理台导入）并立即删除临时文件；目标主机将保留自身的 `ext_agent_host_id` 而不会被覆盖。
+- **远程访问 / 无界面服务器（Tailscale HTTPS / VPS）**：因 OpenAI 官方协议强制 `redirect_uri` 固定为 `http://127.0.0.1:<端口>/auth/callback`（不支持远程域名回调），当你在电脑或手机通过 Tailscale HTTPS 等远程地址打开管理台时，浏览器跳转到 `127.0.0.1` 会指向你当前设备而非服务器，显示「无法访问/拒绝连接」属于正常现象。可按需区分以下方式：
+  1. **OpenAI 官方文档说明的自托管 VM 流程（本机授权 + 安全迁移）**：在你本人电脑完成本机登录后执行 `luckytri chatgpt-auth export-transfer --out transfer.json`，通过 SSH 传到受控 VPS 后运行 `luckytri chatgpt-auth import-transfer transfer.json`（或在管理台导入）并立即删除临时文件；目标主机将保留自身的 `ext_agent_host_id` 而不会被覆盖。
+  2. **LuckyTri 提供的管理台手工回传辅助（应用侧辅助，非 OpenAI 官方文档背书的自托管流程）**：点击 **Continue with ChatGPT** 后，按页面指引在新标签页完成授权，复制浏览器地址栏里以 `http://127.0.0.1:<端口>/auth/callback?...` 开头的完整链接，粘贴回远程管理台提交；LuckyTri 保持原有 OAuth 协议字段不变并校验回环端口、PKCE、`state`、`nonce` 与 RS256 JWKS，不会写入日志（如无法使用或倾向严格遵循官方文档，请使用上方本机授权后 SSH 迁移流程）。
+  3. **LuckyTri 提供的 SSH 本地端口转发辅助（应用侧辅助）**：按页面展示的命令先运行 `ssh -N -L <端口>:127.0.0.1:<端口> <服务器>` 再打开授权页，将浏览器本机回环回调转发至服务器监听端口。
 
 ### 图片读取
 

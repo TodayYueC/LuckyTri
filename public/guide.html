@@ -530,32 +530,16 @@ luckytri
             <strong>远程访问 / 无界面服务器（Tailscale HTTPS / VPS）</strong
             >：因 OpenAI 官方协议强制 <code>redirect_uri</code> 固定为
             <code>http://127.0.0.1:&lt;端口&gt;/auth/callback</code
-            >（不支持任意远程域名回调），当你在电脑或手机通过 Tailscale HTTPS
+            >（不支持远程域名回调），当你在电脑或手机通过 Tailscale HTTPS
             等远程地址打开管理台时，浏览器跳转到
             <code>127.0.0.1</code>
-            会指向你当前设备而非服务器，显示「无法访问/拒绝连接」属于正常现象。此时有三种官方兼容方式完成认证：
+            会指向你当前设备而非服务器，显示「无法访问/拒绝连接」属于正常现象。可按需区分以下方式：
             <ol>
               <li>
                 <strong
-                  >管理台内安全回传（推荐，无需本机安装 CLI 或 SSH）</strong
-                >：点击
-                <strong>Continue with ChatGPT</strong>
-                后，按页面指引在新标签页完成授权，直接复制浏览器地址栏里以
-                <code>http://127.0.0.1:&lt;端口&gt;/auth/callback?...</code>
-                开头的完整链接，粘贴回远程管理台输入框提交即可（仍严格校验官方回调端口、PKCE、<code>state</code>、<code
-                  >nonce</code
-                >
-                与 RS256 JWKS，不会写入日志）。
-              </li>
-              <li>
-                <strong>SSH 本地端口转发</strong>：按页面展示的命令先运行
-                <code
-                  >ssh -N -L &lt;端口&gt;:127.0.0.1:&lt;端口&gt;
-                  &lt;服务器&gt;</code
-                >，再打开授权页，浏览器回调会自动经隧道抵达服务器并刷新管理台。
-              </li>
-              <li>
-                <strong>官方自托管 VM 迁移</strong>：在你本人电脑完成登录后执行
+                  >OpenAI 官方文档说明的自托管 VM 流程（本机授权 +
+                  安全迁移）</strong
+                >：在你本人电脑完成本机登录后执行
                 <code
                   >luckytri chatgpt-auth export-transfer --out
                   transfer.json</code
@@ -563,6 +547,32 @@ luckytri
                 <code>luckytri chatgpt-auth import-transfer transfer.json</code
                 >（或在管理台导入）并立即删除临时文件；目标主机将保留自身的
                 <code>ext_agent_host_id</code> 而不会被覆盖。
+              </li>
+              <li>
+                <strong
+                  >LuckyTri 提供的管理台手工回传辅助（应用侧辅助，非 OpenAI
+                  官方文档背书的自托管流程）</strong
+                >：点击
+                <strong>Continue with ChatGPT</strong>
+                后，按页面指引在新标签页完成授权，复制浏览器地址栏里以
+                <code>http://127.0.0.1:&lt;端口&gt;/auth/callback?...</code>
+                开头的完整链接，粘贴回远程管理台提交；LuckyTri 保持原有 OAuth
+                协议字段不变并校验回环端口、PKCE、<code>state</code>、<code
+                  >nonce</code
+                >
+                与 RS256
+                JWKS，不会写入日志（如无法使用或倾向严格遵循官方文档，请使用上方本机授权后
+                SSH 迁移流程）。
+              </li>
+              <li>
+                <strong
+                  >LuckyTri 提供的 SSH 本地端口转发辅助（应用侧辅助）</strong
+                >：按页面展示的命令先运行
+                <code
+                  >ssh -N -L &lt;端口&gt;:127.0.0.1:&lt;端口&gt;
+                  &lt;服务器&gt;</code
+                >
+                再打开授权页，将浏览器本机回环回调转发至服务器监听端口。
               </li>
             </ol>
           </li>
