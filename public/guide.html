@@ -484,6 +484,99 @@ luckytri
           也可以先保持模拟模式，在「天性」里和 TA 试聊，确认 TA 说话的样子后再让
           TA 参加真实 QQ。
         </p>
+        <h3>ChatGPT 订阅（Sign in with ChatGPT）</h3>
+        <p>
+          除按量计费的 API Key 供应商外，LuckyTri 也提供与现有 API 并列的
+          <strong>ChatGPT 订阅</strong> 入口，基于 OpenAI 官方公开的 Sign in
+          with ChatGPT（OAuth 2.0 + PKCE）和直连 Responses
+          API（<code>https://api.openai.com/v1/responses</code>，固定
+          <code>store: false</code>、<code>stream: true</code>），供你本人自用的
+          LuckyTri 实例调用：
+        </p>
+        <ul>
+          <li>
+            <strong>定位与用途边界</strong
+            >：此入口仅作为你本人自用机器人的调用入口，不用于多人共享额度、额度转售或公共代理。按照
+            OpenAI 官方 Sign in with ChatGPT
+            文档与条款，它面向个人终端用户连接到你自己的代理实例，并受你的
+            ChatGPT 套餐共享滚动用量上限约束（例如 Plus 5 小时滚动窗口，与
+            ChatGPT
+            网页和应用共享，不是无限或独立额度）；具体套餐资格、模型开放范围和配额以
+            OpenAI 实时校验与
+            <code>https://chatgpt.com/settings/usage</code> 为准。
+          </li>
+          <li>
+            <strong>本机登录与权限</strong>：在「系统 → 模型库」右侧的
+            <strong>ChatGPT 订阅入口</strong> 点击
+            <strong>Continue with ChatGPT</strong>，程序会在本机
+            <code>127.0.0.1</code> 随机临时端口监听
+            <code>/auth/callback</code> 完成授权。OAuth 凭据独立保存在
+            <code>&lt;实例目录&gt;/data/openai-siwc-auth.json</code>（<code
+              >0600</code
+            >
+            权限，不进入 SQLite 或 <code>.luckytri</code> 数据包），不借用
+            Codex/ChatGPT 客户端内部密钥，也不会读取
+            <code>LLM_API_KEY</code> 或回退到按量计费接口。
+          </li>
+          <li>
+            <strong>后台任务与容错保护</strong>：默认关闭「允许后台自主任务使用
+            ChatGPT 订阅」与「订阅失败时允许回退到付费 API Key
+            备用模型」。订阅限额或失效时会明确提示并提供「管理用量」链接，绝不在多个
+            ChatGPT 账号间自动轮换，也不会在未明确同意时静默切到付费 API
+            Key。订阅通道目前仅支持对话 Responses API，不支持向量
+            Embedding（知识向量请单独配置 API Key 模型）。
+          </li>
+          <li>
+            <strong>远程访问 / 无界面服务器（Tailscale HTTPS / VPS）</strong
+            >：因 OpenAI 官方协议强制 <code>redirect_uri</code> 固定为
+            <code>http://127.0.0.1:&lt;端口&gt;/auth/callback</code
+            >（不支持远程域名回调），当你在电脑或手机通过 Tailscale HTTPS
+            等远程地址打开管理台时，浏览器跳转到
+            <code>127.0.0.1</code>
+            会指向你当前设备而非服务器，显示「无法访问/拒绝连接」属于正常现象。可按需区分以下方式：
+            <ol>
+              <li>
+                <strong
+                  >OpenAI 官方文档说明的自托管 VM 流程（本机授权 +
+                  安全迁移）</strong
+                >：在你本人电脑完成本机登录后执行
+                <code
+                  >luckytri chatgpt-auth export-transfer --out
+                  transfer.json</code
+                >，通过 SSH 传到受控 VPS 后运行
+                <code>luckytri chatgpt-auth import-transfer transfer.json</code
+                >（或在管理台导入）并立即删除临时文件；目标主机将保留自身的
+                <code>ext_agent_host_id</code> 而不会被覆盖。
+              </li>
+              <li>
+                <strong
+                  >LuckyTri 提供的管理台手工回传辅助（应用侧辅助，非 OpenAI
+                  官方文档背书的自托管流程）</strong
+                >：点击
+                <strong>Continue with ChatGPT</strong>
+                后，按页面指引在新标签页完成授权，复制浏览器地址栏里以
+                <code>http://127.0.0.1:&lt;端口&gt;/auth/callback?...</code>
+                开头的完整链接，粘贴回远程管理台提交；LuckyTri 保持原有 OAuth
+                协议字段不变并校验回环端口、PKCE、<code>state</code>、<code
+                  >nonce</code
+                >
+                与 RS256
+                JWKS，不会写入日志（如无法使用或倾向严格遵循官方文档，请使用上方本机授权后
+                SSH 迁移流程）。
+              </li>
+              <li>
+                <strong
+                  >LuckyTri 提供的 SSH 本地端口转发辅助（应用侧辅助）</strong
+                >：按页面展示的命令先运行
+                <code
+                  >ssh -N -L &lt;端口&gt;:127.0.0.1:&lt;端口&gt;
+                  &lt;服务器&gt;</code
+                >
+                再打开授权页，将浏览器本机回环回调转发至服务器监听端口。
+              </li>
+            </ol>
+          </li>
+        </ul>
         <h3>图片读取</h3>
         <p>
           在模型档案里开启「图片理解」，并使用服务商支持视觉的模型。图片从 QQ
@@ -834,6 +927,22 @@ npm start
             <tr>
               <td>模型不返回 JSON</td>
               <td>换支持 JSON 对象输出的模型，先做连接测试</td>
+            </tr>
+            <tr>
+              <td>ChatGPT 订阅限额或失效</td>
+              <td>
+                到
+                <code>https://chatgpt.com/settings/usage</code>
+                查看共享滚动额度；失效或未授权时在模型库重新登录/重新授权
+              </td>
+            </tr>
+            <tr>
+              <td>远程 VPS 无法本机回调</td>
+              <td>
+                在本地电脑登录后用
+                <code>luckytri chatgpt-auth export-transfer</code> 导出，经 SSH
+                导入目标服务器并删临时文件
+              </td>
             </tr>
             <tr>
               <td>记忆没有出现</td>

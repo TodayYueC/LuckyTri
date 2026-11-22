@@ -1,12 +1,13 @@
-// Checked against official vendor API docs on 2026-11-13.
+// Checked against official vendor API docs on 2026-11-22.
 // Sources:
-// - Google Gemini API & OpenAI compatibility: https://aistudio.google.com/docs/models , https://aistudio.google.com/docs/thinking , https://aistudio.google.com/docs/openai , https://aistudio.google.com/docs/pricing
+// - OpenAI Sign in with ChatGPT (SIWC): https://developers.openai.com/sign-in-with-chatgpt/
 // - OpenAI API: https://developers.openai.com/api/docs/models , https://developers.openai.com/api/docs/guides/latest-model
+// - Google Gemini API & OpenAI compatibility: https://aistudio.google.com/docs/models , https://aistudio.google.com/docs/thinking , https://aistudio.google.com/docs/openai , https://aistudio.google.com/docs/pricing
 // - Anthropic Claude Messages API: https://platform.claude.com/docs/en/models/overview
 // - DeepSeek API: https://api-docs.deepseek.com/quick_start/pricing/
-// - Moonshot Kimi / Zhipu GLM / Alibaba Qwen / MiniMax / Xiaomi MiMo official API docs
+// - Alibaba Qwen / Zhipu GLM / Moonshot Kimi / MiniMax / Xiaomi MiMo official API docs
 // - Volcengine Ark Agent Plan & Coding Plan: https://docs.volcengine.com/docs/zh/ark/agent-plan-personal-plan-overview.md , https://docs.volcengine.com/docs/zh/ark/coding-plan-personal-plan-overview.md
-// - AWS Bedrock OpenAI model cards & OpenRouter / OpenCode Console model lists
+// - AWS Bedrock OpenAI model cards & OpenRouter / OpenCode Console live model lists
 // maxOutputTokens is the published synchronous output ceiling (or a practical
 // 64K reservation when a plan advertises a 1M shared output window) and
 // maxInputTokens is what the window leaves after it, so every preset passes
@@ -97,6 +98,60 @@ function openRouterGpt(fields) {
   return profile;
 }
 
+function chatGptSubscription(fields) {
+  return {
+    ...limits(400000, 128000),
+    ...shared,
+    vendor: "ChatGPT 订阅",
+    provider: "openai-chatgpt",
+    authMode: "chatgpt-oauth",
+    oauthAccountId: "",
+    baseUrl: OPENAI,
+    apiProtocol: "responses",
+    vision: true,
+    thinkingStyle: "openai",
+    tokenField: "max_completion_tokens",
+    omitSampling: true,
+    reasoningEfforts: ASTRA_EFFORTS,
+    reasoningEffort: "medium",
+    temperature: 1,
+    topP: 1,
+    ...fields,
+  };
+}
+
+const CHATGPT_SUBSCRIPTION_MODELS = [
+  chatGptSubscription({
+    id: "chatgpt-gpt-6.2-sol",
+    label: "GPT-6.2 Sol（订阅）",
+    model: "gpt-6.2-sol",
+    summary:
+      "走官方 Sign in with ChatGPT 与直连 Responses API（store=false、stream=true），消耗你本人的 ChatGPT 订阅共享额度，不填 OpenAI API Key。实际可用模型以登录账号拉取的官方模型列表为准。",
+  }),
+  chatGptSubscription({
+    id: "chatgpt-gpt-6.2-astra",
+    label: "GPT-6.2 Astra（订阅）",
+    model: "gpt-6.2-astra",
+    summary:
+      "走官方 Sign in with ChatGPT 与直连 Responses API（store=false、stream=true），消耗你本人的 ChatGPT 订阅共享额度，不填 OpenAI API Key。实际可用模型与额度取决于当前订阅套餐。",
+  }),
+  chatGptSubscription({
+    id: "chatgpt-gpt-6.1-sol",
+    label: "GPT-6.1 Sol（订阅）",
+    model: "gpt-6.1-sol",
+    summary:
+      "走官方 Sign in with ChatGPT 与直连 Responses API（store=false、stream=true），消耗你本人的 ChatGPT 订阅共享额度，不填 OpenAI API Key。适合作为高稳定订阅主力。",
+  }),
+  chatGptSubscription({
+    id: "chatgpt-gpt-6-luna",
+    label: "GPT-6 Luna（订阅）",
+    model: "gpt-6-luna",
+    reasoningEfforts: GPT_EFFORTS,
+    summary:
+      "走官方 Sign in with ChatGPT 与直连 Responses API（store=false、stream=true），轻量低消耗，消耗你本人的 ChatGPT 订阅共享额度，不填 OpenAI API Key。",
+  }),
+];
+
 function openCodeModel({
   channel,
   model,
@@ -141,11 +196,16 @@ function openCodeModel({
 
 const OPENCODE_GO_MODELS = [
   ["grok-4.7", "Grok 4.7", "responses"],
+  ["gpt-6-luna", "GPT-6 Luna", "responses", true],
   ["gpt-5.6-luna", "GPT-5.6 Luna", "responses", true],
+  ["deepseek-v4.1-flash", "DeepSeek V4.1 Flash", "chat", true],
   ["deepseek-v4-pro", "DeepSeek V4 Pro", "chat"],
   ["glm-5.3-flash", "GLM-5.3 Flash", "chat", true],
+  ["kimi-k3.1-pro", "Kimi K3.1 Pro", "chat", true],
   ["kimi-k3", "Kimi K3", "chat"],
+  ["minimax-m3.1-flash", "MiniMax M3.1 Flash", "chat", true],
   ["minimax-m3", "MiniMax M3", "anthropic"],
+  ["qwen4-max", "Qwen4 Max", "anthropic", true],
   ["qwen3.8-max", "Qwen3.8 Max", "anthropic", true],
 ].map(([model, label, protocol, vision]) =>
   openCodeModel({
@@ -320,6 +380,8 @@ const VOLCENGINE_CODING_PLAN_MODELS = [
     context: 1024000,
     output: 131072,
     vision: true,
+    summary:
+      "Coding Plan 专属 Responses 接口 · 上下文 1,024,000 · 官方最大输出 131,072 · 支持图片理解。官方已公告即将下线，建议迁移至 Kimi K3.1 Pro。",
   }),
 ];
 
@@ -488,6 +550,8 @@ const VOLCENGINE_AGENT_PLAN_MODELS = [
     vision: true,
     reasoningEffort: "max",
     reasoningEfforts: ["low", "high", "max"],
+    summary:
+      "Agent Plan 专属 Responses 接口 · 上下文 1,024,000 · LuckyTri 输出预算 65,536 · 支持图片理解。官方已公告即将下线，建议迁移至 Kimi K3.1 Pro。",
   }),
 ];
 
@@ -502,6 +566,7 @@ export const EFFORT_LABELS = {
 };
 
 export const MODEL_CATALOG = [
+  ...CHATGPT_SUBSCRIPTION_MODELS,
   ...VOLCENGINE_AGENT_PLAN_MODELS,
   ...VOLCENGINE_CODING_PLAN_MODELS,
   {
@@ -619,6 +684,25 @@ export const MODEL_CATALOG = [
     topP: 0.95,
   },
   {
+    id: "glm-5.3-flashx",
+    vendor: "智谱 GLM",
+    label: "GLM-5.3 FlashX",
+    summary:
+      "原生多模态高速版（约 200 tokens/s）。思考不能关闭，默认 max；支持图片、视频。1M 内同一价格，没有分档。",
+    provider: "glm",
+    baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+    model: "glm-5.3-flashx",
+    ...limits(1000000, 131072),
+    ...shared,
+    vision: true,
+    thinkingStyle: "glm",
+    tokenField: "max_tokens",
+    reasoningEfforts: ["low", "high", "max"],
+    reasoningEffort: "max",
+    temperature: 1,
+    topP: 0.95,
+  },
+  {
     id: "glm-5.3-flash",
     vendor: "智谱 GLM",
     label: "GLM-5.3 Flash",
@@ -658,6 +742,26 @@ export const MODEL_CATALOG = [
     topP: 0.95,
   },
   {
+    id: "kimi-k3.1-pro-highspeed",
+    vendor: "Kimi",
+    label: "Kimi K3.1 Pro Highspeed",
+    summary:
+      "Kimi K3.1 Pro 高速版（输出速度约 2–3 倍，单价更高）。思考不能关闭，默认 max；支持看图。1M 共享窗口，预留 128K 输出预算；国内密钥用 api.moonshot.cn，海外密钥需改为 api.moonshot.ai。",
+    provider: "kimi",
+    baseUrl: "https://api.moonshot.cn/v1",
+    model: "kimi-k3.1-pro-highspeed",
+    ...limits(1048576, 131072),
+    ...shared,
+    vision: true,
+    thinkingStyle: "kimi-effort",
+    tokenField: "max_completion_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["low", "high", "max"],
+    reasoningEffort: "max",
+    temperature: 1,
+    topP: 0.95,
+  },
+  {
     id: "kimi-k3",
     vendor: "Kimi",
     label: "Kimi K3",
@@ -682,7 +786,7 @@ export const MODEL_CATALOG = [
     vendor: "Kimi",
     label: "Kimi K2.6",
     summary:
-      "通用模型。思考默认开启，可关闭；支持看图。输出和输入共用 256K 窗口，官方默认输出 32K。",
+      "旧版通用模型（官方已标记弃用，建议迁移至 Kimi K3.1 Pro）。思考默认开启，可关闭；支持看图。输出和输入共用 256K 窗口，官方默认输出 32K。",
     provider: "kimi",
     baseUrl: "https://api.moonshot.cn/v1",
     model: "kimi-k2.6",
@@ -806,7 +910,29 @@ export const MODEL_CATALOG = [
     topP: 1,
   },
   // Google Gemini — OpenAI-compatible endpoint (Bearer). Specs from
-  // https://aistudio.google.com/docs/models , /docs/thinking , /docs/openai (2026-11-13).
+  // https://aistudio.google.com/docs/models , /docs/thinking , /docs/openai (2026-11-22).
+  {
+    id: "gemini-4-neon",
+    vendor: "Gemini",
+    label: "Gemini 4 Neon",
+    summary:
+      "正式版（2026-11-18 发布）· Gemini 4 最新前沿多模态与智能体旗舰，仅限 Gemini API 付费层级（无免费额度）。思考档 low/medium/high/xhigh（默认 high，不支持关闭或 minimal）；支持看图。统一 1M 窗口，单次同步输出 64K；忽略采样参数。",
+    provider: "gemini",
+    baseUrl: GEMINI_OPENAI,
+    model: "gemini-4-neon",
+    apiProtocol: "chat",
+    ...limits(1048576, 65536),
+    ...shared,
+    vision: true,
+    thinkingStyle: "openai",
+    tokenField: "max_completion_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["low", "medium", "high", "xhigh"],
+    reasoningEffort: "high",
+    temperature: 1,
+    topP: 1,
+    timeoutMs: 300000,
+  },
   {
     id: "gemini-4-hydrogen",
     vendor: "Gemini",
@@ -979,6 +1105,30 @@ export const MODEL_CATALOG = [
     topP: 0.95,
   },
   gpt({
+    id: "gpt-6.2-astra",
+    vendor: "OpenAI",
+    label: "GPT-6.2 Astra",
+    summary:
+      "最新旗舰（2026-11 发布）。思考不能关闭（low 至 max，默认 medium）；支持看图；忽略采样参数。输入超过 272K 整单按长上下文计价。",
+    provider: "openai",
+    baseUrl: OPENAI,
+    model: "gpt-6.2-astra",
+    omitSampling: true,
+    reasoningEfforts: ASTRA_EFFORTS,
+  }),
+  gpt({
+    id: "gpt-6.2-sol",
+    vendor: "OpenAI",
+    label: "GPT-6.2 Sol",
+    summary:
+      "最新编码与复杂推理旗舰（2026-11 发布）。思考不能关闭（low 至 max，默认 medium）；支持看图；忽略采样参数。输入超过 272K 整单按长上下文计价。",
+    provider: "openai",
+    baseUrl: OPENAI,
+    model: "gpt-6.2-sol",
+    omitSampling: true,
+    reasoningEfforts: ASTRA_EFFORTS,
+  }),
+  gpt({
     id: "gpt-6-astra",
     vendor: "OpenAI",
     label: "GPT-6 Astra",
@@ -1031,6 +1181,26 @@ export const MODEL_CATALOG = [
     model: "gpt-6-luna",
   }),
   openRouterGpt({
+    id: "openrouter-gpt-6.2-astra",
+    vendor: "OpenRouter",
+    label: "GPT-6.2 Astra",
+    summary:
+      "OpenRouter 路由 · openai/gpt-6.2-astra。1.05M 上下文、128K 最大输出；思考不能关闭；支持图片、结构化输出和工具调用。",
+    model: "openai/gpt-6.2-astra",
+    omitSampling: true,
+    reasoningEfforts: ASTRA_EFFORTS,
+  }),
+  openRouterGpt({
+    id: "openrouter-gpt-6.2-sol",
+    vendor: "OpenRouter",
+    label: "GPT-6.2 Sol",
+    summary:
+      "OpenRouter 路由 · openai/gpt-6.2-sol。1.05M 上下文、128K 最大输出；思考不能关闭；支持图片、结构化输出和工具调用。",
+    model: "openai/gpt-6.2-sol",
+    omitSampling: true,
+    reasoningEfforts: ASTRA_EFFORTS,
+  }),
+  openRouterGpt({
     id: "openrouter-gpt-6-astra",
     vendor: "OpenRouter",
     label: "GPT-6 Astra",
@@ -1072,6 +1242,27 @@ export const MODEL_CATALOG = [
       "OpenRouter 路由 · openai/gpt-6-luna。1.05M 上下文、128K 最大输出；支持图片、结构化输出和工具调用。",
     model: "openai/gpt-6-luna",
   }),
+  {
+    id: "openrouter-gemini-4-neon",
+    vendor: "OpenRouter",
+    label: "Gemini 4 Neon",
+    summary:
+      "OpenRouter 路由 · google/gemini-4-neon。1M 统一窗口、单次同步输出 64K；思考档 low/medium/high/xhigh（默认 high）；支持图片、结构化输出和工具调用。",
+    provider: "openrouter",
+    baseUrl: OPENROUTER,
+    model: "google/gemini-4-neon",
+    ...limits(1048576, 65536),
+    ...shared,
+    vision: true,
+    thinkingStyle: "openai",
+    tokenField: "max_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["low", "medium", "high", "xhigh"],
+    reasoningEffort: "high",
+    temperature: 1,
+    topP: 1,
+    timeoutMs: 300000,
+  },
   {
     id: "openrouter-gemini-4-hydrogen",
     vendor: "OpenRouter",
@@ -1185,6 +1376,27 @@ export const MODEL_CATALOG = [
     model: "gpt-5.6-luna",
   }),
   {
+    id: "qwen4-max",
+    vendor: "通义千问",
+    label: "Qwen4 Max",
+    summary:
+      "新一代旗舰（2026-11-16 发布）。思考默认开启（high，可选 low/high/xhigh 或关闭）；支持图片、视频。上下文 1M，思考模式最大输出 262K。",
+    provider: "qwen",
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    model: "qwen4-max",
+    ...limits(1000000, 262144),
+    ...shared,
+    vision: true,
+    thinkingStyle: "qwen-effort",
+    tokenField: "max_completion_tokens",
+    omitSampling: true,
+    reasoningEfforts: ["none", "low", "high", "xhigh"],
+    reasoningEffort: "high",
+    temperature: 0.6,
+    topP: 0.95,
+    timeoutMs: 180000,
+  },
+  {
     id: "qwen3.8-max",
     vendor: "通义千问",
     label: "Qwen3.8 Max",
@@ -1224,6 +1436,51 @@ export const MODEL_CATALOG = [
     temperature: 0.6,
     topP: 0.95,
   },
+  {
+    id: "qwen3.7-plus",
+    vendor: "通义千问",
+    label: "Qwen3.7 Plus",
+    summary:
+      "均衡款。默认关闭思考，可一键开启；支持图片、视频。上下文 1M，最大输出 131K。",
+    provider: "qwen",
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    model: "qwen3.7-plus",
+    ...limits(1000000, 131072),
+    ...shared,
+    vision: true,
+    thinkingStyle: "qwen",
+    tokenField: "max_tokens",
+    reasoningEfforts: ["none", "medium"],
+    reasoningEffort: "none",
+    temperature: 0.7,
+    topP: 0.9,
+  },
+  gpt({
+    id: "bedrock-gpt-6.2-astra",
+    vendor: "亚马逊 Bedrock",
+    label: "GPT-6.2 Astra",
+    summary:
+      "美国跨区推理（us.openai.gpt-6.2-astra，2026-11-17 上线）。思考不能关闭，默认 medium；支持看图，JSON 输出关闭。输入超过 272K 整单按长上下文计价。",
+    provider: "bedrock",
+    baseUrl: BEDROCK,
+    model: "us.openai.gpt-6.2-astra",
+    json: false,
+    omitSampling: true,
+    reasoningEfforts: ASTRA_EFFORTS,
+  }),
+  gpt({
+    id: "bedrock-gpt-6.2-sol",
+    vendor: "亚马逊 Bedrock",
+    label: "GPT-6.2 Sol",
+    summary:
+      "美国跨区推理（us.openai.gpt-6.2-sol，2026-11-17 上线）。思考不能关闭，默认 medium；支持看图，JSON 输出关闭。输入超过 272K 整单按长上下文计价。",
+    provider: "bedrock",
+    baseUrl: BEDROCK,
+    model: "us.openai.gpt-6.2-sol",
+    json: false,
+    omitSampling: true,
+    reasoningEfforts: ASTRA_EFFORTS,
+  }),
   gpt({
     id: "bedrock-gpt-6-astra",
     vendor: "亚马逊 Bedrock",
@@ -1282,6 +1539,30 @@ export const MODEL_CATALOG = [
     json: false,
   }),
   ...OPENCODE_GO_MODELS,
+  gpt({
+    id: "opencode-zen-gpt-6.2-astra",
+    vendor: "OpenCode Zen",
+    label: "GPT-6.2 Astra",
+    summary: "OpenCode Zen · GPT-6.2 系列最新旗舰 · Responses 接口。",
+    provider: "opencode-zen",
+    baseUrl: OPENCODE_ZEN,
+    model: "gpt-6.2-astra",
+    apiProtocol: "responses",
+    omitSampling: true,
+    reasoningEfforts: ASTRA_EFFORTS,
+  }),
+  gpt({
+    id: "opencode-zen-gpt-6.2-sol",
+    vendor: "OpenCode Zen",
+    label: "GPT-6.2 Sol",
+    summary: "OpenCode Zen · GPT-6.2 最新编码与推理旗舰 · Responses 接口。",
+    provider: "opencode-zen",
+    baseUrl: OPENCODE_ZEN,
+    model: "gpt-6.2-sol",
+    apiProtocol: "responses",
+    omitSampling: true,
+    reasoningEfforts: ASTRA_EFFORTS,
+  }),
   gpt({
     id: "opencode-zen-gpt-6-astra",
     vendor: "OpenCode Zen",
@@ -1380,7 +1661,15 @@ export const MODEL_CATALOG = [
     reasoningEffort: "high",
     summary: "OpenCode Zen · Kimi 旗舰 · Chat Completions 接口。",
   }),
-  // Qwen3.8 Max is only served through Go; Zen offers Qwen3.8 Flash.
+  openCodeModel({
+    channel: "zen",
+    model: "qwen3.8-max",
+    label: "Qwen3.8 Max",
+    protocol: "chat",
+    vision: true,
+    limits: limits(262144, 131072),
+    summary: "OpenCode Zen · 通义千问旗舰多模态 · Chat Completions 接口。",
+  }),
   openCodeModel({
     channel: "zen",
     model: "qwen3.8-flash",
@@ -1474,6 +1763,12 @@ export const MODEL_PRESETS = {
     label: "OpenAI",
     baseUrl: OPENAI,
     model: "gpt-6-astra",
+  },
+  "openai-chatgpt": {
+    label: "ChatGPT 订阅",
+    baseUrl: OPENAI,
+    model: "gpt-6.2-sol",
+    authMode: "chatgpt-oauth",
   },
   gemini: {
     label: "Gemini",

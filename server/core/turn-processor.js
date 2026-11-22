@@ -569,9 +569,12 @@ export class TurnProcessor {
         prompts: prompt,
       };
       trace.affect = view.affect;
+      const hasModelCredential = Boolean(
+        this.owner.models.hasCredential?.(model) ?? (model?.apiKey || hasKey),
+      );
       if (
         simulatedTurn &&
-        !hasKey &&
+        !hasModelCredential &&
         (preview || this.owner.store.settings().demo)
       )
         return this.owner.offline(

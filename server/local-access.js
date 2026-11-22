@@ -11,6 +11,27 @@ export function isLoopback(address = "") {
   );
 }
 
+export function isLocalStudioClient(req) {
+  if (!req || typeof req !== "object") return false;
+  const sockLoopback = isLoopback(req.socket?.remoteAddress || "");
+  const clientIpLoopback = isLoopback(
+    req.ip || req.socket?.remoteAddress || "",
+  );
+  const host = String(req.hostname || "").toLowerCase();
+  const hostLoopback =
+    host === "127.0.0.1" ||
+    host === "localhost" ||
+    host === "::1" ||
+    host === "[::1]";
+  const proxied = Boolean(
+    req.headers?.["x-forwarded-for"] ||
+    req.headers?.["x-forwarded-host"] ||
+    req.headers?.["x-forwarded-proto"] ||
+    req.headers?.forwarded,
+  );
+  return sockLoopback && clientIpLoopback && hostLoopback && !proxied;
+}
+
 // A machine-local capability for CLI status/stop. It is never a user setting,
 // never returned to the browser, and never grants access to the studio APIs.
 export function localServiceKey() {

@@ -19,6 +19,7 @@ const help = `LuckyTri ${VERSION}
   backup [--auto --force]   备份数据库 / Back up the database
   recovery verify --backup FILE
   recovery restore --backup FILE --to NEW_FILE
+  chatgpt-auth status|export-transfer|import-transfer
   plugin new|check|pack|registry-check ...
   --version, -v            显示版本 / Show version
   --help, -h               显示帮助 / Show help
@@ -61,7 +62,11 @@ try {
       recovery: "recover.js",
       plugin: "plugin.js",
     };
-    if (!["setup", "paths", ...Object.keys(scripts)].includes(command))
+    if (
+      !["setup", "paths", "chatgpt-auth", ...Object.keys(scripts)].includes(
+        command,
+      )
+    )
       throw Error(
         `未知命令 / Unknown command: ${command}\n使用 luckytri --help 查看帮助。`,
       );
@@ -76,6 +81,70 @@ try {
       const { prepareRuntime } = await import("../scripts/runtime.js");
       prepareRuntime({ initialize: false });
       console.log(JSON.stringify(runtimePaths(), null, 2));
+    } else if (command === "chatgpt-auth") {
+      const { prepareRuntime } = await import("../scripts/runtime.js");
+      const {
+        ChatGptSubscriptionManager,
+        readProtectedTransferFile,
+        writeProtectedTransferFile,
+      } = await import("../server/core/chatgpt-subscription.js");
+      prepareRuntime({ initialize: false });
+      const paths = runtimePaths();
+      const manager = new ChatGptSubscriptionManager({
+        storagePath: join(paths.data, "openai-siwc-auth.json"),
+      });
+      const sub = args.shift() || "status";
+      if (sub === "status") {
+        console.log(JSON.stringify(manager.publicStatus(), null, 2));
+      } else if (sub === "export-transfer") {
+        let accountId = "";
+        let outFile = "";
+        for (let i = 0; i < args.length; i++) {
+          if (args[i] === "--account" && args[i + 1]) {
+            accountId = args[++i];
+          } else if (args[i] === "--out" && args[i + 1]) {
+            outFile = args[++i];
+          } else {
+            throw Error(
+              "用法 / Usage: luckytri chatgpt-auth export-transfer [--account ID] [--out FILE]",
+            );
+          }
+        }
+        const record = manager.exportTransferRecord(accountId);
+        const text = `${JSON.stringify(record, null, 2)}\n`;
+        if (outFile) {
+          writeProtectedTransferFile(outFile, text);
+          console.log(
+            `已导出本地迁移凭据（不含本机 host ID），权限 0600，请通过 SSH 传输到目标机器后立即删除临时文件：${outFile}`,
+          );
+        } else {
+          process.stdout.write(text);
+        }
+      } else if (sub === "import-transfer") {
+        const file = args[0];
+        if (!file || args.length > 1)
+          throw Error(
+            "用法 / Usage: luckytri chatgpt-auth import-transfer <FILE>",
+          );
+        const raw = readProtectedTransferFile(file);
+        const status = manager.importTransferRecord(raw);
+        console.log(
+          JSON.stringify(
+            {
+              ok: true,
+              hostId: status.hostId,
+              activeAccountId: status.activeAccountId,
+              accounts: status.accounts.length,
+            },
+            null,
+            2,
+          ),
+        );
+      } else {
+        throw Error(
+          "用法 / Usage: luckytri chatgpt-auth status|export-transfer|import-transfer",
+        );
+      }
     } else {
       if (command !== "plugin" && command !== "recovery") {
         const { prepareRuntime } = await import("../scripts/runtime.js");

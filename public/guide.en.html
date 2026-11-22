@@ -526,6 +526,109 @@ luckytri
           &quot;Nature&quot; to see how she speaks before letting her join real
           QQ.
         </p>
+        <h3>ChatGPT Subscription (Sign in with ChatGPT)</h3>
+        <p>
+          Alongside metered API-key providers, LuckyTri provides a
+          <strong>ChatGPT Subscription</strong> provider built on OpenAI&#39;s
+          official open-source Sign in with ChatGPT (OAuth 2.0 + PKCE) flow and
+          the Direct Responses API
+          (<code>https://api.openai.com/v1/responses</code>, always
+          <code>store: false</code>, <code>stream: true</code>) for your own
+          self-hosted LuckyTri instance:
+        </p>
+        <ul>
+          <li>
+            <strong>Scope and official boundaries</strong>: This entry is
+            strictly an invocation endpoint for your own personal bot instance,
+            not a quota-sharing service, reseller, or multi-user proxy. Under
+            OpenAI&#39;s official Sign in with ChatGPT documentation and terms,
+            it connects an individual end user&#39;s subscription to their own
+            agent and draws from the shared rolling usage limit of that ChatGPT
+            plan (for example, the Plus 5-hour rolling window shared with
+            ChatGPT web and apps—not unlimited or separate quota). Actual plan
+            eligibility, model availability, and rate limits are enforced live
+            by OpenAI and visible at
+            <code>https://chatgpt.com/settings/usage</code>.
+          </li>
+          <li>
+            <strong>Local sign-in and credential isolation</strong>: In
+            &quot;System → Model library&quot;, click
+            <strong>Continue with ChatGPT</strong>. LuckyTri listens on an
+            ephemeral <code>127.0.0.1</code> loopback port at
+            <code>/auth/callback</code>. OAuth tokens are stored separately in
+            <code>&lt;instance-home&gt;/data/openai-siwc-auth.json</code> (<code
+              >0600</code
+            >
+            permissions, outside SQLite and <code>.luckytri</code> exports).
+            LuckyTri never borrows Codex/ChatGPT internal credentials and never
+            reads <code>LLM_API_KEY</code> for subscription profiles.
+          </li>
+          <li>
+            <strong>Background consent and failover guards</strong>: Both
+            &quot;Allow background autonomous tasks to use ChatGPT
+            subscription&quot; and &quot;Allow fallback to paid API-key backups
+            when subscription fails&quot; are off by default. On usage limits or
+            auth expiry, LuckyTri surfaces the error with a direct &quot;Manage
+            usage&quot; link, never rotates across ChatGPT accounts, and never
+            silently switches to metered API keys without explicit opt-in.
+            Subscription profiles support the Responses API only, not embeddings
+            (configure a separate API-key model for knowledge vectors).
+          </li>
+          <li>
+            <strong
+              >Remote access &amp; headless VPS (Tailscale HTTPS / SSH)</strong
+            >: Because OpenAI&#39;s official protocol requires
+            <code>redirect_uri</code> to be strictly
+            <code>http://127.0.0.1:&lt;port&gt;/auth/callback</code> (remote
+            domain callbacks are not permitted), opening Studio over Tailscale
+            HTTPS causes the browser redirect to target
+            <code>127.0.0.1</code> on your own device rather than the VPS,
+            showing a connection error—this is expected. Distinguish between
+            OpenAI&#39;s documented flow and LuckyTri&#39;s app-side helpers:
+            <ol>
+              <li>
+                <strong
+                  >OpenAI&#39;s documented self-hosted VM flow (local sign-in +
+                  secure transfer)</strong
+                >: Sign in on your own computer, run
+                <code
+                  >luckytri chatgpt-auth export-transfer --out
+                  transfer.json</code
+                >, transfer it over SSH to your controlled VPS, run
+                <code>luckytri chatgpt-auth import-transfer transfer.json</code>
+                (or paste in Studio), and delete the temporary file immediately.
+                The VPS retains its own <code>ext_agent_host_id</code>.
+              </li>
+              <li>
+                <strong
+                  >Manual callback URL paste in Studio (LuckyTri app-side
+                  helper, not an OpenAI-endorsed self-hosted flow)</strong
+                >: Click <strong>Continue with ChatGPT</strong>, approve in the
+                new tab, copy the full redirected
+                <code>http://127.0.0.1:&lt;port&gt;/auth/callback?...</code> URL
+                from the address bar, and paste it back into the remote Studio
+                form. LuckyTri keeps the OAuth protocol fields unchanged and
+                verifies the loopback port/path, <code>state</code>, PKCE
+                <code>code_verifier</code>, <code>nonce</code>, and RS256 JWKS
+                without logging the URL or code (if preferred or if issues
+                occur, use OpenAI&#39;s documented local sign-in + SSH transfer
+                flow above).
+              </li>
+              <li>
+                <strong
+                  >SSH local port forwarding (LuckyTri app-side helper)</strong
+                >: Run the
+                <code
+                  >ssh -N -L &lt;port&gt;:127.0.0.1:&lt;port&gt;
+                  &lt;server&gt;</code
+                >
+                command shown in Studio before opening the authorization page so
+                your browser&#39;s <code>127.0.0.1</code> callback reaches the
+                VPS listener.
+              </li>
+            </ol>
+          </li>
+        </ul>
         <h3>Reading images</h3>
         <p>
           Enable &quot;Image understanding&quot; in the model profile and use a
@@ -1000,6 +1103,22 @@ npm start
               <td>
                 Use a model that supports JSON object output and run the
                 connection test first
+              </td>
+            </tr>
+            <tr>
+              <td>ChatGPT plan limit or expiry</td>
+              <td>
+                Check shared rolling quota at
+                <code>https://chatgpt.com/settings/usage</code>; sign in again
+                or re-consent from System → Model library
+              </td>
+            </tr>
+            <tr>
+              <td>Headless VPS loopback callback</td>
+              <td>
+                Sign in locally, export via
+                <code>luckytri chatgpt-auth export-transfer</code>, import on
+                the VPS over SSH, and delete the temporary file
               </td>
             </tr>
             <tr>

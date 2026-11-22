@@ -3,6 +3,18 @@ import { parseModelJson } from "./model-json.js";
 import { USER_AGENT } from "../version.js";
 import { createHmac } from "node:crypto";
 import {
+  CHATGPT_API_BASE,
+  CHATGPT_AUTH_MODE,
+  CHATGPT_PROVIDER_ID,
+  assertNotRedirectResponse,
+  assertOfficialChatGptBaseUrl,
+  assertOfficialChatGptEndpoint,
+  buildChatGptResponsesBody,
+  classifySiwcError,
+  isChatGptSubscriptionProfile,
+  readResponsesSseStream,
+} from "./chatgpt-subscription.js";
+import {
   RETRYABLE_STATUS,
   describeNetworkError,
   isTimeoutError,
@@ -123,6 +135,15 @@ export function defaultModel(s) {
 }
 export function publicModel(m) {
   const { apiKey, ...safe } = m;
+  if (isChatGptSubscriptionProfile(m)) {
+    return {
+      ...safe,
+      provider: CHATGPT_PROVIDER_ID,
+      authMode: CHATGPT_AUTH_MODE,
+      oauthAccountId: String(m.oauthAccountId || ""),
+      hasApiKey: false,
+    };
+  }
   return { ...safe, hasApiKey: !!apiKey };
 }
 export function storedModels(repo) {
@@ -213,10 +234,11 @@ function clampGeminiOpenAiEffort(profile, effort) {
   const value = String(effort || "").toLowerCase();
   const model = String(profile?.model || "").toLowerCase();
   if (/^gemini-(?:4-|3\.8-|3\.7-|3\.1-pro|3-pro)/.test(model)) {
+    const supportsXhigh =
+      model === "gemini-4-hydrogen" || model === "gemini-4-neon";
     if (value === "none" || value === "minimal") return "low";
-    if (value === "max")
-      return model === "gemini-4-hydrogen" ? "xhigh" : "high";
-    if (value === "xhigh" && model !== "gemini-4-hydrogen") return "high";
+    if (value === "max") return supportsXhigh ? "xhigh" : "high";
+    if (value === "xhigh" && !supportsXhigh) return "high";
     return value;
   }
   if (/^gemini-3/.test(model)) {
@@ -365,6 +387,15 @@ function anthropicContent(content) {
 }
 
 function protocolRequest(body, profile, stage) {
+  if (isChatGptSubscriptionProfile(profile)) {
+    return {
+      protocol: "responses",
+      path: "/responses",
+      body: buildChatGptResponsesBody(body, profile),
+      headers: { Accept: "text/event-stream" },
+      streaming: true,
+    };
+  }
   const protocol = profile.apiProtocol || "chat";
   if (protocol === "responses") {
     const output = {
@@ -539,6 +570,22 @@ export function normalizeUsage(usage, protocol) {
 }
 
 export function validateModel(m) {
+  const isChatGpt = isChatGptSubscriptionProfile(m);
+  if (isChatGpt) {
+    if (String(m.apiKey || "").trim()) {
+      throw Error(
+        "ChatGPT 订阅不支持自填 API Key，请改用官方 Sign in with ChatGPT 登录",
+      );
+    }
+    m.provider = CHATGPT_PROVIDER_ID;
+    m.authMode = CHATGPT_AUTH_MODE;
+    m.apiProtocol = "responses";
+    m.apiKey = "";
+    m.omitSampling = true;
+    m.baseUrl = assertOfficialChatGptBaseUrl(m.baseUrl, { allowEmpty: true });
+    m.oauthAccountId =
+      typeof m.oauthAccountId === "string" ? m.oauthAccountId.trim() : "";
+  }
   const u = new URL(m.baseUrl);
   if (
     !["http:", "https:"].includes(u.protocol) ||
@@ -848,6 +895,8 @@ export function classifyModelError(error) {
   if (!error) return "unknown";
   if (error.circuitOpen) return "circuit";
   if (error.timeout || isTimeoutError(error)) return "timeout";
+  if (error.usageLimit || error.quotaExhausted) return "quota";
+  if (error.authError || error.reauthRequired) return "auth";
   if (error.unavailable || accountRefusal(error)) {
     const status = Number(error.status);
     if (
@@ -862,9 +911,15 @@ export function classifyModelError(error) {
   const status = Number(error.status);
   if (status === 429) return "rate_limit";
   if (status >= 500 && status < 600) return "upstream_5xx";
-  if (error.networkFailure || isTransientNetworkError(error)) return "network";
+  if (
+    error.networkFailure ||
+    error.streamIncomplete ||
+    isTransientNetworkError(error)
+  )
+    return "network";
   if (
     error instanceof SyntaxError ||
+    error.incomplete ||
     /JSON|输出被截断/i.test(error.message || "")
   )
     return "format";
@@ -903,9 +958,12 @@ async function httpError(response) {
   return error;
 }
 function isAvailabilityFailure(error) {
+  if (error?.usageLimit || error?.authError || error?.reauthRequired)
+    return false;
   return (
     isTimeoutError(error) ||
     isTransientNetworkError(error) ||
+    Boolean(error?.streamIncomplete) ||
     RETRYABLE_STATUS.has(Number(error?.status))
   );
 }
@@ -949,8 +1007,21 @@ function requestFailure(
 // request cannot.
 export function isTransientModelFailure(error) {
   if (!error || error instanceof SyntaxError) return false;
-  if (error.quotaExhausted || accountRefusal(error)) return false;
-  if (error.circuitOpen || error.timeout || error.networkFailure) return true;
+  if (
+    error.quotaExhausted ||
+    error.usageLimit ||
+    error.authError ||
+    error.reauthRequired ||
+    accountRefusal(error)
+  )
+    return false;
+  if (
+    error.circuitOpen ||
+    error.timeout ||
+    error.networkFailure ||
+    error.streamIncomplete
+  )
+    return true;
   if (RETRYABLE_STATUS.has(Number(error.status))) return true;
   return isTransientNetworkError(error) || isTimeoutError(error);
 }
@@ -958,7 +1029,13 @@ export function isTransientModelFailure(error) {
 // content decision about one message, which must not take the model away.
 export function accountRefusal(error) {
   if (!error) return false;
-  if (error.quotaExhausted) return true;
+  if (
+    error.quotaExhausted ||
+    error.usageLimit ||
+    error.authError ||
+    error.reauthRequired
+  )
+    return true;
   const status = Number(error?.status);
   const text = String(error?.detail || error?.message || "");
   if ((status === 400 || status === 429) && isQuotaOrPlanRefusalText(text))
@@ -971,7 +1048,14 @@ export function accountRefusal(error) {
 }
 export function shouldFallback(error) {
   if (!error || error instanceof SyntaxError) return false;
-  if (error.circuitOpen || error.timeout || error.networkFailure) return true;
+  if (error.consentRequired) return false;
+  if (
+    error.circuitOpen ||
+    error.timeout ||
+    error.networkFailure ||
+    error.streamIncomplete
+  )
+    return true;
   if (error.unavailable || accountRefusal(error)) return true;
   if (FALLBACK_STATUS.has(Number(error.status))) return true;
   return isTransientNetworkError(error) || isTimeoutError(error);
@@ -1007,15 +1091,23 @@ export function withFallback(models, fallback) {
       // backup at most; a failing or slow model must not stack timeouts
       // across the whole library on a single step.
       const maxHops = boundedStage ? 1 : chain.length;
+      const primaryIsChatGpt = isChatGptSubscriptionProfile(profile);
+      const allowPaidFallback =
+        models?.chatgptAuth?.allowsPaidFallback?.() === true;
       const candidates = chain
-        .filter(
-          (next) =>
-            next &&
-            next.id !== profile?.id &&
-            stage !== "test" &&
-            (!images?.length || next.vision) &&
-            models.available?.(next) !== false,
-        )
+        .filter((next) => {
+          if (!next || next.id === profile?.id || stage === "test")
+            return false;
+          // Never auto-rotate across ChatGPT subscription accounts, and never
+          // silently switch from ChatGPT plan billing to a paid API-key model
+          // unless the user explicitly opted into failover.
+          if (primaryIsChatGpt) {
+            if (isChatGptSubscriptionProfile(next)) return false;
+            if (!allowPaidFallback) return false;
+          }
+          if (images?.length && !next.vision) return false;
+          return models.available?.(next) !== false;
+        })
         .slice(0, maxHops);
       const primaryRest = candidates.length
         ? [attempt, { ...options, hasFallback: true }]
@@ -1134,6 +1226,7 @@ export class ModelManager {
       fetcher = fetch,
       maxConcurrent = 3,
       now = Date.now,
+      chatgptAuth = null,
       primaryTurnTimeoutMs = TURN_STAGE_TIMEOUT_MS,
       fallbackTurnTimeoutMs = FALLBACK_TURN_TIMEOUT_MS,
       fallbackTotalBudgetMs = FALLBACK_TOTAL_BUDGET_MS,
@@ -1142,6 +1235,7 @@ export class ModelManager {
     this.repo = repo;
     this.fetcher = fetcher;
     this.now = now;
+    this.chatgptAuth = chatgptAuth;
     this.primaryTurnTimeoutMs = primaryTurnTimeoutMs;
     this.fallbackTurnTimeoutMs = fallbackTurnTimeoutMs;
     this.fallbackTotalBudgetMs = fallbackTotalBudgetMs;
@@ -1152,7 +1246,27 @@ export class ModelManager {
     this.circuits = new Map();
     this.unavailable = new Map();
   }
+  hasCredential(profile) {
+    if (!profile) return false;
+    if (isChatGptSubscriptionProfile(profile)) {
+      return Boolean(
+        this.chatgptAuth?.hasUsableCredential?.(profile.oauthAccountId),
+      );
+    }
+    return Boolean(profile.apiKey || process.env.LLM_API_KEY);
+  }
   healthKey(profile) {
+    if (isChatGptSubscriptionProfile(profile)) {
+      const account = this.chatgptAuth?.resolveAccount?.(
+        profile.oauthAccountId,
+      );
+      const id =
+        account?.accountId ||
+        profile.oauthAccountId ||
+        this.chatgptAuth?.state?.activeAccountId ||
+        "active";
+      return `chatgpt-oauth|${id}|${profile.model}|${account?.saved_at || ""}`;
+    }
     let origin = "";
     try {
       origin = new URL(profile.baseUrl).origin;
@@ -1174,6 +1288,11 @@ export class ModelManager {
   }
   backgroundAvailable(profile, now = this.now()) {
     if (!profile || !this.available(profile, now)) return false;
+    if (isChatGptSubscriptionProfile(profile)) {
+      if (!this.chatgptAuth?.allowsBackgroundUse?.()) return false;
+      if (!this.chatgptAuth?.hasUsableCredential?.(profile.oauthAccountId))
+        return false;
+    }
     try {
       const key = this.circuitKey(profile.baseUrl, profile);
       if ((this.backgroundPauses.get(key) || 0) > now) return false;
@@ -1185,8 +1304,12 @@ export class ModelManager {
     return true;
   }
   markUnavailable(profile, error, now = this.now()) {
+    const durationMs =
+      isChatGptSubscriptionProfile(profile) && error?.usageLimit
+        ? 5 * 60000
+        : UNAVAILABLE_MS;
     this.unavailable.set(this.healthKey(profile), {
-      until: now + UNAVAILABLE_MS,
+      until: now + durationMs,
       status: Number(error.status) || null,
       reason: String(error.message || "").slice(0, 200),
       label: profile.label || profile.model,
@@ -1374,6 +1497,13 @@ export class ModelManager {
   // Explicit 429 rate limits open the circuit right away and keep background
   // upkeep off the primary quota until a foreground turn proves it recovered.
   circuitKey(endpoint, profile) {
+    if (isChatGptSubscriptionProfile(profile)) {
+      const id =
+        profile.oauthAccountId ||
+        this.chatgptAuth?.state?.activeAccountId ||
+        "active";
+      return `chatgpt-oauth|${id}|${profile.model}`;
+    }
     return `${new URL(endpoint).origin}|${profile.model}`;
   }
   checkCircuit(key, entry, { priority = "foreground" } = {}) {
@@ -1535,8 +1665,36 @@ export class ModelManager {
         profile.contextWindow - profile.maxOutputTokens,
       ),
     );
-    const key = profile.apiKey || process.env.LLM_API_KEY;
-    if (!key) throw Error("模型尚未配置 API Key");
+    const isChatGpt = isChatGptSubscriptionProfile(profile);
+    const priority = stagePriority(stage);
+    let key = "";
+    let officialChatGptBase = "";
+    if (isChatGpt) {
+      if (!this.chatgptAuth) {
+        throw Object.assign(new Error("ChatGPT 订阅认证服务未初始化"), {
+          authError: true,
+        });
+      }
+      // Enforce official Responses destination at the send boundary even for
+      // tampered or externally imported profiles stored in SQLite.
+      officialChatGptBase = assertOfficialChatGptBaseUrl(profile.baseUrl, {
+        allowEmpty: true,
+      });
+      if (
+        priority === "background" &&
+        !this.chatgptAuth.allowsBackgroundUse()
+      ) {
+        throw Object.assign(
+          new Error(
+            "ChatGPT 订阅未授权用于后台自主任务，如需启用请在模型库中明确同意",
+          ),
+          { unavailable: true, consentRequired: true },
+        );
+      }
+    } else {
+      key = profile.apiKey || process.env.LLM_API_KEY;
+      if (!key) throw Error("模型尚未配置 API Key");
+    }
     if (stage !== "test" && !this.available(profile)) {
       const state = this.unavailable.get(this.healthKey(profile));
       const label = profile.label || profile.model;
@@ -1585,7 +1743,6 @@ export class ModelManager {
         stageCapMs,
       ),
     );
-    const priority = stagePriority(stage);
     const outputCap = options.fullOutput
       ? profile.maxOutputTokens
       : outputLimit(profile, stage);
@@ -1596,27 +1753,34 @@ export class ModelManager {
     applyGenerationControls(body, profile, stage, outputCap);
     if (profile.json) body.response_format = { type: "json_object" };
     const session = sessionOf(data);
-    if (usesPromptCacheKey(profile))
+    if (!isChatGpt && usesPromptCacheKey(profile))
       body.prompt_cache_key = promptCacheKey(key, session, stage);
     const request = protocolRequest(body, profile, stage);
-    const endpoint = profile.baseUrl.replace(/\/$/, "") + request.path;
+    const endpoint = isChatGpt
+      ? assertOfficialChatGptEndpoint(
+          `${officialChatGptBase}${request.path}`,
+          "/v1/responses",
+        )
+      : profile.baseUrl.replace(/\/$/, "") + request.path;
     const headers = {
       "Content-Type": "application/json",
       ...request.headers,
     };
-    // Anthropic's Messages API wants x-api-key; OpenCode's anthropic route
-    // and every other provider keep Bearer.
-    if (request.protocol === "anthropic" && profile.provider === "anthropic")
-      headers["x-api-key"] = key;
-    else headers.Authorization = `Bearer ${key}`;
-    // OpenCode routes and caches by this per-conversation header and expects
-    // clients to identify themselves.
-    if (isOpenCode(profile)) {
-      headers["User-Agent"] = USER_AGENT;
-      headers["x-opencode-session"] = sessionTag(
-        key,
-        session || profile.id || "luckybot",
-      );
+    if (!isChatGpt) {
+      // Anthropic's Messages API wants x-api-key; OpenCode's anthropic route
+      // and every other provider keep Bearer.
+      if (request.protocol === "anthropic" && profile.provider === "anthropic")
+        headers["x-api-key"] = key;
+      else headers.Authorization = `Bearer ${key}`;
+      // OpenCode routes and caches by this per-conversation header and expects
+      // clients to identify themselves.
+      if (isOpenCode(profile)) {
+        headers["User-Agent"] = USER_AGENT;
+        headers["x-opencode-session"] = sessionTag(
+          key,
+          session || profile.id || "luckybot",
+        );
+      }
     }
     const payload = JSON.stringify(request.body);
     const entry = {
@@ -1793,6 +1957,98 @@ export class ModelManager {
                 try {
                   return await hardDeadline(
                     async (signal) => {
+                      if (isChatGpt) {
+                        const sendWithOAuth = async (forceRefresh) => {
+                          const targetEndpoint = assertOfficialChatGptEndpoint(
+                            endpoint,
+                            "/v1/responses",
+                          );
+                          const { accessToken, account } =
+                            await this.chatgptAuth.getAccessToken(
+                              profile.oauthAccountId,
+                              { forceRefresh, signal },
+                            );
+                          const r = await this.fetcher(targetEndpoint, {
+                            method: "POST",
+                            headers: {
+                              ...headers,
+                              Authorization: `Bearer ${accessToken}`,
+                            },
+                            body: payload,
+                            redirect: "manual",
+                            signal,
+                          });
+                          assertNotRedirectResponse(r);
+                          return { r, account };
+                        };
+                        let { r, account } = await sendWithOAuth(false);
+                        if (r.status === 401 && account?.refresh_token) {
+                          ({ r, account } = await sendWithOAuth(true));
+                        }
+                        if (!r.ok) {
+                          const bodyText =
+                            typeof r.text === "function" ? await r.text() : "";
+                          const requestId =
+                            r.headers?.get?.("openai-request-id") ||
+                            r.headers?.get?.("x-request-id") ||
+                            "";
+                          const error = classifySiwcError({
+                            status: r.status,
+                            bodyText,
+                            requestId,
+                          });
+                          if (error.usageLimit) {
+                            this.chatgptAuth.recordUsageLimit(
+                              account?.accountId || profile.oauthAccountId,
+                            );
+                            this.pauseBackground(
+                              circuit,
+                              BACKGROUND_RATE_PAUSE_MS,
+                            );
+                          } else if (error.reauthRequired) {
+                            this.chatgptAuth.recordAccountError(
+                              account?.accountId || profile.oauthAccountId,
+                              error.message,
+                              { needsReauth: true },
+                            );
+                          } else if (error.status === 429) {
+                            this.pauseBackground(
+                              circuit,
+                              Math.max(
+                                BACKGROUND_RATE_PAUSE_MS,
+                                (error.retryDelayMs || 1500) * 4,
+                              ),
+                            );
+                          }
+                          throw error;
+                        }
+                        try {
+                          const completed = await readResponsesSseStream(r, {
+                            signal,
+                          });
+                          this.chatgptAuth.clearAccountError(
+                            account?.accountId || profile.oauthAccountId,
+                          );
+                          return completed;
+                        } catch (streamErr) {
+                          if (streamErr?.usageLimit) {
+                            this.chatgptAuth.recordUsageLimit(
+                              account?.accountId || profile.oauthAccountId,
+                            );
+                            this.pauseBackground(
+                              circuit,
+                              BACKGROUND_RATE_PAUSE_MS,
+                            );
+                          } else if (streamErr?.reauthRequired) {
+                            this.chatgptAuth.recordAccountError(
+                              account?.accountId || profile.oauthAccountId,
+                              streamErr.message,
+                              { needsReauth: true },
+                            );
+                          }
+                          throw streamErr;
+                        }
+                      }
                       const r = await this.fetcher(endpoint, {
                         method: "POST",
                         headers,
@@ -1931,6 +2187,7 @@ export class ModelManager {
       }
       if (!delegated) {
         if (guarded) this.recordSuccess(circuit, { priority });
+        else this.unavailable.delete(this.healthKey(profile));
         entry.usage = raw.usage || null;
         entry.tokens = normalizeUsage(raw.usage, request.protocol);
         entry.raw = responseText(raw, request.protocol);
@@ -1950,7 +2207,11 @@ export class ModelManager {
               delegatedOptions(),
             );
         } else if (["length", "max_tokens"].includes(entry.finishReason)) {
-          if (!options.fullOutput && outputCap < profile.maxOutputTokens) {
+          if (
+            !isChatGpt &&
+            !options.fullOutput &&
+            outputCap < profile.maxOutputTokens
+          ) {
             entry.error = "输出达到本阶段上限，放宽到模型输出上限重试一次";
             entry.errorClass = "format";
             delegated = () =>
@@ -2025,6 +2286,10 @@ export class ModelManager {
       onUsage,
     } = {},
   ) {
+    if (isChatGptSubscriptionProfile(profile))
+      throw Error(
+        "ChatGPT 订阅不支持向量接口，请使用独立的知识向量模型 API Key",
+      );
     const key = profile.isolatedEmbeddingKey
       ? process.env.EMBEDDING_API_KEY || profile.apiKey
       : profile.apiKey || process.env.LLM_API_KEY;

@@ -1,9 +1,14 @@
+import { dirname, join } from "node:path";
 import { hearingOn, transcribe, voiceSettings } from "../voice/index.js";
 import { ActionLedger } from "../actions/index.js";
 import { Stickers } from "../stickers/index.js";
 import { settleAftermath } from "../mind/aftermath.js";
 import { randomUUID } from "node:crypto";
 import { Repository } from "./repository.js";
+import {
+  ChatGptSubscriptionManager,
+  isChatGptSubscriptionProfile,
+} from "./chatgpt-subscription.js";
 import {
   ModelManager,
   backupModels,
@@ -46,6 +51,7 @@ export class ChatSystem {
     send,
     {
       models,
+      chatgptAuth,
       knowledge,
       localDemo = demoReply,
       fetchQuoted,
@@ -66,7 +72,31 @@ export class ChatSystem {
         "UPDATE core_jobs SET status='interrupted' WHERE status IN ('pending','running')",
       )
       .run();
-    this.models = models || new ModelManager(this.repo, { now });
+    const mainDbFile = (() => {
+      try {
+        return (
+          this.repo.db
+            .prepare("PRAGMA database_list")
+            .all()
+            .find((row) => row.name === "main")?.file || ""
+        );
+      } catch {
+        return "";
+      }
+    })();
+    this.chatgptAuth =
+      chatgptAuth ||
+      models?.chatgptAuth ||
+      new ChatGptSubscriptionManager({
+        memoryOnly: !mainDbFile,
+        storagePath: mainDbFile
+          ? join(dirname(mainDbFile), "openai-siwc-auth.json")
+          : null,
+        now,
+      });
+    this.models =
+      models ||
+      new ModelManager(this.repo, { now, chatgptAuth: this.chatgptAuth });
     this.mind = new Mind(this.repo, { models: this.models, now });
     this.memory = this.mind.memory;
     this.knowledge =
@@ -216,8 +246,17 @@ export class ChatSystem {
     return true;
   }
   fallbackFor(_policy, primary, trace) {
+    const primaryIsChatGpt = isChatGptSubscriptionProfile(primary);
+    const allowPaidFallback = this.chatgptAuth?.allowsPaidFallback?.() === true;
     const chain = [];
     for (const model of backupModels(storedModels(this.repo), primary?.id)) {
+      if (primaryIsChatGpt) {
+        // Never rotate across ChatGPT subscription accounts, and never silently
+        // fail over from ChatGPT subscription to paid API-key billing unless
+        // the owner explicitly enabled it.
+        if (isChatGptSubscriptionProfile(model)) continue;
+        if (!allowPaidFallback) continue;
+      }
       try {
         const profile = this.models.profile(model.id);
         if (profile && profile.id !== primary?.id) chain.push(profile);
@@ -692,6 +731,7 @@ export class ChatSystem {
     }
   }
   close() {
+    this.chatgptAuth?.close?.();
     this.mind.time.attention.close();
     this.queue.close();
     this.compactor.close();
