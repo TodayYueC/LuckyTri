@@ -575,15 +575,52 @@ luckytri
             (configure a separate API-key model for knowledge vectors).
           </li>
           <li>
-            <strong>Headless remote VPS</strong>: Because OpenAI&#39;s official
-            callback requires a local <code>127.0.0.1</code> loopback redirect,
-            sign in on your own computer, run
-            <code
-              >luckytri chatgpt-auth export-transfer --out transfer.json</code
-            >, transfer it over SSH to your controlled VPS, run
-            <code>luckytri chatgpt-auth import-transfer transfer.json</code> (or
-            paste in the studio), and delete the temporary file immediately. The
-            VPS retains its own <code>ext_agent_host_id</code>.
+            <strong
+              >Remote access &amp; headless VPS (Tailscale HTTPS / SSH)</strong
+            >: Because OpenAI&#39;s official protocol requires
+            <code>redirect_uri</code> to be strictly
+            <code>http://127.0.0.1:&lt;port&gt;/auth/callback</code> (remote
+            domain callbacks are not permitted), opening Studio over Tailscale
+            HTTPS causes the browser redirect to target
+            <code>127.0.0.1</code> on your own device rather than the VPS,
+            showing a connection error—this is expected. You have three
+            officially compliant ways to finish sign-in:
+            <ol>
+              <li>
+                <strong
+                  >In-Studio callback completion (recommended, no local CLI or
+                  SSH required)</strong
+                >: Click <strong>Continue with ChatGPT</strong>, approve in the
+                new tab, copy the full redirected
+                <code>http://127.0.0.1:&lt;port&gt;/auth/callback?...</code> URL
+                from the address bar, and paste it back into the remote Studio
+                form. The server verifies the exact loopback port/path,
+                <code>state</code>, PKCE <code>code_verifier</code>,
+                <code>nonce</code>, and RS256 JWKS without logging the URL or
+                code.
+              </li>
+              <li>
+                <strong>SSH local port forwarding</strong>: Run the
+                <code
+                  >ssh -N -L &lt;port&gt;:127.0.0.1:&lt;port&gt;
+                  &lt;server&gt;</code
+                >
+                command shown in Studio before opening the authorization page so
+                the browser callback automatically reaches the VPS listener and
+                refreshes Studio.
+              </li>
+              <li>
+                <strong>Official self-hosted VM transfer</strong>: Sign in on
+                your own computer, run
+                <code
+                  >luckytri chatgpt-auth export-transfer --out
+                  transfer.json</code
+                >, transfer it over SSH to your controlled VPS, run
+                <code>luckytri chatgpt-auth import-transfer transfer.json</code>
+                (or paste in Studio), and delete the temporary file immediately.
+                The VPS retains its own <code>ext_agent_host_id</code>.
+              </li>
+            </ol>
           </li>
         </ul>
         <h3>Reading images</h3>

@@ -13,6 +13,7 @@ import { ask } from "../../dialog";
 import { reload, studio } from "../../stores/studio";
 import {
   cancelChatGptSignIn,
+  completeChatGptSignIn,
   confirmChatGptFirstUse,
   deleteModel,
   getChatGptAuthStatus,
@@ -75,9 +76,15 @@ const chatgptModelsBusy = ref(false);
 const chatgptModelsError = ref("");
 const chatgptModelsNotice = ref("");
 const pendingAuthorizeUrl = ref("");
+const remoteCallbackUrl = ref("");
+const remoteCallbackBusy = ref(false);
+const remoteCallbackError = ref("");
 const transferInput = ref("");
 const transferBusy = ref(false);
 let authPollTimer: ReturnType<typeof setInterval> | null = null;
+const isBrowserLoopback = ["127.0.0.1", "localhost", "::1", "[::1]"].includes(
+  location.hostname.toLowerCase(),
+);
 const draft = reactive<any>(blank());
 if (modelList.value[0])
   Object.assign(draft, modelList.value[0], { apiKey: "" });
@@ -93,7 +100,50 @@ const activeChatGptAccount = computed<any>(() => {
     accounts.find((item: any) => item.accountId === activeId) || accounts[0]
   );
 });
-const chatgptPending = computed(() => chatgptStatus.value?.pendingAuth || null);
+const chatgptPending = computed(() =>
+  chatgptStatus.value?.pendingAuth?.status === "pending"
+    ? chatgptStatus.value.pendingAuth
+    : null,
+);
+const isRemoteStudio = computed(
+  () =>
+    !isBrowserLoopback ||
+    chatgptStatus.value?.localClient === false ||
+    chatgptPending.value?.remoteClient === true,
+);
+const sshForwardCommand = computed(() => {
+  const port = chatgptPending.value?.callbackPort;
+  if (!port) return "";
+  const host =
+    !isBrowserLoopback && location.hostname
+      ? location.hostname
+      : "<server-host>";
+  return `ssh -N -L ${port}:127.0.0.1:${port} ${host}`;
+});
+const remoteCallbackFormatState = computed(() => {
+  const raw = remoteCallbackUrl.value.trim();
+  const expectedUri = chatgptPending.value?.redirectUri || "";
+  if (!raw || !expectedUri) return "empty";
+  try {
+    const parsed = new URL(raw);
+    const expected = new URL(expectedUri);
+    if (
+      parsed.protocol === "http:" &&
+      parsed.hostname === "127.0.0.1" &&
+      parsed.port === expected.port &&
+      parsed.pathname === "/auth/callback" &&
+      !parsed.username &&
+      !parsed.password &&
+      (parsed.searchParams.has("code") || parsed.searchParams.has("error")) &&
+      parsed.searchParams.has("state")
+    ) {
+      return "match";
+    }
+    return "mismatch";
+  } catch {
+    return "mismatch";
+  }
+});
 const chatgptUsageUrl = computed(
   () => chatgptStatus.value?.usageUrl || "https://chatgpt.com/settings/usage",
 );
@@ -164,6 +214,8 @@ async function loadChatGptStatus(silent = true) {
     chatgptStatus.value = status;
     if (!status?.pendingAuth) {
       pendingAuthorizeUrl.value = "";
+      remoteCallbackUrl.value = "";
+      remoteCallbackError.value = "";
       stopAuthPolling();
     }
   } catch (error) {
@@ -191,26 +243,62 @@ async function beginChatGptSignIn(
 ) {
   if (chatgptBusy.value) return;
   chatgptBusy.value = true;
+  remoteCallbackUrl.value = "";
+  remoteCallbackError.value = "";
   try {
-    const isLocalHost = ["127.0.0.1", "localhost", "::1"].includes(
-      location.hostname,
-    );
+    const requestLocal =
+      isBrowserLoopback && chatgptStatus.value?.localClient !== false;
     const result = await startChatGptSignIn({
       mode,
       accountId,
-      openBrowser: isLocalHost,
+      openBrowser: requestLocal,
     });
     chatgptStatus.value = result.status;
     pendingAuthorizeUrl.value = result.authorizeUrl || "";
     startAuthPolling();
-    if (!result.browserOpened && result.authorizeUrl) {
+    const remote =
+      !isBrowserLoopback ||
+      result.localClient === false ||
+      result.remoteClient === true;
+    if (!remote && !result.browserOpened && result.authorizeUrl) {
       window.open(result.authorizeUrl, "_blank", "noopener,noreferrer");
     }
-    toast(t("请在浏览器完成 ChatGPT 授权"));
+    toast(
+      remote
+        ? t("已创建远程授权会话，请按下方步骤完成授权并粘贴回调链接")
+        : t("请在浏览器完成 ChatGPT 授权"),
+    );
   } catch (error) {
     toast((error as Error).message, true);
   } finally {
     chatgptBusy.value = false;
+  }
+}
+
+async function submitRemoteCallback() {
+  const pendingId = String(chatgptPending.value?.id || "").trim();
+  const callbackUrl = remoteCallbackUrl.value.trim();
+  if (!pendingId || !callbackUrl || remoteCallbackBusy.value) return;
+  remoteCallbackBusy.value = true;
+  remoteCallbackError.value = "";
+  try {
+    const result = await completeChatGptSignIn({ pendingId, callbackUrl });
+    remoteCallbackUrl.value = "";
+    pendingAuthorizeUrl.value = "";
+    chatgptStatus.value = result.status;
+    stopAuthPolling();
+    await reload();
+    toast(
+      result.planUsageEnabled
+        ? t("ChatGPT 订阅认证已完成")
+        : t("已完成身份登录，但尚未授予订阅调用权限"),
+    );
+  } catch (error) {
+    const message = (error as Error).message || t("回调校验失败，请重试");
+    remoteCallbackError.value = message;
+    toast(message, true);
+  } finally {
+    remoteCallbackBusy.value = false;
   }
 }
 
@@ -221,6 +309,8 @@ async function cancelPendingSignIn() {
     const result = await cancelChatGptSignIn();
     chatgptStatus.value = result.status;
     pendingAuthorizeUrl.value = "";
+    remoteCallbackUrl.value = "";
+    remoteCallbackError.value = "";
     stopAuthPolling();
     toast(t("已取消本次 ChatGPT 登录"));
   } catch (error) {
@@ -237,6 +327,16 @@ async function copyPendingUrl() {
     toast(t("授权链接已复制"));
   } catch {
     toast(t("无法自动复制，请手动点击打开授权页"), true);
+  }
+}
+
+async function copySshForwardCommand() {
+  if (!sshForwardCommand.value) return;
+  try {
+    await navigator.clipboard.writeText(sshForwardCommand.value);
+    toast(t("SSH 端口转发命令已复制"));
+  } catch {
+    toast(t("无法自动复制，请手动选中命令复制"), true);
   }
 }
 
@@ -681,7 +781,11 @@ onMounted(() => {
   void loadUsage();
   void loadChatGptStatus(true);
 });
-onBeforeUnmount(() => stopAuthPolling());
+onBeforeUnmount(() => {
+  stopAuthPolling();
+  pendingAuthorizeUrl.value = "";
+  remoteCallbackUrl.value = "";
+});
 watch(
   () => studio.tick,
   () => {
@@ -1113,6 +1217,22 @@ async function testModel() {
           </label>
         </div>
 
+        <div
+          v-if="isRemoteStudio && !chatgptPending"
+          class="notice chatgpt-remote-tip"
+        >
+          <strong>{{
+            t("当前通过远程地址访问管理台（如 Tailscale / VPS）")
+          }}</strong>
+          <p class="faint">
+            {{
+              t(
+                "OpenAI 官方要求 OAuth 回调固定为本机 127.0.0.1，不能直接跳回远程域名。点击下方 Continue with ChatGPT 后，浏览器授权结束会跳到 127.0.0.1 并显示无法访问——这是正常现象，按页面指引复制地址栏链接粘贴回此处即可完成认证（也支持 SSH 端口转发或下方本机导出迁移）。",
+              )
+            }}
+          </p>
+        </div>
+
         <div class="chatgpt-actions">
           <button
             id="continueWithChatGpt"
@@ -1165,39 +1285,222 @@ async function testModel() {
         </div>
 
         <div v-if="chatgptPending" class="notice chatgpt-pending" role="status">
-          <p>
-            {{
-              t(
-                "正在本机临时回调端口等待 ChatGPT 授权完成（约 10 分钟内有效）。完成授权后此页面会自动刷新。",
-              )
-            }}
-          </p>
-          <div class="chatgpt-actions">
-            <a
-              v-if="pendingAuthorizeUrl"
-              :href="pendingAuthorizeUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="usage-link primary-link"
-              >{{ t("打开 ChatGPT 授权页 ↗") }}</a
+          <template v-if="isRemoteStudio">
+            <strong>{{ t("远程登录步骤（约 10 分钟内有效）") }}</strong>
+            <ol class="chatgpt-remote-steps">
+              <li>
+                {{
+                  t(
+                    "点击下方按钮在新标签页打开 ChatGPT 授权并同意。完成后浏览器会跳转到 {uri}?... 并提示「无法访问/拒绝连接」，这是 OpenAI 强制 127.0.0.1 回调（指向你当前设备而非远程服务器）导致的正常现象。",
+                    { uri: chatgptPending.redirectUri },
+                  )
+                }}
+              </li>
+              <li>
+                {{
+                  t(
+                    "复制该标签页地址栏里的完整回调链接，粘贴到下方输入框并提交，即可在当前远程管理台安全完成令牌交换（不会记录到日志）。",
+                  )
+                }}
+              </li>
+            </ol>
+            <div class="chatgpt-actions">
+              <a
+                v-if="pendingAuthorizeUrl"
+                :href="pendingAuthorizeUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="usage-link primary-link"
+                >{{ t("打开 ChatGPT 授权页 ↗") }}</a
+              >
+              <button
+                v-if="pendingAuthorizeUrl"
+                type="button"
+                class="small"
+                @click="copyPendingUrl"
+              >
+                {{ t("复制授权链接") }}
+              </button>
+              <button
+                type="button"
+                class="small"
+                :disabled="chatgptBusy || remoteCallbackBusy"
+                @click="cancelPendingSignIn"
+              >
+                {{ t("取消本次登录") }}
+              </button>
+            </div>
+            <p v-if="!pendingAuthorizeUrl" class="faint">
+              {{
+                t(
+                  "页面刷新后不会重复缓存授权链接；如需重新打开授权页，请先取消本次登录后重新点击 Continue with ChatGPT。",
+                )
+              }}
+            </p>
+            <form
+              class="chatgpt-callback-form"
+              @submit.prevent="submitRemoteCallback"
             >
-            <button
-              v-if="pendingAuthorizeUrl"
-              type="button"
-              class="small"
-              @click="copyPendingUrl"
-            >
-              {{ t("复制授权链接") }}
-            </button>
-            <button
-              type="button"
-              class="small"
-              :disabled="chatgptBusy"
-              @click="cancelPendingSignIn"
-            >
-              {{ t("取消本次登录") }}
-            </button>
-          </div>
+              <label class="transfer-label" for="chatgptRemoteCallbackInput">
+                <span>{{
+                  t("粘贴浏览器跳转后的完整回调链接（以 {uri} 开头）", {
+                    uri: chatgptPending.redirectUri,
+                  })
+                }}</span>
+                <input
+                  id="chatgptRemoteCallbackInput"
+                  v-model="remoteCallbackUrl"
+                  type="password"
+                  autocomplete="off"
+                  spellcheck="false"
+                  :placeholder="`${chatgptPending.redirectUri}?code=...&state=...`"
+                />
+              </label>
+              <small
+                v-if="remoteCallbackFormatState === 'match'"
+                class="callback-hint ok"
+              >
+                {{
+                  t("已识别到匹配本次回调端口的官方 127.0.0.1 链接，可以提交。")
+                }}
+              </small>
+              <small
+                v-else-if="remoteCallbackFormatState === 'mismatch'"
+                class="callback-hint warn"
+              >
+                {{
+                  t(
+                    "请确认粘贴的是以 {uri} 开头且包含 code 与 state 参数的完整地址栏链接。",
+                    { uri: chatgptPending.redirectUri },
+                  )
+                }}
+              </small>
+              <small
+                v-if="remoteCallbackError"
+                class="callback-hint err"
+                role="alert"
+              >
+                {{ remoteCallbackError }}
+              </small>
+              <div class="chatgpt-actions">
+                <button
+                  id="submitChatGptRemoteCallback"
+                  type="submit"
+                  class="small primary"
+                  :disabled="remoteCallbackBusy || !remoteCallbackUrl.trim()"
+                >
+                  {{
+                    remoteCallbackBusy
+                      ? t("正在完成认证…")
+                      : t("提交回调链接完成认证")
+                  }}
+                </button>
+              </div>
+            </form>
+            <details v-if="sshForwardCommand" class="chatgpt-ssh-box">
+              <summary>
+                {{ t("可选：通过 SSH 本地端口转发自动完成回调") }}
+              </summary>
+              <p class="faint">
+                {{
+                  t(
+                    "如果你正在电脑端操作，也可以先在本地终端运行下方命令，再打开 ChatGPT 授权页；浏览器跳转到 127.0.0.1 时会自动转发至服务器并刷新本页：",
+                  )
+                }}
+              </p>
+              <code class="vm-cmd">{{ sshForwardCommand }}</code>
+              <div class="chatgpt-actions">
+                <button
+                  type="button"
+                  class="small"
+                  @click="copySshForwardCommand"
+                >
+                  {{ t("复制 SSH 转发命令") }}
+                </button>
+              </div>
+            </details>
+          </template>
+          <template v-else>
+            <p>
+              {{
+                t(
+                  "正在本机临时回调端口等待 ChatGPT 授权完成（约 10 分钟内有效）。完成授权后此页面会自动刷新。",
+                )
+              }}
+            </p>
+            <div class="chatgpt-actions">
+              <a
+                v-if="pendingAuthorizeUrl"
+                :href="pendingAuthorizeUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="usage-link primary-link"
+                >{{ t("打开 ChatGPT 授权页 ↗") }}</a
+              >
+              <button
+                v-if="pendingAuthorizeUrl"
+                type="button"
+                class="small"
+                @click="copyPendingUrl"
+              >
+                {{ t("复制授权链接") }}
+              </button>
+              <button
+                type="button"
+                class="small"
+                :disabled="chatgptBusy || remoteCallbackBusy"
+                @click="cancelPendingSignIn"
+              >
+                {{ t("取消本次登录") }}
+              </button>
+            </div>
+            <details class="chatgpt-ssh-box">
+              <summary>
+                {{ t("若通过端口转发访问且回调无法自动抵达，可手动粘贴回调链接") }}
+              </summary>
+              <form
+                class="chatgpt-callback-form"
+                @submit.prevent="submitRemoteCallback"
+              >
+                <label class="transfer-label" for="chatgptRemoteCallbackInput">
+                  <span>{{
+                    t("粘贴浏览器跳转后的完整回调链接（以 {uri} 开头）", {
+                      uri: chatgptPending.redirectUri,
+                    })
+                  }}</span>
+                  <input
+                    id="chatgptRemoteCallbackInput"
+                    v-model="remoteCallbackUrl"
+                    type="password"
+                    autocomplete="off"
+                    spellcheck="false"
+                    :placeholder="`${chatgptPending.redirectUri}?code=...&state=...`"
+                  />
+                </label>
+                <small
+                  v-if="remoteCallbackError"
+                  class="callback-hint err"
+                  role="alert"
+                >
+                  {{ remoteCallbackError }}
+                </small>
+                <div class="chatgpt-actions">
+                  <button
+                    id="submitChatGptRemoteCallback"
+                    type="submit"
+                    class="small primary"
+                    :disabled="remoteCallbackBusy || !remoteCallbackUrl.trim()"
+                  >
+                    {{
+                      remoteCallbackBusy
+                        ? t("正在完成认证…")
+                        : t("提交回调链接完成认证")
+                    }}
+                  </button>
+                </div>
+              </form>
+            </details>
+          </template>
         </div>
 
         <div class="chatgpt-policies">
@@ -1270,7 +1573,7 @@ async function testModel() {
             <p class="faint">
               {{
                 t(
-                  "官方 OAuth 回调固定监听本机 127.0.0.1 临时端口，浏览器与回调必须在同一机器上完成。若 LuckyTri 运行在远程无界面 VPS，可在你本人电脑完成登录后执行命令导出迁移凭据，通过 SSH 传到服务器导入。",
+                  "官方 OAuth 回调固定为本机 127.0.0.1 临时端口。通过 Tailscale HTTPS 等远程打开管理台时，可直接点击 Continue with ChatGPT 并粘贴回调链接完成认证，也可使用 SSH 端口转发，或按官方自托管 VM 流程在本机登录后通过 SSH 导出迁移凭据导入。",
                 )
               }}
             </p>
@@ -1936,7 +2239,8 @@ async function testModel() {
     gap: 6px;
     font-size: 12px;
   }
-  .transfer-label textarea {
+  .transfer-label textarea,
+  .transfer-label input {
     width: 100%;
     min-width: 0;
     padding: 8px 10px;
@@ -1946,7 +2250,56 @@ async function testModel() {
     color: var(--ink);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 11.5px;
+  }
+  .transfer-label textarea {
     resize: vertical;
+  }
+  .chatgpt-remote-tip {
+    display: grid;
+    gap: 4px;
+    border-color: color-mix(in srgb, var(--accent) 26%, white);
+    background: color-mix(in srgb, var(--accent) 6%, rgb(255 255 255 / 0.6));
+  }
+  .chatgpt-remote-steps {
+    margin: 4px 0 6px;
+    padding-left: 18px;
+    display: grid;
+    gap: 4px;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .chatgpt-callback-form {
+    display: grid;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .callback-hint {
+    font-size: 11.5px;
+    line-height: 1.45;
+  }
+  .callback-hint.ok {
+    color: #116329;
+  }
+  .callback-hint.warn {
+    color: #9a5b13;
+  }
+  .callback-hint.err {
+    color: var(--danger);
+  }
+  .chatgpt-ssh-box {
+    margin-top: 6px;
+    padding: 8px 10px;
+    border: 1px dashed rgb(0 0 0 / 0.12);
+    border-radius: 12px;
+    background: rgb(255 255 255 / 0.4);
+    display: grid;
+    gap: 8px;
+  }
+  .chatgpt-ssh-box summary {
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
   }
   .chatgpt-draft-note {
     display: grid;

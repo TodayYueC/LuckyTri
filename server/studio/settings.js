@@ -1,4 +1,5 @@
 import { runtimePaths } from "../paths.js";
+import { isLocalStudioClient } from "../local-access.js";
 import { VERSION } from "../version.js";
 import { publicSession } from "../channels/session-key.js";
 import { CHANNEL_TYPES } from "../channels/hub.js";
@@ -84,7 +85,12 @@ export function mountStudio(app, store, runtime, chat) {
       feedbackLabels: FEEDBACK_LABELS,
       modelPresets: MODEL_PRESETS,
       modelCatalog: MODEL_CATALOG,
-      chatgptAuth: chat?.chatgptAuth?.publicStatus?.() ?? null,
+      chatgptAuth: chat?.chatgptAuth
+        ? {
+            ...chat.chatgptAuth.publicStatus(),
+            localClient: isLocalStudioClient(req),
+          }
+        : null,
       reasoningEfforts: REASONING_EFFORTS,
       effortLabels: EFFORT_LABELS,
       connection,

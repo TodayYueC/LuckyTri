@@ -311,11 +311,17 @@ export function isValidHostId(value) {
 
 export function redactSiwcSecrets(text) {
   return String(text || "")
+    .replace(
+      /(http:\/\/127\.0\.0\.1(?::\d+)?\/auth\/callback\?)[^\s"']+/gi,
+      "$1[REDACTED]",
+    )
     .replace(/(id_token_hint=)[^&\s"']+/gi, "$1[REDACTED]")
     .replace(/(code_verifier=)[^&\s"']+/gi, "$1[REDACTED]")
     .replace(/(refresh_token=)[^&\s"']+/gi, "$1[REDACTED]")
     .replace(/(access_token=)[^&\s"']+/gi, "$1[REDACTED]")
     .replace(/(token=)[^&\s"']+/gi, "$1[REDACTED]")
+    .replace(/([?&]code=)[^&\s"']+/gi, "$1[REDACTED]")
+    .replace(/([?&]state=)[^&\s"']+/gi, "$1[REDACTED]")
     .replace(/(Bearer\s+)[^\s,;]+/gi, "$1[REDACTED]");
 }
 
@@ -1026,6 +1032,7 @@ function callbackHtmlPage({ ok, title, message }) {
   <h1>${esc(title)}</h1>
   <p>${esc(message)}</p>
 </main>
+<script>try{if(location.search)history.replaceState(null,"","/auth/callback");}catch{}</script>
 </body>
 </html>`;
 }
@@ -1195,12 +1202,18 @@ export class ChatGptSubscriptionManager {
       isActive: acc.accountId === this.state.activeAccountId,
     }));
     const active = accounts.find((acc) => acc.isActive) || null;
-    const pending = this.pendingAuth
+    const isActivePending =
+      this.pendingAuth &&
+      !this.pendingAuth.cancelled &&
+      this.pendingAuth.status === "pending";
+    const pending = isActivePending
       ? {
           id: this.pendingAuth.id,
           mode: this.pendingAuth.mode,
           accountId: this.pendingAuth.accountId || "",
           redirectUri: this.pendingAuth.redirectUri,
+          callbackPort: this.pendingAuth.callbackPort || null,
+          remoteClient: Boolean(this.pendingAuth.remoteClient),
           startedAt: this.pendingAuth.startedAt,
           expiresAt: this.pendingAuth.expiresAt,
           status: this.pendingAuth.status,
@@ -1536,6 +1549,7 @@ export class ChatGptSubscriptionManager {
     accountId = "",
     port = 0,
     openBrowser = false,
+    remoteClient = false,
   } = {}) {
     if (!["new", "reauth", "reconsent"].includes(mode)) {
       throw Error("登录模式无效");
@@ -1665,6 +1679,8 @@ export class ChatGptSubscriptionManager {
       nonce,
       codeVerifier,
       redirectUri,
+      callbackPort: boundPort,
+      remoteClient: Boolean(remoteClient),
       startedAt,
       expiresAt,
       status: "pending",
@@ -1704,6 +1720,8 @@ export class ChatGptSubscriptionManager {
       mode,
       authorizeUrl: authorizeUrl.toString(),
       redirectUri,
+      callbackPort: boundPort,
+      remoteClient: Boolean(remoteClient),
       expiresAt,
       browserOpened,
     };
@@ -1733,7 +1751,7 @@ export class ChatGptSubscriptionManager {
             ? "已连接 ChatGPT 订阅"
             : "已登录 ChatGPT，但未启用订阅额度",
           message: result.planUsageEnabled
-            ? "授权已完成。你可以关闭此页面并返回 LuckyTri 管理台。"
+            ? "授权已完成。你可以关闭此页面并返回原来的 LuckyTri 管理台页面（将自动刷新）。"
             : "你已完成身份登录，但未授予 ChatGPT 订阅调用权限。请返回 LuckyTri 管理台重新授权或改用 API Key。",
         }),
       );
@@ -1749,6 +1767,57 @@ export class ChatGptSubscriptionManager {
         }),
       );
     }
+  }
+
+  async completeRemoteCallback(pendingId, rawCallbackUrl) {
+    const raw = String(rawCallbackUrl || "").trim();
+    if (!raw) {
+      throw Error("请粘贴浏览器跳转后的完整回调链接");
+    }
+    if (raw.length > 8192) {
+      throw Error(
+        "回调链接格式无效，请复制浏览器地址栏中以 http://127.0.0.1: 开头的完整链接",
+      );
+    }
+    let parsed;
+    try {
+      parsed = new URL(raw);
+    } catch {
+      throw Error(
+        "回调链接格式无效，请复制浏览器地址栏中以 http://127.0.0.1: 开头的完整链接",
+      );
+    }
+    const pending = this.pendingAuth;
+    if (
+      !pending ||
+      !pendingId ||
+      pending.id !== pendingId ||
+      pending.consumed ||
+      pending.cancelled ||
+      this.authGeneration !== pending.authGeneration
+    ) {
+      throw Error("授权事务不存在或已被使用，请重新发起登录");
+    }
+    if (this.now() >= pending.expiresAt) {
+      pending.status = "expired";
+      pending.error = "授权登录已超时，请重新发起连接";
+      this.closePendingListener(pending);
+      throw Error("授权登录已超时，请重新发起连接");
+    }
+    const expected = new URL(pending.redirectUri);
+    if (
+      parsed.protocol !== "http:" ||
+      parsed.hostname !== "127.0.0.1" ||
+      parsed.port !== expected.port ||
+      parsed.pathname !== "/auth/callback" ||
+      parsed.username ||
+      parsed.password
+    ) {
+      throw Error(
+        "回调链接与当前登录事务的回调地址不匹配，请确认复制的是本次授权跳转后的完整地址",
+      );
+    }
+    return await this.completeCallback(pending.id, parsed);
   }
 
   async completeCallback(pendingId, callbackUrl) {
@@ -1999,6 +2068,9 @@ export class ChatGptSubscriptionManager {
       pending.status = "completed";
       pending.accountId = accountId;
       pending.error = "";
+      if (this.pendingAuth === pending) {
+        this.pendingAuth = null;
+      }
       return {
         ok: true,
         accountId,

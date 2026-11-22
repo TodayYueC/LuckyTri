@@ -31,6 +31,7 @@ import {
   readResponsesSseStream,
   redactSiwcSecrets,
 } from "../server/core/chatgpt-subscription.js";
+import { isLocalStudioClient } from "../server/local-access.js";
 import {
   ModelManager,
   publicModel,
@@ -40,6 +41,7 @@ import {
 import { ChatSystem } from "../server/core/orchestrator.js";
 import { Repository } from "../server/core/repository.js";
 import { mountCore } from "../server/core/api.js";
+import { createApp } from "../server/app.js";
 import { mountManagement } from "../server/studio/management.js";
 import { createStore } from "../server/storage/store.js";
 import { MODEL_CATALOG } from "../server/core/model-presets.js";
@@ -2405,4 +2407,341 @@ test("P1 回归：延迟 OAuth 回调（token 交换 / JWKS）在 cancel/signout
     const reloaded = new ChatGptSubscriptionManager({ storagePath });
     assert.equal(reloaded.state.accounts[accId].access_token, "at_reauth_ok");
   }
+});
+
+test("remote Tailscale HTTPS WebUI detection, /complete callback flow, and secret redaction", async (t) => {
+  // 1. Unit checks for isLocalStudioClient across local vs Tailscale reverse proxy vs remote socket
+  assert.equal(
+    isLocalStudioClient({
+      socket: { remoteAddress: "127.0.0.1" },
+      ip: "127.0.0.1",
+      hostname: "127.0.0.1",
+      headers: { host: "127.0.0.1:3210" },
+    }),
+    true,
+  );
+  assert.equal(
+    isLocalStudioClient({
+      socket: { remoteAddress: "::ffff:127.0.0.1" },
+      ip: "::ffff:127.0.0.1",
+      hostname: "localhost",
+      headers: { host: "localhost:3210" },
+    }),
+    true,
+  );
+  // Tailscale Serve HTTPS proxying locally to 127.0.0.1:3210
+  assert.equal(
+    isLocalStudioClient({
+      socket: { remoteAddress: "127.0.0.1" },
+      ip: "100.64.10.22",
+      hostname: "tokyo.tailnet-abc.ts.net",
+      headers: {
+        host: "tokyo.tailnet-abc.ts.net",
+        "x-forwarded-for": "100.64.10.22",
+        "x-forwarded-proto": "https",
+      },
+    }),
+    false,
+  );
+  // Reverse proxy that rewrote Host to 127.0.0.1 still has forwarded headers
+  assert.equal(
+    isLocalStudioClient({
+      socket: { remoteAddress: "127.0.0.1" },
+      ip: "127.0.0.1",
+      hostname: "127.0.0.1",
+      headers: {
+        host: "127.0.0.1:3210",
+        "x-forwarded-for": "100.64.10.22",
+      },
+    }),
+    false,
+  );
+  // Direct Tailscale IP access without reverse proxy
+  assert.equal(
+    isLocalStudioClient({
+      socket: { remoteAddress: "100.64.10.22" },
+      ip: "100.64.10.22",
+      hostname: "100.64.10.5",
+      headers: { host: "100.64.10.5:3210" },
+    }),
+    false,
+  );
+
+  // 2. redactSiwcSecrets strips callback URL query, code, and state
+  const rawCb =
+    "http://127.0.0.1:43210/auth/callback?code=secret_code_999&state=secret_state_888&client_id=cid_1";
+  const redacted = redactSiwcSecrets(
+    `failed on ${rawCb} and ?code=leak_code&state=leak_state`,
+  );
+  assert.ok(!redacted.includes("secret_code_999"));
+  assert.ok(!redacted.includes("secret_state_888"));
+  assert.ok(!redacted.includes("leak_code"));
+  assert.ok(!redacted.includes("leak_state"));
+
+  // 3. Full HTTP API flow simulating Tailscale HTTPS proxy hitting LuckyTri Studio
+  const dir = mkdtempSync(join(tmpdir(), "luckytri-siwc-remote-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const storagePath = join(dir, "openai-siwc-auth.json");
+  const rsaKey = makeRsaKey("remote-key-1");
+  const { jwk: pubJwk } = rsaKey;
+  let expectedNonce = "";
+  let tokenFormCaptured = null;
+  let browserOpenedCount = 0;
+
+  const auth = new ChatGptSubscriptionManager({
+    storagePath,
+    discoveryOverride: {
+      issuer: "https://auth.openai.com",
+      authorization_endpoint: "https://auth.openai.com/oauth/authorize",
+      token_endpoint: "https://auth.openai.com/api/accounts/oauth/token",
+      jwks_uri: "https://auth.openai.com/.well-known/jwks.json",
+    },
+    openBrowserFn: async () => {
+      browserOpenedCount += 1;
+    },
+    fetcher: async (url, init) => {
+      const href = String(url);
+      if (href.includes("/token")) {
+        tokenFormCaptured = new URLSearchParams(String(init?.body || ""));
+        const nowSec = Math.floor(Date.now() / 1000);
+        const idToken = signIdToken(rsaKey, {
+          iss: "https://auth.openai.com",
+          aud: tokenFormCaptured.get("client_id"),
+          sub: "sub_remote_user_1",
+          email: "remote@example.com",
+          email_verified: true,
+          nonce: expectedNonce,
+          iat: nowSec - 5,
+          exp: nowSec + 3600,
+        });
+        return new Response(
+          JSON.stringify({
+            access_token: "at_remote_secret_123",
+            refresh_token: "rt_remote_secret_456",
+            id_token: idToken,
+            expires_in: 3600,
+            scope: "openid profile email offline_access chatgpt.tokens.use.direct",
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (href.includes("jwks")) {
+        return new Response(JSON.stringify({ keys: [pubJwk] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`unexpected fetch ${href}`);
+    },
+  });
+  t.after(() => auth.close());
+
+  const store = createStore(join(dir, "studio.sqlite"));
+  t.after(() => store.db.close());
+  const models = new ModelManager(new Repository(store), { chatgptAuth: auth });
+  const system = new ChatSystem(store, async () => {}, {
+    models,
+    chatgptAuth: auth,
+  });
+  t.after(() => system.close());
+
+  const app = express();
+  app.set("trust proxy", "loopback");
+  app.use(express.json());
+  mountCore(app, system);
+
+  const server = createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+  });
+  const port = server.address().port;
+  const base = `http://127.0.0.1:${port}`;
+  const tailscaleHeaders = {
+    Host: "tokyo.tailnet-example.ts.net",
+    "X-Forwarded-For": "100.100.10.5",
+    "X-Forwarded-Proto": "https",
+    "X-Forwarded-Host": "tokyo.tailnet-example.ts.net",
+  };
+
+  // Status reports localClient: false when accessed through Tailscale proxy headers
+  const statusRes = await fetch(`${base}/api/core/chatgpt-auth/status`, {
+    headers: tailscaleHeaders,
+  });
+  assert.equal(statusRes.status, 200);
+  const statusJson = await statusRes.json();
+  assert.equal(statusJson.localClient, false);
+
+  // Start sign-in via remote Tailscale request: never opens browser on VPS, keeps strict 127.0.0.1 redirect_uri
+  const startRes = await fetch(`${base}/api/core/chatgpt-auth/start`, {
+    method: "POST",
+    headers: { ...tailscaleHeaders, "content-type": "application/json" },
+    body: JSON.stringify({ mode: "new", openBrowser: true }),
+  });
+  assert.equal(startRes.status, 200);
+  const startJson = await startRes.json();
+  assert.equal(browserOpenedCount, 0);
+  assert.equal(startJson.localClient, false);
+  assert.equal(startJson.remoteClient, true);
+  assert.equal(typeof startJson.callbackPort, "number");
+  assert.match(
+    startJson.redirectUri,
+    /^http:\/\/127\.0\.0\.1:\d+\/auth\/callback$/,
+  );
+  assert.ok(!startJson.redirectUri.includes("172.0.0.1"));
+  assert.ok(!startJson.redirectUri.includes("tailnet"));
+  assert.equal(startJson.status.localClient, false);
+  assert.equal(startJson.status.pendingAuth.remoteClient, true);
+  assert.equal(startJson.status.pendingAuth.callbackPort, startJson.callbackPort);
+  // publicStatus must never expose state/nonce/codeVerifier/authorizeUrl
+  assert.equal(startJson.status.pendingAuth.state, undefined);
+  assert.equal(startJson.status.pendingAuth.nonce, undefined);
+  assert.equal(startJson.status.pendingAuth.codeVerifier, undefined);
+  assert.equal(startJson.status.pendingAuth.authorizeUrl, undefined);
+
+  const authUrl = new URL(startJson.authorizeUrl);
+  assert.equal(authUrl.searchParams.get("redirect_uri"), startJson.redirectUri);
+  assert.equal(authUrl.searchParams.get("ext_agent_host_id"), auth.hostId());
+  const state = authUrl.searchParams.get("state");
+  expectedNonce = authUrl.searchParams.get("nonce");
+  const codeChallenge = authUrl.searchParams.get("code_challenge");
+
+  // Reject malformed / wrong-host (e.g., 172.0.0.1 or remote domain) / wrong-port / wrong-path / wrong-state without consuming pending
+  const badUrls = [
+    "",
+    "not-a-url",
+    `https://tokyo.tailnet-example.ts.net/auth/callback?code=c_bad&state=${encodeURIComponent(state)}&client_id=client_remote_1`,
+    `http://172.0.0.1:${startJson.callbackPort}/auth/callback?code=c_bad&state=${encodeURIComponent(state)}&client_id=client_remote_1`,
+    `http://127.0.0.1:${startJson.callbackPort + 1}/auth/callback?code=c_bad&state=${encodeURIComponent(state)}&client_id=client_remote_1`,
+    `http://127.0.0.1:${startJson.callbackPort}/other?code=c_bad&state=${encodeURIComponent(state)}&client_id=client_remote_1`,
+    `http://user:pass@127.0.0.1:${startJson.callbackPort}/auth/callback?code=c_bad&state=${encodeURIComponent(state)}&client_id=client_remote_1`,
+    `${startJson.redirectUri}?code=c_bad_secret&state=wrong_state_value&client_id=client_remote_1`,
+  ];
+  for (const badUrl of badUrls) {
+    const badRes = await fetch(`${base}/api/core/chatgpt-auth/complete`, {
+      method: "POST",
+      headers: { ...tailscaleHeaders, "content-type": "application/json" },
+      body: JSON.stringify({
+        pendingId: startJson.pendingId,
+        callbackUrl: badUrl,
+      }),
+    });
+    assert.equal(badRes.status, 400);
+    const badBody = await badRes.text();
+    assert.ok(!badBody.includes("c_bad_secret"));
+    assert.ok(!badBody.includes("wrong_state_value"));
+  }
+  // Wrong pendingId is also rejected without consuming active pending
+  const wrongPidRes = await fetch(`${base}/api/core/chatgpt-auth/complete`, {
+    method: "POST",
+    headers: { ...tailscaleHeaders, "content-type": "application/json" },
+    body: JSON.stringify({
+      pendingId: "wrong-pending-id",
+      callbackUrl: `${startJson.redirectUri}?code=c_good&state=${encodeURIComponent(state)}&client_id=client_remote_1`,
+    }),
+  });
+  assert.equal(wrongPidRes.status, 400);
+
+  // Submit exact redirected loopback callback URL over Tailscale HTTPS endpoint
+  const goodCbUrl = `${startJson.redirectUri}?code=auth_code_super_secret&state=${encodeURIComponent(state)}&client_id=client_remote_1`;
+  const okRes = await fetch(`${base}/api/core/chatgpt-auth/complete`, {
+    method: "POST",
+    headers: { ...tailscaleHeaders, "content-type": "application/json" },
+    body: JSON.stringify({
+      pendingId: startJson.pendingId,
+      callbackUrl: goodCbUrl,
+    }),
+  });
+  assert.equal(okRes.status, 200);
+  const okText = await okRes.text();
+  // Response must never leak auth code, state, tokens, or raw callback URL
+  assert.ok(!okText.includes("auth_code_super_secret"));
+  assert.ok(!okText.includes("at_remote_secret_123"));
+  assert.ok(!okText.includes("rt_remote_secret_456"));
+  assert.ok(!okText.includes(state));
+  const okJson = JSON.parse(okText);
+  assert.equal(okJson.ok, true);
+  assert.equal(okJson.planUsageEnabled, true);
+  assert.equal(okJson.status.connected, true);
+  assert.equal(okJson.status.localClient, false);
+  assert.equal(okJson.status.pendingAuth, null);
+  assert.equal(okJson.status.activeAccount.email, "remote@example.com");
+
+  // Token exchange used exact official redirect_uri and PKCE verifier matching code_challenge
+  assert.equal(tokenFormCaptured.get("redirect_uri"), startJson.redirectUri);
+  assert.equal(tokenFormCaptured.get("code"), "auth_code_super_secret");
+  assert.equal(tokenFormCaptured.get("client_id"), "client_remote_1");
+  const { createHash } = await import("node:crypto");
+  const recomputedChallenge = createHash("sha256")
+    .update(tokenFormCaptured.get("code_verifier"))
+    .digest("base64url");
+  assert.equal(recomputedChallenge, codeChallenge);
+
+  // Replay of the same pendingId + callbackUrl is deterministically rejected
+  const replayRes = await fetch(`${base}/api/core/chatgpt-auth/complete`, {
+    method: "POST",
+    headers: { ...tailscaleHeaders, "content-type": "application/json" },
+    body: JSON.stringify({
+      pendingId: startJson.pendingId,
+      callbackUrl: goodCbUrl,
+    }),
+  });
+  assert.equal(replayRes.status, 400);
+
+  // 4. Loopback HTML callback page strips query string via history.replaceState
+  const started2 = await auth.startSignIn({ mode: "new" });
+  const u2 = new URL(started2.authorizeUrl);
+  expectedNonce = u2.searchParams.get("nonce");
+  const loopbackHit = await fetch(
+    `${started2.redirectUri}?code=c_loopback&state=${encodeURIComponent(u2.searchParams.get("state"))}&client_id=client_loop_2`,
+  );
+  assert.equal(loopbackHit.status, 200);
+  assert.equal(loopbackHit.headers.get("cache-control"), "no-store");
+  assert.equal(loopbackHit.headers.get("referrer-policy"), "no-referrer");
+  const html = await loopbackHit.text();
+  assert.ok(html.includes('history.replaceState(null,"","/auth/callback")'));
+  assert.ok(!html.includes("c_loopback"));
+
+  // 5. Cancelled pending transaction cannot be completed via /complete
+  const started3 = await auth.startSignIn({ mode: "new", remoteClient: true });
+  const u3 = new URL(started3.authorizeUrl);
+  auth.cancelPendingAuth();
+  await assert.rejects(
+    () =>
+      auth.completeRemoteCallback(
+        started3.pendingId,
+        `${started3.redirectUri}?code=c_cancelled&state=${encodeURIComponent(u3.searchParams.get("state"))}&client_id=client_cancel_3`,
+      ),
+    /授权事务不存在或已被使用/,
+  );
+
+  // 6. Full createApp enforces Studio auth (401) and same-origin CSRF (403) on /complete
+  const fullApp = createApp({
+    store,
+    chatSystem: system,
+    runtime: { connection: () => ({ online: false }), shutdown: () => {} },
+  });
+  const fullServer = createServer(fullApp);
+  await new Promise((resolve) => fullServer.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    fullServer.closeAllConnections?.();
+    await new Promise((resolve) => fullServer.close(resolve));
+  });
+  const fullBase = `http://127.0.0.1:${fullServer.address().port}`;
+  const unauthRes = await fetch(`${fullBase}/api/core/chatgpt-auth/complete`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ pendingId: "p", callbackUrl: "http://127.0.0.1:1/auth/callback" }),
+  });
+  assert.equal(unauthRes.status, 401);
+  const csrfRes = await fetch(`${fullBase}/api/core/chatgpt-auth/complete`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: "https://evil.example",
+    },
+    body: JSON.stringify({ pendingId: "p", callbackUrl: "http://127.0.0.1:1/auth/callback" }),
+  });
+  assert.equal(csrfRes.status, 403);
 });

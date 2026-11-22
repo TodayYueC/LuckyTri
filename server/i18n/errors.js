@@ -716,6 +716,12 @@ export const ERRORS = {
     "Could not start the local 127.0.0.1 OAuth callback listener",
   "授权登录已超时，请重新发起连接":
     "Authorization timed out; start connecting again",
+  "请粘贴浏览器跳转后的完整回调链接":
+    "Paste the full redirected callback URL from your browser address bar",
+  "回调链接格式无效，请复制浏览器地址栏中以 http://127.0.0.1: 开头的完整链接":
+    "Invalid callback URL format; copy the full http://127.0.0.1: URL from your browser address bar",
+  "回调链接与当前登录事务的回调地址不匹配，请确认复制的是本次授权跳转后的完整地址":
+    "The callback URL does not match this sign-in session's redirect address; make sure you copied the full URL from this authorization attempt",
   "授权事务不存在或已被使用，请重新发起登录":
     "Authorization transaction does not exist or was already consumed; start sign-in again",
   "授权登录已过期，请重新发起登录":

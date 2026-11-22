@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { isLoopback } from "../local-access.js";
+import { isLocalStudioClient } from "../local-access.js";
 import { isChatGptSubscriptionProfile } from "./chatgpt-subscription.js";
 import {
   normalizeModels,
@@ -65,11 +65,17 @@ export function mountCore(app, system) {
       since: row.since == null ? null : Number(row.since),
     });
   });
+  const chatGptStatusFor = (req, auth) => ({
+    ...auth.publicStatus(),
+    localClient: isLocalStudioClient(req),
+  });
   app.get("/api/core/state", (req, res) => {
     const names = displayNames(repo.db, system.now());
     res.json({
       models: normalizeModels(storedModels(repo)).map(publicModel),
-      chatgptAuth: system.chatgptAuth?.publicStatus?.() ?? null,
+      chatgptAuth: system.chatgptAuth
+        ? chatGptStatusFor(req, system.chatgptAuth)
+        : null,
       persona: system.mind.nature.current(),
       prompts: prompts(repo),
       sessions: repo.db
@@ -251,7 +257,7 @@ export function mountCore(app, system) {
   app.get(
     "/api/core/chatgpt-auth/status",
     wrap((req, res) => {
-      res.json(requireChatGptAuth().publicStatus());
+      res.json(chatGptStatusFor(req, requireChatGptAuth()));
     }),
   );
   app.post(
@@ -264,11 +270,41 @@ export function mountCore(app, system) {
           : "new";
       const accountId =
         typeof req.body?.accountId === "string" ? req.body.accountId : "";
-      const openBrowser = Boolean(req.body?.openBrowser) && isLoopback(req);
-      const started = await auth.startSignIn({ mode, accountId, openBrowser });
+      const localClient = isLocalStudioClient(req);
+      const openBrowser = Boolean(req.body?.openBrowser) && localClient;
+      const started = await auth.startSignIn({
+        mode,
+        accountId,
+        openBrowser,
+        remoteClient: !localClient,
+      });
       res.json({
         ...started,
-        status: auth.publicStatus(),
+        localClient,
+        status: chatGptStatusFor(req, auth),
+      });
+    }),
+  );
+  app.post(
+    "/api/core/chatgpt-auth/complete",
+    wrap(async (req, res) => {
+      const auth = requireChatGptAuth();
+      const pendingId =
+        typeof req.body?.pendingId === "string"
+          ? req.body.pendingId.trim()
+          : "";
+      const callbackUrl =
+        typeof req.body?.callbackUrl === "string"
+          ? req.body.callbackUrl.trim()
+          : "";
+      const result = await auth.completeRemoteCallback(pendingId, callbackUrl);
+      repo.store.revision++;
+      res.json({
+        ok: true,
+        accountId: result.accountId,
+        planUsageEnabled: result.planUsageEnabled,
+        scopes: result.scopes,
+        status: chatGptStatusFor(req, auth),
       });
     }),
   );
@@ -277,32 +313,33 @@ export function mountCore(app, system) {
     wrap((req, res) => {
       const auth = requireChatGptAuth();
       auth.cancelPendingAuth();
-      res.json({ ok: true, status: auth.publicStatus() });
+      res.json({ ok: true, status: chatGptStatusFor(req, auth) });
     }),
   );
   app.post(
     "/api/core/chatgpt-auth/select",
     wrap((req, res) => {
       const auth = requireChatGptAuth();
-      const status = auth.selectAccount(req.body?.accountId);
+      auth.selectAccount(req.body?.accountId);
       repo.store.revision++;
-      res.json({ ok: true, status });
+      res.json({ ok: true, status: chatGptStatusFor(req, auth) });
     }),
   );
   app.post(
     "/api/core/chatgpt-auth/confirm-first-use",
     wrap((req, res) => {
       const auth = requireChatGptAuth();
-      res.json({ ok: true, status: auth.confirmFirstSignIn() });
+      auth.confirmFirstSignIn();
+      res.json({ ok: true, status: chatGptStatusFor(req, auth) });
     }),
   );
   app.patch(
     "/api/core/chatgpt-auth/settings",
     wrap((req, res) => {
       const auth = requireChatGptAuth();
-      const status = auth.updateSettings(req.body || {});
+      auth.updateSettings(req.body || {});
       repo.store.revision++;
-      res.json({ ok: true, status });
+      res.json({ ok: true, status: chatGptStatusFor(req, auth) });
     }),
   );
   app.post(
@@ -313,7 +350,10 @@ export function mountCore(app, system) {
         typeof req.body?.accountId === "string" ? req.body.accountId : "";
       const result = await auth.signOutAccount(accountId);
       repo.store.revision++;
-      res.json(result);
+      res.json({
+        ...result,
+        status: chatGptStatusFor(req, auth),
+      });
     }),
   );
   app.delete(
@@ -322,7 +362,10 @@ export function mountCore(app, system) {
       const auth = requireChatGptAuth();
       const result = await auth.removeAccount(req.params.accountId);
       repo.store.revision++;
-      res.json(result);
+      res.json({
+        ...result,
+        status: chatGptStatusFor(req, auth),
+      });
     }),
   );
   app.get(
@@ -342,9 +385,9 @@ export function mountCore(app, system) {
       if (raw === undefined || raw === null || raw === "") {
         throw Error("请提供要导入的本地迁移凭据 JSON");
       }
-      const status = auth.importTransferRecord(raw);
+      auth.importTransferRecord(raw);
       repo.store.revision++;
-      res.json({ ok: true, status });
+      res.json({ ok: true, status: chatGptStatusFor(req, auth) });
     }),
   );
   app.delete(

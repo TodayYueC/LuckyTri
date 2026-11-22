@@ -478,6 +478,42 @@ export default {
   授权链接已复制: "Authorization link copied",
   "无法自动复制，请手动点击打开授权页":
     "Could not copy automatically; open the authorization page manually",
+  "已创建远程授权会话，请按下方步骤完成授权并粘贴回调链接":
+    "Remote sign-in session created; follow the steps below to authorize and paste the callback URL",
+  "ChatGPT 订阅认证已完成": "ChatGPT subscription sign-in completed",
+  "已完成身份登录，但尚未授予订阅调用权限":
+    "Identity sign-in succeeded, but plan usage permission was not granted",
+  "回调校验失败，请重试": "Callback verification failed; please try again",
+  "SSH 端口转发命令已复制": "SSH port-forward command copied",
+  "无法自动复制，请手动选中命令复制":
+    "Could not copy automatically; select and copy the command manually",
+  "当前通过远程地址访问管理台（如 Tailscale / VPS）":
+    "Accessing Studio remotely (e.g. Tailscale / VPS)",
+  "OpenAI 官方要求 OAuth 回调固定为本机 127.0.0.1，不能直接跳回远程域名。点击下方 Continue with ChatGPT 后，浏览器授权结束会跳到 127.0.0.1 并显示无法访问——这是正常现象，按页面指引复制地址栏链接粘贴回此处即可完成认证（也支持 SSH 端口转发或下方本机导出迁移）。":
+    "OpenAI requires the OAuth callback to stay on loopback 127.0.0.1 and cannot redirect straight back to a remote domain. After clicking Continue with ChatGPT, your browser will redirect to 127.0.0.1 and show a connection error—this is expected. Copy that address-bar URL and paste it back here to finish sign-in (SSH port forwarding and local transfer import below are also supported).",
+  "远程登录步骤（约 10 分钟内有效）":
+    "Remote sign-in steps (valid for ~10 minutes)",
+  "点击下方按钮在新标签页打开 ChatGPT 授权并同意。完成后浏览器会跳转到 {uri}?... 并提示「无法访问/拒绝连接」，这是 OpenAI 强制 127.0.0.1 回调（指向你当前设备而非远程服务器）导致的正常现象。":
+    "Click below to open ChatGPT authorization in a new tab and approve. Your browser will then redirect to {uri}?... and show a connection refused error—this is expected because OpenAI enforces a 127.0.0.1 callback pointing to your own device instead of the remote server.",
+  "复制该标签页地址栏里的完整回调链接，粘贴到下方输入框并提交，即可在当前远程管理台安全完成令牌交换（不会记录到日志）。":
+    "Copy the full redirected callback URL from that tab's address bar and paste it below to complete token exchange securely from this remote Studio (never logged).",
+  "页面刷新后不会重复缓存授权链接；如需重新打开授权页，请先取消本次登录后重新点击 Continue with ChatGPT。":
+    "The authorization link is not cached across page reloads; to open it again, cancel this session and click Continue with ChatGPT again.",
+  "粘贴浏览器跳转后的完整回调链接（以 {uri} 开头）":
+    "Paste the full redirected callback URL (starting with {uri})",
+  "已识别到匹配本次回调端口的官方 127.0.0.1 链接，可以提交。":
+    "Recognized an official 127.0.0.1 callback URL matching this session's port. Ready to submit.",
+  "请确认粘贴的是以 {uri} 开头且包含 code 与 state 参数的完整地址栏链接。":
+    "Make sure you pasted the full address-bar URL starting with {uri} containing code and state.",
+  "正在完成认证…": "Completing sign-in…",
+  提交回调链接完成认证: "Submit callback URL to complete sign-in",
+  "可选：通过 SSH 本地端口转发自动完成回调":
+    "Optional: auto-complete callback via SSH local port forwarding",
+  "如果你正在电脑端操作，也可以先在本地终端运行下方命令，再打开 ChatGPT 授权页；浏览器跳转到 127.0.0.1 时会自动转发至服务器并刷新本页：":
+    "If you are on a computer, you can run this SSH port-forward command locally before opening the authorization page so the 127.0.0.1 redirect automatically reaches the server and refreshes this page:",
+  "复制 SSH 转发命令": "Copy SSH forward command",
+  "若通过端口转发访问且回调无法自动抵达，可手动粘贴回调链接":
+    "If accessing through a tunnel and the callback does not arrive automatically, paste the callback URL manually",
   "已切换默认 ChatGPT 订阅账号":
     "Default ChatGPT subscription account switched",
   "ChatGPT 订阅策略已更新": "ChatGPT subscription policy updated",
@@ -541,8 +577,8 @@ export default {
   新建此订阅模型: "Create subscription profile",
   "自托管服务器（VPS）与使用边界说明":
     "Self-hosted server (VPS) & usage boundaries",
-  "官方 OAuth 回调固定监听本机 127.0.0.1 临时端口，浏览器与回调必须在同一机器上完成。若 LuckyTri 运行在远程无界面 VPS，可在你本人电脑完成登录后执行命令导出迁移凭据，通过 SSH 传到服务器导入。":
-    "The official OAuth callback listens on a local 127.0.0.1 ephemeral port, so browser sign-in and callback must run on the same machine. For a headless VPS, sign in on your own computer, export a transfer record via CLI, and import it over SSH.",
+  "官方 OAuth 回调固定为本机 127.0.0.1 临时端口。通过 Tailscale HTTPS 等远程打开管理台时，可直接点击 Continue with ChatGPT 并粘贴回调链接完成认证，也可使用 SSH 端口转发，或按官方自托管 VM 流程在本机登录后通过 SSH 导出迁移凭据导入。":
+    "The official OAuth callback is fixed to a local 127.0.0.1 ephemeral port. When opening Studio remotely (such as over Tailscale HTTPS), click Continue with ChatGPT and paste the redirected callback URL back into Studio, or use SSH port forwarding, or follow OpenAI's self-hosted VM CLI transfer flow over SSH.",
   "本机 Host ID（迁移不会覆盖）：": "Host ID (preserved across imports):",
   "或在此粘贴本地导出的迁移凭据 JSON（仅限你本人的受控主机）":
     "Or paste the locally exported transfer JSON here (for your own controlled host only)",

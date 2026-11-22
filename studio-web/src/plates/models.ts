@@ -24,6 +24,13 @@ export async function startChatGptSignIn(payload: {
   return api("/core/chatgpt-auth/start", "POST", payload);
 }
 
+export async function completeChatGptSignIn(payload: {
+  pendingId: string;
+  callbackUrl: string;
+}) {
+  return api("/core/chatgpt-auth/complete", "POST", payload);
+}
+
 export async function cancelChatGptSignIn() {
   return api("/core/chatgpt-auth/cancel", "POST", {});
 }
