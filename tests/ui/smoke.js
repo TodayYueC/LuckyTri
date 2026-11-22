@@ -373,11 +373,14 @@ try {
   await confirmDialog();
   await p.waitForTimeout(300);
   assert.equal(await p.locator(".model-card").count(), 1);
+  assert.equal(await p.locator("#chatgptSubscriptionCard").isVisible(), true);
+  assert.equal(await p.locator("#continueWithChatGpt").isVisible(), true);
   await openModelPicker();
+  await (await openPreset("chatgpt-gpt-6.2-sol")).waitFor();
   await (await openPreset("opencode-go-grok-4.7")).waitFor();
   await (await openPreset("opencode-zen-qwen3.8-flash")).waitFor();
-  assert.equal(await p.locator('[data-preset^="opencode-go-"]').count(), 7);
-  assert.equal(await p.locator('[data-preset^="opencode-zen-"]').count(), 12);
+  assert.equal(await p.locator('[data-preset^="opencode-go-"]').count(), 12);
+  assert.equal(await p.locator('[data-preset^="opencode-zen-"]').count(), 15);
   assert.equal(await p.locator('[data-preset*="step-5-preview"]').count(), 0);
   assert.equal(await p.locator('[data-preset*="muse-spark"]').count(), 0);
   await (await openPreset("openrouter")).click();
@@ -390,11 +393,14 @@ try {
   await selectFirstSavedModel();
   await openModelPicker();
   for (const id of [
+    "openrouter-gpt-6.2-astra",
+    "openrouter-gpt-6.2-sol",
     "openrouter-gpt-6-astra",
     "openrouter-gpt-6.1-sol",
     "openrouter-gpt-6.1-terra",
     "openrouter-gpt-6-sol",
     "openrouter-gpt-6-luna",
+    "openrouter-gemini-4-neon",
     "openrouter-gemini-4-hydrogen",
     "openrouter-gemini-4-carbon",
     "openrouter-gemini-4-argon",

@@ -20,6 +20,8 @@ import { createStore } from "../server/storage/store.js";
 
 const find = (id) => MODEL_CATALOG.find((item) => item.id === id);
 const GPT_IDS = [
+  "gpt-6.2-astra",
+  "gpt-6.2-sol",
   "gpt-6-astra",
   "gpt-6.1-sol",
   "gpt-6.1-terra",
@@ -29,7 +31,15 @@ const GPT_IDS = [
   "gpt-5.6-terra",
   "gpt-5.6-luna",
 ];
+const CHATGPT_SUB_IDS = [
+  "chatgpt-gpt-6.2-sol",
+  "chatgpt-gpt-6.2-astra",
+  "chatgpt-gpt-6.1-sol",
+  "chatgpt-gpt-6-luna",
+];
 const BEDROCK_GPT_IDS = [
+  "bedrock-gpt-6.2-astra",
+  "bedrock-gpt-6.2-sol",
   "bedrock-gpt-6-astra",
   "bedrock-gpt-6.1-sol",
   "bedrock-gpt-6.1-terra",
@@ -37,6 +47,8 @@ const BEDROCK_GPT_IDS = [
   "bedrock-gpt-6-luna",
 ];
 const OPENCODE_ZEN_GPT_IDS = [
+  "opencode-zen-gpt-6.2-astra",
+  "opencode-zen-gpt-6.2-sol",
   "opencode-zen-gpt-6-astra",
   "opencode-zen-gpt-6.1-sol",
   "opencode-zen-gpt-6-sol",
@@ -44,14 +56,21 @@ const OPENCODE_ZEN_GPT_IDS = [
 ];
 const OPENCODE_GO_MODELS = [
   "grok-4.7",
+  "gpt-6-luna",
   "gpt-5.6-luna",
+  "deepseek-v4.1-flash",
   "deepseek-v4-pro",
   "glm-5.3-flash",
+  "kimi-k3.1-pro",
   "kimi-k3",
+  "minimax-m3.1-flash",
   "minimax-m3",
+  "qwen4-max",
   "qwen3.8-max",
 ];
 const OPENCODE_ZEN_MODELS = [
+  "gpt-6.2-astra",
+  "gpt-6.2-sol",
   "gpt-6-astra",
   "gpt-6.1-sol",
   "gpt-6-sol",
@@ -62,6 +81,7 @@ const OPENCODE_ZEN_MODELS = [
   "glm-5.3-flash",
   "glm-5.3",
   "kimi-k3",
+  "qwen3.8-max",
   "qwen3.8-flash",
   "minimax-m3",
 ];
@@ -86,6 +106,8 @@ const VOLCENGINE_AGENT_PLAN_MODELS = [
 ];
 
 const OPENROUTER_GPT_MODELS = {
+  "openrouter-gpt-6.2-astra": "openai/gpt-6.2-astra",
+  "openrouter-gpt-6.2-sol": "openai/gpt-6.2-sol",
   "openrouter-gpt-6-astra": "openai/gpt-6-astra",
   "openrouter-gpt-6.1-sol": "openai/gpt-6.1-sol",
   "openrouter-gpt-6.1-terra": "openai/gpt-6.1-terra",
@@ -95,6 +117,7 @@ const OPENROUTER_GPT_MODELS = {
 const OPENROUTER_GPT_IDS = Object.keys(OPENROUTER_GPT_MODELS);
 
 const OPENROUTER_GEMINI_MODELS = {
+  "openrouter-gemini-4-neon": "google/gemini-4-neon",
   "openrouter-gemini-4-hydrogen": "google/gemini-4-hydrogen",
   "openrouter-gemini-4-carbon": "google/gemini-4-carbon",
   "openrouter-gemini-4-argon": "google/gemini-4-argon",
@@ -102,6 +125,7 @@ const OPENROUTER_GEMINI_MODELS = {
 const OPENROUTER_GEMINI_IDS = Object.keys(OPENROUTER_GEMINI_MODELS);
 
 const GEMINI_OFFICIAL_IDS = [
+  "gemini-4-neon",
   "gemini-4-hydrogen",
   "gemini-4-carbon",
   "gemini-4-argon",
@@ -121,8 +145,10 @@ test("模型目录使用当前厂商参数，且预算与中英字典全部能�
     "mimo-v2.6-pro",
     "mimo-v2.6-flash",
     "glm-5.3",
+    "glm-5.3-flashx",
     "glm-5.3-flash",
     "kimi-k3.1-pro",
+    "kimi-k3.1-pro-highspeed",
     "kimi-k3",
     "kimi-k2.6",
     "claude-opus-5-5",
@@ -130,11 +156,14 @@ test("模型目录使用当前厂商参数，且预算与中英字典全部能�
     "claude-haiku-5-5",
     "claude-fable-5-2",
     "claude-fable-5-1",
+    ...CHATGPT_SUB_IDS,
     ...GEMINI_OFFICIAL_IDS,
     ...GPT_IDS,
     ...OPENCODE_ZEN_GPT_IDS,
+    "qwen4-max",
     "qwen3.8-max",
     "qwen3.8-flash",
+    "qwen3.7-plus",
     ...BEDROCK_GPT_IDS,
     ...OPENROUTER_GPT_IDS,
     ...OPENROUTER_GEMINI_IDS,
@@ -373,7 +402,7 @@ test("Agent Plan 使用独立 Responses 接口并包含完整的当前语言模�
 
 test("OpenCode Go 与 Zen 只显示精选模型，且目录中没有 Muse Spark 或内部代号冒充公共 API", () => {
   const go = MODEL_CATALOG.filter((item) => item.vendor === "OpenCode Go");
-  assert.equal(go.length, 7);
+  assert.equal(go.length, OPENCODE_GO_MODELS.length);
   assert.deepEqual(
     go.map((item) => item.model),
     OPENCODE_GO_MODELS,
@@ -402,7 +431,8 @@ test("OpenCode Go 与 Zen 只显示精选模型，且目录中没有 Muse Spark 
     false,
   );
   assert.equal(find("opencode-zen-qwen3.8-flash").apiProtocol, "anthropic");
-  assert.equal(find("opencode-zen-qwen3.8-max"), undefined);
+  assert.equal(find("opencode-zen-qwen3.8-max").apiProtocol, "chat");
+  assert.equal(find("opencode-go-qwen4-max").apiProtocol, "anthropic");
   assert.equal(find("opencode-go-minimax-m3").apiProtocol, "anthropic");
   assert.equal(find("opencode-zen-minimax-m3").apiProtocol, "chat");
   assert.equal(find("opencode-zen-space-bunny-free"), undefined);
@@ -476,13 +506,31 @@ test("思考档位和输出字段按各厂商文档填写", () => {
     assert.deepEqual(qwen.reasoningEfforts, ["none", "low", "medium", "xhigh"]);
     assert.equal(qwen.reasoningEffort, "xhigh", id);
   }
+  const qwen4 = find("qwen4-max");
+  assert.equal(qwen4.thinkingStyle, "qwen-effort");
+  assert.equal(qwen4.tokenField, "max_completion_tokens");
+  assert.equal(qwen4.maxOutputTokens, 262144);
+  assert.deepEqual(qwen4.reasoningEfforts, ["none", "low", "high", "xhigh"]);
+  assert.equal(qwen4.reasoningEffort, "high");
+  assert.equal(find("qwen3.7-plus").thinkingStyle, "qwen");
+  assert.equal(find("qwen3.7-plus").reasoningEffort, "none");
+  assert.equal(find("glm-5.3-flashx").vision, true);
+  assert.equal(find("kimi-k3.1-pro-highspeed").thinkingStyle, "kimi-effort");
   assert.equal(find("kimi-k2.6").tokenField, "max_completion_tokens");
   for (const id of [
+    "gpt-6.2-astra",
+    "gpt-6.2-sol",
     "gpt-6-astra",
     "gpt-6.1-sol",
+    "bedrock-gpt-6.2-astra",
+    "bedrock-gpt-6.2-sol",
     "bedrock-gpt-6-astra",
     "bedrock-gpt-6.1-sol",
+    "openrouter-gpt-6.2-astra",
+    "openrouter-gpt-6.2-sol",
     "openrouter-gpt-6.1-sol",
+    "opencode-zen-gpt-6.2-astra",
+    "opencode-zen-gpt-6.2-sol",
     "opencode-zen-gpt-6.1-sol",
   ])
     assert.deepEqual(
@@ -606,6 +654,7 @@ test("Claude 与 Gemini 目录：正式版/预览版区分、思考档约束与�
     assert.match(p.summary, /预览版（Preview）/);
   }
   for (const gaId of [
+    "gemini-4-neon",
     "gemini-4-hydrogen",
     "gemini-4-carbon",
     "gemini-4-argon",
@@ -615,6 +664,10 @@ test("Claude 与 Gemini 目录：正式版/预览版区分、思考档约束与�
   ]) {
     assert.match(find(gaId).summary, /^正式版/);
   }
+  const neon = find("gemini-4-neon");
+  assert.deepEqual(neon.reasoningEfforts, ["low", "medium", "high", "xhigh"]);
+  assert.equal(neon.reasoningEffort, "high");
+  assert.equal(neon.omitSampling, true);
 
   // 协议与参数映射实测：验证 Google OpenAI 兼容层对 xhigh / minimal / none / max 及采样参数的收敛保护
   const store = createStore(":memory:");
@@ -701,4 +754,17 @@ test("Claude 与 Gemini 目录：正式版/预览版区分、思考档约束与�
     { calls: [] },
   );
   assert.equal(sentBodies[4].reasoning_effort, "minimal");
+
+  // 4. Gemini 4 Neon 同样原生支持 xhigh 且忽略已废弃的采样参数
+  await manager.call(
+    { ...neon, apiKey: "k", reasoningEffort: "xhigh" },
+    "turn",
+    "输出 JSON",
+    { a: 1 },
+    { calls: [] },
+  );
+  assert.equal(sentBodies[5].model, "gemini-4-neon");
+  assert.equal(sentBodies[5].reasoning_effort, "xhigh");
+  assert.equal(sentBodies[5].temperature, undefined);
+  assert.equal(sentBodies[5].top_p, undefined);
 });
